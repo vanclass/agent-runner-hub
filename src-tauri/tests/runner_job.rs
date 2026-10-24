@@ -3,8 +3,10 @@
 // Exercise the production Job and vendored ConPTY spawn path without a Runner install.
 #[path = "../src/desktop_terminal/job.rs"]
 mod job;
+#[path = "../src/desktop_terminal/startup.rs"]
+mod startup;
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
-use std::{fs, path::{Path, PathBuf}, process::Command, thread, time::{Duration, Instant}};
+use std::{fs, io::{Read, Write}, path::{Path, PathBuf}, process::Command, thread, time::{Duration, Instant}};
 use std::os::windows::{io::{AsRawHandle, FromRawHandle, OwnedHandle}, process::CommandExt};
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE};
 
@@ -75,7 +77,8 @@ fn child_fixture() {
 struct Session {
     job: Option<job::Job>,
     child: Box<dyn Child + Send + Sync>,
-    _pair: portable_pty::PtyPair,
+    pair: Option<portable_pty::PtyPair>,
+    output: Option<thread::JoinHandle<()>>,
     descendant: OwnedHandle,
     directory: Directory,
 }
@@ -84,6 +87,19 @@ impl Session {
         let directory = Directory::new();
         let job = job::Job::new().unwrap();
         let pair = native_pty_system().openpty(PtySize::default()).unwrap();
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        // Match production: service the inherited cursor query before spawn.
+        let output = thread::spawn(move || {
+            let mut cursor = startup::InitialCursor::new(true);
+            let mut bytes = [0u8; 4096];
+            while let Ok(count) = reader.read(&mut bytes) {
+                if count == 0 { break; }
+                if cursor.push(&bytes[..count]).0 {
+                    if writer.write_all(b"\x1b[1;1R").is_err() { break; }
+                }
+            }
+        });
         let mut command = CommandBuilder::new(std::env::current_exe().unwrap());
         command.args(["--ignored", "--exact", "child_fixture", "--nocapture"]);
         command.env("HUB_JOB_FIXTURE", &directory.0);
@@ -95,7 +111,7 @@ impl Session {
         assert_eq!(fs::read_to_string(directory.0.join("leaf")).unwrap(), pid.to_string());
         let descendant = observed_process(pid);
         assert!(!ended(&descendant));
-        Self { job: Some(job), child, _pair: pair, descendant, directory }
+        Self { job: Some(job), child, pair: Some(pair), output: Some(output), descendant, directory }
     }
     fn terminate(&self) {
         self.job.as_ref().unwrap().terminate().unwrap();
@@ -106,6 +122,8 @@ impl Drop for Session {
     fn drop(&mut self) {
         if let Some(job) = &self.job { let _ = job.terminate(); }
         let _ = self.child.wait();
+        drop(self.pair.take());
+        if let Some(output) = self.output.take() { output.join().unwrap(); }
     }
 }
 

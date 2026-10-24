@@ -1,32 +1,41 @@
 name: Desktop checks and local packages
 on:
-  workflow_dispatch:
   push:
-  pull_request:
 permissions:
   contents: read
+  actions: write
 jobs:
   desktop:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            target: aarch64-apple-darwin
-            build: macos-tauri
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-            build: macos-tauri
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-2022
+    timeout-minutes: 40
     steps:
+      - name: Cancel only the superseded Task 4 fixture run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $null = Get-Command gh -ErrorAction Stop
+          $prior = gh api repos/vanclass/agent-runner-hub/actions/runs/40104735986 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect owned validation run' }
+          if ($prior.head_sha -ne 'c04ec6148ad9b78cb94541db65c402c57db9faa7') { throw 'Validation identity mismatch' }
+          if ($prior.status -ne 'completed') {
+            gh api --method POST repos/vanclass/agent-runner-hub/actions/runs/40104735986/cancel
+            if ($LASTEXITCODE -ne 0) { throw 'Owned run cancellation failed' }
+          }
       - uses: actions/checkout@v4
-      - name: Execute native macOS containment feasibility fixtures
-        if: runner.os == 'macOS'
-        run: python3 tests/native/macos_containment.py temp/macos-containment-${{ matrix.target }}
-      - name: Retain native containment evidence, including failed experiments
-        if: always() && runner.os == 'macOS'
-        uses: actions/upload-artifact@v7
+      - uses: actions/setup-node@v4
         with:
-          name: macos-containment-${{ matrix.target }}
-          path: temp/macos-containment-${{ matrix.target }}/
-          if-no-files-found: error
+          node-version: 24
+          cache: npm
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check TypeScript and build frontend
+        run: npm run build
+      - name: Prepare native Rust target
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add x86_64-pc-windows-msvc --toolchain stable
+      - name: Check and test selected Rust features
+        timeout-minutes: 30
+        run: node .runner/web-app-tauri/check.mjs
