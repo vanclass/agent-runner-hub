@@ -1,0 +1,8 @@
+local/
+output/
+temp/
+.codex/temp/
+*.tmp
+*.log
+__pycache__/
+*.pyc
