@@ -1,6 +1,9 @@
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 #[path = "process.rs"] mod process;
 #[path = "startup.rs"] mod startup;
+#[path = "runner.rs"] pub(super) mod runner;
+#[cfg(windows)]
+#[path = "job.rs"] mod job;
 use process::ProcessKiller;
 use startup::InitialCursor;
 use serde::{Deserialize, Serialize};
@@ -10,6 +13,7 @@ use std::{collections::{BTreeMap, HashMap, HashSet}, io::{Read, Write},
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenRequest {
+    pub runner_location: Option<String>,
     pub program: Option<String>,
     #[serde(default)] pub args: Vec<String>,
     pub cwd: Option<String>,
@@ -33,6 +37,7 @@ pub struct Session {
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Option<ProcessKiller>>,
+    #[cfg(windows)] job: Mutex<Option<Arc<job::Job>>>,
     closing: AtomicBool,
     startup_ready: Mutex<bool>,
     started: Condvar,
@@ -75,8 +80,17 @@ impl Session {
         self.closing.store(true, Ordering::Release);
         self.drained.notify_all();
         self.started.notify_all();
-        if let Some(killer) = self.killer.lock().map_err(|e| e.to_string())?.as_mut() { killer.kill()?; }
-        Ok(())
+        #[cfg(windows)]
+        if let Some(job) = self.job.lock().map_err(|e| e.to_string())?.as_ref() {
+            // A successful job teardown already terminated the root. TerminateProcess
+            // can reject a second request while that process is finishing termination.
+            let result = job.terminate();
+            if result.is_err() {
+                if let Some(killer) = self.killer.lock().map_err(|e| e.to_string())?.as_mut() { let _ = killer.kill(); }
+            }
+            return result;
+        }
+        self.killer.lock().map_err(|e| e.to_string())?.as_mut().map_or(Ok(()), ProcessKiller::kill)
     }
 }
 
@@ -108,6 +122,7 @@ impl Sessions {
         let id = self.next.fetch_add(1, Ordering::Relaxed).to_string();
         let session = Arc::new(Session { owner, master: Mutex::new(None), writer: Mutex::new(None),
             killer: Mutex::new(None), closing: AtomicBool::new(false),
+            #[cfg(windows)] job: Mutex::new(None),
             startup_ready: Mutex::new(!cfg!(windows)), started: Condvar::new(),
             acknowledged: Mutex::new(0), drained: Condvar::new() });
         self.sessions.lock().map_err(|e| e.to_string())?.insert(id.clone(), session.clone());
@@ -122,12 +137,28 @@ impl Sessions {
 
     fn start_inner(&self, id: String, session: Arc<Session>, request: OpenRequest, sink: Sink) -> Result<String, String> {
         if session.closing.load(Ordering::Acquire) { return Err("PTY creation cancelled".into()); }
+        let contained = request.runner_location.is_some();
+        let request = match request.runner_location.as_deref() {
+            Some(location) => runner::prepare(location, request.cols, request.rows)?,
+            None => request,
+        };
         let pair = native_pty_system().openpty(size(request.cols, request.rows)?).map_err(|e| e.to_string())?;
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let default = if cfg!(windows) { std::env::var("COMSPEC").unwrap_or("cmd.exe".into()) }
             else { std::env::var("SHELL").unwrap_or("/bin/zsh".into()) };
         let mut command = CommandBuilder::new(request.program.unwrap_or(default));
+        if contained {
+            for (key, _) in std::env::vars_os() {
+                if key.to_string_lossy().starts_with("AGENT_RUNNER_") { command.env_remove(key); }
+            }
+            command.env_remove("PYTHONPATH"); command.env_remove("PYTHONHOME");
+            #[cfg(windows)] {
+                let job = Arc::new(job::Job::new()?);
+                job.configure(&mut command);
+                *session.job.lock().unwrap() = Some(job);
+            }
+        }
         command.args(request.args);
         if let Some(cwd) = request.cwd { command.cwd(cwd); }
         for (key, value) in request.env { command.env(key, value); }
@@ -205,12 +236,16 @@ impl Sessions {
         let exit_id = id.clone();
         thread::spawn(move || {
             let status = child.wait();
+            // A root exit does not release descendants. Settle its job before publishing Exit.
+            #[cfg(windows)]
+            let containment = session.job.lock().unwrap().as_ref().map_or(Ok(()), |job| job.terminate());
             // Close ConPTY away from its reader while that reader can still drain output.
             session.master.lock().unwrap().take();
             session.writer.lock().unwrap().take();
             session.killer.lock().unwrap().take();
             let read_result = output.join().unwrap_or_else(|_| Err("PTY reader panicked".into()));
             let error = status.as_ref().err().map(ToString::to_string).or_else(|| read_result.err());
+            #[cfg(windows)] let error = error.or_else(|| containment.err());
             let code = status.ok().map(|s| s.exit_code());
             let _ = sink(PtyEvent::Exit { id: exit_id.clone(), code, error });
             registry.lock().unwrap().remove(&exit_id);

@@ -2,6 +2,84 @@ use super::*;
 use std::{io::{BufRead, Write}, sync::mpsc, time::Duration};
 
 #[test]
+#[ignore = "Requires an explicitly configured installed Runner on a native host"]
+fn installed_runner_interactive_probe() {
+    let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").expect("installed workspace root");
+    let mut harness = Harness::new();
+    let (id, session) = harness.sessions.reserve("test-window".into()).unwrap();
+    let id = harness.sessions.start(id, session, OpenRequest {
+        runner_location: Some(root), cols: 100, rows: 35,
+        ..Default::default()
+    }, harness.sink.clone()).unwrap();
+    harness.pump_for(Duration::from_secs(12));
+    let pty = harness.sessions.owned(&id, "test-window").unwrap();
+    for command in ["/status", "/help", "/hub-unknown\n\u{c548}\u{b155} \u{1f30d}"] {
+        pty.write(win32_text(command).as_bytes()).unwrap();
+        harness.pump_for(Duration::from_secs(1));
+        pty.write(b"\x1b[13;0;13;1;0;1_").unwrap();
+        harness.pump_for(Duration::from_secs(3));
+    }
+    pty.resize(90, 30).unwrap();
+    for keys in ["\x1b[27;0;27;1;0;1_", "\x1b[67;0;3;1;8;1_", "\x1b[40;0;0;1;0;1_", "\x1b[13;0;13;1;0;1_"] {
+        if harness.exited.contains_key(&id) { break; }
+        pty.write(keys.as_bytes()).unwrap();
+        harness.pump_for(Duration::from_secs(2));
+    }
+    harness.pump_for(Duration::from_secs(10));
+    println!("{}", String::from_utf8_lossy(&harness.output[&id]));
+    let text = String::from_utf8_lossy(&harness.output[&id]);
+    assert!(text.contains("/status") && text.contains("hub-unknown") && text.contains("\u{c548}\u{b155}") && text.contains("\u{1f30d}"));
+    assert_eq!(harness.exited.get(&id), Some(&Some(0)), "Runner must exit normally");
+}
+
+fn win32_text(text: &str) -> String {
+    text.encode_utf16().map(|unit| {
+        if unit == 10 { "\x1b[13;0;13;1;16;1_".to_string() }
+        else { format!("\x1b[0;0;{unit};1;0;1_") }
+    }).collect()
+}
+
+#[test]
+#[ignore = "Requires an explicitly configured installed Runner on Windows"]
+fn installed_runners_independent_and_owned_shutdown() {
+    let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();
+    let mut harness = Harness::new();
+    let mut unrelated = Harness::new();
+    let untouched = unrelated.open("wait"); unrelated.ready(&untouched);
+    let first = harness.open_runner(&root);
+    let second = harness.open_runner(&root);
+    harness.pump_for(Duration::from_secs(12));
+    let first_pty = harness.sessions.owned(&first, "test-window").unwrap();
+    let second_pty = harness.sessions.owned(&second, "test-window").unwrap();
+    assert!(!Arc::ptr_eq(&first_pty, &second_pty));
+    first_pty.write((win32_text("/hub-first\n\u{c548}\u{b155} \u{1f30d}") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
+    second_pty.write((win32_text("/hub-second\n\u{4e16}\u{754c}") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
+    harness.pump_for(Duration::from_secs(4));
+    let a = String::from_utf8_lossy(&harness.output[&first]);
+    let b = String::from_utf8_lossy(&harness.output[&second]);
+    assert!(a.contains("hub-first") && a.contains("\u{c548}\u{b155}") && a.contains("\u{1f30d}") && !a.contains("hub-second"));
+    assert!(b.contains("hub-second") && !b.contains("hub-first"));
+    for index in 0..8 {
+        let selected = if index % 2 == 0 { &first_pty } else { &second_pty };
+        selected.resize(90 + index, 30).unwrap();
+    }
+    first_pty.close().unwrap();
+    harness.exited(&first);
+    assert!(harness.sessions.owned(&first, "test-window").is_err());
+    second_pty.write((win32_text("/status") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
+    harness.pump_for(Duration::from_secs(3));
+    assert!(Arc::ptr_eq(&second_pty, &harness.sessions.owned(&second, "test-window").unwrap()));
+    assert!(String::from_utf8_lossy(&harness.output[&second]).contains("/status"));
+    harness.sessions.close_window("test-window");
+    harness.exited(&second);
+    assert!(harness.sessions.sessions.lock().unwrap().is_empty());
+    let untouched_pty = unrelated.sessions.owned(&untouched, "test-window").unwrap();
+    untouched_pty.resize(90, 30).unwrap();
+    untouched_pty.close().unwrap(); unrelated.exited(&untouched);
+    println!("Actual installed Runners: isolated Unicode/multiline I/O, stable sessions, individual termination, empty jobs on window shutdown; unrelated owned fixture survived.");
+}
+
+#[test]
 #[ignore = "Child fixture, launched only by the PTY tests"]
 fn child_fixture() {
     let mode = std::env::var("DESKTOP_PTY_TEST_CHILD").expect("owned child marker");
@@ -44,11 +122,30 @@ impl Harness {
             cols: 80, rows: 24, ..Default::default()
         }, self.sink.clone()).unwrap()
     }
+    fn open_runner(&self, location: &str) -> String {
+        let (id, session) = self.sessions.reserve("test-window".into()).unwrap();
+        self.sessions.start(id, session, OpenRequest {
+            runner_location: Some(location.into()), cols: 100, rows: 35, ..Default::default()
+        }, self.sink.clone()).unwrap()
+    }
     fn event(&mut self) {
         let event = self.events.recv_timeout(Duration::from_secs(30)).unwrap_or_else(|error| {
             let output: HashMap<_, _> = self.output.iter().map(|(id, bytes)| (id, String::from_utf8_lossy(bytes))).collect();
             panic!("owned PTY must settle: {error}; output={output:?}; exits={:?}", self.exited);
         });
+        self.accept(event);
+    }
+    fn pump_for(&mut self, duration: Duration) {
+        let until = std::time::Instant::now() + duration;
+        while let Some(remaining) = until.checked_duration_since(std::time::Instant::now()) {
+            match self.events.recv_timeout(remaining) {
+                Ok(event) => self.accept(event),
+                Err(mpsc::RecvTimeoutError::Timeout) => break,
+                Err(error) => panic!("PTY event channel: {error}"),
+            }
+        }
+    }
+    fn accept(&mut self, event: PtyEvent) {
         match event {
             PtyEvent::Output { id, sequence, bytes } => {
                 self.output.entry(id.clone()).or_default().extend(bytes);

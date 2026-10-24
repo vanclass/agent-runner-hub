@@ -67,6 +67,7 @@ export function Sidebar({ runners, selectedId, onSelect, onRename }: SidebarProp
         active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)} />)}</ul>
       {runners.length === 0 && <p className="sidebar-empty">No Runners yet.<br />Your Runners will appear here.</p>}
     </nav>
-    <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />Not connected</div>
+    <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />
+      {runners.filter(runner => runner.status === 'running').length} processes running</div>
   </aside>;
 }

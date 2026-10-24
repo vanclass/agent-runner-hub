@@ -1,0 +1,44 @@
+# Session Report
+
+## 1. Task Info
+- Task Number: 2
+- Task Title: Connect independent native Runner terminals to persistent Hub tabs
+- Task Title (KR): 독립 네이티브 Runner 터미널과 영구 Hub 탭 연결
+- Summary: Verify the installed Runner launch contract, reuse Desktop Terminal PTYs, and add configured manual Runner creation, persistent terminal views, and owned process shutdown.
+- Summary (KR): 설치된 Runner 실행 계약을 검증하고 기존 PTY를 재사용하여 수동 Runner 생성, 터미널 유지 및 소유 프로세스 종료를 구현합니다.
+
+## 2. Work Plan
+- Inspect current terminal, sidebar, runtime launch contracts, project specifications, and managed build boundaries.
+- Exercise the canonical installed Runner interactive entry through the existing native PTY before expanding to multiple sessions.
+- Add installation configuration and direct native launch with stable per-Runner PTY ownership, truthful process state, isolated termination, and normal shutdown containment.
+- Bind persistent terminals and the composer to each Runner while preserving sidebar ordering, renaming, themes, ANSI/Unicode content, and geometry.
+- Run focused frontend/native regressions and actual Windows Runner acceptance; record fixture evidence separately and mark unavailable macOS acceptance unverified.
+
+## 3. Work Summary
+- Added installation verification and direct managed-Python Runner launch through the existing Desktop Terminal bridge and portable-pty backend. No machine path or private Runner implementation/runtime is included in Hub source or build inputs.
+- Added manual New Runner creation, truthful per-process launch/exit/error state, persistent session ownership above keyed Workspace mounting, independent terminal output/input, Unicode/multiline composer input, search, resizing, local drafts and renaming, and selected termination. Existing navigation order and Light/Black themes remain intact.
+- Established actual retained Windows interaction before expanding to multiple sessions. Runner requests Win32 input mode through ConPTY; preserving Unicode key records and Shift+Enter avoids fast-burst paste classification and unintended multiple submissions. Terminal/parser state remains canonical; no copied transcript or task-state parser was introduced.
+- Added per-Runner Windows Job Objects with launch-time assignment via a narrow extension to checksum-verified public portable-pty 0.9 sources. Natural root exit, explicit termination and native window-owner shutdown settle contained descendants. Fixed a redundant direct-kill race found by actual two-Runner validation.
+- Source-of-truth ownership is split by lifetime: RunnerSessions owns terminal sessions and the canonical composer draft/pending-write state, native Sessions owns PTYs/jobs, RunnerLocation owns installation entry, and Hub composes selection. View unmount only detaches the terminal geometry observer; pending submission remains busy across remounts and cannot be duplicated. Terminal/process disposal belongs to explicit termination or Hub teardown.
+- Specification decision: created docs/implementation_specs/runner_terminals.md and registered it in the existing index because terminal identity, Win32 input and process containment require stable cross-file explanation. Updated only superseded integration descriptions in PRD.md and ARCHITECTURE.md. The exact Workspace Project-policy index for AgentRunnerHub was absent.
+- Unmet platform requirement: macOS launch is gated before spawning because POSIX process groups do not contain Runner's detached children. A supported macOS descendant shutdown boundary remains unresolved; macOS native compilation/interaction is unverified on this Windows host.
+
+## 4. Validation Evidence
+- Windows native compilation and focused acceptance: 8 passed using the canonical staged backend/Cargo topology, including 6 fixture/resolver/startup checks and 2 explicitly enabled installed-Runner checks. Evidence: ignored temp/native-acceptance.log. No Runner-owned lifecycle completion gates were invoked.
+- Actual installed Runner evidence: canonical direct interactive startup, ANSI output, Korean and emoji input, a multiline unknown command, /status and /help, resize, and normal Ctrl+C exit. Two separately launched installed Runners preserved PTY identities and isolated input/output, survived repeated geometry changes, supported individual termination and window-owner shutdown, and left an unrelated fixture operational. Job termination verifies an empty active-process count.
+- Fixture evidence remains separate: native shell/Unicode/resize/cancellation tests do not establish actual Runner interaction; browser transport simulations do not establish an actual native WebView window or hosted CI execution.
+- TypeScript/Vite build passed after the implementation; Vite reports its normal large-chunk advisory for bundled xterm. Existing build configuration was preserved.
+- Final headless browser regression: 7 passed, covering existing WG1 navigation/renaming/theme/resize and empty startup plus two-session persistence, inactive output acknowledgements, composer/physical key routing, terminal protocol replies, configuration/launch failure, and unexpected exit. The pending-write fixture also verifies that switching away and back cannot resubmit the same draft while delivery is pending. Evidence: test-results/web-app/449781c6-6303-44db-afca-d76c51d915f8/report/index.html. The new fixtures required the Tauri environment marker and the existing 60-second navigation allowance; assertions were retained.
+- Initial retained probes exposed incorrect plain/bulk and raw-paste input; Win32 encoded keys resolved actual command/multiline submission. The first actual two-Runner teardown revealed a redundant direct-process termination error after job settlement; corrected and reran the complete focused native acceptance batch successfully.
+- Edited/new source text passed UTF-8, no-BOM, replacement-character and LF preservation checks; git diff --check passed. Generated PowerShell diagnostic logs initially had UTF-8 BOMs and were corrected byte-for-byte without changing their contents. Managed source/receipts and private Runner implementation files were not edited; task-local tools and caches were prepared through existing owners.
+- Patch preservation correction: apply_patch added an EOF newline to the existing specification index, whose original final line had none. The shared encoding detector verified UTF-8 with fallback allowed; a one-byte truncation removed only that added newline. Exact comparison proves every original document byte is retained outside the new route, and captured edit targets retain their original EOF/EOL profiles.
+- Actual native WebView interaction/window-close acceptance remains unverified. A first fixture stopped before launch because Windows denied process-start tracing. A supported creation-time debug capture alternative established owned process handles without elevation, but the unchanged native development launcher failed with MSVC LNK1104 on its long task-worktree staging/output paths. A temporary drive alias preserved the same checkout identity but the launcher still canonicalized the output to the long path. No Hub GUI or debugging listener was created. Failure evidence is retained under ignored temp/native-host/task-2/acceptance-1 through acceptance-3; owned launchers settled, attempted listener ports are clear, and the drive alias was removed. No managed launcher/build configuration was changed to bypass this limit.
+- macOS host acceptance and GitHub CI execution remain unverified. Native PTY/installed-Runner checks and controlled browser rendering are valid narrower evidence; they do not establish the unavailable native-window acceptance.
+
+## 5. User Verification Message
+- On Windows, open the native Hub, enter your installed Runner workspace or agent_runner folder in Single Entry, and verify it. Use New Runner twice, switch between the tabs, type commands directly or use the composer, then terminate one Runner. Closing the Hub owns termination of all remaining Hub-owned Runner jobs. Control IPC, assignment, attachments and restored sessions are not implemented.
+- The cross-platform DoD is not fully met: macOS Runner creation is explicitly unavailable until detached-child containment has a supported implementation and matching host evidence. Actual native WebView/window-close acceptance also remains unverified because the managed native launcher cannot link its long task-worktree output paths on this host. It requires a supported short staging/checkout boundary under its existing owner; native PTY/installed-Runner and controlled browser results must not be treated as that stronger evidence.
+
+<!-- TASK_END_RUNTIME_METADATA_BEGIN -->
+artifact_ref_json: {"repository_namespace":"project-d095b183621fc82fa74029d3","task_number":"2","task_workload_id":"2ca00cb80d9a4ad595968e6f9229bda8"}
+<!-- TASK_END_RUNTIME_METADATA_END -->

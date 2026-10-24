@@ -15,6 +15,7 @@
 ## 영역 등록부
 
 - Hub shell UI, navigation, local Runner labels, and application themes: source owners `../../src/hub/Hub.tsx`, `../../src/hub/Sidebar.tsx`, `../../src/hub/Workspace.tsx`, `../../src/hub/ThemePicker.tsx`, and `../../src/hub/hub.css`; representative checks `../../tests/e2e/hub.spec.mjs` and `../../tests/e2e/starter.spec.mjs`. Select this direct source/test route for shell behavior; no separate domain index is needed.
+- Configured Runner launch, persistent terminal tabs, input protocols, process observations, and native shutdown ownership: [Runner terminal ownership](runner_terminals.md); source owners `../../src/hub/RunnerSessions.ts`, `../../src/hub/runnerInput.ts`, and `../../src-tauri/src/desktop_terminal/`; representative checks `../../tests/e2e/runners.spec.mjs` and `../../src-tauri/src/desktop_terminal/tests.rs`.
 
 ## 신규 domain 등록 조건
 

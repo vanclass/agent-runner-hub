@@ -24,7 +24,10 @@ tauri-plugin-clipboard-manager = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"], optional = true }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_Security"], optional = true }
 
 [build-dependencies]
 tauri-build = { version = "=2.7.1", features = [] }
+
+[patch.crates-io]
+portable-pty = { path = "vendor/portable-pty" }
