@@ -245,10 +245,10 @@ class Oracle:
             if candidate != "launchd-omitted":
                 values["AbandonProcessGroup"] = candidate == "launchd-true"
             path.write_bytes(plistlib.dumps(values))
-            self.services.append(target)
             operation = command(["launchctl", "bootstrap", domain, str(path)])
             self.operations.append(operation)
             assert operation["code"] == 0, operation
+            self.services.append(target)
         else:
             process = subprocess.Popen(arguments, start_new_session=True,
                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -375,6 +375,9 @@ def experiment(directory, constants, candidate, scenario, domain):
                      if key[0] in {"B", "unrelated"} and not node["exit_observed"]]
         roots = [first, second] if scenario == "simultaneous" else [first]
         oracle.stop(roots, candidate, scenario)
+        if candidate != "launchd-true":
+            assert all(oracle.nodes[("A", role)]["exit_observed"]
+                       for role in ("root", "ordinary", "ignore")), "same-group control survived"
         survivors = [key for key, node in oracle.nodes.items()
                      if key[0] == "A" and not node["exit_observed"]]
         assert survivors, "candidate behavior changed: investigate support before enabling"
@@ -384,15 +387,23 @@ def experiment(directory, constants, candidate, scenario, domain):
             oracle.ping(untouched)
             result["untouched_session_survived"] = True
             oracle.stop([second], candidate, scenario)
+        second_survivors = [key for key, node in oracle.nodes.items()
+                            if key[0] == "B" and not node["exit_observed"]]
+        assert second_survivors
+        oracle.ping(second_survivors)
         oracle.ping([("unrelated", "root")])
         result.update(owned_processes_absent=False, unrelated_survived=True,
                       surviving_roles=[key[1] for key in survivors],
-                      observations=oracle.snapshot("A"))
+                      observations=oracle.snapshot("A"), second_observations=oracle.snapshot("B"))
+    except BaseException as error:
+        result["fixture_error"] = repr(error)
     finally:
         try:
             result["independent_cleanup"] = oracle.cleanup()
-            result["operations"] = oracle.operations
+        except BaseException as error:
+            result["cleanup_error"] = repr(error)
         finally:
+            result["operations"] = oracle.operations
             oracle.close()
     return result
 
@@ -440,7 +451,7 @@ def main():
         assert constants[name + "_errno"] == constants["ENOTSUP"], constants
     assert constants["fork_event_data"] == 0
     domain = None
-    for prefix in ("user", "gui"):
+    for prefix in ("gui", "user"):
         candidate = f"{prefix}/{os.getuid()}"
         if command(["launchctl", "print", candidate])["code"] == 0:
             domain = candidate
@@ -463,6 +474,7 @@ def main():
                     case.mkdir()
                     result = experiment(case, constants, candidate, scenario, domain)
                     evidence["experiments"].append(result)
+                    assert "fixture_error" not in result and "cleanup_error" not in result, result
                     print(json.dumps(dict(candidate=candidate, scenario=scenario,
                                           accepted=result["accepted"],
                                           surviving_roles=result["surviving_roles"],
