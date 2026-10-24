@@ -323,7 +323,7 @@ class Oracle:
                                             stdout=stdout.decode(), stderr=stderr.decode()))
                 assert process.returncode == 0
                 self.services.remove(root["target"])
-        limit = time.monotonic() + 1
+        limit = time.monotonic() + (1 if candidate == "process-group" else 3)
         while time.monotonic() < limit:
             self.poll()
 
@@ -375,7 +375,7 @@ def experiment(directory, constants, candidate, scenario, domain):
                      if key[0] in {"B", "unrelated"} and not node["exit_observed"]]
         roots = [first, second] if scenario == "simultaneous" else [first]
         oracle.stop(roots, candidate, scenario)
-        if candidate != "launchd-true":
+        if candidate == "process-group":
             assert all(oracle.nodes[("A", role)]["exit_observed"]
                        for role in ("root", "ordinary", "ignore")), "same-group control survived"
         survivors = [key for key, node in oracle.nodes.items()
@@ -393,11 +393,15 @@ def experiment(directory, constants, candidate, scenario, domain):
         oracle.ping(second_survivors)
         oracle.ping([("unrelated", "root")])
         result.update(owned_processes_absent=False, unrelated_survived=True,
+                      same_group_control_absent={role: oracle.nodes[("A", role)]["exit_observed"]
+                                                 for role in ("root", "ordinary", "ignore")},
                       surviving_roles=[key[1] for key in survivors],
                       observations=oracle.snapshot("A"), second_observations=oracle.snapshot("B"))
     except BaseException as error:
         result["fixture_error"] = repr(error)
     finally:
+        result["before_independent_cleanup"] = {
+            session: oracle.snapshot(session) for session in ("A", "B", "unrelated")}
         try:
             result["independent_cleanup"] = oracle.cleanup()
         except BaseException as error:
