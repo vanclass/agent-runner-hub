@@ -23,6 +23,17 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - name: Execute native macOS containment feasibility fixtures
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: python3 tests/native/macos_containment.py temp/macos-containment-${{ matrix.target }}
+      - name: Retain native containment evidence, including failed experiments
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-containment-${{ matrix.target }}
+          path: temp/macos-containment-${{ matrix.target }}/
+          if-no-files-found: error
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -37,6 +48,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup target add '${{ matrix.target }}' --toolchain stable
       - name: Check and test selected Rust features
+        timeout-minutes: 30
         run: node .runner/web-app-tauri/check.mjs
       - name: Build native local artifacts
         run: node tools/web_app_build_system/src/entry.mjs --build ${{ matrix.build }} --prepare
