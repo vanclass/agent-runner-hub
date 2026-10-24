@@ -13,6 +13,21 @@ fn clean_environment(command: &mut Command) {
     command.env_remove("PYTHONPATH").env_remove("PYTHONHOME");
 }
 
+fn installation_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    #[cfg(windows)] {
+        use std::path::{Component, Prefix};
+        if let Some(Component::Prefix(prefix)) = path.components().next() {
+            match prefix.kind() {
+                Prefix::VerbatimDisk(_) => return text[4..].into(),
+                Prefix::VerbatimUNC(_, _) => return format!("\\\\{}", &text[8..]),
+                _ => {}
+            }
+        }
+    }
+    text.into_owned()
+}
+
 pub fn resolve(location: &str) -> Result<Installation, String> {
     let selected = Path::new(location.trim());
     if !selected.is_absolute() { return Err("Choose the absolute path to your AgentRunner installation or its workspace.".into()); }
@@ -25,7 +40,8 @@ pub fn resolve(location: &str) -> Result<Installation, String> {
         else { "agent_runner/local/runtime/python-env/bin/python" });
     if !python.is_file() { return Err("Runner's managed Python is missing. Run this installation's native bootstrap, then choose the location again.".into()); }
     verify_python(&root, &python)?;
-    Ok(Installation { root: root.to_string_lossy().into_owned(), python: python.to_string_lossy().into_owned() })
+    // Runner compares paths returned by its App Server, which uses ordinary DOS/UNC spelling.
+    Ok(Installation { root: installation_path(&root), python: installation_path(&python) })
 }
 
 fn verify_python(root: &Path, python: &Path) -> Result<(), String> {
@@ -73,6 +89,17 @@ pub fn prepare(location: &str, cols: u16, rows: u16) -> Result<OpenRequest, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn installation_arguments_match_external_windows_path_spelling() {
+        assert_eq!(installation_path(Path::new(r"\\?\D:\Runner install")), r"D:\Runner install");
+        assert_eq!(installation_path(Path::new(r"\\?\UNC\server\share\Runner")), r"\\server\share\Runner");
+        let unicode = "D:\\Runner \u{c124}\u{ce58}";
+        assert_eq!(installation_path(Path::new(&format!("\\\\?\\{unicode}"))), unicode);
+        assert_eq!(installation_path(Path::new(unicode)), unicode);
+        let device = r"\\?\Volume{123}\Runner";
+        assert_eq!(installation_path(Path::new(device)), device);
+    }
     #[test]
     fn unavailable_installations_are_actionable() {
         assert!(resolve("").err().unwrap().contains("absolute path"));

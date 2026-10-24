@@ -12,11 +12,21 @@ Composer drafts and pending submission belong to the session snapshot. Switching
 
 `src-tauri/src/desktop_terminal/runner.rs` accepts an installed workspace or its `agent_runner` folder. It verifies that the managed Python environment imports that installation's exact Runner source, then directly launches `python -I -m runner run --repo-root <workspace>` there with the retained backend. Shell aliases are not executables. Invocation-scoped Runner coordination variables and Python path overrides are removed from the launch environment. Runner source, environments, credentials and runtime data stay in the configured installation.
 
+On Windows, verification still uses the canonical filesystem identity, while returned DOS/UNC installation paths use ordinary external argument spelling. This prevents verbatim canonicalization prefixes from creating a mismatch with paths reported by Runner's App Server. Other device path kinds retain their original spelling.
+
 The existing Desktop Terminal bridge and native `Sessions` registry remain the PTY backend. Windows Runner sessions use a separate non-inheritable Job Object with kill-on-close and no breakaway permission. The checksum-verified public portable-pty 0.9 source under `src-tauri/vendor/portable-pty` has a narrow extension for the Windows JOB_LIST startup attribute alongside ConPTY. Assignment occurs before Python executes; assigning an already running child would leave a descendant-creation race. The Hub remains outside those per-Runner jobs.
 
 Explicit termination, natural root exit, native window destruction, and final native ownership cleanup settle the owned job. Job termination waits for its active process count to reach zero. Natural exit is published after residual descendant cleanup and terminal output drainage. Unrelated PTY sessions and unrelated processes are outside that job. The generic Desktop Terminal request retains its original direct-child behavior.
 
 macOS installation resolution is implemented, but Runner launch is gated before process creation: initial POSIX process groups cannot contain Runner children that start another session. A supported detached-descendant shutdown boundary is still required. macOS native compilation and interaction need matching host evidence.
+
+The vendored Unix cloned killer sends SIGHUP to the direct child PID. Neither this operation nor killing the initial process group establishes detached-descendant containment. The existing Runner's POSIX group cleanup and cooperative shutdown are insufficient evidence to remove the macOS launch gate; a matching native detached-descendant fixture and installed-Runner acceptance remain required. A launchd job's process-group cleanup must not be treated as equivalent to a Windows Job Object.
+
+## Native executable build entry
+
+`tools/hub-native.mjs` composes the installed Tauri host preparation, checkout build lease, backend staging and desktop feature selection. Its explicit absolute Cargo target directory allows Windows callers to select a short real output/cache path while frontend and backend staging remain checkout-local. It does not change managed build tooling, Runner installations, original Cargo locks or previous frontend output. `--help` describes build and native test commands; Cargo owns the selected output cache.
+
+The standalone build passes a relative frontend directory to Tauri so Windows drive letters cannot be interpreted as URL schemes. The ordinary Tauri CLI enables production asset serving even for this debug executable; no test runtime branch or additional Cargo feature is used. The standalone build is distinct from Build System packaging and native development. A successful build establishes compilation and executable availability; GUI interaction, process cleanup and installer acceptance require their own observations. Build System remains the packaged-product owner.
 
 ## Input and process observations
 
