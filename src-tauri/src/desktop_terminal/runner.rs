@@ -4,13 +4,16 @@ use std::{path::Path, process::{Command, Stdio}, time::{Duration, Instant}};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Installation { pub root: String, pub python: String }
+pub struct Installation {
+    pub root: String, pub python: String,
+    #[serde(skip)] pub interpreter: String,
+}
 
 fn clean_environment(command: &mut Command) {
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("AGENT_RUNNER_") { command.env_remove(key); }
     }
-    command.env_remove("PYTHONPATH").env_remove("PYTHONHOME");
+    command.env_remove("PYTHONPATH").env_remove("PYTHONHOME").env_remove("__PYVENV_LAUNCHER__");
 }
 
 fn installation_path(path: &Path) -> String {
@@ -39,16 +42,17 @@ pub fn resolve(location: &str) -> Result<Installation, String> {
     let python = root.join(if cfg!(windows) { "agent_runner/local/runtime/python-env/Scripts/python.exe" }
         else { "agent_runner/local/runtime/python-env/bin/python" });
     if !python.is_file() { return Err("Runner's managed Python is missing. Run this installation's native bootstrap, then choose the location again.".into()); }
-    verify_python(&root, &python)?;
+    let interpreter = verify_python(&root, &python)?;
     // Runner compares paths returned by its App Server, which uses ordinary DOS/UNC spelling.
-    Ok(Installation { root: installation_path(&root), python: installation_path(&python) })
+    Ok(Installation { root: installation_path(&root), python: installation_path(&python), interpreter })
 }
 
-fn verify_python(root: &Path, python: &Path) -> Result<(), String> {
-    const PROBE: &str = "import os,sys,runner; from pathlib import Path; root=Path(sys.argv[1]); assert os.path.samefile(sys.prefix,root/'agent_runner/local/runtime/python-env'), 'wrong managed Python environment'; assert os.path.samefile(runner.__file__,root/'agent_runner/src/runner/__init__.py'), 'Runner source registration points to another installation'; print('HUB_RUNNER_RUNTIME_OK')";
+fn verify_python(root: &Path, python: &Path) -> Result<String, String> {
+    const PROBE: &str = "import os,sys,runner; from pathlib import Path; root=Path(sys.argv[1]); assert os.path.samefile(sys.prefix,root/'agent_runner/local/runtime/python-env'), 'wrong managed Python environment'; assert os.path.samefile(runner.__file__,root/'agent_runner/src/runner/__init__.py'), 'Runner source registration points to another installation'; print('HUB_RUNNER_RUNTIME_OK'); print(sys._base_executable)";
     let mut command = Command::new(python);
     command.args(["-I", "-c", PROBE]).arg(root).current_dir(root).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     clean_environment(&mut command);
+    command.env("PYTHONIOENCODING", "utf-8");
     #[cfg(windows)] {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
@@ -66,11 +70,16 @@ fn verify_python(root: &Path, python: &Path) -> Result<(), String> {
         }
     }
     let result = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !result.status.success() || result.stdout != b"HUB_RUNNER_RUNTIME_OK\r\n" && result.stdout != b"HUB_RUNNER_RUNTIME_OK\n" {
+    let output = String::from_utf8(result.stdout).map_err(|_| "Managed Python returned invalid runtime identification")?;
+    let mut lines = output.lines();
+    let marker = lines.next();
+    let interpreter = lines.next().unwrap_or_default();
+    if !result.status.success() || marker != Some("HUB_RUNNER_RUNTIME_OK") || lines.next().is_some()
+        || !Path::new(interpreter).is_absolute() || !Path::new(interpreter).is_file() {
         return Err(format!("Managed Python does not resolve this installed Runner. Rerun its native bootstrap. {}",
             String::from_utf8_lossy(&result.stderr).chars().take(1600).collect::<String>()));
     }
-    Ok(())
+    Ok(interpreter.into())
 }
 
 pub fn prepare(location: &str, cols: u16, rows: u16) -> Result<OpenRequest, String> {
@@ -80,9 +89,15 @@ pub fn prepare(location: &str, cols: u16, rows: u16) -> Result<OpenRequest, Stri
     if cfg!(target_os = "macos") {
         return Err("Runner launch on macOS is unavailable: this build cannot safely contain detached Runner children. Windows Runner sessions are supported.".into());
     }
-    Ok(OpenRequest { program: Some(installation.python), args: vec!["-I".into(), "-m".into(), "runner".into(),
+    // Windows venv python.exe is a redirector. Launch its interpreter in the same
+    // managed environment so authenticated hello can bind to our exact process handle.
+    let mut env: std::collections::BTreeMap<String, String> = [("AGENT_RUNNER_INTERACTIVE_BACKEND".into(), "retained".into()), ("PYTHONIOENCODING".into(), "utf-8".into())].into();
+    #[cfg(windows)]
+    { env.insert("__PYVENV_LAUNCHER__".into(), installation.python.clone()); }
+    let program = if cfg!(windows) { installation.interpreter } else { installation.python };
+    Ok(OpenRequest { program: Some(program), args: vec!["-I".into(), "-m".into(), "runner".into(),
         "run".into(), "--repo-root".into(), installation.root.clone()], cwd: Some(installation.root),
-        env: [("AGENT_RUNNER_INTERACTIVE_BACKEND".into(), "retained".into()), ("PYTHONIOENCODING".into(), "utf-8".into())].into(),
+        env,
         cols, rows, ..Default::default() })
 }
 

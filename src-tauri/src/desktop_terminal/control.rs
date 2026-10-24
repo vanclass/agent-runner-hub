@@ -1,0 +1,161 @@
+//! Native-only Runner v1 protocol. Public snapshots omit transport identity and secrets.
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::{collections::BTreeMap, time::{Duration, Instant}};
+
+#[cfg(windows)]
+#[path = "control_windows.rs"]
+mod windows;
+#[cfg(windows)]
+pub use windows::{Client, Launch};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CommandView {
+    pub id: String,
+    pub text: String,
+    pub aliases: Vec<String>,
+    pub parent_id: Option<String>,
+    pub visible: bool,
+    pub enabled: bool,
+    pub disabled_reason: String,
+    pub description: String,
+    pub children: Vec<CommandView>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Target { pub binding_state: String, pub owner: String, pub project: String }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Selection {
+    pub account: String, pub model: String, pub reasoning_effort: String,
+    pub service_tier: String, pub source: String, pub next_model: String,
+    pub next_reasoning_effort: String, pub next_service_tier: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Execution {
+    pub lifecycle_state: String, pub owned_execution_alive: bool, pub workflow_kind: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Attention {
+    pub foreground_interaction_active: bool, pub restart_confirmation_required: bool,
+    pub termination_confirmation_active: bool, pub account_setup_required: bool,
+    pub awaiting_user_command_reason: String, pub suspension_status: String, pub suspension_reason: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Observation {
+    pub run_mode: String, pub target: Target, pub selection: Selection,
+    pub execution: Execution, pub attention: Attention, pub commands: Vec<CommandView>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandResult {
+    pub id: u64, pub command: String, pub state: String, pub code: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    pub state: String, pub observation: Option<Observation>,
+    pub results: Vec<CommandResult>, pub detail: Option<String>,
+}
+impl Default for Snapshot {
+    fn default() -> Self {
+        Self { state: "connecting".into(), observation: None, results: Vec::new(), detail: None }
+    }
+}
+
+struct Pending { command: Option<String>, started: Instant, awaiting_interaction: bool }
+struct Protocol {
+    pid: u32, session: String, connection: Option<String>, next: u64,
+    pending: BTreeMap<u64, Pending>, snapshot: Snapshot,
+}
+impl Protocol {
+    fn new(pid: u32, session: String) -> Self {
+        Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(), snapshot: Snapshot::default() }
+    }
+    fn identity_matches(&self, packet: &Value) -> bool {
+        packet["version"].as_u64() == Some(1)
+            && packet["process_id"].as_u64() == Some(self.pid as u64)
+            && packet["session_id"].as_str() == Some(self.session.as_str())
+    }
+    fn hello(&mut self, packet: &Value) -> Result<(), &'static str> {
+        let connection = packet["connection_id"].as_str().ok_or("Invalid control hello")?;
+        if !self.identity_matches(packet) || packet["event"] != "hello"
+            || connection.len() != 32 || !connection.bytes().all(|b| b.is_ascii_hexdigit())
+            || packet["interaction_owner"] != "runner_terminal"
+            || packet["operations"] != json!(["observe", "command"]) {
+            return Err("Runner control identity did not match the created process");
+        }
+        self.connection = Some(connection.into());
+        Ok(())
+    }
+    fn request(&mut self, command: Option<String>, key: &str) -> Result<Vec<u8>, &'static str> {
+        if self.connection.is_none() || self.pending.len() >= 32 { return Err("Control is not ready"); }
+        self.next += 1;
+        let mut packet = json!({"version":1, "process_id":self.pid, "session_id":self.session,
+            "connection_id":self.connection, "request_id":self.next, "key":key,
+            "operation":if command.is_some() { "command" } else { "observe" }});
+        if let Some(text) = &command {
+            packet["command"] = json!(text);
+            self.snapshot.results.retain(|r| !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
+            self.snapshot.results.push(CommandResult { id: self.next, command: text.clone(), state: "sending".into(), code: None });
+        }
+        self.pending.insert(self.next, Pending { command, started: Instant::now(), awaiting_interaction: false });
+        let mut bytes = serde_json::to_vec(&packet).map_err(|_| "Control encoding failed")?;
+        bytes.push(b'\n');
+        Ok(bytes)
+    }
+    fn response(&mut self, packet: Value) -> Result<(), &'static str> {
+        if !self.identity_matches(&packet) || packet["connection_id"].as_str() != self.connection.as_deref() {
+            return Err("Runner control response identity mismatch");
+        }
+        let id = packet["request_id"].as_u64().ok_or("Malformed control response")?;
+        let pending = self.pending.get(&id).ok_or("Unexpected control response")?;
+        let status = packet["status"].as_str().ok_or("Malformed control result")?;
+        let phase = packet["phase"].as_str();
+        let finished = phase == Some("completed") || (phase.is_none() && matches!(status, "failure" | "rejected"));
+        let state = match (phase, status) {
+            (Some("queued"), "accepted") => "queued",
+            (Some("awaiting_interaction"), "pending-interaction") => "pending-interaction",
+            (Some("completed"), "accepted" | "rejected" | "failure") => {
+                if packet["outcome_unknown"].as_bool() == Some(true) { "outcome-unknown" } else { status }
+            }
+            (None, "rejected" | "failure") => status,
+            _ => return Err("Malformed control result phase"),
+        };
+        if pending.command.is_none() && finished {
+            if state != "accepted" { return Err("Runner observation was rejected"); }
+            let observation: Observation = serde_json::from_value(packet["observation"].clone())
+                .map_err(|_| "Malformed canonical observation")?;
+            // A completed authenticated observe round-trip establishes readiness, not hello alone.
+            self.snapshot.observation = Some(observation);
+            self.snapshot.state = "ready".into();
+        }
+        if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
+            result.state = state.into();
+            result.code = ["code", "failure_code", "error_code"].iter()
+                .find_map(|key| packet[*key].as_str()).filter(|code|
+                    code.len() <= 100 && code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'))
+                .map(str::to_owned);
+        }
+        if finished { self.pending.remove(&id); }
+        else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
+        Ok(())
+    }
+    fn expired(&self) -> bool {
+        self.pending.values().any(|pending|
+            !pending.awaiting_interaction && pending.started.elapsed() > Duration::from_secs(60))
+    }
+    fn disconnect(&mut self, detail: &str) {
+        let unverified = self.snapshot.observation.is_none();
+        self.snapshot.state = "disconnected".into();
+        self.snapshot.detail = Some(if unverified {
+            format!("{detail}. The installed Runner launch entry must retain the inherited control pipes in the created process before Hub can connect.")
+        } else { detail.into() });
+        for result in &mut self.snapshot.results {
+            if self.pending.contains_key(&result.id) { result.state = "outcome-unknown".into(); }
+        }
+        self.pending.clear();
+    }
+}
+
+#[cfg(test)]
+#[path = "control_tests.rs"]
+mod tests;

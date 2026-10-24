@@ -74,6 +74,17 @@ impl ProcThreadAttributeList {
         ensure!(result != 0, "Job-list startup attribute failed: {}", IoError::last_os_error());
         Ok(())
     }
+
+    pub fn set_handles(&mut self, handles: &mut [usize]) -> Result<(), Error> {
+        // PROC_THREAD_ATTRIBUTE_HANDLE_LIST excludes every other inheritable handle.
+        let result = unsafe {
+            UpdateProcThreadAttribute(self.as_mut_ptr(), 0, 0x00020002,
+                handles.as_mut_ptr() as *mut _, mem::size_of_val(handles),
+                ptr::null_mut(), ptr::null_mut())
+        };
+        ensure!(result != 0, "Handle-list startup attribute failed: {}", IoError::last_os_error());
+        Ok(())
+    }
 }
 
 impl Drop for ProcThreadAttributeList {

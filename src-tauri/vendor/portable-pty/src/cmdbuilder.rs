@@ -210,9 +210,20 @@ pub struct CommandBuilder {
     #[cfg(windows)]
     #[cfg_attr(feature = "serde_support", serde(skip))]
     pub(crate) windows_job: Option<usize>,
+    #[cfg(windows)]
+    #[cfg_attr(feature = "serde_support", serde(skip))]
+    pub(crate) windows_handles: Vec<usize>,
 }
 
 impl CommandBuilder {
+    /// Inherit only these dedicated handles. The caller retains them through spawn.
+    /// # Safety
+    /// Every handle must be live and inheritable until spawn_command returns.
+    #[cfg(windows)]
+    pub unsafe fn set_windows_inherited_handles(&mut self, handles: Vec<usize>) {
+        self.windows_handles = handles;
+    }
+
     /// Assign the child to this Windows Job Object during CreateProcessW.
     ///
     /// # Safety
@@ -229,6 +240,8 @@ impl CommandBuilder {
             args: vec![program.as_ref().to_owned()],
             #[cfg(windows)]
             windows_job: None,
+            #[cfg(windows)]
+            windows_handles: Vec::new(),
             envs: get_base_env(),
             cwd: None,
             #[cfg(unix)]
@@ -243,6 +256,8 @@ impl CommandBuilder {
             args,
             #[cfg(windows)]
             windows_job: None,
+            #[cfg(windows)]
+            windows_handles: Vec::new(),
             envs: get_base_env(),
             cwd: None,
             #[cfg(unix)]
@@ -272,6 +287,8 @@ impl CommandBuilder {
             args: vec![],
             #[cfg(windows)]
             windows_job: None,
+            #[cfg(windows)]
+            windows_handles: Vec::new(),
             envs: get_base_env(),
             cwd: None,
             #[cfg(unix)]

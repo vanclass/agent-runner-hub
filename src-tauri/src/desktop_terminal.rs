@@ -1,16 +1,27 @@
 mod pty;
-use pty::{runner, OpenRequest, PtyEvent, Sessions};
+use pty::{control, runner, OpenRequest, PtyEvent, Sessions};
 use std::sync::Arc;
 use tauri::{ipc::Channel, Manager, Runtime, State, Window};
 
 pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.manage(Arc::new(Sessions::default()))
-        .invoke_handler(tauri::generate_handler![runner_resolve, pty_open, pty_write, pty_resize, pty_ack, pty_close])
+        .invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command, pty_open, pty_write, pty_resize, pty_ack, pty_close])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<Arc<Sessions>>().close_window(window.label());
             }
         })
+}
+
+#[tauri::command]
+fn runner_observe<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String) -> Result<control::Snapshot, String> {
+    state.owned(&id, window.label())?.control_snapshot()
+}
+
+#[tauri::command]
+async fn runner_command<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String, command: String) -> Result<(), String> {
+    let session = state.owned(&id, window.label())?;
+    tauri::async_runtime::spawn_blocking(move || session.control_command(command)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

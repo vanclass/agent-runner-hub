@@ -48,10 +48,31 @@ fn installed_runners_independent_and_owned_shutdown() {
     let untouched = unrelated.open("wait"); unrelated.ready(&untouched);
     let first = harness.open_runner(&root);
     let second = harness.open_runner(&root);
-    harness.pump_for(Duration::from_secs(12));
     let first_pty = harness.sessions.owned(&first, "test-window").unwrap();
     let second_pty = harness.sessions.owned(&second, "test-window").unwrap();
+    harness.pump_for(Duration::from_secs(12));
     assert!(!Arc::ptr_eq(&first_pty, &second_pty));
+    let control_deadline = std::time::Instant::now() + Duration::from_secs(35);
+    while std::time::Instant::now() < control_deadline &&
+        [first_pty.control_snapshot().unwrap(), second_pty.control_snapshot().unwrap()].iter().any(|s| s.state == "connecting") {
+        harness.pump_for(Duration::from_millis(100));
+    }
+    let connected = first_pty.control_snapshot().unwrap();
+    assert_eq!(connected.state, "ready", "{:?}; {}", connected.detail,
+        String::from_utf8_lossy(harness.output.get(&first).map(Vec::as_slice).unwrap_or_default()));
+    assert_eq!(second_pty.control_snapshot().unwrap().state, "ready");
+    assert!(first_pty.control_snapshot().unwrap().observation.is_some());
+    first_pty.control_command("/status".into()).unwrap();
+    harness.pump_for(Duration::from_secs(3));
+    let first_control = first_pty.control_snapshot().unwrap();
+    assert_eq!(first_control.results.last().unwrap().state, "accepted");
+    assert!(second_pty.control_snapshot().unwrap().results.is_empty());
+    first_pty.control_command("/model".into()).unwrap();
+    harness.pump_for(Duration::from_secs(2));
+    assert_eq!(first_pty.control_snapshot().unwrap().results.last().unwrap().state, "pending-interaction");
+    first_pty.write(b"\x1b[27;0;27;1;0;1_").unwrap();
+    harness.pump_for(Duration::from_secs(2));
+    assert_eq!(first_pty.control_snapshot().unwrap().results.last().unwrap().state, "accepted");
     first_pty.write((win32_text("/hub-first\n\u{c548}\u{b155} \u{1f30d}") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
     second_pty.write((win32_text("/hub-second\n\u{4e16}\u{754c}") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
     harness.pump_for(Duration::from_secs(4));
@@ -65,6 +86,8 @@ fn installed_runners_independent_and_owned_shutdown() {
     }
     first_pty.close().unwrap();
     harness.exited(&first);
+    assert_eq!(first_pty.control_snapshot().unwrap().state, "disconnected");
+    assert_eq!(second_pty.control_snapshot().unwrap().state, "ready");
     assert!(harness.sessions.owned(&first, "test-window").is_err());
     second_pty.write((win32_text("/status") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
     harness.pump_for(Duration::from_secs(3));
@@ -151,7 +174,7 @@ impl Harness {
                 self.output.entry(id.clone()).or_default().extend(bytes);
                 self.sessions.owned(&id, "test-window").unwrap().acknowledge(sequence).unwrap();
             }
-            PtyEvent::Exit { id, code, error } => {
+            PtyEvent::Exit { id, code, error, .. } => {
                 assert!(error.is_none(), "PTY stream/wait failure: {error:?}");
                 self.exited.insert(id, code);
             }

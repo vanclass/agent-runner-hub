@@ -2,6 +2,7 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 #[path = "process.rs"] mod process;
 #[path = "startup.rs"] mod startup;
 #[path = "runner.rs"] pub(super) mod runner;
+#[path = "control.rs"] pub(super) mod control;
 #[cfg(windows)]
 #[path = "job.rs"] mod job;
 use process::ProcessKiller;
@@ -26,7 +27,8 @@ pub struct OpenRequest {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PtyEvent {
     Output { id: String, sequence: u64, bytes: Vec<u8> },
-    Exit { id: String, code: Option<u32>, error: Option<String> },
+    Exit { id: String, code: Option<u32>, error: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")] control: Option<control::Snapshot> },
 }
 
 type Sink = Arc<dyn Fn(PtyEvent) -> Result<(), String> + Send + Sync>;
@@ -38,6 +40,7 @@ pub struct Session {
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     killer: Mutex<Option<ProcessKiller>>,
     #[cfg(windows)] job: Mutex<Option<Arc<job::Job>>>,
+    #[cfg(windows)] control: Mutex<Option<Arc<control::Client>>>,
     closing: AtomicBool,
     startup_ready: Mutex<bool>,
     started: Condvar,
@@ -51,6 +54,20 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 }
 
 impl Session {
+    pub fn control_snapshot(&self) -> Result<control::Snapshot, String> {
+        #[cfg(windows)]
+        { return self.control.lock().unwrap().as_ref().map(|c| c.snapshot()).ok_or("Runner control is unavailable".into()); }
+        #[cfg(not(windows))]
+        { Err("Runner control is supported only on Windows".into()) }
+    }
+
+    pub fn control_command(&self, command: String) -> Result<(), String> {
+        #[cfg(windows)]
+        { return self.control.lock().unwrap().as_ref().ok_or("Runner control is unavailable")?.command(command); }
+        #[cfg(not(windows))]
+        { let _ = command; Err("Runner control is supported only on Windows".into()) }
+    }
+
     pub fn write(&self, bytes: &[u8]) -> Result<(), String> {
         let mut ready = self.startup_ready.lock().map_err(|e| e.to_string())?;
         while !*ready && !self.closing.load(Ordering::Acquire) {
@@ -80,6 +97,8 @@ impl Session {
         self.closing.store(true, Ordering::Release);
         self.drained.notify_all();
         self.started.notify_all();
+        #[cfg(windows)]
+        if let Some(control) = self.control.lock().unwrap().as_ref() { control.close(); }
         #[cfg(windows)]
         if let Some(job) = self.job.lock().map_err(|e| e.to_string())?.as_ref() {
             // A successful job teardown already terminated the root. TerminateProcess
@@ -123,6 +142,7 @@ impl Sessions {
         let session = Arc::new(Session { owner, master: Mutex::new(None), writer: Mutex::new(None),
             killer: Mutex::new(None), closing: AtomicBool::new(false),
             #[cfg(windows)] job: Mutex::new(None),
+            #[cfg(windows)] control: Mutex::new(None),
             startup_ready: Mutex::new(!cfg!(windows)), started: Condvar::new(),
             acknowledged: Mutex::new(0), drained: Condvar::new() });
         self.sessions.lock().map_err(|e| e.to_string())?.insert(id.clone(), session.clone());
@@ -163,6 +183,8 @@ impl Sessions {
         if let Some(cwd) = request.cwd { command.cwd(cwd); }
         for (key, value) in request.env { command.env(key, value); }
         command.env("TERM", "xterm-256color");
+        #[cfg(windows)]
+        let control_launch = if contained { Some(control::Launch::new(&mut command)?) } else { None };
         *session.master.lock().unwrap() = Some(pair.master);
         *session.writer.lock().unwrap() = Some(writer);
         let output_session = session.clone();
@@ -215,6 +237,22 @@ impl Sessions {
                 return Err(error);
             }
         };
+        #[cfg(windows)]
+        if let Some(launch) = control_launch {
+            if let Some(pid) = child.process_id() {
+                let control = launch.bind(pid);
+                if session.closing.load(Ordering::Acquire) { control.close(); }
+                *session.control.lock().unwrap() = Some(control);
+            } else {
+                let _ = session.close();
+                let _ = process::terminate_child(child.as_mut());
+                let _ = child.wait();
+                session.master.lock().unwrap().take();
+                session.writer.lock().unwrap().take();
+                let _ = output.join();
+                return Err("Runner process identity is unavailable".into());
+            }
+        }
         let captured = ProcessKiller::capture(child.as_ref());
         if let Err(error) = captured {
             let termination = process::terminate_child(child.as_mut());
@@ -236,6 +274,8 @@ impl Sessions {
         let exit_id = id.clone();
         thread::spawn(move || {
             let status = child.wait();
+            #[cfg(windows)]
+            if let Some(control) = session.control.lock().unwrap().as_ref() { control.close(); }
             // A root exit does not release descendants. Settle its job before publishing Exit.
             #[cfg(windows)]
             let containment = session.job.lock().unwrap().as_ref().map_or(Ok(()), |job| job.terminate());
@@ -247,7 +287,8 @@ impl Sessions {
             let error = status.as_ref().err().map(ToString::to_string).or_else(|| read_result.err());
             #[cfg(windows)] let error = error.or_else(|| containment.err());
             let code = status.ok().map(|s| s.exit_code());
-            let _ = sink(PtyEvent::Exit { id: exit_id.clone(), code, error });
+            let control = session.control_snapshot().ok();
+            let _ = sink(PtyEvent::Exit { id: exit_id.clone(), code, error, control });
             registry.lock().unwrap().remove(&exit_id);
         });
         Ok(id)

@@ -125,9 +125,18 @@ impl PsuedoCon {
         si.StartupInfo.hStdError = INVALID_HANDLE_VALUE;
 
         let mut jobs = cmd.windows_job.map(|handle| [handle]);
-        let mut attrs = ProcThreadAttributeList::with_capacity(if jobs.is_some() { 2 } else { 1 })?;
+        let mut handles = cmd.windows_handles.clone();
+        let inherit = !handles.is_empty();
+        if inherit {
+            // Explicit NULL slots request console initialization without copying Hub stdio.
+            si.StartupInfo.hStdInput = ptr::null_mut();
+            si.StartupInfo.hStdOutput = ptr::null_mut();
+            si.StartupInfo.hStdError = ptr::null_mut();
+        }
+        let mut attrs = ProcThreadAttributeList::with_capacity(1 + jobs.is_some() as u32 + inherit as u32)?;
         attrs.set_pty(self.con)?;
         if let Some(jobs) = jobs.as_mut() { attrs.set_job(jobs)?; }
+        if inherit { attrs.set_handles(&mut handles)?; }
         si.lpAttributeList = attrs.as_mut_ptr();
 
         let mut pi: PROCESS_INFORMATION = unsafe { mem::zeroed() };
@@ -143,7 +152,7 @@ impl PsuedoCon {
                 cmdline.as_mut_slice().as_mut_ptr(),
                 ptr::null_mut(),
                 ptr::null_mut(),
-                0,
+                inherit as i32,
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
                 cmd.environment_block().as_mut_slice().as_mut_ptr() as *mut _,
                 cwd.as_ref()
@@ -155,12 +164,12 @@ impl PsuedoCon {
         };
         if res == 0 {
             let err = IoError::last_os_error();
-            let msg = format!(
+            let msg = if inherit { format!("CreateProcessW for controlled Runner failed: {err}") } else { format!(
                 "CreateProcessW `{:?}` in cwd `{:?}` failed: {}",
                 cmd_os,
                 cwd.as_ref().map(|c| OsString::from_wide(c)),
                 err
-            );
+            ) };
             log::error!("{}", msg);
             bail!("{}", msg);
         }

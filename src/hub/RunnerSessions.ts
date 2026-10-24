@@ -3,6 +3,8 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { openPty, type Pty } from '../../.runner/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
+import { RunnerControl, type ControlSnapshot } from './runnerControl';
+import { RunnerReferenceSelection } from './RunnerReferences';
 import type { RunnerView } from './model';
 import '@xterm/xterm/css/xterm.css';
 
@@ -11,6 +13,8 @@ export class RunnerSession {
   readonly fit = new FitAddon();
   readonly search = new SearchAddon();
   readonly input: RunnerInput;
+  readonly control: RunnerControl;
+  readonly references: RunnerReferenceSelection;
   private pty?: Pty;
   private pending: Uint8Array[] = [];
   private lastInput: Promise<void> = Promise.resolve();
@@ -20,6 +24,8 @@ export class RunnerSession {
 
   constructor(id: string, order: number, private readonly changed: () => void) {
     this.view = { id, createdOrder: order, name: `Runner ${order}`, status: 'starting', canSubmit: false, draft: '', submitting: false };
+    this.control = new RunnerControl(() => this.changed());
+    this.references = new RunnerReferenceSelection(() => this.changed());
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
     this.input = new RunnerInput(this.terminal, text => this.queue(new TextEncoder().encode(text)), () => this.protocolChanged());
@@ -48,11 +54,16 @@ export class RunnerSession {
       const request = { runnerLocation: location, cols: this.terminal.cols, rows: this.terminal.rows };
       const pty = await openPty(request, (bytes, consumed) => {
         if (this.disposed) consumed(); else this.terminal.write(bytes, consumed);
-      }, event => this.update({ status: 'exited', exitCode: event.code, detail: event.error ?? undefined }), reason => this.error(reason));
+      }, event => {
+        const final = (event as typeof event & { control?: ControlSnapshot }).control;
+        this.control.stop('Runner process exited', final);
+        this.update({ status: 'exited', exitCode: event.code, detail: event.error ?? undefined });
+      }, reason => this.error(reason));
       this.pty = pty;
       if (this.disposed) { await pty.close(); return; }
       if (this.view.status === 'exited') { this.pending = []; return; }
       this.update({ status: 'running' });
+      this.control.start(pty.id);
       for (const bytes of this.pending.splice(0)) await pty.write(bytes);
       await pty.resize(this.terminal.cols, this.terminal.rows);
     } catch (reason) {
@@ -94,6 +105,7 @@ export class RunnerSession {
   }
   dispose() {
     this.disposed = true;
+    this.control.stop('Runner workspace closed');
     clearTimeout(this.resizeTimer);
     this.pending = [];
     void this.pty?.close().catch(reason => console.error('Runner cleanup failed', reason));

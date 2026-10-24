@@ -2,6 +2,8 @@ import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
 import { RunnerComposer } from './RunnerComposer';
+import { RunnerControls } from './RunnerControls';
+import { RunnerReferences } from './RunnerReferences';
 import { RunnerLocation, type RunnerInstallation } from './RunnerLocation';
 
 export function Workspace({ runner, session, theme, installation, onInstallation, onCreate, launching }: {
@@ -18,7 +20,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
       {session && <button type="button" className="terminate-runner" disabled={runner?.status !== 'running'}
         onClick={() => void session.terminate()}>Terminate Runner</button>}
     </header>
-    <section className="context-settings" aria-label={singleEntry ? 'Single Entry defaults' : 'Selected Runner settings'}>
+    {session ? <RunnerControls control={session.control} /> : <section className="context-settings" aria-label={singleEntry ? 'Single Entry defaults' : 'Selected Runner settings'}>
       <div className="settings-grid">{['Project', 'Model', 'Account', 'Mode'].map(label =>
         <label className="setting" key={label}><span>{label}</span>
           <select aria-label={`${singleEntry ? 'Single Entry' : 'Runner'} ${label}`} disabled defaultValue="">
@@ -30,7 +32,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
       <p className="scope-note">{singleEntry
         ? 'Defaults for future Runners. Existing Runners keep their own settings.'
         : 'Settings belong to this Runner. Single Entry defaults do not change this context.'}</p>
-    </section>
+    </section>}
     <section className="output" aria-label="Output viewport">
       <div className="output-label"><span>OUTPUT</span><span className="quiet-status" role="status">{session
         ? runner?.status === 'starting' ? 'Starting Runner process…'
@@ -45,6 +47,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
         <span className="empty-note">{singleEntry ? 'Verify an installation, then use New Runner.' : 'No connected process for this preview row.'}</span>
       </div>}
     </section>
+    {session && <RunnerReferences control={session.control} selection={session.references} />}
     {session ? <RunnerComposer session={session} /> : <section className="composer-area" aria-label="Instruction composer">
       <div className="composer">
         <textarea aria-label={singleEntry ? 'Single Entry instructions' : 'Runner instructions'} disabled
