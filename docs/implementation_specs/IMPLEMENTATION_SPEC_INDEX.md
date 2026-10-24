@@ -14,7 +14,7 @@
 
 ## 영역 등록부
 
-- 현재 등록된 구현 명세 domain 없음.
+- Hub shell UI, navigation, local Runner labels, and application themes: source owners `../../src/hub/Hub.tsx`, `../../src/hub/Sidebar.tsx`, `../../src/hub/Workspace.tsx`, `../../src/hub/ThemePicker.tsx`, and `../../src/hub/hub.css`; representative checks `../../tests/e2e/hub.spec.mjs` and `../../tests/e2e/starter.spec.mjs`. Select this direct source/test route for shell behavior; no separate domain index is needed.
 
 ## 신규 domain 등록 조건
 
