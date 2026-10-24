@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "tauriCli": "2.12.1",
+  "minimumJdk": 17,
+  "maximumJdk": 21,
+  "compileSdk": 37,
+  "platformPackage": "platforms;android-37.0",
+  "buildTools": "36.0.0",
+  "ndkVersion": "30.0.16248370",
+  "sdkLicenseHashes": ["24333f8a63b6825ea9c5514f83c2829b004d1fee"],
+  "commandLineTools": {
+    "version": "22.0",
+    "downloads": {
+      "win32": {
+        "url": "https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip",
+        "size": 155655386,
+        "sha256": "90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a"
+      },
+      "linux": {
+        "url": "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip",
+        "size": 181833628,
+        "sha256": "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+      },
+      "darwin-x64": {
+        "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+        "size": 156281494,
+        "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+      },
+      "darwin-arm64": {
+        "url": "https://dl.google.com/android/repository/commandlinetools-mac_arm64-15859902_latest.zip",
+        "size": 156083281,
+        "sha256": "835b62a26162b229b441d1f6d4680383815a270809eb33522c0d480fa5002c4e"
+      }
+    }
+  },
+  "bundletool": {
+    "version": "1.18.3",
+    "url": "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar",
+    "size": 32520401,
+    "sha256": "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
+  }
+}

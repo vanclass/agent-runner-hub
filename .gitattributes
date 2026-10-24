@@ -1,0 +1,18 @@
+# BEGIN Runner managed formatting
+* text=auto eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+*.cs text eol=crlf
+*.sln text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.meta text eol=lf
+*.unity text eol=lf
+*.asset text eol=lf
+*.prefab text eol=lf
+# END Runner managed formatting

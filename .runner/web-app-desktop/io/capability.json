@@ -1,0 +1,20 @@
+{
+  "identifier": "desktop-native-io",
+  "description": "Opt-in clipboard image read, native selection and main-window drop events",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "macOS",
+    "windows"
+  ],
+  "permissions": [
+    "clipboard-manager:allow-read-image",
+    "dialog:allow-open",
+    "core:image:allow-rgba",
+    "core:image:allow-size",
+    "core:resources:allow-close",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

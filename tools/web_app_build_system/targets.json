@@ -1,0 +1,65 @@
+[
+  {
+    "id": "web",
+    "label": "Web / Vite",
+    "runtimeDependency": "Node.js + npm + project TypeScript/Vite dependencies",
+    "implementationStatus": "implemented",
+    "adapter": "web",
+    "outputFormat": "Browser HTML, JavaScript and assets",
+    "requirements": [
+      "Compatible Node/npm",
+      "Exact project dependency readiness"
+    ]
+  },
+  {
+    "id": "windows-tauri",
+    "label": "Windows / Tauri 2",
+    "runtimeDependency": "Tauri 2 + Rust/Cargo + Microsoft C++ build tools + WebView2",
+    "implementationStatus": "implemented",
+    "adapter": "windows-tauri",
+    "outputFormat": "Windows installer / executable",
+    "requirements": [
+      "Select and Apply Web App Runtimes / Tauri 2 and Tools / Web App Build System",
+      "Windows x64, Rust >= 1.90 MSVC, C++ Build Tools, Windows SDK, WebView2 and Tauri CLI/NSIS preparation"
+    ]
+  },
+  {
+    "id": "android-tauri",
+    "label": "Android / Tauri 2",
+    "runtimeDependency": "Tauri 2 + Rust Android targets + JDK + Android SDK/NDK",
+    "implementationStatus": "implemented",
+    "adapter": "android-tauri",
+    "outputFormat": "APK / AAB",
+    "requirements": [
+      "Select and Apply Web App Runtimes / Tauri 2 and Tools / Web App Build System",
+      "JDK, Android SDK/NDK, accepted SDK licenses, Rust Android targets and Tauri mobile CLI",
+      "Local/test APK and AAB; store signing and device/emulator acceptance remain separate"
+    ]
+  },
+  {
+    "id": "windows-electron",
+    "label": "Windows / Electron",
+    "runtimeDependency": "Electron 44 + Electron Forge 8 + Squirrel.Windows (native modules may require Python/MSVC/SDK)",
+    "implementationStatus": "implemented",
+    "adapter": "windows-electron",
+    "outputFormat": "Complete Windows application bundle + Squirrel Setup.exe / NuGet / RELEASES",
+    "requirements": [
+      "Select and Apply both Web App Runtimes / Electron and Tools / Web App Build System",
+      "Windows 10+ x64, Node >=22.17 with npm, local Electron/Forge/Squirrel tools and author/description metadata",
+      "Unsigned local/test installer; signing, installer execution and native GUI acceptance remain separate"
+    ]
+  },
+  {
+    "id": "macos-tauri",
+    "label": "macOS / Tauri 2",
+    "runtimeDependency": "Tauri 2 + Rust/Cargo + Xcode Command Line Tools",
+    "implementationStatus": "implemented",
+    "adapter": "macos-tauri",
+    "outputFormat": "Native macOS app / dmg (unsigned)",
+    "requirements": [
+      "Select and Apply Tauri 2 and Web App Build System",
+      "Native macOS arm64 or Intel host, matching Rust >= 1.90 target, Xcode Command Line Tools",
+      "Local unsigned artifacts; signing, notarization, installation and GUI execution remain unverified"
+    ]
+  }
+]

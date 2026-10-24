@@ -1,0 +1,30 @@
+[package]
+name = "web-app-native"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+default-run = "web-app-native"
+
+[lib]
+name = "web_app_native_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+tauri = { version = "=2.12.2", features = [] }
+
+[features]
+default = []
+desktop-terminal = ["dep:portable-pty", "dep:serde", "dep:windows-sys"]
+native-io = ["dep:tauri-plugin-clipboard-manager", "dep:tauri-plugin-dialog"]
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+portable-pty = { version = "0.9", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+tauri-plugin-clipboard-manager = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"], optional = true }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }

@@ -1,0 +1,16 @@
+# BEGIN Runner managed formatting
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+# Windows command processors retain CRLF for batch compatibility.
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# Preserve C#/solution formats until WG3 toolchain validation.
+[*.{cs,sln}]
+end_of_line = crlf
+# END Runner managed formatting

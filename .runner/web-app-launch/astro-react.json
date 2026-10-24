@@ -1,0 +1,23 @@
+{
+  "group": "Frameworks",
+  "identity": "React",
+  "integration": {"module": "@astrojs/react", "key": "integrations"},
+  "dependencies": {
+    "@astrojs/react": "5.0.7",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  },
+  "files": {
+    "src/frameworks/react.tsx": "react.tsx"
+  },
+  "imports": "import RunnerCounter from '../frameworks/react';\n",
+  "markup": "<RunnerCounter client:load />",
+  "jsx": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
+  }
+}

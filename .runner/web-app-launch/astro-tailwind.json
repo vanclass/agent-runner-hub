@@ -1,0 +1,16 @@
+{
+  "group": "Styling",
+  "identity": "TailwindCSS",
+  "integration": {"module": "@tailwindcss/vite", "key": "vite.plugins"},
+  "dependencies": {},
+  "devDependencies": {
+    "tailwindcss": "4.3.3",
+    "@tailwindcss/vite": "4.3.3"
+  },
+  "files": {
+    "src/styles/runner-tailwind.css": "tailwind.css"
+  },
+  "imports": "import '../styles/runner-tailwind.css';\n",
+  "markup": "<p data-runner-tailwind class=\"p-[13px] bg-[#123456] text-white [--runner-tailwind:ready]\">Tailwind CSS utilities</p>",
+  "jsx": {}
+}

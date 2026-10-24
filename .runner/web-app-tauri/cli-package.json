@@ -1,0 +1,13 @@
+{
+  "name": "runner-web-app-tauri-cli",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1"
+  },
+  "runnerTauri": {
+    "minimumRust": "1.90.0",
+    "devPort": 1420
+  }
+}
