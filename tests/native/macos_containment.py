@@ -32,6 +32,18 @@ def send(stream, value):
     stream.sendall(json.dumps(value).encode() + b"\n")
 
 
+def closed_standard_streams():
+    for descriptor in (0, 1, 2):
+        try:
+            os.fstat(descriptor)
+        except OSError as error:
+            if error.errno != errno.EBADF:
+                raise
+        else:
+            return False
+    return True
+
+
 class Worker:
     def __init__(self, address, token, session, role, deadline):
         expiry(deadline)
@@ -100,13 +112,13 @@ def run_worker(address, token, session, role, deadline, mode):
     if mode in {"ignore", "closed"}:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    worker = Worker(address, token, session, role, deadline)
     if mode == "closed":
         for descriptor in (0, 1, 2):
             try:
                 os.close(descriptor)
             except OSError:
                 pass
-    worker = Worker(address, token, session, role, deadline)
     if mode == "root":
         for child_role, child_mode in (("ordinary", "leaf"), ("ignore", "ignore"),
                                        ("setsid", "setsid"), ("regroup", "regroup"),
@@ -116,7 +128,8 @@ def run_worker(address, token, session, role, deadline, mode):
     if mode == "intermediate":
         worker.fork("orphan", "leaf")
         os._exit(0)
-    send(worker.sock, dict(kind="ready", session=session, role=role))
+    send(worker.sock, dict(kind="ready", session=session, role=role,
+                           stdio_closed=closed_standard_streams()))
     worker.loop()
 
 
@@ -200,6 +213,7 @@ class Oracle:
             stream.sendall(b"ok\n")
         elif kind == "ready":
             self.nodes[key]["ready"] = True
+            self.nodes[key]["stdio_closed"] = message["stdio_closed"]
         elif kind == "pong":
             node = self.nodes[key]
             assert node["stream"] is stream and node["pid"] == message["pid"]
@@ -269,12 +283,14 @@ class Oracle:
             assert self.nodes[(session, "orphan")]["current"]["ppid"] == 1
             assert self.nodes[(session, "setsid")]["sid"] != root["sid"]
             assert self.nodes[(session, "regroup")]["pgid"] != root["pgid"]
+            assert self.nodes[(session, "closed")]["stdio_closed"]
         return dict(session=session, pgid=root["pgid"], target=target)
 
     def snapshot(self, session):
         return [dict(role=key[1], pid=node["pid"], initial_ppid=node["ppid"],
                      pgid=node["pgid"], sid=node["sid"],
-                     exit_observed=node["exit_observed"], current=node.get("current"))
+                     exit_observed=node["exit_observed"], current=node.get("current"),
+                     stdio_closed=node.get("stdio_closed"))
                 for key, node in self.nodes.items() if key[0] == session]
 
     def group_signal(self, root, sig):

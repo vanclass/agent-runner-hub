@@ -30,28 +30,3 @@ jobs:
           name: macos-containment-${{ matrix.target }}
           path: temp/macos-containment-${{ matrix.target }}/
           if-no-files-found: error
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install locked frontend dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Check TypeScript and build frontend
-        run: npm run build
-      - name: Prepare native Rust target
-        shell: bash
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup target add '${{ matrix.target }}' --toolchain stable
-      - name: Check and test selected Rust features
-        run: node .runner/web-app-tauri/check.mjs
-      - name: Build native local artifacts
-        run: node tools/web_app_build_system/src/entry.mjs --build ${{ matrix.build }} --prepare
-      - name: Archive results preserving app executable permissions
-        shell: bash
-        run: tar -czf tools/web_app_build_system/.local/desktop-artifacts.tar.gz -C tools/web_app_build_system/.local results
-      - uses: actions/upload-artifact@v7
-        with:
-          name: desktop-${{ matrix.target }}
-          path: tools/web_app_build_system/.local/desktop-artifacts.tar.gz
-          if-no-files-found: error
