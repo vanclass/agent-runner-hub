@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, time::{Duration, Instant}};
 
+#[path = "references.rs"]
+pub mod references;
+use references::{ReferenceRequest, References};
+
 #[cfg(windows)]
 #[path = "control_windows.rs"]
 mod windows;
@@ -56,15 +60,16 @@ pub struct Snapshot {
     pub state: String, pub observation: Option<Observation>,
     pub observation_serial: u64, pub observation_age_ms: Option<u64>,
     pub results: Vec<CommandResult>, pub detail: Option<String>,
+    pub references: References,
 }
 impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
-            observation_age_ms: None, results: Vec::new(), detail: None }
+            observation_age_ms: None, results: Vec::new(), detail: None, references: References::default() }
     }
 }
 
-struct Pending { command: Option<String>, started: Instant, awaiting_interaction: bool }
+struct Pending { command: Option<String>, reference: Option<ReferenceRequest>, started: Instant, awaiting_interaction: bool }
 struct Protocol {
     pid: u32, session: String, connection: Option<String>, next: u64,
     pending: BTreeMap<u64, Pending>, snapshot: Snapshot,
@@ -92,19 +97,35 @@ impl Protocol {
         Ok(())
     }
     fn request(&mut self, command: Option<String>, key: &str) -> Result<Vec<u8>, &'static str> {
+        self.request_inner(command, None, key)
+    }
+    fn reference_request(&mut self, request: ReferenceRequest, key: &str) -> Result<Vec<u8>, &'static str> {
+        request.validate()?;
+        if self.snapshot.state != "ready" || self.snapshot.references.capability.is_none() {
+            return Err("This Runner does not offer authenticated reference operations");
+        }
+        self.request_inner(None, Some(request), key)
+    }
+    fn request_inner(&mut self, command: Option<String>, reference: Option<ReferenceRequest>, key: &str) -> Result<Vec<u8>, &'static str> {
         if self.connection.is_none() || self.pending.len() >= 32 { return Err("Control is not ready"); }
-        self.next += 1;
+        let next = self.next.checked_add(1).ok_or("Control request sequence exhausted")?;
         let mut packet = json!({"version":1, "process_id":self.pid, "session_id":self.session,
-            "connection_id":self.connection, "request_id":self.next, "key":key,
+            "connection_id":self.connection, "request_id":next, "key":key,
             "operation":if command.is_some() { "command" } else { "observe" }});
+        if let Some(request) = &reference {
+            packet.as_object_mut().unwrap().extend(serde_json::to_value(request).unwrap().as_object().unwrap().clone());
+        }
+        if let Some(text) = &command { packet["command"] = json!(text); }
+        let mut bytes = serde_json::to_vec(&packet).map_err(|_| "Control encoding failed")?;
+        if bytes.len() > 65536 { return Err("Runner control request exceeded v1 limit"); }
+        self.next = next;
         if let Some(text) = &command {
-            packet["command"] = json!(text);
             self.snapshot.results.retain(|r| !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
             self.snapshot.results.push(CommandResult { id: self.next, command: text.clone(), state: "sending".into(), code: None,
                 owner_status: None, changed: None, settings_change_count: None });
         }
-        self.pending.insert(self.next, Pending { command, started: Instant::now(), awaiting_interaction: false });
-        let mut bytes = serde_json::to_vec(&packet).map_err(|_| "Control encoding failed")?;
+        if let Some(request) = &reference { self.snapshot.references.begin(self.next, request); }
+        self.pending.insert(self.next, Pending { command, reference, started: Instant::now(), awaiting_interaction: false });
         bytes.push(b'\n');
         Ok(bytes)
     }
@@ -126,7 +147,7 @@ impl Protocol {
             (None, "rejected" | "failure") => status,
             _ => return Err("Malformed control result phase"),
         };
-        if pending.command.is_none() && finished {
+        if pending.command.is_none() && pending.reference.is_none() && finished {
             if state != "accepted" { return Err("Runner observation was rejected"); }
             let observation: Observation = serde_json::from_value(packet["observation"].clone())
                 .map_err(|_| "Malformed canonical observation")?;
@@ -135,11 +156,13 @@ impl Protocol {
             self.snapshot.observation_serial += 1;
             self.observed_at = Some(Instant::now());
             self.snapshot.state = "ready".into();
+            self.snapshot.references.capability = references::Capability::read(&packet["capabilities"]["references"]);
         }
-        if finished && pending.command.is_some() && !packet["observation"].is_null() {
+        if finished && (pending.command.is_some() || pending.reference.is_some()) && !packet["observation"].is_null() {
             self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
                 .map_err(|_| "Malformed canonical observation")?);
         }
+        self.snapshot.references.response(id, state, finished, &packet)?;
         if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
             result.state = state.into();
             if finished {
@@ -151,10 +174,7 @@ impl Protocol {
                 result.changed = acknowledgement("changed");
                 result.settings_change_count = acknowledgement("settings_change_count");
             }
-            result.code = ["code", "failure_code", "error_code"].iter()
-                .find_map(|key| packet[*key].as_str()).filter(|code|
-                    code.len() <= 100 && code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'))
-                .map(str::to_owned);
+            result.code = result_code(&packet);
         }
         if finished { self.pending.remove(&id); }
         else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
@@ -178,8 +198,15 @@ impl Protocol {
         for result in &mut self.snapshot.results {
             if self.pending.contains_key(&result.id) { result.state = "outcome-unknown".into(); }
         }
+        self.snapshot.references.disconnect();
         self.pending.clear();
     }
+}
+
+fn result_code(packet: &Value) -> Option<String> {
+    ["code", "failure_code", "error_code"].iter().find_map(|key| packet[*key].as_str())
+        .filter(|code| code.len() <= 100 && code.bytes().all(|b|
+            b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')).map(str::to_owned)
 }
 
 #[cfg(test)]

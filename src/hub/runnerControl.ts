@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
 
 export type RunnerCommand = {
   id: string; text: string; aliases: string[]; parent_id: string | null;
@@ -20,7 +21,7 @@ export type ControlResult = { id: number; command: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: string;
-  observationSerial?: number; observationAgeMs?: number | null };
+  observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot };
 
 export class RunnerControl {
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
@@ -33,6 +34,7 @@ export class RunnerControl {
   private id?: string;
   private timer?: ReturnType<typeof setTimeout>;
   private stopped = false;
+  private referenceAdmissions = 0;
   constructor(private readonly changed: () => void) {}
   start(id: string) { this.id = id; void this.refresh(); }
   async fresh() {
@@ -64,7 +66,9 @@ export class RunnerControl {
     } catch (reason) { if (!this.stopped) this.stop(String(reason)); }
   }
   get busy() {
-    return this.assignmentLocked || this.sending || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state));
+    return this.assignmentLocked || this.sending || this.referenceAdmissions > 0
+      || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
+      || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }
   shortcuts() {
     const canonical = flattenCommands(this.snapshot.observation?.commands ?? [])
@@ -91,6 +95,16 @@ export class RunnerControl {
     try { await invoke<void>('runner_command', { id: this.id, command: text }); }
     catch (reason) { this.sending = false; this.changed(); throw reason; }
   }
+  async reference(request: ReferenceRequest) {
+    const id = this.id;
+    if (this.stopped || !id || this.snapshot.state !== 'ready' || !this.snapshot.references?.capability)
+      throw new Error('Authenticated reference capability is unavailable.');
+    if (this.assignmentLocked && request.operation !== 'references.list')
+      throw new Error('Single Entry holds this Runner.');
+    this.referenceAdmissions++; this.changed();
+    try { return await invoke<ReferenceAdmission>('runner_reference', { id, request }); }
+    finally { this.referenceAdmissions--; this.changed(); }
+  }
   stop(detail = 'Runner process exited', finalSnapshot?: ControlSnapshot) {
     this.stopped = true;
     this.sending = false;
@@ -99,6 +113,9 @@ export class RunnerControl {
     const message = final.detail ?? (final.observation ? detail
       : `${detail}. This installation did not establish verified Runner control; check local-control launch compatibility.`);
     this.snapshot = { ...final, state: 'disconnected', detail: message,
+      references: final.references && { ...final.references,
+        results: final.references.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
+          ? { ...result, state: 'outcome-unknown' } : result) },
       results: final.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
         ? { ...result, state: 'outcome-unknown' } : result) };
     this.changed();

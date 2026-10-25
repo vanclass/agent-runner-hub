@@ -1,4 +1,5 @@
 use super::{Protocol, Snapshot};
+use super::references::{ReferenceAdmission, ReferenceRequest};
 use portable_pty::CommandBuilder;
 use std::{io, os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
     sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}, mpsc}, thread, time::{Duration, Instant}};
@@ -6,6 +7,12 @@ use windows_sys::Win32::{Foundation::*, Security::{SECURITY_ATTRIBUTES, Cryptogr
     Storage::FileSystem::{ReadFile, WriteFile}, System::Pipes::*};
 
 fn error() -> String { format!("Runner control I/O failed ({})", io::Error::last_os_error().raw_os_error().unwrap_or(0)) }
+enum Request { Command(String), Reference(ReferenceRequest) }
+type Admission = mpsc::Sender<Result<u64, String>>;
+struct SubmitError { detail: String, unknown: bool }
+impl From<&str> for SubmitError {
+    fn from(detail: &str) -> Self { Self { detail: detail.into(), unknown: false } }
+}
 fn random_hex() -> Result<String, String> {
     let mut bytes = [0u8; 32];
     if unsafe { BCryptGenRandom(std::ptr::null_mut(), bytes.as_mut_ptr(), bytes.len() as u32,
@@ -51,7 +58,7 @@ impl Launch {
         self.children.clear();
         let state = Arc::new(Mutex::new(Snapshot::default()));
         let stopped = Arc::new(AtomicBool::new(false));
-        let (send, receive) = mpsc::sync_channel::<(String, mpsc::Sender<()>)>(32);
+        let (send, receive) = mpsc::sync_channel::<(Request, Admission)>(32);
         let worker_state = state.clone();
         let worker_stop = stopped.clone();
         let worker = thread::spawn(move || {
@@ -67,21 +74,37 @@ impl Launch {
 }
 
 pub struct Client {
-    state: Arc<Mutex<Snapshot>>, stopped: Arc<AtomicBool>, send: mpsc::SyncSender<(String, mpsc::Sender<()>)>,
+    state: Arc<Mutex<Snapshot>>, stopped: Arc<AtomicBool>, send: mpsc::SyncSender<(Request, Admission)>,
     worker: Mutex<Option<thread::JoinHandle<()>>>,
 }
 impl Client {
     pub fn snapshot(&self) -> Snapshot { self.state.lock().unwrap().clone() }
     pub fn command(&self, command: String) -> Result<(), String> {
-        if self.stopped.load(Ordering::Acquire) || self.snapshot().state != "ready" {
-            return Err("Runner control is disconnected or still connecting".into());
-        }
         if command.len() > 4096 || !command.starts_with('/') || command.chars().any(char::is_control) {
             return Err("Choose a Runner slash command".into());
         }
+        self.submit(Request::Command(command)).map(|_| ()).map_err(|error| error.detail)
+    }
+    pub fn reference(&self, request: ReferenceRequest) -> ReferenceAdmission {
+        if let Err(detail) = request.validate() { return ReferenceAdmission::Failure { detail: detail.into() }; }
+        if self.snapshot().references.capability.is_none() {
+            return ReferenceAdmission::Failure { detail: "This Runner offers only the manual /files flow".into() };
+        }
+        match self.submit(Request::Reference(request)) {
+            Ok(id) => ReferenceAdmission::Admitted { id },
+            Err(error) if error.unknown => ReferenceAdmission::Unknown { detail: error.detail },
+            Err(error) => ReferenceAdmission::Failure { detail: error.detail },
+        }
+    }
+    fn submit(&self, request: Request) -> Result<u64, SubmitError> {
+        if self.stopped.load(Ordering::Acquire) || self.snapshot().state != "ready" {
+            return Err("Runner control is disconnected or still connecting".into());
+        }
         let (admitted, admission) = mpsc::channel();
-        self.send.try_send((command, admitted)).map_err(|_| "Runner control request queue is unavailable")?;
-        admission.recv().map_err(|_| "Command was not submitted: Runner control disconnected".into())
+        self.send.try_send((request, admitted)).map_err(|_| "Runner control request queue is unavailable")?;
+        admission.recv().map_err(|_| SubmitError { unknown: true,
+            detail: "Control admission outcome unknown; do not repeat registration".into() })?
+            .map_err(|detail| SubmitError { detail, unknown: false })
     }
     pub fn close(&self) {
         self.stopped.store(true, Ordering::Release);
@@ -91,7 +114,7 @@ impl Client {
 impl Drop for Client { fn drop(&mut self) { self.close(); } }
 
 fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: &str,
-    receive: mpsc::Receiver<(String, mpsc::Sender<()>)>, stopped: &AtomicBool, state: &Mutex<Snapshot>) -> Result<(), &'static str> {
+    receive: mpsc::Receiver<(Request, Admission)>, stopped: &AtomicBool, state: &Mutex<Snapshot>) -> Result<(), &'static str> {
     let mut incoming = Vec::<u8>::new();
     let mut outgoing = Vec::<u8>::new();
     let started = Instant::now();
@@ -121,10 +144,17 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
             if incoming.len() > 65536 { return Err("Runner control frame exceeded v1 limit"); }
         }
         if protocol.snapshot.state == "ready" {
-            for (command, admitted) in receive.try_iter() {
-                outgoing.extend(protocol.request(Some(command), key)?);
-                *state.lock().unwrap() = protocol.public_snapshot();
-                let _ = admitted.send(());
+            for (request, admitted) in receive.try_iter() {
+                let result = match request {
+                    Request::Command(command) => protocol.request(Some(command), key),
+                    Request::Reference(request) => protocol.reference_request(request, key),
+                };
+                let receipt = result.map(|bytes| {
+                    outgoing.extend(bytes);
+                    *state.lock().unwrap() = protocol.public_snapshot();
+                    protocol.next
+                }).map_err(str::to_owned);
+                let _ = admitted.send(receipt);
             }
             if observed.elapsed() >= Duration::from_secs(1) && protocol.pending.is_empty() {
                 outgoing.extend(protocol.request(None, key)?);

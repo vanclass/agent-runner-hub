@@ -11,6 +11,7 @@ export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'd
 export function idleReason(session: RunnerSession) {
   const control = session.control, snapshot = control.snapshot, observation = snapshot.observation;
   if (!control.observationFresh || !observation) return 'Fresh authenticated observation unavailable';
+  if (session.references.prepared) return 'References are prepared for another Runner interaction';
   const { execution, attention } = observation;
   if (execution.lifecycle_state !== 'INTERACTIVE_READY' || execution.owned_execution_alive !== false
     || execution.workflow_kind !== '') return 'Execution authority is active or uncertain';
@@ -102,6 +103,9 @@ export class SingleEntry {
       await session.control.fresh();
       const reason = idleReason(session);
       if (reason) throw new Error(`${reason}. Instruction unsent.`);
+      await session.references.verifyAssignment();
+      const afterInventory = idleReason(session);
+      if (afterInventory) throw new Error(`${afterInventory}. Instruction unsent.`);
       const snapshot = session.control.snapshot, observation = snapshot.observation!;
       this.evidence.push(`Authenticated observation ${snapshot.observationSerial}: INTERACTIVE_READY; no execution, workflow, attention, suspension or unsettled control; /target and /files enabled; untouched Hub input and empty composer.`);
       if (!observation.selection.account || !observation.selection.model || !observation.selection.source || !observation.run_mode)

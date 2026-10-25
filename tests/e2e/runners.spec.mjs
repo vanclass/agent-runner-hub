@@ -3,11 +3,29 @@ import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
 
-async function transport(page, freshTarget) {
-  await page.addInitScript(freshTarget => {
+async function transport(page, freshTarget, referenceOptions) {
+  await page.addInitScript(({ freshTarget, referenceOptions }) => {
     const sessions = new Map();
     const callbacks = new Map(), listeners = new Map();
-    const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [];
+    const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [], referenceRequests = [];
+    let referenceSequence = 100, stableSequence = 0;
+    const inventory = (items, offset = 0) => ({ total_count: items.length, offset,
+      next_offset: offset + 2 < items.length ? offset + 2 : null,
+      references: items.slice(offset, offset + 2).map((item, index) => ({ ...item, display_index: offset + index + 1 })) });
+    const finishReference = (id, requestId, state = 'registered') => {
+      const session = sessions.get(id), results = session.control.references.results;
+      const result = results.find(item => item.id === requestId);
+      result.state = state;
+      if (state === 'registered') {
+        const request = referenceRequests.find(item => item.id === id && item.requestId === requestId).request;
+        const reference = { reference_id: (++stableSequence).toString(16).padStart(32, '0'),
+          display_index: session.items.length + 1, display_name: request.path.split(/[\\/]/).pop(), kind: 'file', image_detail: null, media_kind: null };
+        session.items.push(reference);
+        Object.assign(result, { registrationStatus: 'registered', reference, inventory: inventory(session.items) });
+      } else if (['rejected', 'failure', 'outcome-unknown'].includes(state)) {
+        Object.assign(result, { registrationStatus: state === 'outcome-unknown' ? 'unknown' : 'not_registered', code: `REFERENCE_${state.toUpperCase().replace('-', '_')}` });
+      }
+    };
     const canonical = id => ({ run_mode: 'task-run', target: freshTarget ?? { binding_state: 'bound', owner: 'Project', project: id },
       selection: { account: id, model: 'effective-model', reasoning_effort: 'medium', service_tier: 'default', source: 'execution',
         next_model: alignNew ? 'effective-model' : 'configured-model', next_reasoning_effort: alignNew ? 'medium' : 'high', next_service_tier: 'default' },
@@ -54,6 +72,11 @@ async function transport(page, freshTarget) {
           if (args.request.runnerLocation !== '/fixture/install') throw new Error('Wrong configured installation');
           const id = `pty-${count}`;
           sessions.set(id, { channel: args.onEvent, sequence: 0, control: { state: 'ready', observation: canonical(id), results: [] } });
+          if (referenceOptions) {
+            sessions.get(id).items = [];
+            sessions.get(id).control.references = { capability: { version: 1, inventory_page_size: 2,
+              image_details: ['auto', 'low', 'high', 'original'] }, results: [] };
+          }
           setTimeout(() => emit(id, `\x1b[?9001h\x1b[?2004h\x1b[32m${id}: 안녕 🌍\x1b[0m\r\n`), 10);
           return id;
         }
@@ -74,6 +97,16 @@ async function transport(page, freshTarget) {
           control.results = [{ id: commands.length, command: args.command, state: 'queued', changed: true }];
           return;
         }
+        if (command === 'runner_reference') {
+          const session = sessions.get(args.id), requestId = ++referenceSequence;
+          referenceRequests.push({ ...args, requestId });
+          if (referenceOptions.admissionFailure) return { state: 'failure', detail: 'Reference request was not submitted: fixture queue unavailable' };
+          const result = { id: requestId, operation: args.request.operation, offset: args.request.offset ?? 0, state: 'queued' };
+          session.control.references.results.push(result);
+          if (args.request.operation === 'references.list') Object.assign(result, { state: 'accepted', inventory: inventory(session.items, args.request.offset) });
+          else if (referenceOptions.auto) finishReference(args.id, requestId);
+          return { state: 'admitted', id: requestId };
+        }
         if (command === 'plugin:dialog|open') return args.options.directory ? '/fixture/folder' : ['/fixture/image.png'];
         if (command === 'plugin:event|listen') { listeners.set(args.handler, { event: args.event, target: args.target }); return args.handler; }
         if (command === 'plugin:event|unlisten') { listeners.delete(args.eventId); return; }
@@ -84,6 +117,7 @@ async function transport(page, freshTarget) {
       },
     };
     window.__nativeFixture = { sessions, writes, resizes, acknowledgements, closed, commands, emit, exit,
+      referenceRequests, finishReference,
       // Browser simulation only. The configured native content window emits by label.
       nativeEvent,
       drop: paths => nativeEvent('tauri://drag-drop', { paths, position: { x: 0, y: 0 } }),
@@ -91,7 +125,7 @@ async function transport(page, freshTarget) {
       resumeWrites: () => { writeGate = undefined; releaseWrite(); },
       count: () => count, failNext: () => { failNext = true; }, failWrite: () => { failWrite = true; },
       readyNew: () => { alignNew = true; } };
-  }, freshTarget);
+  }, { freshTarget, referenceOptions });
 }
 
 async function configure(page) {
@@ -100,11 +134,52 @@ async function configure(page) {
   await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'New Runner', exact: true })).toBeEnabled();
 }
+
+test('reference extension registers duplicate picker paths and samples ordered inventory pages', async ({ page }) => {
+  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
+  for (let n = 0; n < 2; n++) {
+    await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+    await expect(page.locator('.reference-candidate').filter({ hasText: 'Registered · completed Runner receipt' })).toHaveCount(n + 1);
+    await expect(page.getByRole('button', { name: 'Attach file', exact: true })).toBeEnabled();
+  }
+  await page.getByRole('button', { name: 'Attach folder', exact: true }).click();
+  await expect(page.getByText(/3 pending · Page offset 0/)).toBeVisible();
+  const ids = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.reference_id));
+  expect(new Set(ids).size).toBe(3);
+  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(0, 2));
+  await page.getByRole('button', { name: 'Next reference page' }).click();
+  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(2));
+  await expect(page.getByRole('button', { name: 'Refresh pending references' })).toBeEnabled();
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.shift());
+  await page.getByRole('button', { name: 'Refresh pending references' }).click();
+  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(1));
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => item.request.operation))).toEqual([
+    'references.register', 'references.register', 'references.register', 'references.list', 'references.list']);
+});
 async function create(page) {
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
 }
+
+test('reference drop submissions keep individual receipts and their original Runner through tab switches', async ({ page }) => {
+  await transport(page, undefined, {}); await configure(page); await create(page);
+  const paths = ['C:\\참조 폴더\\input.txt', 'C:\\참조 폴더\\image.png'];
+  await page.evaluate(paths => window.__nativeFixture.drop(paths), paths);
+  await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
+  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
+  await create(page);
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(2);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => [item.id, item.request.path]))).toEqual(paths.map(path => ['pty-1', path]));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 102, 'rejected'));
+  await page.locator('.runner-row').first().locator('.nav-row').click();
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toHaveCount(1);
+  await expect(page.getByText(/Rejected · no registration confirmed/)).toHaveCount(1);
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+});
 
 function records(writes, id) {
   const text = writes.filter(write => write.id === id).map(write => String.fromCharCode(...write.bytes)).join('');
@@ -486,6 +561,55 @@ async function entry(page, text = '/status') {
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(text);
 }
+
+test('uncertain reference remains explicit across clearing, refreshing and tab switches without replay', async ({ page }) => {
+  await transport(page, undefined, {}); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  await page.getByRole('button', { name: 'Clear selected paths' }).click();
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  await create(page); await page.locator('.runner-row').first().locator('.nav-row').click();
+  await page.getByRole('button', { name: 'Refresh pending references' }).click();
+  await expect(page.getByText(/0 pending · Page offset 0/)).toBeVisible();
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
+  await expect(page.getByRole('button', { name: 'Register selected paths' })).toBeDisabled();
+});
+
+test('Single Entry skips a Runner with prepared references and verifies the chosen empty inventory', async ({ page }) => {
+  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
+  await create(page); await entry(page);
+  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes.map(item => item.id))).toEqual(['pty-2']);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.list').map(item => item.id))).toEqual(['pty-2']);
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.length)).toBe(1);
+});
+
+test('reference admission failure is distinct from uncertainty and is never automatically retried', async ({ page }) => {
+  await transport(page, undefined, { admissionFailure: true }); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText(/Failed · no registration confirmed/)).toBeVisible();
+  await expect(page.getByText(/fixture queue unavailable/)).toBeVisible();
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Register selected paths' })).toBeDisabled();
+  await create(page); await page.locator('.runner-row').first().locator('.nav-row').click();
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(1);
+});
+
+test('Single Entry leaves an instruction unsent when a fresh inventory reveals terminal-prepared references', async ({ page }) => {
+  await transport(page, undefined, {}); await configure(page); await create(page);
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push({ reference_id: 'a'.repeat(32),
+    display_index: 1, display_name: 'terminal-only.txt', kind: 'file', image_detail: null, media_kind: null }));
+  await entry(page); await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Runner pending references are present or unverified' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+  await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('/status');
+});
 
 test('Single Entry reserves the first idle Runner and delivers Unicode once across tabs', async ({ page }, testInfo) => {
   await transport(page); await configure(page); await create(page); await create(page);

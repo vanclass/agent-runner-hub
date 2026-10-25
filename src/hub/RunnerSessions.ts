@@ -4,7 +4,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { openPty, type Pty } from '../../.runner/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
 import { RunnerControl, type ControlSnapshot } from './runnerControl';
-import { RunnerReferenceSelection } from './RunnerReferences';
+import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
 import { SingleEntry } from './singleEntry';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
@@ -35,7 +35,7 @@ export class RunnerSession {
     this.view = { id: tab.id, createdOrder: tab.createdOrder, name: tab.name,
       status: tab.launchOnOpen ? 'starting' : 'exited', canSubmit: false, draft: '', submitting: false };
     this.control = new RunnerControl(() => { this.captureVerified(); this.changed(); });
-    this.references = new RunnerReferenceSelection(() => this.changed());
+    this.references = new RunnerReferenceSelection(this.control, () => this.changed());
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
     this.input = new RunnerInput(this.terminal, text => this.queue(new TextEncoder().encode(text)),
@@ -69,12 +69,12 @@ export class RunnerSession {
     return true;
   }
   get assignmentAvailable() {
-    return !this.disposed && !this.reservation && !this.inputUnsettled && !this.view.submitting
+    return !this.disposed && !this.reservation && !this.inputUnsettled && !this.view.submitting && !this.references.prepared
       && !this.view.draft && this.view.status === 'running' && this.input.canSubmit;
   }
   get assignmentReserved() { return !!this.reservation; }
   reserve(token: symbol) {
-    if (this.disposed || this.reservation || this.inputUnsettled || this.view.submitting || this.view.draft) return false;
+    if (this.disposed || this.reservation || this.inputUnsettled || this.view.submitting || this.view.draft || this.references.prepared) return false;
     this.reservation = token;
     this.control.assignmentLocked = true;
     this.changed();

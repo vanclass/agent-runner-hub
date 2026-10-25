@@ -1,4 +1,6 @@
 use super::*;
+#[path = "reference_tests.rs"]
+mod references;
 fn hello() -> Value {
     json!({"version":1,"process_id":42,"session_id":"expected","connection_id":"0123456789abcdef0123456789abcdef",
         "event":"hello","operations":["observe","command"],"interaction_owner":"runner_terminal"})

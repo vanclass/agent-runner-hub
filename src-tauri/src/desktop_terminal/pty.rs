@@ -68,6 +68,13 @@ impl Session {
         { let _ = command; Err("Runner control is supported only on Windows".into()) }
     }
 
+    pub fn control_reference(&self, request: control::references::ReferenceRequest) -> Result<control::references::ReferenceAdmission, String> {
+        #[cfg(windows)]
+        { return Ok(self.control.lock().unwrap().as_ref().ok_or("Runner control is unavailable")?.reference(request)); }
+        #[cfg(not(windows))]
+        { let _ = request; Err("Runner control is supported only on Windows".into()) }
+    }
+
     pub fn write(&self, bytes: &[u8]) -> Result<(), String> {
         let mut ready = self.startup_ready.lock().map_err(|e| e.to_string())?;
         while !*ready && !self.closing.load(Ordering::Acquire) {
