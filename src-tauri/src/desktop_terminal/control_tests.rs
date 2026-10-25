@@ -38,6 +38,24 @@ fn hello_binds_the_actual_created_process_and_expected_session() {
     }
     assert_eq!(ready().snapshot.state, "ready");
 }
+
+#[test]
+fn observation_freshness_advances_only_on_authenticated_completed_observations() {
+    let mut protocol = ready();
+    let first = protocol.public_snapshot();
+    assert_eq!(first.observation_serial, 1);
+    assert!(first.observation_age_ms.is_some());
+    protocol.observed_at = Some(Instant::now() - Duration::from_secs(5));
+    assert!(protocol.public_snapshot().observation_age_ms.unwrap() >= 5000);
+    protocol.request(None, "private").unwrap();
+    protocol.response(packet(2, "accepted", "queued")).unwrap();
+    assert_eq!(protocol.public_snapshot().observation_serial, 1);
+    let mut completed = packet(2, "accepted", "completed");
+    completed["observation"] = observation();
+    protocol.response(completed).unwrap();
+    assert_eq!(protocol.public_snapshot().observation_serial, 2);
+    assert!(protocol.public_snapshot().observation_age_ms.unwrap() < 1000);
+}
 #[test]
 fn queued_and_interaction_are_not_committed_settings() {
     let mut protocol = ready();

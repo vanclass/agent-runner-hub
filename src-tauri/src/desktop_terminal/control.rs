@@ -54,11 +54,13 @@ pub struct CommandResult {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub state: String, pub observation: Option<Observation>,
+    pub observation_serial: u64, pub observation_age_ms: Option<u64>,
     pub results: Vec<CommandResult>, pub detail: Option<String>,
 }
 impl Default for Snapshot {
     fn default() -> Self {
-        Self { state: "connecting".into(), observation: None, results: Vec::new(), detail: None }
+        Self { state: "connecting".into(), observation: None, observation_serial: 0,
+            observation_age_ms: None, results: Vec::new(), detail: None }
     }
 }
 
@@ -66,10 +68,12 @@ struct Pending { command: Option<String>, started: Instant, awaiting_interaction
 struct Protocol {
     pid: u32, session: String, connection: Option<String>, next: u64,
     pending: BTreeMap<u64, Pending>, snapshot: Snapshot,
+    observed_at: Option<Instant>,
 }
 impl Protocol {
     fn new(pid: u32, session: String) -> Self {
-        Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(), snapshot: Snapshot::default() }
+        Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(),
+            snapshot: Snapshot::default(), observed_at: None }
     }
     fn identity_matches(&self, packet: &Value) -> bool {
         packet["version"].as_u64() == Some(1)
@@ -128,6 +132,8 @@ impl Protocol {
                 .map_err(|_| "Malformed canonical observation")?;
             // A completed authenticated observe round-trip establishes readiness, not hello alone.
             self.snapshot.observation = Some(observation);
+            self.snapshot.observation_serial += 1;
+            self.observed_at = Some(Instant::now());
             self.snapshot.state = "ready".into();
         }
         if finished && pending.command.is_some() && !packet["observation"].is_null() {
@@ -153,6 +159,11 @@ impl Protocol {
         if finished { self.pending.remove(&id); }
         else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
         Ok(())
+    }
+    fn public_snapshot(&self) -> Snapshot {
+        let mut snapshot = self.snapshot.clone();
+        snapshot.observation_age_ms = self.observed_at.map(|time| time.elapsed().as_millis() as u64);
+        snapshot
     }
     fn expired(&self) -> bool {
         self.pending.values().any(|pending|

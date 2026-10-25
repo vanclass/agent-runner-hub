@@ -42,7 +42,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     <div className="shell-body">
       <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
-        theme={theme} installation={installation} onInstallation={setInstallation} onCreate={createRunner} launching={launching} />
+        theme={theme} installation={installation} onInstallation={setInstallation}
+        entry={sessions.entry} onSelectRunner={setSelectedId} />
     </div>
   </div>;
 }

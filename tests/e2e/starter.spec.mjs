@@ -11,9 +11,9 @@ test('ordinary startup is an empty, disconnected Hub', async ({ page }, testInfo
   await expect(page.getByRole('heading', { name: 'Single Entry', exact: true })).toBeVisible();
   await expect(page.locator('.runner-row')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Single Entry', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('button', { name: 'Create Runner' })).toBeDisabled();
-  await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Attach file' })).toBeDisabled();
-  await expect(page.getByText('Existing Runners keep their own settings.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Assign instruction' })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toBeEnabled();
+  await expect(page.getByText('Attachments unavailable.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Existing settings change only through their Runner.', { exact: false })).toBeVisible();
   await testInfo.attach('empty-light-1000x700', { body: await page.screenshot(), contentType: 'image/png' });
 });

@@ -12,11 +12,11 @@
 - Theme: `src/hub/ThemePicker.tsx` selects application appearance; `src/hub/hub.css` defines Light and Black semantic tokens for every surface and interaction state. Selection is local to the current app instance.
 
 ## Boundaries
-- Single Entry describes future Runner defaults. Individual Runner contexts describe only their own settings; no cross-context settings propagation is implemented.
+- Single Entry owns assignment defaults independently of each Runner's settings. Its assignment component composes the existing session registry, authenticated control and input owners; the [terminal specification](implementation_specs/runner_terminals.md#single-entry-assignment) defines the evidence and delivery boundaries.
 - The shell starts with no Runners or fabricated output. Controlled data and transport simulations are confined to tests; there is no production fixture switch.
 - Runner sessions reuse the installed Desktop Terminal bridge, xterm dependencies, portable-pty backend, and shared Tauri builder. The application-owned native backend adds installation verification and Runner containment; managed launch/build configuration and Native I/O remain intact.
 - Runner control belongs to each native session. The frontend consumes allowlisted observations and requests existing terminal-owned commands; the [terminal specification](implementation_specs/runner_terminals.md#local-control-and-reference-boundaries) owns the detailed contract and unsupported attachment/media boundaries.
-- Automatic work assignment, crash recovery and restored sessions remain future integration boundaries.
+- Crash recovery, restored sessions and scheduling remain outside the assignment boundary.
 - Preserve the existing native main window and resize behavior. The shell keeps navigation and composer accessible while the central output area scrolls independently.
 - Do not store active project selection state here.
 

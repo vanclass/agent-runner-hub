@@ -13,14 +13,14 @@
 - Let users configure an installed Runner, create independent Runner tabs, interact with their actual terminals, and terminate one without disturbing the others. Tab selection must preserve execution, output and geometry; normal shutdown must settle Hub-owned processes.
 
 ## Non-Goals
-- This integration does not assign work automatically, confirm attachment delivery, persist sessions, or implement crash recovery or scheduling. Supported per-Runner settings and command interactions use authenticated local control within the [terminal specification](implementation_specs/runner_terminals.md#local-control-and-reference-boundaries).
-- Single Entry default-setting automation and automatic dispatch remain unavailable. Reference selection alone must not imply registration. The connected instruction composer submits through the selected terminal's actual input semantics.
+- This integration does not confirm attachment delivery, persist sessions, or implement crash recovery or scheduling. Supported per-Runner settings and command interactions use authenticated local control within the [terminal specification](implementation_specs/runner_terminals.md#local-control-and-reference-boundaries).
+- Single Entry assigns once to a verified eligible Runner or creates one through the owned launch path. Unsupported default changes require Runner terminal interaction and leave instructions unsent. Reference selection alone must not imply registration.
 - Do not store progress state here.
 - Do not store active project selection state here.
 - Do not store deployed runtime state here.
 
 ## Usage
-- Single Entry presents defaults reserved for future Runners. Changing these defaults must not implicitly change existing Runners.
+- Single Entry presents assignment defaults from verified Runner observations. Changing these defaults must not implicitly change existing Runners; [assignment boundaries](implementation_specs/runner_terminals.md#single-entry-assignment) govern reuse, readiness and delivery uncertainty.
 - Individual Runner contexts have their own settings scope. Double-click a row name, use its rename action, or press F2 to edit; Enter saves, Escape cancels, and leaving the input saves a nonblank name.
 - Theme selection applies immediately for the current application instance. Only the installation location is saved; tab sessions and theme selection are local to the current Hub instance.
 - Preserve the Vite/React, Tauri 2, Desktop Terminal, Native I/O, Build System, and Windows/macOS CI foundations. Verify a local installation in Single Entry, then use New Runner; process and platform boundaries are described in the [terminal specification](implementation_specs/runner_terminals.md).

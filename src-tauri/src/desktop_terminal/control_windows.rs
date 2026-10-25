@@ -58,7 +58,7 @@ impl Launch {
             let mut protocol = Protocol::new(pid, self.session);
             let result = serve(&self.read, &self.write, &mut protocol, &self.key, receive, &worker_stop, &worker_state);
             protocol.disconnect(result.err().unwrap_or("Runner control closed"));
-            *worker_state.lock().unwrap() = protocol.snapshot.clone();
+            *worker_state.lock().unwrap() = protocol.public_snapshot();
             // The key is retained only by this native worker for authenticated requests.
             unsafe { self.key.as_bytes_mut().fill(0); }
         });
@@ -123,7 +123,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
         if protocol.snapshot.state == "ready" {
             for (command, admitted) in receive.try_iter() {
                 outgoing.extend(protocol.request(Some(command), key)?);
-                *state.lock().unwrap() = protocol.snapshot.clone();
+                *state.lock().unwrap() = protocol.public_snapshot();
                 let _ = admitted.send(());
             }
             if observed.elapsed() >= Duration::from_secs(1) && protocol.pending.is_empty() {
@@ -138,7 +138,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
             if result == 0 && unsafe { GetLastError() } != ERROR_NO_DATA { return Err("Runner control write failed"); }
             outgoing.drain(..count as usize);
         }
-        *state.lock().unwrap() = protocol.snapshot.clone();
+        *state.lock().unwrap() = protocol.public_snapshot();
         if protocol.expired() { return Err("Runner control completion timed out; uncertain commands were not retried"); }
         if protocol.connection.is_none() && started.elapsed() > Duration::from_secs(30) {
             return Err("Runner did not provide a v1 control hello");

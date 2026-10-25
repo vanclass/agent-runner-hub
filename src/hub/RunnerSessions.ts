@@ -6,6 +6,7 @@ import { RunnerInput } from './runnerInput';
 import { RunnerControl, type ControlSnapshot } from './runnerControl';
 import { RunnerReferenceSelection } from './RunnerReferences';
 import type { RunnerView } from './model';
+import { SingleEntry } from './singleEntry';
 import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
@@ -20,6 +21,9 @@ export class RunnerSession {
   private lastInput: Promise<void> = Promise.resolve();
   private resizeTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
+  private reservation?: symbol;
+  private inputUnsettled = false;
+  private assignmentWriting = false;
   view: RunnerView;
 
   constructor(id: string, order: number, private readonly changed: () => void) {
@@ -28,9 +32,10 @@ export class RunnerSession {
     this.references = new RunnerReferenceSelection(() => this.changed());
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
-    this.input = new RunnerInput(this.terminal, text => this.queue(new TextEncoder().encode(text)), () => this.protocolChanged());
+    this.input = new RunnerInput(this.terminal, text => this.queue(new TextEncoder().encode(text)),
+      () => this.protocolChanged(), () => this.manualInput());
     this.terminal.onWriteParsed(() => this.protocolChanged());
-    this.terminal.onBinary(data => this.queue(Uint8Array.from(data, char => char.charCodeAt(0))));
+    this.terminal.onBinary(data => { if (this.manualInput()) this.queue(Uint8Array.from(data, char => char.charCodeAt(0))); });
     this.terminal.onResize(({ cols, rows }) => {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = setTimeout(() => {
@@ -43,6 +48,48 @@ export class RunnerSession {
     if (this.input && this.view.canSubmit !== this.input.canSubmit) this.update({ canSubmit: this.input.canSubmit });
   }
   private error(reason: unknown) { this.update({ detail: String(reason) }); }
+  private manualInput() {
+    if (this.assignmentWriting) return false;
+    this.inputUnsettled = true;
+    return true;
+  }
+  get assignmentAvailable() {
+    return !this.disposed && !this.reservation && !this.inputUnsettled && !this.view.submitting
+      && !this.view.draft && this.view.status === 'running' && this.input.canSubmit;
+  }
+  get assignmentReserved() { return !!this.reservation; }
+  reserve(token: symbol) {
+    if (this.disposed || this.reservation || this.inputUnsettled || this.view.submitting || this.view.draft) return false;
+    this.reservation = token;
+    this.control.assignmentLocked = true;
+    this.changed();
+    return true;
+  }
+  release(token: symbol) {
+    if (this.reservation !== token) return;
+    this.reservation = undefined;
+    this.control.assignmentLocked = false;
+    this.changed();
+  }
+  async deliver(token: symbol, text: string) {
+    if (this.reservation !== token || this.inputUnsettled || this.disposed
+      || this.view.status !== 'running' || !this.pty || !this.input.canSubmit) {
+      throw new Error('Runner input ownership changed. Instruction unsent.');
+    }
+    this.assignmentWriting = true;
+    this.inputUnsettled = true;
+    this.update({ submitting: true });
+    try {
+      this.input.submit(text);
+      await this.lastInput;
+      return { delivered: true, detail: 'Delivered to PTY. Runner acceptance and execution are unconfirmed.' };
+    } catch (reason) {
+      return { delivered: false, detail: `Delivery outcome unknown: ${String(reason)}. Not retried.` };
+    } finally {
+      this.assignmentWriting = false;
+      this.update({ submitting: false });
+    }
+  }
   private queue(bytes: Uint8Array) {
     if (this.disposed || this.view.status === 'exited' || this.view.status === 'failed') return;
     if (!this.pty) { this.pending.push(bytes); return; }
@@ -75,6 +122,8 @@ export class RunnerSession {
   async submit() {
     if (this.view.status !== 'running' || !this.pty) throw new Error('This Runner process is not running.');
     if (this.view.submitting) throw new Error('Input submission is already pending for this Runner.');
+    if (this.reservation) throw new Error('Single Entry holds this Runner. Resolve its assignment first.');
+    this.inputUnsettled = true;
     this.update({ submitting: true });
     try {
       this.input.submit(this.view.draft ?? '');
@@ -119,6 +168,8 @@ export class RunnerSessions {
   private readonly listeners = new Set<() => void>();
   private snapshot: readonly RunnerView[] = [];
   private order = 0;
+  readonly entry = new SingleEntry(() => [...this.sessions.values()],
+    (location, token) => this.create(location, token), () => this.changed());
   readonly getSnapshot = () => this.snapshot;
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private readonly changed = () => {
@@ -126,9 +177,10 @@ export class RunnerSessions {
     this.listeners.forEach(listener => listener());
   };
   get(id?: string) { return id ? this.sessions.get(id) : undefined; }
-  create(location: string) {
+  create(location: string, token?: symbol) {
     const session = new RunnerSession(crypto.randomUUID(), ++this.order, this.changed);
     this.sessions.set(session.view.id, session);
+    if (token && !session.reserve(token)) throw new Error('New Runner reservation failed.');
     this.changed();
     return { session, launched: session.open(location) };
   }

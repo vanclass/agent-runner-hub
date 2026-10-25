@@ -19,11 +19,14 @@ export type ControlResult = { id: number; command: string;
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown'; code?: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
-  observation?: RunnerObservation; results: ControlResult[]; detail?: string };
+  observation?: RunnerObservation; results: ControlResult[]; detail?: string;
+  observationSerial?: number; observationAgeMs?: number | null };
 
 export class RunnerControl {
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
+  assignmentLocked = false;
+  receivedAt = 0;
   private admissionAfter = 0;
   hidden = new Set<string>();
   order: string[] = [];
@@ -32,12 +35,28 @@ export class RunnerControl {
   private stopped = false;
   constructor(private readonly changed: () => void) {}
   start(id: string) { this.id = id; void this.refresh(); }
+  async fresh() {
+    const after = this.snapshot.observationSerial ?? 0;
+    const deadline = performance.now() + (this.snapshot.state === 'connecting' ? 35000 : 5000);
+    while (!this.stopped && performance.now() < deadline) {
+      if (this.snapshot.state === 'disconnected') break;
+      if (this.snapshot.state === 'ready' && (this.snapshot.observationSerial ?? 0) > after
+        && this.observationFresh) return this.snapshot;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error(this.snapshot.detail || 'Fresh authenticated Runner readiness is unavailable. Instruction unsent.');
+  }
+  get observationFresh() {
+    return this.snapshot.state === 'ready' && typeof this.snapshot.observationAgeMs === 'number'
+      && this.snapshot.observationAgeMs + performance.now() - this.receivedAt < 2500;
+  }
   private async refresh() {
     if (this.stopped || !this.id) return;
     try {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      this.receivedAt = performance.now();
       if (snapshot.results.some(result => result.id > this.admissionAfter)) this.sending = false;
       this.changed();
       if (snapshot.state === 'disconnected') return;
@@ -45,7 +64,7 @@ export class RunnerControl {
     } catch (reason) { if (!this.stopped) this.stop(String(reason)); }
   }
   get busy() {
-    return this.sending || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state));
+    return this.assignmentLocked || this.sending || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state));
   }
   shortcuts() {
     const canonical = flattenCommands(this.snapshot.observation?.commands ?? [])

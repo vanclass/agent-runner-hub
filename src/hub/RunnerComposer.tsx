@@ -6,7 +6,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   const text = session.view.draft ?? '';
   const pending = !!session.view.submitting;
   const [error, setError] = useState('');
-  const available = session.view.status === 'running' && session.view.canSubmit;
+  const available = session.view.status === 'running' && session.view.canSubmit && !session.assignmentReserved;
   const files = commandNamed(session.control.snapshot, '/files');
   const canSelect = session.control.snapshot.state === 'ready' && !!files?.enabled && !session.control.busy;
   async function pick(folder: boolean) {
@@ -32,7 +32,8 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
         onClick={() => void submit()}>{pending ? 'Sending…' : 'Send instruction'} <span aria-hidden="true">↗</span></button></div>
     </div>
     {error && <p role="alert">{error}</p>}
-    <p className="composer-note">{pending ? 'Sending this input to the selected terminal…' : session.view.status === 'running'
+    <p className="composer-note">{pending ? 'Sending this input to the selected terminal…'
+      : session.assignmentReserved ? 'Single Entry holds this Runner. Review the assignment in Single Entry before using this composer.' : session.view.status === 'running'
       ? available ? 'Appends to this terminal’s current input, then presses Enter. Line breaks stay within one submission.'
         : 'Waiting for the terminal input protocol. You can type directly in the terminal.'
       : 'This Runner process is not running.'}</p>
