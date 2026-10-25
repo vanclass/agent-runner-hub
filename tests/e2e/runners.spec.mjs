@@ -30,6 +30,13 @@ async function transport(page, freshTarget) {
       session.channel.onmessage({ type: 'output', id, sequence: ++session.sequence, bytes: [...new TextEncoder().encode(text)] });
     };
     const exit = (id, code = 0, control) => sessions.get(id).channel.onmessage({ type: 'exit', id, code, error: null, control });
+    const nativeEvent = (event, payload, label = 'main') => {
+      for (const [id, subscription] of listeners) {
+        const receiver = subscription.target;
+        const matches = receiver.label === label && ['Window', 'Webview', 'WebviewWindow'].includes(receiver.kind);
+        if (subscription.event === event && matches) callbacks.get(id)({ event, id, payload });
+      }
+    };
     window.isTauri = true;
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     window.__TAURI_INTERNALS__ = {
@@ -68,7 +75,7 @@ async function transport(page, freshTarget) {
           return;
         }
         if (command === 'plugin:dialog|open') return args.options.directory ? '/fixture/folder' : ['/fixture/image.png'];
-        if (command === 'plugin:event|listen') { listeners.set(args.handler, args.event); return args.handler; }
+        if (command === 'plugin:event|listen') { listeners.set(args.handler, { event: args.event, target: args.target }); return args.handler; }
         if (command === 'plugin:event|unlisten') { listeners.delete(args.eventId); return; }
         if (command === 'pty_resize') { resizes.push(args); return; }
         if (command === 'pty_ack') { acknowledgements.push(args); return; }
@@ -77,7 +84,9 @@ async function transport(page, freshTarget) {
       },
     };
     window.__nativeFixture = { sessions, writes, resizes, acknowledgements, closed, commands, emit, exit,
-      drop: paths => { for (const [id, event] of listeners) if (event === 'tauri://drag-drop') callbacks.get(id)({ event, id, payload: { paths, position: { x: 0, y: 0 } } }); },
+      // Browser simulation only. The configured native content window emits by label.
+      nativeEvent,
+      drop: paths => nativeEvent('tauri://drag-drop', { paths, position: { x: 0, y: 0 } }),
       pauseWrites: () => { writeGate = new Promise(resolve => { releaseWrite = resolve; }); },
       resumeWrites: () => { writeGate = undefined; releaseWrite(); },
       count: () => count, failNext: () => { failNext = true; }, failWrite: () => { failWrite = true; },
@@ -554,6 +563,45 @@ test('selected paths remain unregistered and unsupported media is explicit', asy
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/files' }]);
   await expect(page.locator('.runner-references img')).toHaveCount(0);
 });
+
+test('browser-simulated drops preserve native paths and ignore other targets and DOM drops', async ({ page }) => {
+  await transport(page); await configure(page); await create(page);
+  const paths = ['C:\\Task 10\\한글 file.txt', 'C:\\Task 10\\folder', '\\\\server\\share\\folder'];
+  await page.evaluate(paths => {
+    const fixture = window.__nativeFixture;
+    const payload = { paths, position: { x: 10, y: 20 } };
+    fixture.nativeEvent('tauri://drag-enter', payload);
+    fixture.nativeEvent('tauri://drag-drop', payload, 'other');
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['fixture'], 'browser-file.txt'));
+    document.querySelector('.workspace').dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer }));
+  }, paths);
+  await expect(page.locator('.reference-path input')).toHaveCount(0);
+  await page.evaluate(paths => window.__nativeFixture.drop(paths), paths);
+  await expect.poll(() => page.locator('.reference-path input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(paths);
+  expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]);
+});
+
+for (const state of ['not-ready', 'disabled', 'busy', 'disconnected']) {
+  test(`browser-simulated drop rejects a ${state} Runner without changing candidates`, async ({ page }) => {
+    await transport(page); await configure(page); await create(page);
+    await page.evaluate(() => window.__nativeFixture.drop(['C:\\selected.txt']));
+    await expect(page.locator('.reference-path input')).toHaveValue('C:\\selected.txt');
+    await page.evaluate(state => {
+      const control = window.__nativeFixture.sessions.get('pty-1').control;
+      if (state === 'not-ready') control.state = 'connecting';
+      if (state === 'disconnected') control.state = 'disconnected';
+      if (state === 'disabled') Object.assign(control.observation.commands.find(command => command.text === '/files'),
+        { enabled: false, disabled_reason: 'Reference interaction unavailable' });
+      if (state === 'busy') control.results = [{ id: 1, command: '/status', state: 'pending-interaction' }];
+    }, state);
+    await expect(page.getByRole('button', { name: 'Attach file', exact: true })).toBeDisabled();
+    await page.evaluate(() => window.__nativeFixture.drop(['C:\\rejected folder']));
+    await expect(page.locator('.reference-path input')).toHaveValue('C:\\selected.txt');
+    await expect(page.getByRole('alert')).toBeVisible();
+    expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]);
+  });
+}
 
 test('shortcut preferences preserve canonical availability and stay local across tabs', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
