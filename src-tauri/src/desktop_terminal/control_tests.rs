@@ -43,14 +43,29 @@ fn queued_and_interaction_are_not_committed_settings() {
     let mut protocol = ready();
     let wire = protocol.request(Some("/model".into()), "private-key").unwrap();
     assert!(String::from_utf8(wire).unwrap().contains("private-key"));
-    protocol.response(packet(2, "accepted", "queued")).unwrap();
+    let mut queued = packet(2, "accepted", "queued");
+    queued["changed"] = json!(true);
+    queued["owner_status"] = json!("SETTINGS_CHANGED");
+    queued["observation"] = observation();
+    queued["observation"]["selection"]["model"] = json!("not-committed");
+    protocol.response(queued).unwrap();
     assert_eq!(protocol.snapshot.results[0].state, "queued");
+    assert!(protocol.snapshot.results[0].changed.is_none());
+    assert!(protocol.snapshot.results[0].owner_status.is_none());
     assert_eq!(protocol.snapshot.observation.as_ref().unwrap().selection.model, "m");
     protocol.response(packet(2, "pending-interaction", "awaiting_interaction")).unwrap();
     assert_eq!(protocol.snapshot.results[0].state, "pending-interaction");
-    protocol.response(packet(2, "accepted", "completed")).unwrap();
+    let mut completed = packet(2, "accepted", "completed");
+    completed["owner_status"] = json!("SETTINGS_CHANGED");
+    completed["changed"] = json!(true);
+    completed["settings_change_count"] = json!(1);
+    completed["observation"] = observation();
+    completed["observation"]["selection"]["model"] = json!("owner-confirmed");
+    protocol.response(completed).unwrap();
     assert_eq!(protocol.snapshot.results[0].state, "accepted");
-    assert_eq!(protocol.snapshot.observation.as_ref().unwrap().selection.model, "m");
+    assert_eq!(protocol.snapshot.results[0].changed, Some(json!(true)));
+    assert_eq!(protocol.snapshot.results[0].settings_change_count, Some(json!(1)));
+    assert_eq!(protocol.snapshot.observation.as_ref().unwrap().selection.model, "owner-confirmed");
     let public = serde_json::to_string(&protocol.snapshot).unwrap();
     for private in ["private-key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
 }
@@ -73,7 +88,7 @@ fn rejection_failure_and_uncertainty_remain_distinct_without_replay() {
 }
 #[test]
 fn malformed_or_cross_session_responses_do_not_change_canonical_state() {
-    for mutation in ["session_id", "process_id", "connection_id", "phase"] {
+    for mutation in ["session_id", "process_id", "connection_id", "phase", "observation"] {
         let mut protocol = ready();
         protocol.request(Some("/status".into()), "private").unwrap();
         let mut response = packet(2, "accepted", "completed"); response[mutation] = json!("other");

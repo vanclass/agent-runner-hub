@@ -72,7 +72,8 @@ fn installed_runners_independent_and_owned_shutdown() {
     assert_eq!(first_pty.control_snapshot().unwrap().results.last().unwrap().state, "pending-interaction");
     first_pty.write(b"\x1b[27;0;27;1;0;1_").unwrap();
     harness.pump_for(Duration::from_secs(2));
-    assert_eq!(first_pty.control_snapshot().unwrap().results.last().unwrap().state, "accepted");
+    assert_eq!(first_pty.control_snapshot().unwrap().results.last().unwrap().state, "rejected");
+    assert_eq!(first_pty.control_snapshot().unwrap().results.last().unwrap().owner_status.as_deref(), Some("CANCELLED"));
     first_pty.write((win32_text("/hub-first\n\u{c548}\u{b155} \u{1f30d}") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
     second_pty.write((win32_text("/hub-second\n\u{4e16}\u{754c}") + "\x1b[13;0;13;1;0;1_").as_bytes()).unwrap();
     harness.pump_for(Duration::from_secs(4));

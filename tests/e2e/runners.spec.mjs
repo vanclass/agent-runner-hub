@@ -15,7 +15,11 @@ async function transport(page) {
       attention: { foreground_interaction_active: false },
       commands: ['/status', '/target', '/model', '/account', '/run-mode', '/files', '/resume'].map(text => ({
         id: text, text, aliases: [], parent_id: null, visible: true, enabled: text !== '/resume',
-        disabled_reason: text === '/resume' ? 'No suspended execution' : '', description: text, children: [],
+        disabled_reason: text === '/resume' ? 'No suspended execution' : '', description: text,
+        children: text === '/account' ? [
+          { id: 'account.select', text: 'Select', visible: true, enabled: true, children: [] },
+          { id: 'account.caption', text: '', visible: true, enabled: true, children: [] },
+        ] : [],
       })) });
     let count = 0, callback = 0, failNext = false;
     let writeGate, releaseWrite;
@@ -49,7 +53,7 @@ async function transport(page) {
         if (command === 'runner_command') {
           commands.push(args);
           const control = sessions.get(args.id).control;
-          control.results = [{ id: commands.length, command: args.command, state: 'queued' }];
+          control.results = [{ id: commands.length, command: args.command, state: 'queued', changed: true }];
           return;
         }
         if (command === 'plugin:dialog|open') return args.options.directory ? '/fixture/folder' : ['/fixture/image.png'];
@@ -93,9 +97,11 @@ test('canonical settings, terminal interactions and uncertain commands stay per 
   await expect(page.getByText(/Next configured: configured-model/)).toBeVisible();
   await page.getByRole('button', { name: 'Change Runner Model', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Queued' })).toBeVisible();
+  await expect(page.getByText('Settings changed', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/model' }]);
   await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results[0].state = 'pending-interaction'; });
   await expect(page.getByText(/Waiting for answers or confirmation/)).toBeVisible();
+  await expect(page.getByText('Settings changed', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
   await create(page);
   await expect(page.getByRole('button', { name: 'Change Runner Account' })).toHaveText('pty-2');
@@ -114,10 +120,11 @@ test('process exit preserves a completed native command result between snapshot 
   await page.evaluate(() => {
     const c = window.__nativeFixture.sessions.get('pty-1').control;
     window.__nativeFixture.exit('pty-1', 0, { ...c, state: 'disconnected',
-      results: [{ id: 1, command: '/model', state: 'accepted' }] });
+      results: [{ id: 1, command: '/model', state: 'accepted', ownerStatus: 'SETTINGS_CHANGED', changed: true, settingsChangeCount: 1 }] });
   });
   await expect(page.getByText('Process exited (0)', { exact: true })).toBeVisible();
   await expect(page.getByText(/Completed · accepted by Runner/)).toBeVisible();
+  await expect(page.getByText('Settings changed · Settings changes: 1', { exact: true })).toBeVisible();
   await expect(page.getByText(/Outcome unknown/)).toHaveCount(0);
 });
 
@@ -144,6 +151,8 @@ test('selected paths remain unregistered and unsupported media is explicit', asy
 
 test('shortcut preferences preserve canonical availability and stay local across tabs', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
+  await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Select', exact: true })).toHaveCount(0);
+  await expect(page.locator('.shortcut-bar button').filter({ hasText: /^$/ })).toHaveCount(0);
   await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/resume', exact: true })).toBeDisabled();
   await expect(page.locator('.shortcut-bar')).toContainText('No suspended execution');
   await page.getByRole('button', { name: 'Shortcuts', exact: true }).click();
@@ -161,6 +170,7 @@ test('shortcut preferences preserve canonical availability and stay local across
 
 test('two terminal sessions survive keyed views and keep independent output, input, drafts and geometry', async ({ page }, testInfo) => {
   await transport(page); await configure(page); await create(page);
+  expect((await page.locator('.terminal-host').boundingBox()).height).toBeGreaterThan(180);
   const first = page.locator('.runner-row').first();
   const firstId = await first.getAttribute('data-runner-id');
   await page.evaluate(() => { window.__firstTerminal = document.querySelector('.xterm'); });

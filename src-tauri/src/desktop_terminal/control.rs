@@ -48,6 +48,7 @@ pub struct Observation {
 #[serde(rename_all = "camelCase")]
 pub struct CommandResult {
     pub id: u64, pub command: String, pub state: String, pub code: Option<String>,
+    pub owner_status: Option<String>, pub changed: Option<Value>, pub settings_change_count: Option<Value>,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +96,8 @@ impl Protocol {
         if let Some(text) = &command {
             packet["command"] = json!(text);
             self.snapshot.results.retain(|r| !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
-            self.snapshot.results.push(CommandResult { id: self.next, command: text.clone(), state: "sending".into(), code: None });
+            self.snapshot.results.push(CommandResult { id: self.next, command: text.clone(), state: "sending".into(), code: None,
+                owner_status: None, changed: None, settings_change_count: None });
         }
         self.pending.insert(self.next, Pending { command, started: Instant::now(), awaiting_interaction: false });
         let mut bytes = serde_json::to_vec(&packet).map_err(|_| "Control encoding failed")?;
@@ -128,8 +130,21 @@ impl Protocol {
             self.snapshot.observation = Some(observation);
             self.snapshot.state = "ready".into();
         }
+        if finished && pending.command.is_some() && !packet["observation"].is_null() {
+            self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
+                .map_err(|_| "Malformed canonical observation")?);
+        }
         if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
             result.state = state.into();
+            if finished {
+                result.owner_status = packet["owner_status"].as_str().filter(|status|
+                    !status.is_empty() && status.len() <= 100 && status.bytes().all(|b|
+                        b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')).map(str::to_owned);
+                let acknowledgement = |field: &str| packet.get(field).filter(|value|
+                    value.is_boolean() || value.as_i64().is_some()).cloned();
+                result.changed = acknowledgement("changed");
+                result.settings_change_count = acknowledgement("settings_change_count");
+            }
             result.code = ["code", "failure_code", "error_code"].iter()
                 .find_map(|key| packet[*key].as_str()).filter(|code|
                     code.len() <= 100 && code.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_'))

@@ -16,7 +16,8 @@ export type RunnerObservation = {
   commands: RunnerCommand[];
 };
 export type ControlResult = { id: number; command: string;
-  state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown'; code?: string };
+  state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown'; code?: string;
+  ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: string };
 
@@ -47,7 +48,8 @@ export class RunnerControl {
     return this.sending || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state));
   }
   shortcuts() {
-    const canonical = flattenCommands(this.snapshot.observation?.commands ?? []).filter(command => command.visible);
+    const canonical = flattenCommands(this.snapshot.observation?.commands ?? [])
+      .filter(command => command.visible && command.text.startsWith('/'));
     return [...this.order.map(text => canonical.find(command => command.text === text)).filter((item): item is RunnerCommand => !!item),
       ...canonical.filter(command => !this.order.includes(command.text))];
   }

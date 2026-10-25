@@ -13,8 +13,8 @@
 - Let users configure an installed Runner, create independent Runner tabs, interact with their actual terminals, and terminate one without disturbing the others. Tab selection must preserve execution, output and geometry; normal shutdown must settle Hub-owned processes.
 
 ## Non-Goals
-- This integration does not call Runner control IPC, assign work automatically, deliver attachments, persist sessions, or implement crash recovery or scheduling.
-- Project, model, account, mode, command shortcuts, and attachment controls remain disabled. The connected instruction composer submits through the selected terminal's actual input semantics.
+- This integration does not assign work automatically, confirm attachment delivery, persist sessions, or implement crash recovery or scheduling. Supported per-Runner settings and command interactions use authenticated local control within the [terminal specification](implementation_specs/runner_terminals.md#local-control-and-reference-boundaries).
+- Single Entry default-setting automation and automatic dispatch remain unavailable. Reference selection alone must not imply registration. The connected instruction composer submits through the selected terminal's actual input semantics.
 - Do not store progress state here.
 - Do not store active project selection state here.
 - Do not store deployed runtime state here.

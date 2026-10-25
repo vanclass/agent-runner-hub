@@ -34,6 +34,10 @@ export function RunnerControls({ control }: { control: RunnerControl }) {
     || selection.reasoning_effort !== selection.next_reasoning_effort || selection.service_tier !== selection.next_service_tier);
   const commands = control.shortcuts();
   const last = snapshot.results.at(-1);
+  const completed = last && ['accepted', 'rejected', 'failure'].includes(last.state);
+  const acknowledgement = completed ? [last.ownerStatus === 'CANCELLED' ? 'Cancelled in terminal' : '',
+    last.changed === false ? 'No settings changed' : last.changed === true ? 'Settings changed' : '',
+    typeof last.settingsChangeCount === 'number' ? `Settings changes: ${last.settingsChangeCount}` : ''].filter(Boolean).join(' · ') : '';
   return <section className="context-settings runner-controls" aria-label="Selected Runner settings">
     <div className="settings-grid">{settings.map(setting => {
       const command = commandNamed(snapshot, setting.command);
@@ -69,5 +73,6 @@ export function RunnerControls({ control }: { control: RunnerControl }) {
         : control.sending ? 'Sending command…' : last ? `${last.command}: ${outcomeText[last.state]}${last.code ? ` (${last.code})` : ''}`
           : observation?.attention.foreground_interaction_active ? 'Runner is waiting for interaction in its terminal.' : 'Runner settings connected'}</p>
     {error && <p role="alert" className="runner-error">{error}</p>}
+    {acknowledgement && <p className="scope-note">{acknowledgement}</p>}
   </section>;
 }
