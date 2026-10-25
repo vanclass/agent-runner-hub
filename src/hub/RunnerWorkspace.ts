@@ -10,6 +10,7 @@ export type RunnerTabRecord = {
   installationRoot: string;
   launchOnOpen: boolean;
   lastVerified?: VerifiedContext;
+  recoveryHint?: VerifiedContext;
 };
 export const runnerWorkspaceKey = 'agent-runner-hub.workspace.v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,10 +30,12 @@ function record(value: unknown): RunnerTabRecord | undefined {
     || typeof value.launchOnOpen !== 'boolean') return;
   const lastVerified = value.lastVerified === undefined ? undefined : context(value.lastVerified);
   if (value.lastVerified !== undefined && !lastVerified) return;
+  const recoveryHint = value.recoveryHint === undefined ? undefined : context(value.recoveryHint);
+  if (value.recoveryHint !== undefined && !recoveryHint) return;
   // Explicit projection: process/control identities, drafts and instructions never cross this boundary.
   return { id: value.id, name: value.name, createdOrder: value.createdOrder as number,
     installationRoot: value.installationRoot, launchOnOpen: value.launchOnOpen,
-    ...(lastVerified ? { lastVerified } : {}) };
+    ...(lastVerified ? { lastVerified } : {}), ...(recoveryHint ? { recoveryHint } : {}) };
 }
 
 export class RunnerWorkspace {
@@ -53,7 +56,11 @@ export class RunnerWorkspace {
           this.issue += ` Saved tab ${index + 1} has invalid or duplicate metadata and was skipped.`;
           return;
         }
-        ids.add(tab.id.toLowerCase()); orders.add(tab.createdOrder); tabs.push(tab);
+        // Freeze the prior process's context before any replacement observations can arrive.
+        // Older version-1 tabs have only lastVerified; an existing hint always wins.
+        const recoveryHint = tab.recoveryHint ?? tab.lastVerified;
+        ids.add(tab.id.toLowerCase()); orders.add(tab.createdOrder);
+        tabs.push({ ...tab, ...(recoveryHint ? { recoveryHint } : {}) });
       });
       return tabs.sort((a, b) => a.createdOrder - b.createdOrder);
     } catch (reason) {

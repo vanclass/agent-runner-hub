@@ -26,9 +26,12 @@ export function RunnerRecovery({ session }: { session: RunnerSession }) {
       : view.status === 'starting' ? 'Creating a fresh Runner process…'
         : view.status === 'failed' ? 'Runner launch failed.' : 'Previous process ended; no process was restored.'}
       {' '}Historical work recovery is unconfirmed.</p>
-    {previousContext && <p className="scope-note">Previously verified target: {previousContext.target.owner || 'Unbound'}
+    {previousContext && <p className="scope-note">Historical target: {previousContext.target.owner || 'Unbound'}
       {previousContext.target.project && ` / ${previousContext.target.project}`}.
-      {previousContext.workflowKind && ` Previous workflow: ${previousContext.workflowKind}.`} Context only.</p>}
+      {` Binding: ${previousContext.target.binding_state}.`}
+      {previousContext.runMode && ` Previous run mode: ${previousContext.runMode}.`}
+      {previousContext.workflowKind && ` Previous workflow: ${previousContext.workflowKind}.`}
+      {' '}Previous process context only; current settings below come from this Runner.</p>}
     <button type="button" className="command-button" disabled={!!reason} title={reason || command?.description} onClick={() => void recover()}>
       Recover earlier work</button>
     <p role="status">{last ? `/recover: ${last.state}${last.code ? ` (${last.code})` : ''}. ` : ''}

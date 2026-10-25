@@ -27,11 +27,11 @@ export class RunnerSession {
   private assignmentWriting = false;
   view: RunnerView;
   tab: RunnerTabRecord;
-  readonly previousContext: RunnerTabRecord['lastVerified'];
+  readonly previousContext: RunnerTabRecord['recoveryHint'];
 
   constructor(tab: RunnerTabRecord, private readonly changed: () => void, readonly restored = false) {
     this.tab = tab;
-    this.previousContext = tab.lastVerified;
+    this.previousContext = tab.recoveryHint;
     this.view = { id: tab.id, createdOrder: tab.createdOrder, name: tab.name,
       status: tab.launchOnOpen ? 'starting' : 'exited', canSubmit: false, draft: '', submitting: false };
     this.control = new RunnerControl(() => { this.captureVerified(); this.changed(); });
@@ -53,6 +53,7 @@ export class RunnerSession {
   private captureVerified() {
     const observation = this.control.snapshot.observation;
     if (!observation || !this.control.observationFresh) return;
+    // Fresh settings do not confirm historical work recovery or retire its retained hint.
     this.tab = { ...this.tab, lastVerified: {
       target: { ...observation.target }, runMode: observation.run_mode,
       workflowKind: observation.execution.workflow_kind,

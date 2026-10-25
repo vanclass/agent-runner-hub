@@ -3,12 +3,12 @@ import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
 
-async function transport(page) {
-  await page.addInitScript(() => {
+async function transport(page, freshTarget) {
+  await page.addInitScript(freshTarget => {
     const sessions = new Map();
     const callbacks = new Map(), listeners = new Map();
     const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [];
-    const canonical = id => ({ run_mode: 'task-run', target: { binding_state: 'bound', owner: 'Project', project: id },
+    const canonical = id => ({ run_mode: 'task-run', target: freshTarget ?? { binding_state: 'bound', owner: 'Project', project: id },
       selection: { account: id, model: 'effective-model', reasoning_effort: 'medium', service_tier: 'default', source: 'execution',
         next_model: alignNew ? 'effective-model' : 'configured-model', next_reasoning_effort: alignNew ? 'medium' : 'high', next_service_tier: 'default' },
       execution: { lifecycle_state: 'INTERACTIVE_READY', owned_execution_alive: false, workflow_kind: '' },
@@ -82,7 +82,7 @@ async function transport(page) {
       resumeWrites: () => { writeGate = undefined; releaseWrite(); },
       count: () => count, failNext: () => { failNext = true; }, failWrite: () => { failWrite = true; },
       readyNew: () => { alignNew = true; } };
-  });
+  }, freshTarget);
 }
 
 async function configure(page) {
@@ -129,6 +129,67 @@ test('workspace restores five stable tabs without replaying input or commands', 
   }
 });
 
+for (const target of [
+  { binding_state: 'bound', owner: 'Project', project: 'Fresh B' },
+  { binding_state: 'unbound', owner: '', project: '' },
+]) {
+  test(`workspace retains historical A across fresh ${target.project || 'unbound'} observations and settings changes`, async ({ page }) => {
+    await transport(page, target); await configure(page); await create(page);
+    const historical = { target: { binding_state: 'bound', owner: 'Project', project: 'Historical A' },
+      runMode: 'issue-run', workflowKind: 'IssueRun' };
+    await page.evaluate(context => {
+      const observation = window.__nativeFixture.sessions.get('pty-1').control.observation;
+      observation.target = context.target; observation.run_mode = context.runMode;
+      observation.execution.workflow_kind = context.workflowKind;
+    }, historical);
+    const current = page.getByRole('button', { name: 'Change Runner Project / Target', exact: true });
+    await expect(current).toHaveText('Project / Historical A');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
+    expect(saved.tabs[0].lastVerified).toEqual(historical);
+    expect(saved.tabs[0].recoveryHint).toBeUndefined();
+    for (let reopening = 0; reopening < 3; reopening++) {
+      await page.reload();
+      await expect(page.locator('.runner-row')).toHaveCount(1);
+      await page.locator('.runner-row .nav-row').click();
+      await expect(current).toHaveText(target.project ? 'Project / Fresh B' : 'Unbound');
+      const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
+      expect(persisted.tabs[0].id).toBe(saved.tabs[0].id);
+      expect(persisted.tabs[0].createdOrder).toBe(saved.tabs[0].createdOrder);
+      expect(persisted.tabs[0].lastVerified).toEqual({ target, runMode: 'task-run', workflowKind: '' });
+      const recovery = page.getByLabel('Restored Runner recovery');
+      await expect(recovery).toContainText('Historical target: Project / Historical A');
+      expect(persisted.tabs[0].recoveryHint).toEqual(historical);
+      await expect(recovery).toContainText('Previous run mode: issue-run');
+      await expect(recovery).toContainText('Previous workflow: IssueRun');
+      await expect(page.getByRole('button', { name: 'Change Runner Run Mode', exact: true })).toHaveText('task-run');
+      await expect(recovery).toContainText('Historical work recovery is unconfirmed');
+      expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
+      if (reopening === 0) {
+        await current.click();
+        await page.evaluate(() => {
+          const control = window.__nativeFixture.sessions.get('pty-1').control;
+          control.observation.target = { binding_state: 'bound', owner: 'Project', project: 'Changed C' };
+          control.observation.run_mode = 'direct-run';
+          control.results = [{ id: 1, command: '/target', state: 'accepted', changed: true }];
+          control.observation.commands.push({ id: 'recover', text: '/recover', aliases: [], parent_id: null,
+            visible: true, enabled: true, disabled_reason: '', description: 'Discover work', children: [] });
+        });
+        await expect(current).toHaveText('Project / Changed C');
+        await expect(page.getByRole('button', { name: 'Change Runner Run Mode', exact: true })).toHaveText('direct-run');
+        await page.getByRole('button', { name: 'Recover earlier work', exact: true }).click();
+        await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
+          { id: 2, command: '/recover', state: 'accepted', code: 'SUCCESS' }]; });
+        await expect(recovery).toContainText('/recover: accepted (SUCCESS)');
+        await expect(recovery).toContainText('Historical work recovery is unconfirmed');
+        const changed = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0]);
+        expect(changed.lastVerified.target.project).toBe('Changed C');
+        expect(changed.lastVerified.runMode).toBe('direct-run');
+        expect(changed.recoveryHint).toEqual(historical);
+      }
+    }
+  });
+}
+
 test('workspace isolates malformed records, duplicate identities and launch failures', async ({ page }) => {
   await transport(page);
   await page.addInitScript(() => {
@@ -136,7 +197,8 @@ test('workspace isolates malformed records, duplicate identities and launch fail
       name: `Saved ${index}`, createdOrder: index, installationRoot: root, launchOnOpen: true });
     localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1,
       tabs: [tab(3), tab(1), tab(1), { ...tab(9), id: 'bad' }, tab(2, '/missing'),
-        { ...tab(8), createdOrder: 3 }, { ...tab(4), installationRoot: 'relative' }] }));
+        { ...tab(8), createdOrder: 3 }, { ...tab(4), installationRoot: 'relative' },
+        { ...tab(5), recoveryHint: { target: null } }] }));
     window.__nativeFixture.failNext();
   });
   await page.goto('/');
@@ -167,7 +229,11 @@ for (const raw of ['{"version":1,"tabs":[', '{"version":99,"tabs":[]}']) {
 
 test('workspace retains the last atomic commit when storage rejects a write', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
+  await page.reload();
+  await page.locator('.runner-row .nav-row').click();
+  await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).toHaveText('Project / pty-1');
   const before = await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'));
+  expect(JSON.parse(before).tabs[0].recoveryHint.target.project).toBe('pty-1');
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
@@ -180,6 +246,11 @@ test('workspace retains the last atomic commit when storage rejects a write', as
   await page.getByRole('textbox', { name: 'Runner name', exact: true }).press('Enter');
   await expect(page.getByRole('alert').filter({ hasText: 'Workspace save failed' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).toBe(before);
+  await page.reload();
+  await expect(page.locator('.runner-row')).toHaveCount(1);
+  await page.locator('.runner-row .nav-row').click();
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / pty-1');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0].name)).toBe('Runner 1');
 });
 
 test('restored recovery uses only the current canonical command and terminal outcome', async ({ page }) => {
@@ -211,13 +282,20 @@ test('workspace keeps ended tabs dormant and strips untrusted replay fields', as
   await page.addInitScript(() => localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1,
     tabs: [{ id: '10000000-0000-4000-8000-000000000001', name: 'Ended', createdOrder: 4,
       installationRoot: '/fixture/install', launchOnOpen: false,
+      recoveryHint: { target: { binding_state: 'bound', owner: 'Project', project: 'Retained A', key: 'private' },
+        runMode: 'task-run', workflowKind: 'TaskRun', instructions: 'never persist' },
       pid: 42, pty: 'old', key: 'secret', draft: 'replay', instruction: 'execute', sessionId: 'stale' }] })));
   await page.goto('/');
   await expect(page.locator('.runner-row')).toHaveCount(1);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
-  expect(Object.keys(stored.tabs[0]).sort()).toEqual(['createdOrder', 'id', 'installationRoot', 'launchOnOpen', 'name']);
+  expect(Object.keys(stored.tabs[0]).sort()).toEqual(['createdOrder', 'id', 'installationRoot', 'launchOnOpen', 'name', 'recoveryHint']);
+  expect(stored.tabs[0].recoveryHint).toEqual({ target: { binding_state: 'bound', owner: 'Project', project: 'Retained A' },
+    runMode: 'task-run', workflowKind: 'TaskRun' });
   await page.locator('.runner-row .nav-row').click();
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / Retained A');
+  await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).not.toContainText('Retained A');
+  await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Recover earlier work', exact: true })).toBeDisabled();
 });
 
