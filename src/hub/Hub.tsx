@@ -14,7 +14,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const runners = [...fixtures, ...liveRunners];
   const [installation, setInstallation] = useState<RunnerInstallation | null>(null);
   const [launching, setLaunching] = useState(false);
-  useEffect(() => () => sessions.dispose(), [sessions]);
+  useEffect(() => sessions.retain(), [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'black'>('light');
   const selected = runners.find(runner => runner.id === selectedId);
@@ -39,6 +39,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         New Runner
       </button>
     </header>
+    {sessions.workspace.issue && <p role="alert" className="runner-error">{sessions.workspace.issue}</p>}
     <div className="shell-body">
       <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}

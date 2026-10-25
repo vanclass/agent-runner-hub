@@ -3,6 +3,7 @@ import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
 import { RunnerComposer } from './RunnerComposer';
 import { RunnerControls } from './RunnerControls';
+import { RunnerRecovery } from './RunnerRecovery';
 import { RunnerReferences } from './RunnerReferences';
 import { RunnerLocation, type RunnerInstallation } from './RunnerLocation';
 import type { SingleEntry } from './singleEntry';
@@ -22,6 +23,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
       {session && <button type="button" className="terminate-runner" disabled={runner?.status !== 'running'}
         onClick={() => void session.terminate()}>Terminate Runner</button>}
     </header>
+    {session && <RunnerRecovery session={session} />}
     {session ? <RunnerControls control={session.control} /> : singleEntry ? <SingleEntrySettings entry={entry} />
       : <section className="context-settings" aria-label="Selected Runner settings"><div className="settings-grid">
         {['Project', 'Model', 'Account', 'Mode'].map(label => <label className="setting" key={label}><span>{label}</span>

@@ -9,11 +9,11 @@
 - Keep Single Entry first and fixed above the scrollable Runner list. Runner rows follow creation order, with a status icon and editable name on one line. Ellipsis affects display only.
 - Selecting a context highlights its row and shows its own header and settings scope. Rename changes the local display name without changing Runner, project, or session identity.
 - Offer separate Light and Black themes across the entire application, including navigation, controls, output, composer, borders, and interaction states.
-- Keep the default application empty until real Runners are connected. Demonstration data belongs only in tests or previews.
+- Keep a new workspace empty until real Runners are connected. Reopening restores saved tab identities and order with fresh owned Runner processes; historical work requires Runner-owned recovery. Demonstration data belongs only in tests or previews.
 - Let users configure an installed Runner, create independent Runner tabs, interact with their actual terminals, and terminate one without disturbing the others. Tab selection must preserve execution, output and geometry; normal shutdown must settle Hub-owned processes.
 
 ## Non-Goals
-- This integration does not confirm attachment delivery, persist sessions, or implement crash recovery or scheduling. Supported per-Runner settings and command interactions use authenticated local control within the [terminal specification](implementation_specs/runner_terminals.md#local-control-and-reference-boundaries).
+- This integration does not confirm attachment delivery, reconnect to old processes, replay instructions, or implement scheduling. Durable tab restoration and Runner-owned historical recovery follow the [terminal specification](implementation_specs/runner_terminals.md#durable-workspace-and-recovery).
 - Single Entry assigns once to a verified eligible Runner or creates one through the owned launch path. Unsupported default changes require Runner terminal interaction and leave instructions unsent. Reference selection alone must not imply registration.
 - Do not store progress state here.
 - Do not store active project selection state here.
@@ -22,5 +22,5 @@
 ## Usage
 - Single Entry presents assignment defaults from verified Runner observations. Changing these defaults must not implicitly change existing Runners; [assignment boundaries](implementation_specs/runner_terminals.md#single-entry-assignment) govern reuse, readiness and delivery uncertainty.
 - Individual Runner contexts have their own settings scope. Double-click a row name, use its rename action, or press F2 to edit; Enter saves, Escape cancels, and leaving the input saves a nonblank name.
-- Theme selection applies immediately for the current application instance. Only the installation location is saved; tab sessions and theme selection are local to the current Hub instance.
+- Theme selection applies immediately for the current application instance. Installation configuration and nonsecret tab metadata are saved; theme selection, terminal buffers, composer input and pending submissions remain local to the current Hub instance.
 - Preserve the Vite/React, Tauri 2, Desktop Terminal, Native I/O, Build System, and Windows/macOS CI foundations. Verify a local installation in Single Entry, then use New Runner; process and platform boundaries are described in the [terminal specification](implementation_specs/runner_terminals.md).

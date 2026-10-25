@@ -103,6 +103,138 @@ function records(writes, id) {
     .map(match => ({ vk: +match[1], char: +match[3], down: match[4] === '1', modifiers: +match[5] }));
 }
 
+test('workspace restores five stable tabs without replaying input or commands', async ({ page }) => {
+  await transport(page); await configure(page);
+  for (let index = 0; index < 5; index++) await create(page);
+  await page.getByRole('button', { name: 'Rename Runner 2', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Runner name', exact: true }).fill('Durable 이름');
+  await page.getByRole('textbox', { name: 'Runner name', exact: true }).press('Enter');
+  await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('must never replay');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
+  expect(saved.tabs).toHaveLength(5);
+  expect(saved.tabs[1].name).toBe('Durable 이름');
+  expect(saved.tabs[1].lastVerified.target.owner).toBe('Project');
+  expect(JSON.stringify(saved)).not.toContain('must never replay');
+  for (let reopening = 0; reopening < 2; reopening++) {
+    await page.reload();
+    await expect(page.locator('.runner-row')).toHaveCount(5);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(5);
+    expect(await page.locator('.runner-row').evaluateAll(rows => rows.map(row => row.dataset.runnerId)))
+      .toEqual(saved.tabs.map(tab => tab.id));
+    await page.locator('.runner-row').nth(1).locator('.nav-row').click();
+    await expect(page.getByRole('heading', { name: 'Durable 이름', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical work recovery is unconfirmed');
+    await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
+    expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
+  }
+});
+
+test('workspace isolates malformed records, duplicate identities and launch failures', async ({ page }) => {
+  await transport(page);
+  await page.addInitScript(() => {
+    const tab = (index, root = '/fixture/install') => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      name: `Saved ${index}`, createdOrder: index, installationRoot: root, launchOnOpen: true });
+    localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1,
+      tabs: [tab(3), tab(1), tab(1), { ...tab(9), id: 'bad' }, tab(2, '/missing'),
+        { ...tab(8), createdOrder: 3 }, { ...tab(4), installationRoot: 'relative' }] }));
+    window.__nativeFixture.failNext();
+  });
+  await page.goto('/');
+  await expect(page.locator('.runner-row')).toHaveCount(3);
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(3);
+  expect(await page.locator('.runner-row .runner-name').allTextContents()).toEqual(['Saved 1', 'Saved 2', 'Saved 3']);
+  await page.locator('.runner-row').nth(0).locator('.nav-row').click();
+  await expect(page.getByText('fixture process launch failed', { exact: false })).toBeVisible();
+  await page.locator('.runner-row').nth(1).locator('.nav-row').click();
+  await expect(page.getByText('Wrong configured installation', { exact: false })).toBeVisible();
+  await expect(page.locator('.runner-controls .control-status')).toContainText('Control disconnected');
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Recovery unavailable');
+  await page.locator('.runner-row').nth(2).locator('.nav-row').click();
+  await expect(page.getByText('Process running', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'invalid or duplicate' })).toBeVisible();
+});
+
+for (const raw of ['{"version":1,"tabs":[', '{"version":99,"tabs":[]}']) {
+  test(`workspace retains unreadable or unsupported data: ${raw}`, async ({ page }) => {
+    await transport(page);
+    await page.addInitScript(raw => localStorage.setItem('agent-runner-hub.workspace.v1', raw), raw);
+    await page.goto('/');
+    await expect(page.getByRole('alert').filter({ hasText: 'Workspace restoration unavailable' })).toBeVisible();
+    expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
+    expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).toBe(raw);
+  });
+}
+
+test('workspace retains the last atomic commit when storage rejects a write', async ({ page }) => {
+  await transport(page); await configure(page); await create(page);
+  const before = await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'));
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === 'agent-runner-hub.workspace.v1') throw new Error('fixture storage interrupted');
+      original.call(this, key, value);
+    };
+  });
+  await page.getByRole('button', { name: 'Rename Runner 1', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Runner name', exact: true }).fill('Uncommitted');
+  await page.getByRole('textbox', { name: 'Runner name', exact: true }).press('Enter');
+  await expect(page.getByRole('alert').filter({ hasText: 'Workspace save failed' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).toBe(before);
+});
+
+test('restored recovery uses only the current canonical command and terminal outcome', async ({ page }) => {
+  await transport(page); await configure(page); await create(page);
+  await page.reload();
+  await page.locator('.runner-row .nav-row').click();
+  const button = page.getByRole('button', { name: 'Recover earlier work', exact: true });
+  await expect(button).toBeDisabled();
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').control.observation.commands.push({
+    id: 'recover', text: '/recover', aliases: [], parent_id: null, visible: true, enabled: true,
+    disabled_reason: '', description: 'Discover retained work', children: [],
+  }));
+  await expect(button).toBeEnabled();
+  await button.click();
+  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/recover' }]);
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
+    { id: 1, command: '/recover', state: 'pending-interaction' }]; });
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('pending-interaction');
+  await expect(button).toBeDisabled();
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
+    { id: 1, command: '/recover', state: 'rejected', code: 'CANCELLED' }]; });
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('rejected (CANCELLED)');
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical work recovery is unconfirmed');
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+});
+
+test('workspace keeps ended tabs dormant and strips untrusted replay fields', async ({ page }) => {
+  await transport(page);
+  await page.addInitScript(() => localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1,
+    tabs: [{ id: '10000000-0000-4000-8000-000000000001', name: 'Ended', createdOrder: 4,
+      installationRoot: '/fixture/install', launchOnOpen: false,
+      pid: 42, pty: 'old', key: 'secret', draft: 'replay', instruction: 'execute', sessionId: 'stale' }] })));
+  await page.goto('/');
+  await expect(page.locator('.runner-row')).toHaveCount(1);
+  expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
+  expect(Object.keys(stored.tabs[0]).sort()).toEqual(['createdOrder', 'id', 'installationRoot', 'launchOnOpen', 'name']);
+  await page.locator('.runner-row .nav-row').click();
+  await expect(page.getByRole('button', { name: 'Recover earlier work', exact: true })).toBeDisabled();
+});
+
+test('workspace drops an uncertain Single Entry submission on reopening', async ({ page }) => {
+  await transport(page); await configure(page); await create(page);
+  await entry(page, 'WG6 uncertain instruction');
+  await page.evaluate(() => window.__nativeFixture.failWrite());
+  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'automatic retry and reassignment are blocked' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).not.toContain('WG6 uncertain instruction');
+  await page.reload();
+  await expect(page.locator('.runner-row')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(1);
+  await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
+});
+
 test('Single Entry creates when no eligible idle Runner exists', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.execution.owned_execution_alive = true; });

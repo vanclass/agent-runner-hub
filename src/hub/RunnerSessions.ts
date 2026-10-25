@@ -7,6 +7,7 @@ import { RunnerControl, type ControlSnapshot } from './runnerControl';
 import { RunnerReferenceSelection } from './RunnerReferences';
 import type { RunnerView } from './model';
 import { SingleEntry } from './singleEntry';
+import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
 import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
@@ -25,10 +26,15 @@ export class RunnerSession {
   private inputUnsettled = false;
   private assignmentWriting = false;
   view: RunnerView;
+  tab: RunnerTabRecord;
+  readonly previousContext: RunnerTabRecord['lastVerified'];
 
-  constructor(id: string, order: number, private readonly changed: () => void) {
-    this.view = { id, createdOrder: order, name: `Runner ${order}`, status: 'starting', canSubmit: false, draft: '', submitting: false };
-    this.control = new RunnerControl(() => this.changed());
+  constructor(tab: RunnerTabRecord, private readonly changed: () => void, readonly restored = false) {
+    this.tab = tab;
+    this.previousContext = tab.lastVerified;
+    this.view = { id: tab.id, createdOrder: tab.createdOrder, name: tab.name,
+      status: tab.launchOnOpen ? 'starting' : 'exited', canSubmit: false, draft: '', submitting: false };
+    this.control = new RunnerControl(() => { this.captureVerified(); this.changed(); });
     this.references = new RunnerReferenceSelection(() => this.changed());
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
@@ -44,6 +50,14 @@ export class RunnerSession {
     });
   }
   private update(change: Partial<RunnerView>) { this.view = { ...this.view, ...change }; this.changed(); }
+  private captureVerified() {
+    const observation = this.control.snapshot.observation;
+    if (!observation || !this.control.observationFresh) return;
+    this.tab = { ...this.tab, lastVerified: {
+      target: { ...observation.target }, runMode: observation.run_mode,
+      workflowKind: observation.execution.workflow_kind,
+    } };
+  }
   private protocolChanged() {
     if (this.input && this.view.canSubmit !== this.input.canSubmit) this.update({ canSubmit: this.input.canSubmit });
   }
@@ -102,6 +116,8 @@ export class RunnerSession {
       const pty = await openPty(request, (bytes, consumed) => {
         if (this.disposed) consumed(); else this.terminal.write(bytes, consumed);
       }, event => {
+        if (this.disposed) return;
+        this.tab = { ...this.tab, launchOnOpen: false };
         const final = (event as typeof event & { control?: ControlSnapshot }).control;
         this.control.stop('Runner process exited', final);
         this.update({ status: 'exited', exitCode: event.code, detail: event.error ?? undefined });
@@ -114,10 +130,11 @@ export class RunnerSession {
       for (const bytes of this.pending.splice(0)) await pty.write(bytes);
       await pty.resize(this.terminal.cols, this.terminal.rows);
     } catch (reason) {
+      if (!this.pty) this.control.stop('Runner failed to launch');
       this.update({ ...(this.pty ? {} : { status: 'failed' }), detail: String(reason) });
     }
   }
-  rename(name: string) { this.update({ name }); }
+  rename(name: string) { this.tab = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting) this.update({ draft }); }
   async submit() {
     if (this.view.status !== 'running' || !this.pty) throw new Error('This Runner process is not running.');
@@ -168,21 +185,51 @@ export class RunnerSessions {
   private readonly listeners = new Set<() => void>();
   private snapshot: readonly RunnerView[] = [];
   private order = 0;
+  private restored = false;
+  private disposed = false;
+  readonly workspace = new RunnerWorkspace();
+  private consumers = 0;
   readonly entry = new SingleEntry(() => [...this.sessions.values()],
     (location, token) => this.create(location, token), () => this.changed());
   readonly getSnapshot = () => this.snapshot;
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private readonly changed = () => {
+    if (this.disposed) return;
+    this.workspace.save([...this.sessions.values()].map(session => session.tab));
     this.snapshot = [...this.sessions.values()].map(session => session.view);
     this.listeners.forEach(listener => listener());
   };
   get(id?: string) { return id ? this.sessions.get(id) : undefined; }
+  retain() {
+    this.consumers++;
+    this.restore();
+    return () => {
+      this.consumers--;
+      queueMicrotask(() => { if (!this.consumers) this.dispose(); });
+    };
+  }
+  restore() {
+    if (this.restored) return;
+    this.restored = true;
+    const tabs = this.workspace.load();
+    for (const tab of tabs) {
+      const session = new RunnerSession(tab, this.changed, true);
+      this.sessions.set(tab.id, session);
+      this.order = Math.max(this.order, tab.createdOrder);
+    }
+    this.changed();
+    for (const session of this.sessions.values()) {
+      if (session.tab.launchOnOpen) void session.open(session.tab.installationRoot);
+    }
+  }
   create(location: string, token?: symbol) {
-    const session = new RunnerSession(crypto.randomUUID(), ++this.order, this.changed);
+    const order = ++this.order;
+    const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
+      installationRoot: location, launchOnOpen: true }, this.changed);
     this.sessions.set(session.view.id, session);
     if (token && !session.reserve(token)) throw new Error('New Runner reservation failed.');
     this.changed();
     return { session, launched: session.open(location) };
   }
-  dispose() { this.sessions.forEach(session => session.dispose()); }
+  dispose() { this.disposed = true; this.sessions.forEach(session => session.dispose()); }
 }

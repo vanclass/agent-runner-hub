@@ -4,9 +4,19 @@
 
 `src/hub/RunnerSessions.ts` owns each Runner's terminal, PTY connection, input ordering, output parser, scrollback, draft, and observed process state. `Hub.tsx` owns selection and composes the views. A keyed `Workspace.tsx` can unmount: `RunnerTerminal.tsx` only detaches its geometry observer. Selecting the tab reattaches the same xterm element and fits that existing terminal. Inactive terminals continue parsing and acknowledging output; selection never launches or closes a process.
 
-Names are local display labels. The row identity and its native PTY identity remain stable when renamed. Rows retain creation order, and Single Entry remains above their independently scrolling list. Only the configured installation location is persisted; Runner tabs, terminal buffers, and drafts are process-local.
+Names are local display labels. The row identity and its current native PTY identity remain stable when renamed. Rows retain creation order, and Single Entry remains above their independently scrolling list. Tab metadata survives reopening through the Hub-owned workspace boundary below; terminal buffers, drafts and execution attempts remain process-local.
 
 Composer drafts and pending submission belong to the session snapshot. Switching views during a pending PTY write preserves its disabled/busy state and cannot submit the same draft again; successful delivery clears that session's draft.
+
+## Durable workspace and recovery
+
+`RunnerWorkspace.ts` owns the versioned `agent-runner-hub.workspace.v1` local-storage record and its explicit metadata projection. `RunnerSessions.ts` restores the validated records in saved creation order before launching any processes. The manifest retains stable Hub IDs, labels, order, verified installation roots, launch intent and the last authenticated target/run-mode/workflow context. A single atomic replacement commits relevant changes during use; failed writes retain the prior commit and display a warning. Unsupported or unreadable manifests remain untouched. Invalid or duplicate records are skipped independently with a visible diagnostic.
+
+Previously running or still-starting tabs invoke the existing native Runner launch path once each. Installation resolution and managed-runtime verification happen again before process creation. A missing installation or failed launch remains in its own tab for the next reopening; ended tabs remain visible without starting a process. Native PTY/control identities are newly allocated and never loaded from storage. Tab switching retains the new session mapping. Window teardown preserves the committed launch intent while the native owner settles all descendants.
+
+`RunnerRecovery.tsx` distinguishes a restored workspace and fresh process from unconfirmed historical work. It retains the startup's previously verified context as a hint and offers `/recover` only from a fresh canonical visible/enabled command projection. Runner owns candidate discovery, selection, admission, confirmation and continuation in that tab's terminal. Rejection, pending interaction, unavailable recovery and command completion remain distinct; accepting a command alone does not establish successful TaskRun, DirectRun or IssueRun recovery.
+
+The current public control projection provides no logical Task/Issue/workload identifier or authoritative work-recovery receipt. Hub invents none and does not persist the private transport session identity. The manifest excludes PIDs, handles, control keys/capabilities, credentials, terminal output, composer input, Single Entry submissions and uncertain commands. Restoration never reconnects to old processes or replays instructions, selections or commands. Scheduling and automatic work recovery remain outside this integration.
 
 ## Single Entry assignment
 
@@ -46,7 +56,7 @@ The standalone build passes a relative frontend directory to Tauri so Windows dr
 
 `runnerInput.ts` honors the Win32 input mode requested through ConPTY. Physical keys retain their virtual key and modifiers; the composer encodes Unicode as UTF-16 key records and embedded line breaks as Shift+Enter, followed by one ordinary Enter. On standard VT terminals, the composer uses the negotiated bracketed-paste protocol and a separate Enter. Terminal responses and binary input retain their protocol bytes. The composer appends to any existing terminal draft; it does not replace Runner's own editor or interpret commands.
 
-The UI reports starting, successful process launch, launch failure, and observed exit/code or transport errors. Terminal text never establishes task readiness, work completion, or assignment state. Launch and unexpected-exit failures affect only that session. Single Entry assignment uses the authenticated evidence above; scheduling, crash recovery and restored sessions remain outside this integration. xterm query replies and focus notifications retain their protocol path without becoming user-draft evidence; ordinary terminal typing still excludes automatic assignment.
+The UI reports starting, successful process launch, launch failure, and observed exit/code or transport errors. Terminal text never establishes task readiness, work completion, or assignment state. Launch and unexpected-exit failures affect only that session. Single Entry assignment uses the authenticated evidence above; workspace restoration never restores its pending assignments. xterm query replies and focus notifications retain their protocol path without becoming user-draft evidence; ordinary terminal typing still excludes automatic assignment.
 
 ## Local control and reference boundaries
 
