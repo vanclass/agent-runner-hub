@@ -8,6 +8,8 @@ async function transport(page, freshTarget, referenceOptions) {
     const sessions = new Map();
     const callbacks = new Map(), listeners = new Map();
     const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [], referenceRequests = [];
+    const staged = [], clipboardReads = [], imageCloses = [];
+    let missingImage = false, stageFailure = false, stageGate, releaseStage;
     let referenceSequence = 100, stableSequence = 0;
     const inventory = (items, offset = 0) => ({ total_count: items.length, offset,
       next_offset: offset + 2 < items.length ? offset + 2 : null,
@@ -71,7 +73,8 @@ async function transport(page, freshTarget, referenceOptions) {
           if (failNext) { failNext = false; throw new Error('fixture process launch failed'); }
           if (args.request.runnerLocation !== '/fixture/install') throw new Error('Wrong configured installation');
           const id = `pty-${count}`;
-          sessions.set(id, { channel: args.onEvent, sequence: 0, control: { state: 'ready', observation: canonical(id), results: [] } });
+          sessions.set(id, { channel: args.onEvent, sequence: 0, control: { state: 'ready', observation: canonical(id), results: [],
+            clipboardStaging: !!referenceOptions?.clipboard } });
           if (referenceOptions) {
             sessions.get(id).items = [];
             sessions.get(id).control.references = { capability: { version: 1, inventory_page_size: 2,
@@ -101,11 +104,26 @@ async function transport(page, freshTarget, referenceOptions) {
           const session = sessions.get(args.id), requestId = ++referenceSequence;
           referenceRequests.push({ ...args, requestId });
           if (referenceOptions.admissionFailure) return { state: 'failure', detail: 'Reference request was not submitted: fixture queue unavailable' };
+          if (referenceOptions.unknownAdmission) return { state: 'outcome-unknown', detail: 'Fixture admission receipt lost; do not repeat' };
           const result = { id: requestId, operation: args.request.operation, offset: args.request.offset ?? 0, state: 'queued' };
           session.control.references.results.push(result);
           if (args.request.operation === 'references.list') Object.assign(result, { state: 'accepted', inventory: inventory(session.items, args.request.offset) });
           else if (referenceOptions.auto) finishReference(args.id, requestId);
           return { state: 'admitted', id: requestId };
+        }
+        if (command === 'plugin:clipboard-manager|read_image') {
+          clipboardReads.push(true);
+          if (missingImage) throw new Error('Clipboard has no image');
+          return 42;
+        }
+        if (command === 'plugin:image|size') return { width: 2, height: 1 };
+        if (command === 'plugin:image|rgba') return [255, 0, 0, 255, 0, 255, 0, 255];
+        if (command === 'plugin:resources|close') { imageCloses.push(args.rid); return; }
+        if (command === 'runner_stage_clipboard') {
+          if (stageGate) await stageGate;
+          if (stageFailure) throw new Error('Fixture staging is not writable');
+          const path = `/fixture/hub-owned/${args.id}/clipboard-${staged.length + 1}.png`;
+          staged.push({ ...args, path }); return path;
         }
         if (command === 'plugin:dialog|open') return args.options.directory ? '/fixture/folder' : ['/fixture/image.png'];
         if (command === 'plugin:event|listen') { listeners.set(args.handler, { event: args.event, target: args.target }); return args.handler; }
@@ -118,6 +136,10 @@ async function transport(page, freshTarget, referenceOptions) {
     };
     window.__nativeFixture = { sessions, writes, resizes, acknowledgements, closed, commands, emit, exit,
       referenceRequests, finishReference,
+      staged, clipboardReads, imageCloses,
+      missingImage: value => { missingImage = value; }, stageFailure: value => { stageFailure = value; },
+      pauseStage: () => { stageGate = new Promise(resolve => { releaseStage = resolve; }); },
+      resumeStage: () => { stageGate = undefined; releaseStage(); },
       // Browser simulation only. The configured native content window emits by label.
       nativeEvent,
       drop: paths => nativeEvent('tauri://drag-drop', { paths, position: { x: 0, y: 0 } }),
@@ -156,6 +178,76 @@ test('reference extension registers duplicate picker paths and samples ordered i
   expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => item.request.operation))).toEqual([
     'references.register', 'references.register', 'references.register', 'references.list', 'references.list']);
 });
+test('clipboard capture stages once and retains its Runner through tab and terminal interactions', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeEnabled();
+  await page.evaluate(() => window.__nativeFixture.pauseStage());
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByText('Reading clipboard and staging PNG for this Runner…')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
+  await create(page);
+  await page.evaluate(() => window.__nativeFixture.resumeStage());
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(1);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests[0].id)).toBe('pty-1');
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
+  await page.locator('.runner-row').first().locator('.nav-row').click();
+  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
+  const result = await page.evaluate(() => {
+    const f = window.__nativeFixture;
+    return { reads: f.clipboardReads.length, closes: f.imageCloses, stage: f.staged.map(s => [s.id, s.png.slice(0, 8)]),
+      stable: f.sessions.get('pty-1').items[0].reference_id,
+      persisted: localStorage.getItem('agent-runner-hub.workspace.v1') };
+  });
+  expect(result.reads).toBe(1); expect(result.closes).toEqual([42]);
+  expect(result.stage).toEqual([['pty-1', [137, 80, 78, 71, 13, 10, 26, 10]]]);
+  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText([result.stable]);
+  expect(result.persisted).not.toContain('clipboard-');
+  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(2);
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 102, 'rejected'));
+  await expect(page.getByText(/Rejected · no registration confirmed/)).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.staged.map(s => s.path))).toEqual([
+    '/fixture/hub-owned/pty-1/clipboard-1.png', '/fixture/hub-owned/pty-1/clipboard-2.png']);
+});
+
+test('clipboard failures and unknown admissions never fabricate success or retry', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true, unknownAdmission: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  const capture = page.getByRole('button', { name: 'Clipboard image', exact: true });
+  await expect(capture).toBeEnabled();
+  await page.evaluate(() => window.__nativeFixture.missingImage(true)); await capture.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Clipboard has no image' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(0);
+  await page.evaluate(() => { window.__nativeFixture.missingImage(false); window.__nativeFixture.stageFailure(true); });
+  await capture.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'staging is not writable' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(0);
+  await page.evaluate(() => window.__nativeFixture.stageFailure(false)); await capture.click();
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Clear selected paths', exact: true }).click();
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(1);
+  expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(1);
+});
+
+test('clipboard stays unavailable without native staging or during foreground interaction', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  const capture = page.getByRole('button', { name: 'Clipboard image', exact: true });
+  await expect(capture).toBeEnabled();
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true; });
+  await expect(capture).toBeDisabled();
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.clipboardStaging = false; });
+  await expect(page.getByRole('button', { name: 'Clipboard image unavailable', exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => window.__nativeFixture.clipboardReads.length)).toBe(0);
+});
+
 async function create(page) {
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();

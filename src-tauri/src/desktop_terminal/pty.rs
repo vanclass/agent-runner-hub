@@ -5,6 +5,8 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 #[path = "control.rs"] pub(super) mod control;
 #[cfg(windows)]
 #[path = "job.rs"] mod job;
+#[cfg(windows)]
+#[path = "clipboard.rs"] mod clipboard;
 use process::ProcessKiller;
 use startup::InitialCursor;
 use serde::{Deserialize, Serialize};
@@ -41,6 +43,7 @@ pub struct Session {
     killer: Mutex<Option<ProcessKiller>>,
     #[cfg(windows)] job: Mutex<Option<Arc<job::Job>>>,
     #[cfg(windows)] control: Mutex<Option<Arc<control::Client>>>,
+    #[cfg(windows)] clipboard: Mutex<clipboard::ClipboardFiles>,
     closing: AtomicBool,
     startup_ready: Mutex<bool>,
     started: Condvar,
@@ -56,7 +59,13 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 impl Session {
     pub fn control_snapshot(&self) -> Result<control::Snapshot, String> {
         #[cfg(windows)]
-        { return self.control.lock().unwrap().as_ref().map(|c| c.snapshot()).ok_or("Runner control is unavailable".into()); }
+        {
+            let mut snapshot = self.control.lock().unwrap().as_ref().map(|c| c.snapshot()).ok_or("Runner control is unavailable")?;
+            snapshot.clipboard_staging = cfg!(feature = "native-io") && clipboard::CLIPBOARD_PNG_VERIFIED
+                && !self.closing.load(Ordering::Acquire)
+                && self.job.lock().unwrap().is_some();
+            return Ok(snapshot);
+        }
         #[cfg(not(windows))]
         { Err("Runner control is supported only on Windows".into()) }
     }
@@ -73,6 +82,24 @@ impl Session {
         { return Ok(self.control.lock().unwrap().as_ref().ok_or("Runner control is unavailable")?.reference(request)); }
         #[cfg(not(windows))]
         { let _ = request; Err("Runner control is supported only on Windows".into()) }
+    }
+
+    pub fn stage_clipboard(&self, png: &[u8]) -> Result<String, String> {
+        #[cfg(windows)] {
+            let snapshot = self.control_snapshot()?;
+            let ready = snapshot.state == "ready" && cfg!(feature = "native-io")
+                && self.job.lock().unwrap().is_some() && snapshot.references.capability.is_some()
+                && snapshot.observation.as_ref().is_some_and(|o| !o.attention.foreground_interaction_active
+                    && o.commands.iter().any(|c| c.text == "/files" && c.visible && c.enabled));
+            let pending = snapshot.results.iter().any(|r| matches!(r.state.as_str(), "sending" | "queued" | "pending-interaction"))
+                || snapshot.references.results.iter().any(|r| matches!(r.state.as_str(), "sending" | "queued" | "pending-interaction"));
+            if !ready || pending { return Err("Clipboard staging requires an available authenticated Runner".into()); }
+            let mut files = self.clipboard.lock().map_err(|_| "Clipboard staging is unavailable")?;
+            if self.closing.load(Ordering::Acquire) { return Err("Runner session is closing".into()); }
+            return files.stage(png);
+        }
+        #[cfg(not(windows))]
+        { let _ = png; Err("Clipboard staging is supported only on Windows".into()) }
     }
 
     pub fn write(&self, bytes: &[u8]) -> Result<(), String> {
@@ -114,6 +141,7 @@ impl Session {
             if result.is_err() {
                 if let Some(killer) = self.killer.lock().map_err(|e| e.to_string())?.as_mut() { let _ = killer.kill(); }
             }
+            if result.is_ok() { self.clipboard.lock().unwrap().release_after_termination()?; }
             return result;
         }
         self.killer.lock().map_err(|e| e.to_string())?.as_mut().map_or(Ok(()), ProcessKiller::kill)
@@ -150,6 +178,7 @@ impl Sessions {
             killer: Mutex::new(None), closing: AtomicBool::new(false),
             #[cfg(windows)] job: Mutex::new(None),
             #[cfg(windows)] control: Mutex::new(None),
+            #[cfg(windows)] clipboard: Mutex::new(clipboard::ClipboardFiles::default()),
             startup_ready: Mutex::new(!cfg!(windows)), started: Condvar::new(),
             acknowledged: Mutex::new(0), drained: Condvar::new() });
         self.sessions.lock().map_err(|e| e.to_string())?.insert(id.clone(), session.clone());
@@ -285,7 +314,10 @@ impl Sessions {
             if let Some(control) = session.control.lock().unwrap().as_ref() { control.close(); }
             // A root exit does not release descendants. Settle its job before publishing Exit.
             #[cfg(windows)]
-            let containment = session.job.lock().unwrap().as_ref().map_or(Ok(()), |job| job.terminate());
+            let containment = session.job.lock().unwrap().as_ref().map_or(Ok(()), |job| {
+                job.terminate()?;
+                session.clipboard.lock().unwrap().release_after_termination()
+            });
             // Close ConPTY away from its reader while that reader can still drain output.
             session.master.lock().unwrap().take();
             session.writer.lock().unwrap().take();

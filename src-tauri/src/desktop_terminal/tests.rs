@@ -1,5 +1,7 @@
 use super::*;
 use std::{io::{BufRead, Write}, sync::mpsc, time::Duration};
+#[cfg(windows)]
+#[path = "clipboard_acceptance.rs"] mod clipboard_acceptance;
 
 #[test]
 #[ignore = "Requires an explicitly configured installed Runner on a native host"]

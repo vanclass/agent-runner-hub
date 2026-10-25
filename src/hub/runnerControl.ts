@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { clipboardImagePng } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
 
 export type RunnerCommand = {
@@ -21,7 +22,7 @@ export type ControlResult = { id: number; command: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: string;
-  observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot };
+  observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean };
 
 export class RunnerControl {
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
@@ -95,8 +96,25 @@ export class RunnerControl {
     try { await invoke<void>('runner_command', { id: this.id, command: text }); }
     catch (reason) { this.sending = false; this.changed(); throw reason; }
   }
-  async reference(request: ReferenceRequest) {
+  async clipboardSource() {
     const id = this.id;
+    if (this.stopped || !id || this.busy || !this.snapshot.clipboardStaging || !this.snapshot.references?.capability)
+      throw new Error('Clipboard staging requires an available authenticated Windows Runner.');
+    const blob = await clipboardImagePng();
+    if (blob.type !== 'image/png' || !blob.size || blob.size > 64 * 1024 * 1024)
+      throw new Error('Clipboard conversion did not produce a supported PNG (maximum 64 MiB).');
+    const png = new Uint8Array(await blob.arrayBuffer());
+    if (![137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => png[index] === byte))
+      throw new Error('Clipboard conversion produced invalid PNG data.');
+    if (this.stopped || id !== this.id || this.busy || this.snapshot.state !== 'ready')
+      throw new Error('The owning Runner is no longer available. Image was not submitted.');
+    const path = await invoke<string>('runner_stage_clipboard', { id, png: Array.from(png) });
+    return { path, sessionId: id };
+  }
+  async reference(request: ReferenceRequest, owningSession?: string): Promise<ReferenceAdmission> {
+    const id = this.id;
+    if (owningSession && owningSession !== id)
+      return { state: 'failure', detail: 'The owning Runner session changed. Staged image was not submitted.' };
     if (this.stopped || !id || this.snapshot.state !== 'ready' || !this.snapshot.references?.capability)
       throw new Error('Authenticated reference capability is unavailable.');
     if (this.assignmentLocked && request.operation !== 'references.list')

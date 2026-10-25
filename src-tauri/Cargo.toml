@@ -14,7 +14,7 @@ tauri = { version = "=2.12.2", features = [] }
 
 [features]
 default = []
-desktop-terminal = ["dep:portable-pty", "dep:serde", "dep:serde_json", "dep:windows-sys"]
+desktop-terminal = ["dep:portable-pty", "dep:serde", "dep:serde_json", "dep:windows-sys", "dep:png"]
 native-io = ["dep:tauri-plugin-clipboard-manager", "dep:tauri-plugin-dialog"]
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
@@ -25,6 +25,7 @@ tauri-plugin-clipboard-manager = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+png = { version = "0.18", optional = true }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_JobObjects", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Pipes", "Win32_Storage_FileSystem", "Win32_System_IO"], optional = true }
 
 [build-dependencies]

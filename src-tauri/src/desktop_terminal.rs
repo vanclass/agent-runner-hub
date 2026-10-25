@@ -5,7 +5,8 @@ use tauri::{ipc::Channel, Manager, Runtime, State, Window};
 
 pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.manage(Arc::new(Sessions::default()))
-        .invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command, runner_reference, pty_open, pty_write, pty_resize, pty_ack, pty_close])
+        .invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command, runner_reference,
+            runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<Arc<Sessions>>().close_window(window.label());
@@ -29,6 +30,13 @@ async fn runner_reference<R: Runtime>(window: Window<R>, state: State<'_, Arc<Se
     request: control::references::ReferenceRequest) -> Result<control::references::ReferenceAdmission, String> {
     let session = state.owned(&id, window.label())?;
     tauri::async_runtime::spawn_blocking(move || session.control_reference(request)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn runner_stage_clipboard<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String,
+    png: Vec<u8>) -> Result<String, String> {
+    let session = state.owned(&id, window.label())?;
+    tauri::async_runtime::spawn_blocking(move || session.stage_clipboard(&png)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

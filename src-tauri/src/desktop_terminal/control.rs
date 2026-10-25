@@ -61,11 +61,12 @@ pub struct Snapshot {
     pub observation_serial: u64, pub observation_age_ms: Option<u64>,
     pub results: Vec<CommandResult>, pub detail: Option<String>,
     pub references: References,
+    pub clipboard_staging: bool,
 }
 impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
-            observation_age_ms: None, results: Vec::new(), detail: None, references: References::default() }
+            observation_age_ms: None, results: Vec::new(), detail: None, references: References::default(), clipboard_staging: false }
     }
 }
 

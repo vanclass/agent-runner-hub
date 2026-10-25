@@ -12,13 +12,15 @@ export type ReferenceResult = { id: number; operation: string; offset: number;
   code?: string | null; registrationStatus?: string | null; reference?: Reference | null; inventory?: Inventory | null };
 export type ReferenceSnapshot = { capability: { version: number; inventory_page_size: number; image_details: string[] } | null;
   results: ReferenceResult[] };
-type Candidate = { key: number; path: string; requestId?: number; admission: 'selected' | 'sending' | 'failure' | 'outcome-unknown'; detail?: string };
+type Candidate = { key: number; path: string; requestId?: number; sessionId?: string; source?: 'clipboard';
+  admission: 'selected' | 'sending' | 'failure' | 'outcome-unknown'; detail?: string };
 const pending = (state: string) => ['sending', 'queued', 'pending-interaction'].includes(state);
 
 // Process-local candidates and receipt correlation only. Runner owns registration and lifetime.
 export class RunnerReferenceSelection {
   candidates: Candidate[] = [];
   registering = false;
+  staging = false;
   listing = false;
   error = '';
   private sequence = 0;
@@ -31,7 +33,11 @@ export class RunnerReferenceSelection {
   get inventory() { return this.inventoryResult?.inventory; }
   get available() {
     return this.control.snapshot.state === 'ready' && !!commandNamed(this.control.snapshot, '/files')?.enabled
-      && !this.control.busy && !this.registering && !this.listing;
+      && !this.control.busy && !this.registering && !this.listing && !this.staging;
+  }
+  get clipboardAvailable() {
+    return this.capable && this.control.snapshot.clipboardStaging === true && this.available && !this.picking
+      && this.control.observationFresh && !this.control.snapshot.observation?.attention.foreground_interaction_active;
   }
   result(candidate: Candidate) { return this.results.find(result => result.id === candidate.requestId); }
   state(candidate: Candidate) { return this.result(candidate)?.state ?? candidate.admission; }
@@ -55,6 +61,19 @@ export class RunnerReferenceSelection {
       if (result) this.select(Array.isArray(result) ? result : [result]);
     } finally { this.picking--; this.changed(); }
   }
+  async captureClipboard() {
+    if (!this.clipboardAvailable) return;
+    this.staging = true; this.error = ''; this.changed();
+    try {
+      const source = await this.control.clipboardSource();
+      this.candidates.push({ key: ++this.sequence, path: source.path, sessionId: source.sessionId,
+        source: 'clipboard', admission: 'selected' });
+      this.staging = false; this.changed();
+      await this.registerSelected();
+    } catch (reason) {
+      this.error = `Clipboard capture or staging failed. No registration was attempted. ${String(reason)}`;
+    } finally { this.staging = false; this.changed(); }
+  }
   private async settled(id: number) {
     for (;;) {
       const result = this.results.find(item => item.id === id);
@@ -73,7 +92,7 @@ export class RunnerReferenceSelection {
         if (this.control.snapshot.state !== 'ready') break;
         candidate.admission = 'sending'; this.changed();
         try {
-          const admission = await this.control.reference({ operation: 'references.register', path: candidate.path });
+          const admission = await this.control.reference({ operation: 'references.register', path: candidate.path }, candidate.sessionId);
           if (admission.state !== 'admitted') {
             candidate.admission = admission.state; candidate.detail = admission.detail;
             if (admission.state === 'outcome-unknown') break;
@@ -105,7 +124,7 @@ export class RunnerReferenceSelection {
     return this.settled(admission.id);
   }
   get prepared() {
-    if (this.picking || this.registering || this.listing || this.candidates.some(item =>
+    if (this.picking || this.staging || this.registering || this.listing || this.candidates.some(item =>
       ['selected', 'sending', 'queued', 'pending-interaction', 'outcome-unknown'].includes(this.state(item)))) return true;
     if (this.results.some(item => item.operation === 'references.register' &&
       (pending(item.state) || item.state === 'outcome-unknown'))) return true;

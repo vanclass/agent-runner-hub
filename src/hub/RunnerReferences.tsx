@@ -30,7 +30,7 @@ export function RunnerReferences({ control, selection }: { control: RunnerContro
     try { await control.command('/files'); }
     catch (reason) { setError(String(reason)); }
   }
-  return <details className="runner-references" open={selection.paths.length > 0 || !!error || !!inventory || !!selection.error}>
+  return <details className="runner-references" open={selection.staging || selection.paths.length > 0 || !!error || !!inventory || !!selection.error}>
     <summary>Files and images</summary>
     <div className="reference-actions">
       <button type="button" disabled={!available} title={available ? selection.capable ? 'Register files with this Runner' : 'Choose paths for the Runner /files flow' : unavailable}
@@ -38,7 +38,12 @@ export function RunnerReferences({ control, selection }: { control: RunnerContro
       <button type="button" disabled={!available} title={available ? 'Choose a folder path' : unavailable}
         onClick={() => void choose(true)}>Choose folder</button>
       <button type="button" disabled={!available} title={unavailable} onClick={() => void openFiles()}>Open /files in terminal</button>
-      <button type="button" disabled title="Clipboard image-byte ingestion is unavailable">Clipboard image unavailable</button>
+      <button type="button" disabled={!selection.clipboardAvailable}
+        title={selection.clipboardAvailable ? 'Capture one clipboard image for this Runner'
+          : selection.capable && !control.snapshot.clipboardStaging ? 'Clipboard image capture is unavailable in this build.'
+            : 'Requires supported native clipboard capture and an available authenticated Runner reference capability'}
+        onClick={() => void selection.captureClipboard()}>
+        {selection.capable && control.snapshot.clipboardStaging ? 'Clipboard image' : 'Clipboard image unavailable'}</button>
       {selection.capable && <>
         <button type="button" disabled={!available || !selection.candidates.some(item => selection.state(item) === 'selected')}
           onClick={() => void selection.registerSelected()}>Register selected paths</button>
@@ -47,6 +52,7 @@ export function RunnerReferences({ control, selection }: { control: RunnerContro
           onClick={() => void selection.refresh(inventory.next_offset!)}>Next reference page</button>}
       </>}
     </div>
+    {selection.staging && <p role="status">Reading clipboard and staging PNG for this Runner…</p>}
     {(selection.registering || selection.listing) && <p role="status">{foreground
       ? 'Continue in this Runner terminal: select image detail or cancel the pending interaction.'
       : selection.listing ? 'Reading Runner inventory…' : 'Registering paths with this Runner…'}</p>}
@@ -64,9 +70,10 @@ export function RunnerReferences({ control, selection }: { control: RunnerContro
     </section>}
     {selection.candidates.length > 0 && <h3>Registration attempts</h3>}
     {selection.candidates.map(candidate => <div className="reference-candidate" key={candidate.key}>
-      <label className="reference-path">Selected path
+      <label className="reference-path">{candidate.source === 'clipboard' ? 'Staged clipboard image' : 'Selected path'}
         <input aria-label={`Selected path ${candidate.path}`} readOnly value={candidate.path} onFocus={event => event.currentTarget.select()} /></label>
-      <p role="status">{referenceState(selection.state(candidate))}
+      <p role="status">{candidate.source === 'clipboard' && selection.state(candidate) === 'selected'
+        ? 'Staged · unregistered' : referenceState(selection.state(candidate))}
         {selection.result(candidate)?.reference && <> · Reference ID: <code>{selection.result(candidate)!.reference!.reference_id}</code></>}
         {selection.result(candidate)?.code && <> · {selection.result(candidate)!.code}</>}
         {candidate.detail && <> · {candidate.detail}</>}</p>
