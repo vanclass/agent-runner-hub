@@ -6,6 +6,11 @@ use std::{collections::BTreeMap, time::{Duration, Instant}};
 #[path = "references.rs"]
 pub mod references;
 use references::{ReferenceRequest, References};
+#[cfg(windows)]
+#[path = "generated_images.rs"]
+pub mod generated_images;
+#[cfg(windows)]
+type ImageCompletion = std::sync::mpsc::Sender<Result<generated_images::Reply, generated_images::Failure>>;
 
 #[cfg(windows)]
 #[path = "control_windows.rs"]
@@ -62,24 +67,31 @@ pub struct Snapshot {
     pub results: Vec<CommandResult>, pub detail: Option<String>,
     pub references: References,
     pub clipboard_staging: bool,
+    pub generated_images_supported: bool,
 }
 impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
-            observation_age_ms: None, results: Vec::new(), detail: None, references: References::default(), clipboard_staging: false }
+            observation_age_ms: None, results: Vec::new(), detail: None, references: References::default(),
+            clipboard_staging: false, generated_images_supported: false }
     }
 }
 
-struct Pending { command: Option<String>, reference: Option<ReferenceRequest>, started: Instant, awaiting_interaction: bool }
+struct Pending {
+    command: Option<String>, reference: Option<ReferenceRequest>, started: Instant, awaiting_interaction: bool,
+    #[cfg(windows)] image: Option<(generated_images::Request, ImageCompletion)>,
+}
 struct Protocol {
     pid: u32, session: String, connection: Option<String>, next: u64,
     pending: BTreeMap<u64, Pending>, snapshot: Snapshot,
     observed_at: Option<Instant>,
+    #[cfg(windows)] image_capability: Option<generated_images::Capability>,
 }
 impl Protocol {
     fn new(pid: u32, session: String) -> Self {
         Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(),
-            snapshot: Snapshot::default(), observed_at: None }
+            snapshot: Snapshot::default(), observed_at: None,
+            #[cfg(windows)] image_capability: None }
     }
     fn identity_matches(&self, packet: &Value) -> bool {
         packet["version"].as_u64() == Some(1)
@@ -108,6 +120,9 @@ impl Protocol {
         self.request_inner(None, Some(request), key)
     }
     fn request_inner(&mut self, command: Option<String>, reference: Option<ReferenceRequest>, key: &str) -> Result<Vec<u8>, &'static str> {
+        self.request_fields(command, reference, None, key)
+    }
+    fn request_fields(&mut self, command: Option<String>, reference: Option<ReferenceRequest>, fields: Option<Value>, key: &str) -> Result<Vec<u8>, &'static str> {
         if self.connection.is_none() || self.pending.len() >= 32 { return Err("Control is not ready"); }
         let next = self.next.checked_add(1).ok_or("Control request sequence exhausted")?;
         let mut packet = json!({"version":1, "process_id":self.pid, "session_id":self.session,
@@ -117,6 +132,7 @@ impl Protocol {
             packet.as_object_mut().unwrap().extend(serde_json::to_value(request).unwrap().as_object().unwrap().clone());
         }
         if let Some(text) = &command { packet["command"] = json!(text); }
+        if let Some(fields) = fields { packet.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone()); }
         let mut bytes = serde_json::to_vec(&packet).map_err(|_| "Control encoding failed")?;
         if bytes.len() > 65536 { return Err("Runner control request exceeded v1 limit"); }
         self.next = next;
@@ -126,8 +142,18 @@ impl Protocol {
                 owner_status: None, changed: None, settings_change_count: None });
         }
         if let Some(request) = &reference { self.snapshot.references.begin(self.next, request); }
-        self.pending.insert(self.next, Pending { command, reference, started: Instant::now(), awaiting_interaction: false });
+        self.pending.insert(self.next, Pending { command, reference, started: Instant::now(), awaiting_interaction: false,
+            #[cfg(windows)] image: None });
         bytes.push(b'\n');
+        Ok(bytes)
+    }
+    #[cfg(windows)]
+    fn image_request(&mut self, mut request: generated_images::Request, completion: ImageCompletion, key: &str) -> Result<Vec<u8>, &'static str> {
+        let cap = self.image_capability.as_ref().filter(|_| self.snapshot.state == "ready")
+            .ok_or("Generated images are unsupported or disconnected")?;
+        if let generated_images::Request::Read { length, .. } = &mut request { *length = (*length).min(cap.max_chunk_bytes); }
+        let bytes = self.request_fields(None, None, Some(request.fields()), key)?;
+        self.pending.get_mut(&self.next).unwrap().image = Some((request, completion));
         Ok(bytes)
     }
     fn response(&mut self, packet: Value) -> Result<(), &'static str> {
@@ -148,7 +174,11 @@ impl Protocol {
             (None, "rejected" | "failure") => status,
             _ => return Err("Malformed control result phase"),
         };
-        if pending.command.is_none() && pending.reference.is_none() && finished {
+        #[cfg(windows)]
+        let is_image = pending.image.is_some();
+        #[cfg(not(windows))]
+        let is_image = false;
+        if pending.command.is_none() && pending.reference.is_none() && !is_image && finished {
             if state != "accepted" { return Err("Runner observation was rejected"); }
             let observation: Observation = serde_json::from_value(packet["observation"].clone())
                 .map_err(|_| "Malformed canonical observation")?;
@@ -158,6 +188,18 @@ impl Protocol {
             self.observed_at = Some(Instant::now());
             self.snapshot.state = "ready".into();
             self.snapshot.references.capability = references::Capability::read(&packet["capabilities"]["references"]);
+            #[cfg(windows)] {
+                self.image_capability = generated_images::Capability::read(&packet["capabilities"]["generated_images"]);
+                self.snapshot.generated_images_supported = self.image_capability.is_some();
+            }
+        }
+        #[cfg(windows)]
+        if finished {
+            if let Some((request, completion)) = &pending.image {
+                let result = self.image_capability.as_ref().ok_or_else(generated_images::Failure::unavailable)
+                    .and_then(|cap| generated_images::response(request, cap, &packet, state));
+                let _ = completion.send(result);
+            }
         }
         if finished && (pending.command.is_some() || pending.reference.is_some()) && !packet["observation"].is_null() {
             self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
@@ -200,6 +242,13 @@ impl Protocol {
             if self.pending.contains_key(&result.id) { result.state = "outcome-unknown".into(); }
         }
         self.snapshot.references.disconnect();
+        self.snapshot.generated_images_supported = false;
+        #[cfg(windows)] {
+            self.image_capability = None;
+            for pending in self.pending.values() {
+                if let Some((_, completion)) = &pending.image { let _ = completion.send(Err(generated_images::Failure::unavailable())); }
+            }
+        }
         self.pending.clear();
     }
 }

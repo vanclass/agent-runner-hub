@@ -1,5 +1,6 @@
 use super::{Protocol, Snapshot};
 use super::references::{ReferenceAdmission, ReferenceRequest};
+use super::generated_images::{self, Images};
 use portable_pty::CommandBuilder;
 use std::{io, os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
     sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}, mpsc}, thread, time::{Duration, Instant}};
@@ -7,7 +8,7 @@ use windows_sys::Win32::{Foundation::*, Security::{SECURITY_ATTRIBUTES, Cryptogr
     Storage::FileSystem::{ReadFile, WriteFile}, System::Pipes::*};
 
 fn error() -> String { format!("Runner control I/O failed ({})", io::Error::last_os_error().raw_os_error().unwrap_or(0)) }
-enum Request { Command(String), Reference(ReferenceRequest) }
+enum Request { Command(String), Reference(ReferenceRequest), Image(generated_images::Request, super::ImageCompletion) }
 type Admission = mpsc::Sender<Result<u64, String>>;
 struct SubmitError { detail: String, unknown: bool }
 impl From<&str> for SubmitError {
@@ -69,16 +70,29 @@ impl Launch {
             // The key is retained only by this native worker for authenticated requests.
             unsafe { self.key.as_bytes_mut().fill(0); }
         });
-        Arc::new(Client { state, stopped, send, worker: Mutex::new(Some(worker)) })
+        Arc::new(Client { state, stopped, send, images: Images::default(), worker: Mutex::new(Some(worker)) })
     }
 }
 
 pub struct Client {
     state: Arc<Mutex<Snapshot>>, stopped: Arc<AtomicBool>, send: mpsc::SyncSender<(Request, Admission)>,
     worker: Mutex<Option<thread::JoinHandle<()>>>,
+    images: Images,
 }
 impl Client {
     pub fn snapshot(&self) -> Snapshot { self.state.lock().unwrap().clone() }
+    fn image_alive(&self) -> bool { !self.stopped.load(Ordering::Acquire) && self.snapshot().state == "ready" }
+    fn image_reply(&self, request: generated_images::Request) -> Result<generated_images::Reply, generated_images::Failure> {
+        let (send, receive) = mpsc::channel();
+        self.submit(Request::Image(request, send)).map_err(|_| generated_images::Failure::unavailable())?;
+        receive.recv_timeout(Duration::from_secs(65)).unwrap_or_else(|_| Err(generated_images::Failure::unavailable()))
+    }
+    pub fn images_list(&self) -> Result<Vec<generated_images::Metadata>, generated_images::Failure> {
+        self.images.list(|request| self.image_reply(request), || self.image_alive())
+    }
+    pub fn image_read(&self, id: &str) -> Result<generated_images::Verified, generated_images::Failure> {
+        self.images.read(id, |request| self.image_reply(request), || self.image_alive())
+    }
     pub fn command(&self, command: String) -> Result<(), String> {
         if command.len() > 4096 || !command.starts_with('/') || command.chars().any(char::is_control) {
             return Err("Choose a Runner slash command".into());
@@ -108,6 +122,7 @@ impl Client {
     }
     pub fn close(&self) {
         self.stopped.store(true, Ordering::Release);
+        self.images.clear();
         if let Some(worker) = self.worker.lock().unwrap().take() { let _ = worker.join(); }
     }
 }
@@ -148,6 +163,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 let result = match request {
                     Request::Command(command) => protocol.request(Some(command), key),
                     Request::Reference(request) => protocol.reference_request(request, key),
+                    Request::Image(request, completion) => protocol.image_request(request, completion, key),
                 };
                 let receipt = result.map(|bytes| {
                     outgoing.extend(bytes);

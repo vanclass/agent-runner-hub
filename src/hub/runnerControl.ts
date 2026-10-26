@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { clipboardImagePng } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
+import { RunnerImages } from './runnerImages';
 
 export type RunnerCommand = {
   id: string; text: string; aliases: string[]; parent_id: string | null;
@@ -22,9 +23,11 @@ export type ControlResult = { id: number; command: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: string;
-  observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean };
+  observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean;
+  generatedImagesSupported?: boolean };
 
 export class RunnerControl {
+  readonly images: RunnerImages;
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
   assignmentLocked = false;
@@ -36,8 +39,8 @@ export class RunnerControl {
   private timer?: ReturnType<typeof setTimeout>;
   private stopped = false;
   private referenceAdmissions = 0;
-  constructor(private readonly changed: () => void) {}
-  start(id: string) { this.id = id; void this.refresh(); }
+  constructor(private readonly changed: () => void) { this.images = new RunnerImages(changed); }
+  start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
   async fresh() {
     const after = this.snapshot.observationSerial ?? 0;
     const deadline = performance.now() + (this.snapshot.state === 'connecting' ? 35000 : 5000);
@@ -59,6 +62,8 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
+        this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
       if (snapshot.results.some(result => result.id > this.admissionAfter)) this.sending = false;
       this.changed();
@@ -125,6 +130,7 @@ export class RunnerControl {
   }
   stop(detail = 'Runner process exited', finalSnapshot?: ControlSnapshot) {
     this.stopped = true;
+    this.images.stop();
     this.sending = false;
     clearTimeout(this.timer);
     const final = finalSnapshot ?? this.snapshot;

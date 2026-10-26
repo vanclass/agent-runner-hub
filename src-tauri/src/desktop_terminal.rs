@@ -4,9 +4,14 @@ use std::sync::Arc;
 use tauri::{ipc::Channel, Manager, Runtime, State, Window};
 
 pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    #[cfg(windows)]
+    let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
+        runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
+        pty_resize, pty_ack, pty_close]);
+    #[cfg(not(windows))]
+    let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
+        runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close]);
     builder.manage(Arc::new(Sessions::default()))
-        .invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command, runner_reference,
-            runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close])
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<Arc<Sessions>>().close_window(window.label());
@@ -37,6 +42,24 @@ async fn runner_stage_clipboard<R: Runtime>(window: Window<R>, state: State<'_, 
     png: Vec<u8>) -> Result<String, String> {
     let session = state.owned(&id, window.label())?;
     tauri::async_runtime::spawn_blocking(move || session.stage_clipboard(&png)).await.map_err(|e| e.to_string())?
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn runner_images_list<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String)
+    -> Result<Vec<control::generated_images::Metadata>, control::generated_images::Failure> {
+    let session = state.owned(&id, window.label()).map_err(|_| control::generated_images::Failure::unavailable())?;
+    tauri::async_runtime::spawn_blocking(move || session.images_list()).await
+        .map_err(|_| control::generated_images::Failure::failed("Image discovery failed"))?
+}
+
+#[cfg(windows)]
+#[tauri::command]
+async fn runner_image_read<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String, image_id: String)
+    -> Result<control::generated_images::Verified, control::generated_images::Failure> {
+    let session = state.owned(&id, window.label()).map_err(|_| control::generated_images::Failure::unavailable())?;
+    tauri::async_runtime::spawn_blocking(move || session.image_read(&image_id)).await
+        .map_err(|_| control::generated_images::Failure::failed("Image retrieval failed"))?
 }
 
 #[tauri::command]

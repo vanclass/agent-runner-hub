@@ -2,6 +2,8 @@ use super::*;
 use std::{io::{BufRead, Write}, sync::mpsc, time::Duration};
 #[cfg(windows)]
 #[path = "clipboard_acceptance.rs"] mod clipboard_acceptance;
+#[cfg(windows)]
+#[path = "image_acceptance.rs"] mod image_acceptance;
 
 #[test]
 #[ignore = "Requires an explicitly configured installed Runner on a native host"]
@@ -63,6 +65,11 @@ fn installed_runners_independent_and_owned_shutdown() {
     assert_eq!(connected.state, "ready", "{:?}; {}", connected.detail,
         String::from_utf8_lossy(harness.output.get(&first).map(Vec::as_slice).unwrap_or_default()));
     assert_eq!(second_pty.control_snapshot().unwrap().state, "ready");
+    assert!(connected.generated_images_supported, "Installed Runner must advertise Task 4504 after authentication");
+    assert!(second_pty.control_snapshot().unwrap().generated_images_supported);
+    assert!(first_pty.images_list().unwrap().is_empty());
+    assert!(second_pty.images_list().unwrap().is_empty());
+    assert_eq!(first_pty.image_read(&"f".repeat(32)).err().unwrap().state, "unavailable");
     assert!(first_pty.control_snapshot().unwrap().observation.is_some());
     first_pty.control_command("/status".into()).unwrap();
     harness.pump_for(Duration::from_secs(3));

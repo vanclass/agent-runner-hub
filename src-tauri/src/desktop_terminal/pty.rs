@@ -57,6 +57,20 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 }
 
 impl Session {
+    #[cfg(windows)]
+    pub fn images_list(&self) -> Result<Vec<control::generated_images::Metadata>, control::generated_images::Failure> {
+        let client = self.control.lock().unwrap().clone().ok_or_else(control::generated_images::Failure::unavailable)?;
+        if self.closing.load(Ordering::Acquire) { return Err(control::generated_images::Failure::unavailable()); }
+        client.images_list()
+    }
+    #[cfg(windows)]
+    pub fn image_read(&self, id: &str) -> Result<control::generated_images::Verified, control::generated_images::Failure> {
+        let client = self.control.lock().unwrap().clone().ok_or_else(control::generated_images::Failure::unavailable)?;
+        if self.closing.load(Ordering::Acquire) { return Err(control::generated_images::Failure::unavailable()); }
+        let image = client.image_read(id)?;
+        if self.closing.load(Ordering::Acquire) { return Err(control::generated_images::Failure::unavailable()); }
+        Ok(image)
+    }
     pub fn control_snapshot(&self) -> Result<control::Snapshot, String> {
         #[cfg(windows)]
         {

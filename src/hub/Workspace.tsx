@@ -5,6 +5,7 @@ import { RunnerComposer } from './RunnerComposer';
 import { RunnerControls } from './RunnerControls';
 import { RunnerRecovery } from './RunnerRecovery';
 import { RunnerReferences } from './RunnerReferences';
+import { RunnerImagePreviews } from './RunnerImagePreviews';
 import { RunnerLocation, type RunnerInstallation } from './RunnerLocation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer, SingleEntrySettings } from './SingleEntryComposer';
@@ -44,6 +45,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
         <span className="empty-note">{singleEntry ? 'Assign below, or use New Runner for a manual session.' : 'No connected process for this preview row.'}</span>
       </div>}
     </section>
+    {session && <RunnerImagePreviews images={session.control.images} />}
     {session && <RunnerReferences control={session.control} selection={session.references} />}
     {session ? <RunnerComposer session={session} /> : singleEntry ? <SingleEntryComposer entry={entry}
       location={installation?.root} onSelectRunner={onSelectRunner} /> : <section className="composer-area" aria-label="Instruction composer">
