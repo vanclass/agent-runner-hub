@@ -107,6 +107,8 @@
 .reference-path { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
 .reference-path input { flex: 1; min-width: 0; background: var(--inset); color: var(--text); border: 1px solid var(--border); padding: 5px; }
 .reference-candidate { border-left: 2px solid var(--border); padding-left: 8px; margin: 8px 0; }
+.clipboard-candidate { display: flex; align-items: center; gap: 10px; }
+.clipboard-candidate img { object-fit: contain; border: 1px solid var(--border); border-radius: 5px; flex-shrink: 0; }
 .runner-references code { overflow-wrap: anywhere; user-select: text; }
 .runner-references h3 { font-size: 12px; margin: 10px 0 4px; }
 .runner-references li { margin-bottom: 6px; }

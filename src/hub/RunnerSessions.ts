@@ -25,6 +25,8 @@ export class RunnerSession {
   private reservation?: symbol;
   private inputUnsettled = false;
   private assignmentWriting = false;
+  private deliveryUnknown = false;
+  get submissionUncertain() { return this.deliveryUnknown; }
   view: RunnerView;
   tab: RunnerTabRecord;
   readonly previousContext: RunnerTabRecord['recoveryHint'];
@@ -65,6 +67,7 @@ export class RunnerSession {
   private error(reason: unknown) { this.update({ detail: String(reason) }); }
   private manualInput() {
     if (this.assignmentWriting) return false;
+    if (this.references.locked && !this.references.results.some(result => result.state === 'pending-interaction')) return false;
     this.inputUnsettled = true;
     return true;
   }
@@ -121,6 +124,7 @@ export class RunnerSession {
         this.tab = { ...this.tab, launchOnOpen: false };
         const final = (event as typeof event & { control?: ControlSnapshot }).control;
         this.control.stop('Runner process exited', final);
+        this.references.dispose();
         this.update({ status: 'exited', exitCode: event.code, detail: event.error ?? undefined });
       }, reason => this.error(reason));
       this.pty = pty;
@@ -141,13 +145,35 @@ export class RunnerSession {
     if (this.view.status !== 'running' || !this.pty) throw new Error('This Runner process is not running.');
     if (this.view.submitting) throw new Error('Input submission is already pending for this Runner.');
     if (this.reservation) throw new Error('Single Entry holds this Runner. Resolve its assignment first.');
-    this.inputUnsettled = true;
+    if (this.deliveryUnknown) throw new Error('Previous PTY delivery outcome is unknown. Check this Runner directly; Hub will not replay the instruction.');
+    const draft = this.view.draft ?? '';
+    const ordinary = !draft.trimStart().startsWith('/');
+    let attempted = false, delivered = false;
     this.update({ submitting: true });
     try {
-      this.input.submit(this.view.draft ?? '');
-      await this.lastInput;
+      if (ordinary) await this.references.preflight();
+      if (this.disposed || this.view.status !== 'running' || !this.input.canSubmit)
+        throw new Error('Runner input is unavailable. Instruction unsent.');
+      if (ordinary) this.references.assertReadyForDelivery();
+      this.assignmentWriting = true;
+      this.inputUnsettled = true;
+      attempted = true;
+      this.input.submit(draft);
+      const delivery = this.lastInput;
+      await delivery;
+      delivered = true;
       this.update({ draft: '' });
-    } finally { this.update({ submitting: false }); }
+    } catch (reason) {
+      if (attempted) {
+        this.deliveryUnknown = true;
+        throw new Error('PTY delivery outcome unknown. Draft retained; check the Runner terminal. Hub will not retry.');
+      }
+      throw reason;
+    } finally {
+      this.assignmentWriting = false;
+      if (ordinary) this.references.finishSubmission(delivered);
+      this.update({ submitting: false });
+    }
   }
   async terminate() {
     if (this.view.status !== 'running') return;
@@ -173,6 +199,7 @@ export class RunnerSession {
   dispose() {
     this.disposed = true;
     this.control.stop('Runner workspace closed');
+    this.references.dispose();
     clearTimeout(this.resizeTimer);
     this.pending = [];
     void this.pty?.close().catch(reason => console.error('Runner cleanup failed', reason));

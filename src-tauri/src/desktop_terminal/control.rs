@@ -117,6 +117,9 @@ impl Protocol {
         if self.snapshot.state != "ready" || self.snapshot.references.capability.is_none() {
             return Err("This Runner does not offer authenticated reference operations");
         }
+        if matches!(request, ReferenceRequest::Remove { .. }) && self.snapshot.references.removal_capability.is_none() {
+            return Err("This Runner requires manual /files removal");
+        }
         self.request_inner(None, Some(request), key)
     }
     fn request_inner(&mut self, command: Option<String>, reference: Option<ReferenceRequest>, key: &str) -> Result<Vec<u8>, &'static str> {
@@ -188,6 +191,7 @@ impl Protocol {
             self.observed_at = Some(Instant::now());
             self.snapshot.state = "ready".into();
             self.snapshot.references.capability = references::Capability::read(&packet["capabilities"]["references"]);
+            self.snapshot.references.removal_capability = references::RemovalCapability::read(&packet["capabilities"]["reference_removal"]);
             #[cfg(windows)] {
                 self.image_capability = generated_images::Capability::read(&packet["capabilities"]["generated_images"]);
                 self.snapshot.generated_images_supported = self.image_capability.is_some();

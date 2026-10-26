@@ -67,9 +67,12 @@ fn installed_runners_independent_and_owned_shutdown() {
     assert_eq!(second_pty.control_snapshot().unwrap().state, "ready");
     assert!(connected.generated_images_supported, "Installed Runner must advertise Task 4504 after authentication");
     assert!(second_pty.control_snapshot().unwrap().generated_images_supported);
-    assert!(first_pty.images_list().unwrap().is_empty());
-    assert!(second_pty.images_list().unwrap().is_empty());
-    assert_eq!(first_pty.image_read(&"f".repeat(32)).err().unwrap().state, "unavailable");
+    #[cfg(windows)]
+    {
+        assert!(first_pty.images_list().unwrap().is_empty());
+        assert!(second_pty.images_list().unwrap().is_empty());
+        assert_eq!(first_pty.image_read(&"f".repeat(32)).err().unwrap().state, "unavailable");
+    }
     assert!(first_pty.control_snapshot().unwrap().observation.is_some());
     first_pty.control_command("/status".into()).unwrap();
     harness.pump_for(Duration::from_secs(3));

@@ -10,7 +10,9 @@ async function transport(page, freshTarget, referenceOptions) {
     const sessions = new Map();
     const callbacks = new Map(), listeners = new Map();
     const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [], referenceRequests = [];
-    const staged = [], clipboardReads = [], imageCloses = [];
+    const staged = [], clipboardReads = [], imageCloses = [], deliveredSets = [], revokedUrls = [];
+    const revoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = url => { revokedUrls.push(url); revoke(url); };
     let missingImage = false, stageFailure = false, stageGate, releaseStage;
     let referenceSequence = 100, stableSequence = 0;
     const inventory = (items, offset = 0) => ({ total_count: items.length, offset,
@@ -19,6 +21,14 @@ async function transport(page, freshTarget, referenceOptions) {
     const finishReference = (id, requestId, state = 'registered') => {
       const session = sessions.get(id), results = session.control.references.results;
       const result = results.find(item => item.id === requestId);
+      const request = referenceRequests.find(item => item.id === id && item.requestId === requestId).request;
+      if (request.operation === 'references.remove') {
+        result.referenceId = request.reference_id;
+        result.state = state === 'registered' ? 'removed' : state;
+        result.removalStatus = result.state === 'removed' ? 'removed' : result.state === 'outcome-unknown' ? 'unknown' : 'not_removed';
+        if (result.state === 'removed') session.items = session.items.filter(item => item.reference_id !== request.reference_id);
+        return;
+      }
       result.state = state;
       if (state === 'registered') {
         const request = referenceRequests.find(item => item.id === id && item.requestId === requestId).request;
@@ -89,13 +99,15 @@ async function transport(page, freshTarget, referenceOptions) {
           if (referenceOptions) {
             sessions.get(id).items = [];
             sessions.get(id).control.references = { capability: { version: 1, inventory_page_size: 2,
-              image_details: ['auto', 'low', 'high', 'original'] }, results: [] };
+              image_details: ['auto', 'low', 'high', 'original'] },
+              removalCapability: referenceOptions.legacyRemoval ? null : { version: 1 }, results: [] };
           }
           setTimeout(() => emit(id, `\x1b[?9001h\x1b[?2004h\x1b[32m${id}: 안녕 🌍\x1b[0m\r\n`), 10);
           return id;
         }
         if (command === 'pty_write') {
           writes.push({ id: args.id, bytes: args.bytes });
+          deliveredSets.push({ id: args.id, bytes: args.bytes, ids: sessions.get(args.id).items?.map(item => item.reference_id) ?? [] });
           if (writeGate) await writeGate;
           if (failWrite) { failWrite = false; throw new Error('fixture PTY write failed'); }
           return;
@@ -126,12 +138,16 @@ async function transport(page, freshTarget, referenceOptions) {
         if (command === 'runner_reference') {
           const session = sessions.get(args.id), requestId = ++referenceSequence;
           referenceRequests.push({ ...args, requestId });
-          if (referenceOptions.admissionFailure) return { state: 'failure', detail: 'Reference request was not submitted: fixture queue unavailable' };
-          if (referenceOptions.unknownAdmission) return { state: 'outcome-unknown', detail: 'Fixture admission receipt lost; do not repeat' };
+          if (args.request.operation === 'references.register' && referenceOptions.admissionFailure) return { state: 'failure', detail: 'Reference request was not submitted: fixture queue unavailable' };
+          if (args.request.operation === 'references.register' && referenceOptions.unknownAdmission) return { state: 'outcome-unknown', detail: 'Fixture admission receipt lost; do not repeat' };
           const result = { id: requestId, operation: args.request.operation, offset: args.request.offset ?? 0, state: 'queued' };
           session.control.references.results.push(result);
-          if (args.request.operation === 'references.list') Object.assign(result, { state: 'accepted', inventory: inventory(session.items, args.request.offset) });
-          else if (referenceOptions.auto) finishReference(args.id, requestId);
+          if (args.request.operation === 'references.list') {
+            session.sampleCount = (session.sampleCount ?? 0) + 1;
+            if (session.changeInventoryAt === session.sampleCount) session.items.push({ reference_id: 'f'.repeat(32),
+              display_index: session.items.length + 1, display_name: 'terminal-added.txt', kind: 'file', image_detail: null, media_kind: null });
+            Object.assign(result, { state: 'accepted', inventory: inventory(session.items, args.request.offset) });
+          } else if (referenceOptions.auto) finishReference(args.id, requestId);
           return { state: 'admitted', id: requestId };
         }
         if (command === 'plugin:clipboard-manager|read_image') {
@@ -159,7 +175,7 @@ async function transport(page, freshTarget, referenceOptions) {
     };
     window.__nativeFixture = { sessions, writes, resizes, acknowledgements, closed, commands, emit, exit,
       referenceRequests, finishReference,
-      staged, clipboardReads, imageCloses,
+      staged, clipboardReads, imageCloses, deliveredSets, revokedUrls,
       missingImage: value => { missingImage = value; }, stageFailure: value => { stageFailure = value; },
       pauseStage: () => { stageGate = new Promise(resolve => { releaseStage = resolve; }); },
       resumeStage: () => { stageGate = undefined; releaseStage(); },
@@ -262,83 +278,107 @@ test('generated image previews render verified delivery, select, enlarge, refres
   await testInfo.attach('synthetic-generated-image-preview', { body: await page.screenshot(), contentType: 'image/png' });
 });
 
-test('reference extension registers duplicate picker paths and samples ordered inventory pages', async ({ page }) => {
+test('reference extension keeps duplicate picker identities and reconciles complete paginated inventory', async ({ page }) => {
   await transport(page, undefined, { auto: true }); await configure(page); await create(page);
-  for (let n = 0; n < 2; n++) {
-    await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await page.getByText('Files and images', { exact: true }).click();
+  for (let n = 0; n < 3; n++) {
+    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
     await expect(page.locator('.reference-candidate').filter({ hasText: 'Registered · completed Runner receipt' })).toHaveCount(n + 1);
-    await expect(page.getByRole('button', { name: 'Attach file', exact: true })).toBeEnabled();
   }
-  await page.getByRole('button', { name: 'Attach folder', exact: true }).click();
-  await expect(page.getByText(/3 pending · Page offset 0/)).toBeVisible();
   const ids = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.reference_id));
   expect(new Set(ids).size).toBe(3);
-  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(0, 2));
-  await page.getByRole('button', { name: 'Next reference page' }).click();
-  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(2));
-  await expect(page.getByRole('button', { name: 'Refresh pending references' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
+  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids);
   await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.shift());
-  await page.getByRole('button', { name: 'Refresh pending references' }).click();
+  await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
   await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(1));
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => item.request.operation))).toEqual([
-    'references.register', 'references.register', 'references.register', 'references.list', 'references.list']);
 });
-test('clipboard capture stages once and retains its Runner through tab and terminal interactions', async ({ page }) => {
-  await transport(page, undefined, { clipboard: true }); await configure(page); await create(page);
+
+test('clipboard capture stages independent previews, cancels B, and sends only A C D E in order', async ({ page }, testInfo) => {
+  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
   await page.getByText('Files and images', { exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeEnabled();
+  for (let n = 0; n < 3; n++) {
+    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 1);
+  }
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
+  const cancelledPreview = await page.getByAltText('Clipboard image 2 preview').getAttribute('src');
+  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
+  await expect(page.locator('.clipboard-candidate img')).toHaveCount(2);
+  expect(await page.evaluate(url => window.__nativeFixture.revokedUrls.includes(url), cancelledPreview)).toBe(true);
+  for (let n = 0; n < 2; n++) {
+    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 3);
+  }
+  await page.screenshot({ path: testInfo.outputPath('clipboard-selection.png'), fullPage: true });
+  await page.locator('.reference-candidate').filter({ has: page.getByAltText('Clipboard image 1 preview') })
+    .screenshot({ path: testInfo.outputPath('clipboard-item.png') });
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Inspect these four selected images');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
+  const outcome = await page.evaluate(() => {
+    const f = window.__nativeFixture;
+    const registrations = f.referenceRequests.filter(item => item.request.operation === 'references.register');
+    const instruction = f.deliveredSets.filter(item => new TextDecoder().decode(new Uint8Array(item.bytes)).endsWith('\u001b[13;0;13;1;0;1_'));
+    return { registrations: registrations.map(item => [item.id, item.request.path]), ids: f.sessions.get('pty-1').items.map(item => item.reference_id),
+      instruction, persisted: localStorage.getItem('agent-runner-hub.workspace.v1') ?? '', closes: f.imageCloses, reads: f.clipboardReads.length };
+  });
+  expect(outcome.registrations).toEqual([1, 3, 4, 5].map(n => ['pty-1', `/fixture/hub-owned/pty-1/clipboard-${n}.png`]));
+  expect(outcome.ids).toHaveLength(4); expect(new Set(outcome.ids).size).toBe(4);
+  expect(outcome.instruction).toHaveLength(1); expect(outcome.instruction[0].ids).toEqual(outcome.ids);
+  expect(outcome.persisted).not.toContain('clipboard-'); expect(outcome.persisted).not.toContain('blob:');
+  expect(outcome.reads).toBe(5); expect(outcome.closes).toHaveLength(5);
+  await expect(page.locator('.clipboard-candidate img')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Clear registration history' }).click();
+  await expect(page.locator('.reference-candidate')).toHaveCount(0);
+});
+
+test('clipboard capture retains its originating session across tab switches and cancellation during capture', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
   await page.evaluate(() => window.__nativeFixture.pauseStage());
   await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
   await expect(page.getByText('Reading clipboard and staging PNG for this Runner…')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
   await create(page);
   await page.evaluate(() => window.__nativeFixture.resumeStage());
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(1);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests[0].id)).toBe('pty-1');
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
   await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
-  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
-  const result = await page.evaluate(() => {
-    const f = window.__nativeFixture;
-    return { reads: f.clipboardReads.length, closes: f.imageCloses, stage: f.staged.map(s => [s.id, s.png.slice(0, 8)]),
-      stable: f.sessions.get('pty-1').items[0].reference_id,
-      persisted: localStorage.getItem('agent-runner-hub.workspace.v1') };
-  });
-  expect(result.reads).toBe(1); expect(result.closes).toEqual([42]);
-  expect(result.stage).toEqual([['pty-1', [137, 80, 78, 71, 13, 10, 26, 10]]]);
-  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText([result.stable]);
-  expect(result.persisted).not.toContain('clipboard-');
-  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeEnabled();
+  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.staged.map(item => item.id))).toEqual(['pty-1']);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
+  await page.evaluate(() => window.__nativeFixture.pauseStage());
   await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(2);
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 102, 'rejected'));
-  await expect(page.getByText(/Rejected · no registration confirmed/)).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.staged.map(s => s.path))).toEqual([
-    '/fixture/hub-owned/pty-1/clipboard-1.png', '/fixture/hub-owned/pty-1/clipboard-2.png']);
+  await expect(page.getByRole('button', { name: 'Cancel image 2', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
+  await page.evaluate(() => window.__nativeFixture.resumeStage());
+  await expect(page.locator('.reference-candidate').filter({ hasText: 'Cancelled' })).toHaveCount(1);
+  await expect(page.locator('.clipboard-candidate img')).toHaveCount(1);
 });
 
-test('clipboard failures and unknown admissions never fabricate success or retry', async ({ page }) => {
+test('empty clipboard and staging failures stay actionable and unknown registration never replays', async ({ page }) => {
   await transport(page, undefined, { clipboard: true, unknownAdmission: true }); await configure(page); await create(page);
   await page.getByText('Files and images', { exact: true }).click();
-  const capture = page.getByRole('button', { name: 'Clipboard image', exact: true });
-  await expect(capture).toBeEnabled();
-  await page.evaluate(() => window.__nativeFixture.missingImage(true)); await capture.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Clipboard has no image' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(0);
+  await page.evaluate(() => window.__nativeFixture.missingImage(true));
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Copy a supported image' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel image 1', exact: true }).click();
   await page.evaluate(() => { window.__nativeFixture.missingImage(false); window.__nativeFixture.stageFailure(true); });
-  await capture.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'staging is not writable' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(0);
-  await page.evaluate(() => window.__nativeFixture.stageFailure(false)); await capture.click();
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await expect(page.getByText(/Registered · completed Runner receipt/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Clear selected paths', exact: true }).click();
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(1);
-  expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(1);
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
+  await page.evaluate(() => window.__nativeFixture.stageFailure(false));
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByAltText('Clipboard image 3 preview')).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Keep the uncertain draft');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'registration did not complete' })).toBeVisible();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Keep the uncertain draft');
+  await page.getByRole('button', { name: 'Clear registration history' }).click();
+  await expect(page.locator('.reference-candidate')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
+  expect(await page.evaluate(() => window.__nativeFixture.deliveredSets.filter(item => new TextDecoder().decode(new Uint8Array(item.bytes)).endsWith('\u001b[13;0;13;1;0;1_')))).toHaveLength(0);
 });
 
 test('clipboard stays unavailable without native staging or during foreground interaction', async ({ page }) => {
@@ -358,6 +398,233 @@ async function create(page) {
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
 }
+
+test('later clipboard registration failure holds the exact draft and selection without partial instruction delivery', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  for (let n = 0; n < 3; n++) {
+    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 1);
+  }
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Keep this exact draft');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register').length)).toBe(1);
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Cancel image 2', exact: true })).toBeDisabled();
+  await page.evaluate(() => { const f = window.__nativeFixture; const request = f.referenceRequests.find(item => item.request.operation === 'references.register');
+    f.finishReference(request.id, request.requestId); });
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register').length)).toBe(2);
+  await page.evaluate(() => { const f = window.__nativeFixture; const request = f.referenceRequests.filter(item => item.request.operation === 'references.register')[1];
+    f.finishReference(request.id, request.requestId, 'rejected'); });
+  await expect(page.getByRole('alert').filter({ hasText: 'registration did not complete' })).toBeVisible();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Keep this exact draft');
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(2);
+  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register').length)).toBe(3);
+  await page.evaluate(() => { const f = window.__nativeFixture; const request = f.referenceRequests.filter(item => item.request.operation === 'references.register')[2];
+    f.finishReference(request.id, request.requestId); });
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(1);
+});
+
+test('cancelling a queued registration settles its exact attempt then removes by committed ID', async ({ page }) => {
+  await transport(page, undefined, {}); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel path 1', exact: true }).click();
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove').length)).toBe(1);
+  const removal = await page.evaluate(() => {
+    const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.remove');
+    return { request, committed: f.sessions.get('pty-1').items[0].reference_id };
+  });
+  expect(removal.request.request).toEqual({ operation: 'references.remove', reference_id: removal.committed });
+  await page.evaluate(request => window.__nativeFixture.finishReference(request.id, request.requestId, 'outcome-unknown'), removal.request);
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Do not send unresolved removals');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
+  await page.evaluate(id => { const session = window.__nativeFixture.sessions.get('pty-1');
+    session.items = session.items.filter(item => item.reference_id !== id); }, removal.committed);
+  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
+  await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(1);
+});
+
+test('completed registration removal retains receipts and isolates independent Runner identities', async ({ page }) => {
+  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
+  await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
+  const other = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items[0].reference_id);
+  await page.locator('.runner-row').first().locator('.nav-row').click();
+  await page.getByRole('button', { name: 'Remove path 1', exact: true }).click();
+  await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
+  const result = await page.evaluate(() => {
+    const f = window.__nativeFixture;
+    return { a: f.sessions.get('pty-1').items, b: f.sessions.get('pty-2').items,
+      removal: f.referenceRequests.filter(item => item.request.operation === 'references.remove'),
+      receipts: f.sessions.get('pty-1').control.references.results.map(item => item.state) };
+  });
+  expect(result.a).toEqual([]); expect(result.b.map(item => item.reference_id)).toEqual([other]);
+  expect(result.removal).toHaveLength(1); expect(result.removal[0].id).toBe('pty-1');
+  expect(result.removal[0].request.reference_id).not.toBe(other);
+  expect(result.receipts).toEqual(['registered', 'removed']);
+});
+
+test('legacy removal requires /files and authoritative reconciliation before ordinary submission', async ({ page }) => {
+  await transport(page, undefined, { auto: true, legacyRemoval: true }); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
+  await page.getByRole('button', { name: 'Remove path 1', exact: true }).click();
+  await expect(page.getByText(/This attachment remains unresolved/)).toBeVisible();
+  await page.getByLabel('Runner instructions', { exact: true }).fill('After manual removal');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
+  await page.getByRole('button', { name: 'Open /files in terminal' }).click();
+  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1'); session.items = [];
+    session.control.results.forEach(result => result.state = 'accepted'); });
+  await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
+  await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(0);
+});
+
+test('pending terminal cancellation and unknown completion remain distinct without automatic replay', async ({ page }) => {
+  await transport(page, undefined, {}); await configure(page); await create(page);
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
+  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel path 1', exact: true }).click();
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  await page.getByRole('button', { name: 'Clear registration history' }).click();
+  await expect(page.locator('.reference-candidate')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
+  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Unknown registration must not send');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
+});
+
+test('preflight permits Runner-owned terminal cancellation and preserves the unsent draft', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Terminal cancellation keeps this draft');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.some(item => item.request.operation === 'references.register'))).toBe(true);
+  await page.evaluate(() => { const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.register');
+    f.finishReference(request.id, request.requestId, 'pending-interaction'); });
+  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
+  await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Escape');
+  await page.evaluate(() => { const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.register');
+    f.finishReference(request.id, request.requestId, 'rejected');
+    f.sessions.get(request.id).control.references.results.find(item => item.id === request.requestId).code = 'REFERENCE_SELECTION_CANCELLED'; });
+  await expect(page.getByRole('alert').filter({ hasText: 'registration did not complete' })).toBeVisible();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Terminal cancellation keeps this draft');
+  await expect(page.getByText(/Cancelled · no pending attachment/)).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes.every(item => new TextDecoder().decode(new Uint8Array(item.bytes)).includes('[27;')))).toBe(true);
+});
+
+test('other pending references require review and remain present alongside the selected clipboard image', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push(...[1, 2, 3].map(n => ({
+    reference_id: n.toString(16).padStart(32, 'e'), display_index: n, display_name: 'terminal-' + n + '.txt', kind: 'file', image_detail: null, media_kind: null }))));
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Include the reviewed terminal references');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Other pending references' }).locator('li')).toHaveCount(3);
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
+  await page.getByRole('button', { name: 'Clear registration history' }).click();
+  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
+  await page.getByRole('button', { name: 'Include other pending references', exact: true }).click();
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.display_name)))
+    .toEqual(['terminal-1.txt', 'terminal-2.txt', 'terminal-3.txt', 'clipboard-1.png']);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(0);
+});
+
+test('changing paginated inventory blocks without inventing a snapshot or sending an instruction', async ({ page }) => {
+  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
+  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1');
+    session.items = [1, 2, 3].map(n => ({ reference_id: n.toString(16).padStart(32, 'e'), display_index: n,
+      display_name: 'terminal-' + n, kind: 'file', image_detail: null, media_kind: null })); session.changeInventoryAt = 2; });
+  await page.getByLabel('Runner instructions', { exact: true }).fill('Do not send changing inventory');
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'pagination is unverified' })).toBeVisible();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Do not send changing inventory');
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
+});
+
+test('ordinary PTY uncertainty preserves the draft and blocks Hub replay', async ({ page }) => {
+  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
+  await page.getByLabel('Runner instructions', { exact: true }).fill('One uncertain ordinary delivery');
+  await page.evaluate(() => window.__nativeFixture.failWrite());
+  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'PTY delivery outcome unknown' })).toBeVisible();
+  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('One uncertain ordinary delivery');
+  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(1);
+});
+
+test('clipboard previews revoke on owned session exit and late capture never crosses into another Runner', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
+  const firstUrl = await page.getByAltText('Clipboard image 1 preview').getAttribute('src');
+  await page.evaluate(() => window.__nativeFixture.pauseStage());
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByText('Reading clipboard and staging PNG for this Runner…')).toBeVisible();
+  await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  await page.evaluate(() => { window.__nativeFixture.exit('pty-1'); window.__nativeFixture.resumeStage(); });
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
+  const secondUrl = await page.getByAltText('Clipboard image 1 preview').getAttribute('src');
+  expect(firstUrl).not.toBe(secondUrl);
+  const released = await page.evaluate(() => window.__nativeFixture.revokedUrls);
+  expect(released).toContain(firstUrl); expect(released).not.toContain(secondUrl);
+  await page.locator('.runner-row').first().locator('.nav-row').click();
+  await expect(page.locator('.clipboard-candidate img')).toHaveCount(0);
+  await expect(page.locator('.reference-candidate').filter({ hasText: 'Cancelled' })).toHaveCount(2);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
+});
+
+test('clipboard preview selection stays bounded and a cancelled slot can be replaced', async ({ page }) => {
+  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
+  await page.getByText('Files and images', { exact: true }).click();
+  for (let n = 0; n < 16; n++) {
+    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 1);
+  }
+  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Cancel image 8', exact: true }).click();
+  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
+  await expect(page.getByAltText('Clipboard image 17 preview')).toBeVisible();
+  await expect(page.locator('.clipboard-candidate img')).toHaveCount(16);
+  expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(17);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
+});
 
 test('reference drop submissions keep individual receipts and their original Runner through tab switches', async ({ page }) => {
   await transport(page, undefined, {}); await configure(page); await create(page);
@@ -765,11 +1032,11 @@ test('uncertain reference remains explicit across clearing, refreshing and tab s
   await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
   await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await page.getByRole('button', { name: 'Clear selected paths' }).click();
+  await page.getByRole('button', { name: 'Clear registration history' }).click();
   await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
   await create(page); await page.locator('.runner-row').first().locator('.nav-row').click();
-  await page.getByRole('button', { name: 'Refresh pending references' }).click();
-  await expect(page.getByText(/0 pending · Page offset 0/)).toBeVisible();
+  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
+  await expect(page.getByText(/0 pending · Matching complete/)).toBeVisible();
   await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
   await expect(page.getByRole('button', { name: 'Register selected paths' })).toBeDisabled();
@@ -790,7 +1057,7 @@ test('Single Entry skips a Runner with prepared references and verifies the chos
 test('reference admission failure is distinct from uncertainty and is never automatically retried', async ({ page }) => {
   await transport(page, undefined, { admissionFailure: true }); await configure(page); await create(page);
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText(/Failed · no registration confirmed/)).toBeVisible();
+  await expect(page.getByText(/Failed · review or cancel/)).toBeVisible();
   await expect(page.getByText(/fixture queue unavailable/)).toBeVisible();
   await expect(page.getByText(/Outcome unknown · not repeated/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Register selected paths' })).toBeDisabled();

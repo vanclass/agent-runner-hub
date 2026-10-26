@@ -77,6 +77,8 @@ fn installed_clipboard_staging_receipts_inventory_and_scoped_cleanup() {
     let a = harness.sessions.owned(&first, "test-window").unwrap();
     let b = harness.sessions.owned(&second, "test-window").unwrap();
     wait_ready(&mut harness, &a); wait_ready(&mut harness, &b);
+    assert!(a.control_snapshot().unwrap().clipboard_staging, "Windows Native I/O must advertise live capture without a test gate");
+    assert!(a.control_snapshot().unwrap().references.removal_capability.is_some());
     let bytes = image();
     let path = a.stage_clipboard(&bytes).unwrap();
     let id = submit(&a, ReferenceRequest::Register { path: path.clone() });
@@ -95,6 +97,14 @@ fn installed_clipboard_staging_receipts_inventory_and_scoped_cleanup() {
         &path]).output().unwrap();
     assert!(read.status.success(), "installed Python must read with the original Hub handle retained");
     assert_eq!(String::from_utf8(read.stdout).unwrap().trim(), bytes.len().to_string());
+    let remove_id = submit(&a, ReferenceRequest::Remove { reference_id: stable.clone() });
+    let removed = wait_result(&mut harness, &a, remove_id);
+    assert_eq!(removed.state, "removed"); assert_eq!(removed.reference_id.as_deref(), Some(stable.as_str()));
+    assert_eq!(removed.removal_status.as_deref(), Some("removed"));
+    let list = submit(&a, ReferenceRequest::List { offset: 0 });
+    assert!(!wait_result(&mut harness, &a, list).inventory.unwrap().references.iter().any(|r| r.reference_id == stable));
+    assert_eq!(std::fs::read(&path).unwrap(), bytes, "removed pending reference may already belong to a frozen workload");
+    println!("Installed Runner register request {id}, committed {stable}; removal request {remove_id}, removed receipt and authoritative absence; PNG still readable.");
     let other = b.stage_clipboard(&bytes).unwrap();
     let rejected_id = submit(&a, ReferenceRequest::Register { path: format!("{path}-missing") });
     let rejected = wait_result(&mut harness, &a, rejected_id);

@@ -39,6 +39,19 @@ export class RunnerControl {
   private timer?: ReturnType<typeof setTimeout>;
   private stopped = false;
   private referenceAdmissions = 0;
+  private attachmentLease?: symbol;
+  get sessionId() { return this.id; }
+  get attachmentLocked() { return !!this.attachmentLease; }
+  reserveAttachments() {
+    if (this.stopped || this.busy || this.snapshot.state !== 'ready')
+      throw new Error('Finish the current Runner interaction before sending attachments.');
+    this.attachmentLease = Symbol('attachment submission');
+    this.changed();
+    return this.attachmentLease;
+  }
+  releaseAttachments(lease: symbol) {
+    if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
+  }
   constructor(private readonly changed: () => void) { this.images = new RunnerImages(changed); }
   start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
   async fresh() {
@@ -72,7 +85,7 @@ export class RunnerControl {
     } catch (reason) { if (!this.stopped) this.stop(String(reason)); }
   }
   get busy() {
-    return this.assignmentLocked || this.sending || this.referenceAdmissions > 0
+    return this.assignmentLocked || this.attachmentLocked || this.sending || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }
@@ -113,10 +126,11 @@ export class RunnerControl {
       throw new Error('Clipboard conversion produced invalid PNG data.');
     if (this.stopped || id !== this.id || this.busy || this.snapshot.state !== 'ready')
       throw new Error('The owning Runner is no longer available. Image was not submitted.');
+    const thumbnail = await clipboardThumbnail(blob);
     const path = await invoke<string>('runner_stage_clipboard', { id, png: Array.from(png) });
-    return { path, sessionId: id };
+    return { path, sessionId: id, thumbnail };
   }
-  async reference(request: ReferenceRequest, owningSession?: string): Promise<ReferenceAdmission> {
+  async reference(request: ReferenceRequest, owningSession?: string, lease?: symbol): Promise<ReferenceAdmission> {
     const id = this.id;
     if (owningSession && owningSession !== id)
       return { state: 'failure', detail: 'The owning Runner session changed. Staged image was not submitted.' };
@@ -124,6 +138,10 @@ export class RunnerControl {
       throw new Error('Authenticated reference capability is unavailable.');
     if (this.assignmentLocked && request.operation !== 'references.list')
       throw new Error('Single Entry holds this Runner.');
+    if (this.attachmentLease && this.attachmentLease !== lease)
+      throw new Error('The attachment selection is locked for instruction submission.');
+    if (request.operation === 'references.remove' && !this.snapshot.references?.removalCapability)
+      return { state: 'failure', detail: 'Use /files removal in this Runner, then reconcile pending references.' };
     this.referenceAdmissions++; this.changed();
     try { return await invoke<ReferenceAdmission>('runner_reference', { id, request }); }
     finally { this.referenceAdmissions--; this.changed(); }
@@ -144,6 +162,23 @@ export class RunnerControl {
         ? { ...result, state: 'outcome-unknown' } : result) };
     this.changed();
   }
+}
+
+async function clipboardThumbnail(blob: Blob) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const scale = Math.min(1, 160 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Clipboard preview is unavailable.');
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(thumbnail => {
+      if (thumbnail && thumbnail.size <= 256 * 1024) resolve(thumbnail);
+      else reject(new Error('Clipboard preview could not be bounded.'));
+    }, 'image/png'));
+  } finally { bitmap.close(); }
 }
 
 export function flattenCommands(commands: RunnerCommand[]): RunnerCommand[] {

@@ -7,9 +7,8 @@ use windows_sys::Win32::{Foundation::INVALID_HANDLE_VALUE,
 const MAX_PNG_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PIXELS: u64 = 32 * 1024 * 1024;
 const MAX_DECODED_BYTES: usize = 128 * 1024 * 1024;
-// Keep the user action unavailable until positive clipboard acquisition has
-// been exercised in the actual Windows Hub. Native staging is verified separately.
-pub const CLIPBOARD_PNG_VERIFIED: bool = false;
+const MAX_SESSION_BYTES: usize = 256 * 1024 * 1024;
+const MAX_SESSION_IMAGES: usize = 128;
 
 fn validate_png(bytes: &[u8]) -> Result<(), String> {
     if bytes.len() > MAX_PNG_BYTES || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -94,10 +93,13 @@ impl Directory {
 }
 
 #[derive(Default)]
-pub struct ClipboardFiles { directory: Option<Directory>, files: Vec<File>, terminated: bool }
+pub struct ClipboardFiles { directory: Option<Directory>, files: Vec<File>, bytes: usize, terminated: bool }
 impl ClipboardFiles {
     pub fn stage(&mut self, bytes: &[u8]) -> Result<String, String> {
         if self.terminated { return Err("Clipboard source owner has terminated".into()); }
+        if self.files.len() >= MAX_SESSION_IMAGES || bytes.len() > MAX_SESSION_BYTES.saturating_sub(self.bytes) {
+            return Err("Clipboard staging limit reached for this Runner. Finish this session before capturing more images.".into());
+        }
         validate_png(bytes)?;
         if self.directory.is_none() { self.directory = Some(Directory::new()?); }
         let directory = self.directory.as_ref().unwrap();
@@ -120,6 +122,7 @@ impl ClipboardFiles {
             if delete_owned(&file).is_err() { self.files.push(file); }
             return Err(error);
         }
+        self.bytes += bytes.len();
         self.files.push(file);
         let text = path.to_str().ok_or("Clipboard source path is invalid")?;
         Ok(if let Some(unc) = text.strip_prefix("\\\\?\\UNC\\") { format!("\\\\{unc}") }

@@ -9,6 +9,8 @@ fn capable() -> Protocol {
     response["capabilities"]["references"] = json!({"version":1,
         "operations":["references.register","references.list"],"batch":false,"inventory_page_size":16,
         "image_details":["auto","low","high","original"],"interaction_owner":"runner_terminal","private_key":"must-not-project"});
+    response["capabilities"]["reference_removal"] = json!({"version":1,"operations":["references.remove"],
+        "batch":false,"reference_id_format":"32_lowercase_hex","interaction_owner":"runner_terminal"});
     protocol.response(response).unwrap(); protocol
 }
 fn register(protocol: &mut Protocol) -> u64 {
@@ -111,6 +113,23 @@ fn paginated_inventory_retains_per_page_order_and_stable_ids() {
 }
 
 #[test]
+fn crossed_missing_or_ambiguous_removal_never_claims_success_or_replays() {
+    for mode in ["crossed", "missing", "unknown", "rejected"] {
+        let mut protocol = capable();
+        protocol.reference_request(ReferenceRequest::Remove { reference_id: "a".repeat(32) }, "private").unwrap();
+        let id = protocol.next;
+        let mut receipt = packet(id, if mode == "rejected" { "rejected" } else { "accepted" }, "completed");
+        receipt["reference_id"] = json!(if mode == "crossed" { "b".repeat(32) } else { "a".repeat(32) });
+        if mode != "missing" { receipt["removal_status"] = json!(if mode == "unknown" { "unknown" }
+            else if mode == "rejected" { "not_removed" } else { "removed" }); }
+        if matches!(mode, "crossed" | "missing") {
+            assert!(protocol.response(receipt).is_err()); protocol.disconnect("Invalid removal receipt");
+        } else { protocol.response(receipt).unwrap(); }
+        assert_eq!(protocol.next, id);
+        assert_eq!(protocol.snapshot.references.results[0].state, if mode == "rejected" { "rejected" } else { "outcome-unknown" });
+    }
+}
+#[test]
 fn explicit_unknown_flag_overrides_even_a_failure_without_a_phase() {
     let mut protocol = capable(); let id = register(&mut protocol);
     let mut response = packet(id, "failure", "completed");
@@ -120,4 +139,39 @@ fn explicit_unknown_flag_overrides_even_a_failure_without_a_phase() {
     let result = &protocol.snapshot.references.results[0];
     assert_eq!(result.state, "outcome-unknown");
     assert!(result.reference.is_none()); assert_eq!(protocol.next, id);
+}
+
+#[test]
+fn removal_is_optional_and_requires_exact_lowercase_identity() {
+    let mut protocol = capable();
+    protocol.snapshot.references.removal_capability = None;
+    let next = protocol.next;
+    assert!(protocol.reference_request(ReferenceRequest::Remove { reference_id: "a".repeat(32) }, "private").is_err());
+    assert_eq!(protocol.next, next);
+    for id in ["name.png".into(), "A".repeat(32), String::new()] {
+        assert!(ReferenceRequest::Remove { reference_id: id }.validate().is_err());
+    }
+}
+
+#[test]
+fn removal_commits_only_the_exact_completed_owner_receipt() {
+    let mut protocol = capable();
+    let registered = register(&mut protocol);
+    let stable = "a".repeat(32);
+    protocol.response(committed(registered, &stable)).unwrap();
+    let wire = protocol.reference_request(ReferenceRequest::Remove { reference_id: stable.clone() }, "private").unwrap();
+    let request: Value = serde_json::from_slice(&wire).unwrap();
+    assert_eq!(request["operation"], "references.remove"); assert_eq!(request["reference_id"], stable);
+    assert!(request.get("path").is_none());
+    let id = protocol.next;
+    protocol.response(packet(id, "accepted", "queued")).unwrap();
+    assert_eq!(protocol.snapshot.references.results[1].state, "queued");
+    let mut receipt = packet(id, "accepted", "completed");
+    receipt["reference_id"] = json!(stable); receipt["removal_status"] = json!("removed");
+    receipt["inventory"] = json!({"total_count":0,"offset":0,"next_offset":null,"references":[]});
+    protocol.response(receipt).unwrap();
+    let result = &protocol.snapshot.references.results[1];
+    assert_eq!(result.state, "removed"); assert_eq!(result.reference_id.as_deref(), Some(stable.as_str()));
+    assert_eq!(result.removal_status.as_deref(), Some("removed"));
+    assert_eq!(protocol.snapshot.references.results[0].state, "registered", "registration receipt is preserved");
 }

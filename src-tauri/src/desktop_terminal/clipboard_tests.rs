@@ -69,3 +69,19 @@ fn guard_loss_does_not_assume_termination() {
     assert_eq!(fs::read(&path).unwrap(), png(), "Drop must not delete a potentially live source");
     fs::remove_file(&path).unwrap(); fs::remove_dir(path.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn session_limits_reject_new_sources_without_releasing_owned_bytes() {
+    let mut files = ClipboardFiles::default();
+    let bytes = png();
+    let source = PathBuf::from(files.stage(&bytes).unwrap());
+    files.bytes = MAX_SESSION_BYTES;
+    assert!(files.stage(&bytes).unwrap_err().contains("staging limit"));
+    assert_eq!(fs::read(&source).unwrap(), bytes);
+    files.release_after_termination().unwrap();
+    assert!(!source.exists());
+    let mut files = ClipboardFiles::default();
+    for _ in 0..MAX_SESSION_IMAGES { files.stage(&bytes).unwrap(); }
+    assert!(files.stage(&bytes).unwrap_err().contains("staging limit"));
+    files.release_after_termination().unwrap();
+}

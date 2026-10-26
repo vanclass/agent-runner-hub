@@ -6,7 +6,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   const text = session.view.draft ?? '';
   const pending = !!session.view.submitting;
   const [error, setError] = useState('');
-  const available = session.view.status === 'running' && session.view.canSubmit && !session.assignmentReserved;
+  const available = session.view.status === 'running' && session.view.canSubmit && !session.assignmentReserved && !session.submissionUncertain;
   const files = commandNamed(session.control.snapshot, '/files');
   const canSelect = session.references.available;
   async function pick(folder: boolean) {
@@ -32,7 +32,8 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
         onClick={() => void submit()}>{pending ? 'Sending…' : 'Send instruction'} <span aria-hidden="true">↗</span></button></div>
     </div>
     {error && <p role="alert">{error}</p>}
-    <p className="composer-note">{pending ? 'Sending this input to the selected terminal…'
+    <p className="composer-note">{pending ? 'Verifying attachments and sending this input. Continue any image-detail prompt in this Runner terminal…'
+      : session.submissionUncertain ? 'PTY delivery is uncertain. Draft retained; check the terminal before any manual action. Hub will not replay it.'
       : session.assignmentReserved ? 'Single Entry holds this Runner. Review the assignment in Single Entry before using this composer.' : session.view.status === 'running'
       ? available ? 'Appends to this terminal’s current input, then presses Enter. Line breaks stay within one submission.'
         : 'Waiting for the terminal input protocol. You can type directly in the terminal.'

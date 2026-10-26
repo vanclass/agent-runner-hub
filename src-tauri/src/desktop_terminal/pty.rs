@@ -75,7 +75,8 @@ impl Session {
         #[cfg(windows)]
         {
             let mut snapshot = self.control.lock().unwrap().as_ref().map(|c| c.snapshot()).ok_or("Runner control is unavailable")?;
-            snapshot.clipboard_staging = cfg!(feature = "native-io") && clipboard::CLIPBOARD_PNG_VERIFIED
+            snapshot.clipboard_staging = cfg!(feature = "native-io") && snapshot.state == "ready"
+                && snapshot.references.capability.is_some()
                 && !self.closing.load(Ordering::Acquire)
                 && self.job.lock().unwrap().is_some();
             return Ok(snapshot);
