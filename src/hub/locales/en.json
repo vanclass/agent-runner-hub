@@ -68,6 +68,19 @@
     "success": "Owner-confirmed commit",
     "terminalHelp": "Use this Runner’s existing /target, /account, /model or /run-mode terminal settings."
   },
+  "spare": {
+    "verify": "Spare unavailable. Verify an AgentRunner installation to prepare one.",
+    "preparing": "Preparing a spare Runner…",
+    "ready": "Spare Runner ready.",
+    "unavailable": "Spare unavailable: {{reason}} Use New Runner to resolve setup or interaction, then verify the installation to prepare again.",
+    "timeout": "Readiness or terminal input was not established within 40 seconds.",
+    "exited": "The spare process exited.",
+    "controlUnavailable": "Authenticated Runner control is unavailable.",
+    "inputUnavailable": "Terminal input or session configuration is not ready.",
+    "changed": "The session ownership changed.",
+    "closed": "The Runner workspace is closed.",
+    "cleanupFailed": "Spare cleanup could not be confirmed: {{reason}}. Close and reopen Hub before preparing another spare."
+  },
   "runtime": {
     "withDiagnostic": "{{message}} {{diagnostic}}",
     "references": {

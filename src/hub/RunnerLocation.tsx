@@ -1,27 +1,29 @@
-import { useHubTranslation, t, tr, msg, errorText, HubError, type HubText } from './i18n';
-import { useState } from 'react';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { useHubTranslation, t, tr, errorText, type HubText } from './i18n';
+import { useEffect, useRef, useState } from 'react';
+import { resolveRunnerInstallation, savedRunnerLocation, saveRunnerLocation, type RunnerInstallation } from './runnerInstallation';
 
-export type RunnerInstallation = { root: string; python: string };
-const storageKey = 'agent-runner-hub.installation';
-function savedLocation() { try { return localStorage.getItem(storageKey) ?? ''; } catch { return ''; } }
+export type { RunnerInstallation } from './runnerInstallation';
 
-export function RunnerLocation({ installation, onChange }: {
+export function RunnerLocation({ installation, onChange, preparation }: {
   installation: RunnerInstallation | null; onChange: (installation: RunnerInstallation | null) => void;
+  preparation?: HubText;
 }) {
   useHubTranslation();
-  const [location, setLocation] = useState(() => installation?.root ?? savedLocation());
+  const [location, setLocation] = useState(() => installation?.root ?? savedRunnerLocation());
+  const generation = useRef(0);
+  useEffect(() => () => { ++generation.current; }, []);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<HubText>('');
   async function verify() {
+    const request = ++generation.current;
     setPending(true); setError(''); onChange(null);
     try {
-      if (!isTauri()) throw new HubError(msg('location.nativeRequired'));
-      const result = await invoke<RunnerInstallation>('runner_resolve', { location });
+      const result = await resolveRunnerInstallation(location);
+      if (generation.current !== request) return;
       onChange(result);
-      try { localStorage.setItem(storageKey, result.root); } catch { /* The verified location remains usable for this Hub window. */ }
-    } catch (reason) { setError(errorText(reason)); }
-    finally { setPending(false); }
+      saveRunnerLocation(result.root);
+    } catch (reason) { if (generation.current === request) setError(errorText(reason)); }
+    finally { if (generation.current === request) setPending(false); }
   }
   return <section className="runner-location" aria-label={t('location.installation')}>
     <label>{t('location.label')}<input aria-label={t('location.label')} value={location} disabled={pending}
@@ -30,6 +32,7 @@ export function RunnerLocation({ installation, onChange }: {
     <p>{t('location.help')}</p>
     {pending && <p role="status">{t('location.verifying')}</p>}
     {installation && <p role="status">{t('location.verified')}</p>}
+    {preparation && <p role="status">{tr(preparation)}</p>}
     {error && <p role="alert">{tr(error)}</p>}
   </section>;
 }

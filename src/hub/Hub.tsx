@@ -1,6 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { RunnerSessions } from './RunnerSessions';
-import type { RunnerInstallation } from './RunnerLocation';
 import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
 import { HubPreferences } from './preferences';
@@ -22,7 +21,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     singleEntry => preferences.update({ singleEntry })));
   const liveRunners = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot);
   const runners = [...fixtures, ...liveRunners];
-  const [installation, setInstallation] = useState<RunnerInstallation | null>(null);
+  const spare = sessions.spareSnapshot;
+  const installation = spare.installation;
   const [launching, setLaunching] = useState(false);
   useEffect(() => sessions.retain(), [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -57,7 +57,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     <div className="shell-body">
       <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
-        theme={theme} installation={installation} onInstallation={setInstallation}
+        theme={theme} installation={installation} onInstallation={value => sessions.setInstallation(value)}
+        sparePreparation={spare.detail}
         entry={sessions.entry} onSelectRunner={setSelectedId} />
     </div>
   </div>;

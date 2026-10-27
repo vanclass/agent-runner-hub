@@ -1,4 +1,4 @@
-import { useHubTranslation, t, tr } from './i18n';
+import { useHubTranslation, t, tr, type HubText } from './i18n';
 import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
@@ -11,9 +11,10 @@ import { RunnerLocation, type RunnerInstallation } from './RunnerLocation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer, SingleEntrySettings } from './SingleEntryComposer';
 
-export function Workspace({ runner, session, theme, installation, onInstallation, entry, onSelectRunner }: {
+export function Workspace({ runner, session, theme, installation, onInstallation, sparePreparation, entry, onSelectRunner }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null; onInstallation: (value: RunnerInstallation | null) => void;
+  sparePreparation: HubText;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
 }) {
   useHubTranslation();
@@ -39,7 +40,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
           : runner?.status === 'running' ? t('workspace.running') : runner?.status === 'failed' ? t('workspace.failed')
             : t('workspace.exited', { code: runner?.exitCode ?? t('common.unknown') }) : t('common.notConnected')}</span></div>
       {runner?.detail && <p role="alert" className="runner-error">{tr(runner.detail)}</p>}
-      {singleEntry && <RunnerLocation installation={installation} onChange={onInstallation} />}
+      {singleEntry && <RunnerLocation installation={installation} onChange={onInstallation} preparation={sparePreparation} />}
       {session ? <RunnerTerminal session={session} theme={theme} /> : <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">{singleEntry ? '↗' : '›_'}</div>
         <h2>{singleEntry ? t('workspace.begin') : t('workspace.connection')}</h2>

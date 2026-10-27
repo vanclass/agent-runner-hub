@@ -9,6 +9,8 @@ import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
 import { SingleEntry, type EntryDefaults } from './singleEntry';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
+import { RunnerSpare } from './RunnerSpare';
+import type { RunnerInstallation } from './runnerInstallation';
 import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
@@ -19,6 +21,8 @@ export class RunnerSession {
   readonly control: RunnerControl;
   readonly references: RunnerReferenceSelection;
   private pty?: Pty;
+  private opening?: Promise<void>;
+  private cleanup?: Promise<void>;
   private pending: Uint8Array[] = [];
   private lastInput: Promise<void> = Promise.resolve();
   private resizeTimer?: ReturnType<typeof setTimeout>;
@@ -29,14 +33,21 @@ export class RunnerSession {
   private deliveryUnknown = false;
   get submissionUncertain() { return this.deliveryUnknown; }
   view: RunnerView;
-  tab: RunnerTabRecord;
+  private tabRecord?: RunnerTabRecord;
+  get tab() {
+    if (!this.tabRecord) throw new Error('Hidden Runner has no workspace tab');
+    return this.tabRecord;
+  }
   readonly previousContext: RunnerTabRecord['recoveryHint'];
 
-  constructor(tab: RunnerTabRecord, private readonly changed: () => void, readonly restored = false) {
-    this.tab = tab;
-    this.previousContext = tab.recoveryHint;
-    this.view = { id: tab.id, createdOrder: tab.createdOrder, name: tab.name,
-      status: tab.launchOnOpen ? 'starting' : 'exited', canSubmit: false, draft: '', submitting: false };
+  constructor(tab: RunnerTabRecord | Pick<RunnerTabRecord, 'installationRoot'>,
+    private changed: () => void, readonly restored = false) {
+    this.tabRecord = 'id' in tab ? tab : undefined;
+    this.previousContext = this.tabRecord?.recoveryHint;
+    // Empty display fields remain private until the workspace assigns a tab at promotion.
+    this.view = { id: this.tabRecord?.id ?? '', createdOrder: this.tabRecord?.createdOrder ?? 0,
+      name: this.tabRecord?.name ?? '', status: this.tabRecord?.launchOnOpen === false ? 'exited' : 'starting',
+      canSubmit: false, draft: '', submitting: false };
     this.control = new RunnerControl(() => { this.captureVerified(); this.changed(); });
     this.references = new RunnerReferenceSelection(this.control, () => this.changed());
     this.terminal.loadAddon(this.fit);
@@ -55,9 +66,9 @@ export class RunnerSession {
   private update(change: Partial<RunnerView>) { this.view = { ...this.view, ...change }; this.changed(); }
   private captureVerified() {
     const observation = this.control.snapshot.observation;
-    if (!observation || !this.control.observationFresh) return;
+    if (!this.tabRecord || !observation || !this.control.observationFresh) return;
     // Fresh settings do not confirm historical work recovery or retire its retained hint.
-    this.tab = { ...this.tab, lastVerified: {
+    this.tabRecord = { ...this.tabRecord, lastVerified: {
       target: { ...observation.target }, runMode: observation.run_mode,
       workflowKind: observation.execution.workflow_kind,
     } };
@@ -65,7 +76,7 @@ export class RunnerSession {
   private protocolChanged() {
     if (this.input && this.view.canSubmit !== this.input.canSubmit) this.update({ canSubmit: this.input.canSubmit });
   }
-  private error(reason: unknown) { this.update({ detail: errorText(reason) }); }
+  private error(reason: unknown) { if (!this.disposed) this.update({ detail: errorText(reason) }); }
   private manualInput() {
     if (this.assignmentWriting) return false;
     if (this.references.locked && !this.references.results.some(result => result.state === 'pending-interaction')) return false;
@@ -117,14 +128,18 @@ export class RunnerSession {
     this.lastInput = this.pty.write(bytes);
     void this.lastInput.catch(reason => this.error(reason));
   }
-  async open(location: string) {
+  open(location: string) {
+    if (this.disposed) return Promise.resolve();
+    return this.opening ??= this.launch(location);
+  }
+  private async launch(location: string) {
     try {
       const request = { runnerLocation: location, cols: this.terminal.cols, rows: this.terminal.rows };
       const pty = await openPty(request, (bytes, consumed) => {
         if (this.disposed) consumed(); else this.terminal.write(bytes, consumed);
       }, event => {
         if (this.disposed) return;
-        this.tab = { ...this.tab, launchOnOpen: false };
+        if (this.tabRecord) this.tabRecord = { ...this.tabRecord, launchOnOpen: false };
         const final = (event as typeof event & { control?: ControlSnapshot }).control;
         this.control.stop(msg('runtime.control.processExited'), final);
         this.references.dispose();
@@ -138,11 +153,19 @@ export class RunnerSession {
       for (const bytes of this.pending.splice(0)) await pty.write(bytes);
       await pty.resize(this.terminal.cols, this.terminal.rows);
     } catch (reason) {
+      if (this.disposed) return;
       if (!this.pty) this.control.stop(msg('runtime.control.launchFailed'));
       this.update({ ...(this.pty ? {} : { status: 'failed' }), detail: errorText(reason) });
     }
   }
-  rename(name: string) { this.tab = { ...this.tab, name }; this.update({ name }); }
+  promote(tab: RunnerTabRecord, changed: () => void) {
+    if (this.disposed || this.tabRecord) throw new HubError(msg('spare.unavailable', { reason: msg('spare.changed') }));
+    this.tabRecord = tab;
+    this.changed = changed;
+    this.captureVerified();
+    this.update({ id: tab.id, name: tab.name, createdOrder: tab.createdOrder });
+  }
+  rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting) this.update({ draft }); }
   async submit() {
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
@@ -200,14 +223,17 @@ export class RunnerSession {
       : { background: '#ffffff', foreground: '#23272e', cursor: '#23272e', selectionBackground: '#c4d9f5' };
   }
   dispose() {
+    if (this.disposed) return this.cleanup ?? Promise.resolve();
     this.disposed = true;
     this.control.stop(msg('runtime.control.workspaceClosed'));
     this.references.dispose();
     clearTimeout(this.resizeTimer);
     this.pending = [];
-    void this.pty?.close().catch(reason => console.error('Runner cleanup failed', reason));
+    const closing = this.pty?.close();
     this.input.dispose();
     this.terminal.dispose();
+    this.cleanup = Promise.all([this.opening, closing]).then(async () => { await this.pty?.close(); });
+    return this.cleanup;
   }
 }
 
@@ -220,6 +246,10 @@ export class RunnerSessions {
   private disposed = false;
   readonly workspace = new RunnerWorkspace();
   private consumers = 0;
+  private readonly spare = new RunnerSpare(
+    (installationRoot, changed) => new RunnerSession({ installationRoot }, changed), () => this.changed());
+  get spareSnapshot() { return this.spare.snapshot; }
+  setInstallation(installation: RunnerInstallation | null) { this.spare.setInstallation(installation); }
   readonly entry: SingleEntry;
   constructor(defaults: EntryDefaults = {}, saveDefaults: (value: EntryDefaults) => void = () => {}) {
     this.entry = new SingleEntry(() => [...this.sessions.values()],
@@ -239,7 +269,9 @@ export class RunnerSessions {
     this.restore();
     return () => {
       this.consumers--;
-      queueMicrotask(() => { if (!this.consumers) this.dispose(); });
+      queueMicrotask(() => {
+        if (!this.consumers) void this.dispose().catch(reason => console.error('Runner cleanup failed', reason));
+      });
     };
   }
   restore() {
@@ -255,6 +287,7 @@ export class RunnerSessions {
     for (const session of this.sessions.values()) {
       if (session.tab.launchOnOpen) void session.open(session.tab.installationRoot);
     }
+    this.spare.restore();
   }
   create(location: string, token?: symbol) {
     const order = ++this.order;
@@ -265,5 +298,22 @@ export class RunnerSessions {
     this.changed();
     return { session, launched: session.open(location) };
   }
-  dispose() { this.disposed = true; this.sessions.forEach(session => session.dispose()); }
+  promoteSpare() {
+    if (this.disposed) throw new HubError(msg('spare.closed'));
+    const installationRoot = this.spare.snapshot.installation?.root;
+    if (!installationRoot) throw new HubError(msg('spare.verify'));
+    const session = this.spare.take();
+    const order = ++this.order;
+    const tab = { id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
+      installationRoot, launchOnOpen: true };
+    session.promote(tab, this.changed);
+    this.sessions.set(tab.id, session);
+    this.changed();
+    this.spare.replenish();
+    return session;
+  }
+  dispose() {
+    this.disposed = true;
+    return Promise.all([this.spare.dispose(), ...[...this.sessions.values()].map(session => session.dispose())]);
+  }
 }
