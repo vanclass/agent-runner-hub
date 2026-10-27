@@ -1,3 +1,4 @@
+import { msg, errorText, type HubText } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
 
 export type GeneratedImage = { imageId: string; sourceSequence: number; outputIndex: number;
@@ -29,7 +30,7 @@ function retain(owner: symbol, item: Preview) {
 
 export class RunnerImages {
   state: State = 'loading';
-  detail = 'Waiting for Runner image support';
+  detail: HubText = msg('runtime.images.waiting');
   items: GeneratedImage[] = [];
   selectedId?: string;
   private readonly owner = Symbol('Runner images');
@@ -51,7 +52,7 @@ export class RunnerImages {
     if (!ready || !supported) {
       release(this.owner); this.items = [];
       this.state = !ready ? 'unavailable' : 'unsupported';
-      this.detail = !ready ? 'Runner image connection is unavailable' : 'This Runner does not support generated-image previews';
+      this.detail = !ready ? msg('runtime.images.connectionUnavailable') : msg('runtime.images.unsupported');
       return;
     }
     this.tick();
@@ -65,13 +66,13 @@ export class RunnerImages {
   select(id: string) {
     if (!this.items.some(image => image.imageId === id)) return;
     this.selectedId = id; release(this.owner);
-    this.state = 'loading'; this.detail = 'Verifying image'; this.changed();
+    this.state = 'loading'; this.detail = msg('runtime.images.verifying'); this.changed();
     if (!this.working) void this.load();
   }
   async refresh(manual = false) {
     const id = this.id;
     if (this.stopped || !id || !this.ready || !this.supported || this.working) return;
-    this.working = true; this.state = 'loading'; this.detail = 'Discovering generated images';
+    this.working = true; this.state = 'loading'; this.detail = msg('runtime.images.discovering');
     if (manual) release(this.owner);
     this.changed();
     try {
@@ -83,7 +84,7 @@ export class RunnerImages {
       if (!previous || !this.selected || !same(previous, this.selected)) release(this.owner);
       this.discoveredAt = performance.now();
       this.state = items.length ? 'available' : 'empty';
-      this.detail = items.length ? 'Verified image previews' : 'No supported completed images are available';
+      this.detail = items.length ? msg('runtime.images.previews') : msg('runtime.images.empty');
     } catch (reason) { this.failure(reason); }
     finally { this.working = false; this.changed(); }
     if (!this.stopped && this.active && this.selected && !this.preview && this.state === 'available') void this.load();
@@ -92,15 +93,15 @@ export class RunnerImages {
     const id = this.id, selected = this.selected;
     if (this.stopped || !id || !selected || !this.ready || !this.supported || this.working || reads >= 2) return;
     this.working = true; reads++;
-    this.state = 'loading'; this.detail = 'Retrieving and verifying complete PNG'; this.changed();
+    this.state = 'loading'; this.detail = msg('runtime.images.retrieving'); this.changed();
     try {
       const verified = await invoke<Verified>('runner_image_read', { id, imageId: selected.imageId });
       if (this.stopped || this.id !== id || !this.ready || !this.supported || !this.selected || !same(selected, this.selected)) return;
       if (!same(verified.image, selected) || verified.png.length !== selected.byteLength)
-        throw { state: 'failed', detail: 'Verified image delivery did not match the selected image' };
+        throw { state: 'failed', detail: msg('runtime.images.mismatch') };
       const url = URL.createObjectURL(new Blob([new Uint8Array(verified.png)], { type: 'image/png' }));
       retain(this.owner, { url, bytes: selected.byteLength, image: selected, changed: this.changed });
-      this.state = 'available'; this.detail = 'Verified PNG';
+      this.state = 'available'; this.detail = msg('runtime.images.verified');
     } catch (reason) {
       if (this.selectedId === selected.imageId) this.failure(reason);
     } finally {
@@ -111,15 +112,15 @@ export class RunnerImages {
   private failure(reason: unknown) {
     if (this.stopped) return;
     release(this.owner);
-    const failure = reason as { state?: string; detail?: string } | null;
+    const failure = reason as { state?: string; detail?: HubText } | null;
     this.state = failure?.state === 'unavailable' ? 'unavailable' : 'failed';
-    this.detail = typeof failure?.detail === 'string' ? failure.detail : 'Image retrieval failed. Refresh to try again.';
+    this.detail = failure?.detail ?? msg('runtime.images.failedWithDiagnostic', { diagnostic: errorText(reason) });
     this.discoveredAt = performance.now();
   }
-  rejectRendering() { this.failure({ state: 'failed', detail: 'The verified PNG could not be displayed' }); this.changed(); }
+  rejectRendering() { this.failure({ state: 'failed', detail: msg('runtime.images.renderFailed') }); this.changed(); }
   stop() {
     this.stopped = true; this.ready = false; this.active = false;
     this.items = []; this.selectedId = undefined; release(this.owner);
-    this.state = 'unavailable'; this.detail = 'The owning Runner has ended';
+    this.state = 'unavailable'; this.detail = msg('runtime.images.ownerEnded');
   }
 }

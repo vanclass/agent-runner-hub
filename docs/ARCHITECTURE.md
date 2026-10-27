@@ -9,7 +9,7 @@
 - Hub composition: `src/hub/Hub.tsx` composes installation configuration and the session registry, owns context selection, and routes display-name updates. Stable identities remain separate from editable names.
 - Navigation: `src/hub/Sidebar.tsx` owns sidebar layout, row rendering, keyboard navigation, and temporary inline-edit drafts. Single Entry remains above the independently scrolling Runner list.
 - Workspace: `src/hub/Workspace.tsx` composes the selected context header, scoped settings, terminal view and instruction composer. `RunnerSessions.ts` owns terminal resources independently of workspace mounting; details belong to the [terminal specification](implementation_specs/runner_terminals.md).
-- Theme: `src/hub/ThemePicker.tsx` selects application appearance; `src/hub/hub.css` defines Light and Black semantic tokens for every surface and interaction state. Selection is local to the current app instance.
+- Theme: `src/hub/ThemePicker.tsx` selects application appearance; `src/hub/hub.css` defines Light and Black semantic tokens for every surface and interaction state. Language and theme choices are restored by the independent [Hub preferences boundary](implementation_specs/hub_preferences.md); `i18n.ts` owns localized presentation.
 
 ## Boundaries
 - Single Entry owns assignment defaults independently of each Runner's settings. Its assignment component composes the existing session registry, authenticated control and input owners; the [terminal specification](implementation_specs/runner_terminals.md#single-entry-assignment) defines the evidence and delivery boundaries.

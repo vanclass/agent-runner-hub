@@ -204,6 +204,83 @@ function generatedFixture() {
   return { generatedImages: [image, { ...image, sourceSequence: 2 }], generatedPng: [...png] };
 }
 
+test('live Hub language and theme preserve Runner output, ownership, settings, controls and references', async ({ page }, testInfo) => {
+  await transport(page, undefined, { clipboard: true, auto: true, ...generatedFixture() });
+  await configure(page); await create(page);
+  const id = await page.locator('.runner-row').first().getAttribute('data-runner-id');
+  const target = await page.getByRole('button', { name: 'Change Runner Project / Target', exact: true }).textContent();
+  await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('draft /status 그대로');
+  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await expect(page.locator('.reference-candidate')).toContainText('Registered · completed Runner receipt');
+  await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await expect(page.getByRole('button', { name: 'Runner 프로젝트 / 대상 변경', exact: true })).toHaveText(target);
+  await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toHaveValue('draft /status 그대로');
+  await expect(page.locator('.reference-candidate')).toContainText('등록됨 · Runner 완료 확인');
+  await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '블랙', exact: true }).click();
+  await expect(page.locator('.xterm-scrollable-element')).toHaveCSS('background-color', 'rgb(17, 18, 20)');
+  await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
+  expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
+  expect(await page.locator('.runner-row').first().getAttribute('data-runner-id')).toBe(id);
+  await testInfo.attach('live-runner-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
+});
+
+test('Single Entry preferences restore all safe selections and revalidate them before delivery', async ({ page }) => {
+  await transport(page); await configure(page); await create(page); await entry(page, 'private instruction never saved');
+  for (const name of ['Project / Target', 'Model', 'Account', 'Run Mode']) {
+    const select = page.getByRole('combobox', { name: 'Single Entry ' + name, exact: true });
+    await select.selectOption({ index: 1 });
+  }
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')));
+  expect(Object.keys(saved.singleEntry).sort()).toEqual(['account', 'model', 'runMode', 'target']);
+  expect(JSON.stringify(saved)).not.toContain('private instruction');
+  expect(saved.singleEntry.model).toEqual({ model: 'effective-model', reasoning_effort: 'medium', service_tier: 'default' });
+  await page.reload();
+  await expect(page.getByText('Restored defaults are requests only.', { exact: false })).toBeVisible();
+  for (const name of ['Project / Target', 'Model', 'Account', 'Run Mode']) {
+    const field = { 'Project / Target': 'target', Model: 'model', Account: 'account', 'Run Mode': 'runMode' }[name];
+    await expect(page.getByRole('combobox', { name: 'Single Entry ' + name, exact: true })).toHaveValue(JSON.stringify(saved.singleEntry[field]));
+  }
+  await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+  await page.evaluate(() => {
+    const selected = window.__nativeFixture.sessions.get('pty-1').control.observation.selection;
+    selected.account = 'changed-after-restart';
+    selected.next_model = selected.model;
+    selected.next_reasoning_effort = selected.reasoning_effort;
+    selected.next_service_tier = selected.service_tier;
+  });
+  await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('held after restart');
+  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Settings need terminal interaction: /account' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await expect(page.getByRole('status').filter({ hasText: '설정을 위해 터미널 상호작용이 필요합니다: /account' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Single Entry 지시문', exact: true })).toHaveValue('held after restart');
+  await page.getByRole('button', { name: '미전송 배정 해제', exact: true }).click();
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.selection.account = 'pty-1'; });
+  await page.getByRole('button', { name: '지시문 배정', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'PTY에 전달했습니다' })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(1);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual(saved.singleEntry);
+});
+
+test('Runner observations do not become Hub defaults and raw native errors retain their diagnostic language', async ({ page }) => {
+  await transport(page); await configure(page); await create(page);
+  expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.preferences.v1'))).toBeNull();
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual({});
+  await page.getByRole('textbox', { name: 'AgentRunner 위치', exact: true }).fill('/missing');
+  await page.getByRole('button', { name: '설치 검증', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Runner managed Python is missing. Run native bootstrap.');
+  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
+});
+
 test('generated image reads retain their original owner across asynchronous tab switches', async ({ page }) => {
   await transport(page, undefined, { ...generatedFixture(), pauseFirstImage: true }); await configure(page); await create(page);
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'loading');

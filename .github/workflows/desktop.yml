@@ -40,6 +40,8 @@ jobs:
           cache: npm
       - name: Install locked frontend dependencies
         run: npm ci --no-audit --no-fund
+      - name: Check English and Korean catalogs
+        run: npm run test:i18n
       - name: Check TypeScript and build frontend
         run: npm run build
       - name: Prepare native Rust target

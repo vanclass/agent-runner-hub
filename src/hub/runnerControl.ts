@@ -1,3 +1,4 @@
+import { msg, errorText, HubError, type HubText } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
 import { clipboardImagePng } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
@@ -22,7 +23,7 @@ export type ControlResult = { id: number; command: string;
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown'; code?: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
-  observation?: RunnerObservation; results: ControlResult[]; detail?: string;
+  observation?: RunnerObservation; results: ControlResult[]; detail?: HubText;
   observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean;
   generatedImagesSupported?: boolean };
 
@@ -44,7 +45,7 @@ export class RunnerControl {
   get attachmentLocked() { return !!this.attachmentLease; }
   reserveAttachments() {
     if (this.stopped || this.busy || this.snapshot.state !== 'ready')
-      throw new Error('Finish the current Runner interaction before sending attachments.');
+      throw new HubError(msg('runtime.control.finishAttachments'));
     this.attachmentLease = Symbol('attachment submission');
     this.changed();
     return this.attachmentLease;
@@ -63,7 +64,7 @@ export class RunnerControl {
         && this.observationFresh) return this.snapshot;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    throw new Error(this.snapshot.detail || 'Fresh authenticated Runner readiness is unavailable. Instruction unsent.');
+    throw new HubError(this.snapshot.detail || msg('runtime.control.freshUnavailable'));
   }
   get observationFresh() {
     return this.snapshot.state === 'ready' && typeof this.snapshot.observationAgeMs === 'number'
@@ -82,7 +83,7 @@ export class RunnerControl {
       this.changed();
       if (snapshot.state === 'disconnected') return;
       this.timer = setTimeout(() => void this.refresh(), 500);
-    } catch (reason) { if (!this.stopped) this.stop(String(reason)); }
+    } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
   get busy() {
     return this.assignmentLocked || this.attachmentLocked || this.sending || this.referenceAdmissions > 0
@@ -107,8 +108,8 @@ export class RunnerControl {
     this.order = ordered; this.changed();
   }
   async command(text: string) {
-    if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new Error('Runner control is unavailable.');
-    if (this.busy) throw new Error('Finish the pending Runner interaction in its terminal.');
+    if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new HubError(msg('runtime.control.unavailable'));
+    if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
     this.sending = true; this.changed();
     this.admissionAfter = Math.max(0, ...this.snapshot.results.map(result => result.id));
     try { await invoke<void>('runner_command', { id: this.id, command: text }); }
@@ -117,15 +118,15 @@ export class RunnerControl {
   async clipboardSource() {
     const id = this.id;
     if (this.stopped || !id || this.busy || !this.snapshot.clipboardStaging || !this.snapshot.references?.capability)
-      throw new Error('Clipboard staging requires an available authenticated Windows Runner.');
+      throw new HubError(msg('runtime.control.clipboardRequires'));
     const blob = await clipboardImagePng();
     if (blob.type !== 'image/png' || !blob.size || blob.size > 64 * 1024 * 1024)
-      throw new Error('Clipboard conversion did not produce a supported PNG (maximum 64 MiB).');
+      throw new HubError(msg('runtime.control.clipboardUnsupported'));
     const png = new Uint8Array(await blob.arrayBuffer());
     if (![137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => png[index] === byte))
-      throw new Error('Clipboard conversion produced invalid PNG data.');
+      throw new HubError(msg('runtime.control.clipboardInvalid'));
     if (this.stopped || id !== this.id || this.busy || this.snapshot.state !== 'ready')
-      throw new Error('The owning Runner is no longer available. Image was not submitted.');
+      throw new HubError(msg('runtime.control.ownerUnavailable'));
     const thumbnail = await clipboardThumbnail(blob);
     const path = await invoke<string>('runner_stage_clipboard', { id, png: Array.from(png) });
     return { path, sessionId: id, thumbnail };
@@ -133,27 +134,27 @@ export class RunnerControl {
   async reference(request: ReferenceRequest, owningSession?: string, lease?: symbol): Promise<ReferenceAdmission> {
     const id = this.id;
     if (owningSession && owningSession !== id)
-      return { state: 'failure', detail: 'The owning Runner session changed. Staged image was not submitted.' };
+      return { state: 'failure', detail: msg('runtime.control.ownerChanged') };
     if (this.stopped || !id || this.snapshot.state !== 'ready' || !this.snapshot.references?.capability)
-      throw new Error('Authenticated reference capability is unavailable.');
+      throw new HubError(msg('runtime.control.referenceUnavailable'));
     if (this.assignmentLocked && request.operation !== 'references.list')
-      throw new Error('Single Entry holds this Runner.');
+      throw new HubError(msg('runtime.control.entryHolds'));
     if (this.attachmentLease && this.attachmentLease !== lease)
-      throw new Error('The attachment selection is locked for instruction submission.');
+      throw new HubError(msg('runtime.control.attachmentsLocked'));
     if (request.operation === 'references.remove' && !this.snapshot.references?.removalCapability)
-      return { state: 'failure', detail: 'Use /files removal in this Runner, then reconcile pending references.' };
+      return { state: 'failure', detail: msg('runtime.control.manualRemoval') };
     this.referenceAdmissions++; this.changed();
     try { return await invoke<ReferenceAdmission>('runner_reference', { id, request }); }
     finally { this.referenceAdmissions--; this.changed(); }
   }
-  stop(detail = 'Runner process exited', finalSnapshot?: ControlSnapshot) {
+  stop(detail: HubText = msg('runtime.control.processExited'), finalSnapshot?: ControlSnapshot) {
     this.stopped = true;
     this.images.stop();
     this.sending = false;
     clearTimeout(this.timer);
     const final = finalSnapshot ?? this.snapshot;
     const message = final.detail ?? (final.observation ? detail
-      : `${detail}. This installation did not establish verified Runner control; check local-control launch compatibility.`);
+      : msg('runtime.control.compatibility', { detail }));
     this.snapshot = { ...final, state: 'disconnected', detail: message,
       references: final.references && { ...final.references,
         results: final.references.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
@@ -172,11 +173,11 @@ async function clipboardThumbnail(blob: Blob) {
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Clipboard preview is unavailable.');
+    if (!context) throw new HubError(msg('runtime.control.previewUnavailable'));
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     return await new Promise<Blob>((resolve, reject) => canvas.toBlob(thumbnail => {
       if (thumbnail && thumbnail.size <= 256 * 1024) resolve(thumbnail);
-      else reject(new Error('Clipboard preview could not be bounded.'));
+      else reject(new HubError(msg('runtime.control.previewTooLarge')));
     }, 'image/png'));
   } finally { bitmap.close(); }
 }

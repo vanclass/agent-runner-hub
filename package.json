@@ -8,6 +8,7 @@
     "dev:open": "vite --host 127.0.0.1 --open",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test:i18n": "node --test tests/i18n/catalog.test.mjs && node tools/i18n/check.mjs",
     "test:e2e": "playwright test --config .runner/web-app-testing/config.mjs",
     "test:e2e:prepare": "playwright install chromium && node .runner/web-app-testing/readiness.mjs",
     "dev:tauri": "node .runner/web-app-tauri/dev.mjs"
@@ -31,6 +32,8 @@
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-search": "0.16.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.0.0",
-    "@tauri-apps/plugin-dialog": "^2.0.0"
+    "@tauri-apps/plugin-dialog": "^2.0.0",
+    "i18next": "^26.5.11",
+    "react-i18next": "^17.1.9"
   }
 }

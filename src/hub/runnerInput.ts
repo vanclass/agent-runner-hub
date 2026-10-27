@@ -1,3 +1,4 @@
+import { msg, HubError } from './i18n';
 import type { Terminal } from '@xterm/xterm';
 
 // Runner uses Win32 input mode through ConPTY. Preserve physical Enter and
@@ -70,7 +71,7 @@ export class RunnerInput {
   }
   get canSubmit() { return this.win32 || this.terminal.modes.bracketedPasteMode; }
   submit(text: string) {
-    if (!this.canSubmit) throw new Error('Waiting for the terminal input protocol. You can type directly in the terminal.');
+    if (!this.canSubmit) throw new HubError(msg('runtime.input.waiting'));
     if (this.win32) this.send(win32Text(text) + win32Key(13, 13));
     else {
       this.submission = [];

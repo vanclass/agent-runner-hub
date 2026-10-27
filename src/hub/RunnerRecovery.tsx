@@ -1,42 +1,44 @@
+import { useHubTranslation, t, tr, errorText, type HubText } from './i18n';
 import { useState } from 'react';
 import type { RunnerSession } from './RunnerSessions';
 import { commandNamed } from './runnerControl';
 
 export function RunnerRecovery({ session }: { session: RunnerSession }) {
-  const [error, setError] = useState('');
+  useHubTranslation();
+  const [error, setError] = useState<HubText>('');
   if (!session.restored) return null;
   const { control, previousContext, view } = session;
   const command = commandNamed(control.snapshot, '/recover');
   const last = control.snapshot.results.filter(result => result.command === '/recover').at(-1);
   const ready = view.status === 'running' && control.observationFresh;
-  const reason = view.status === 'failed' ? 'Recovery unavailable: check the Runner launch error below.'
-    : view.status === 'exited' ? 'Recovery unavailable: this Runner process has ended.'
-      : control.snapshot.state === 'disconnected' ? 'Recovery unavailable: Runner control is disconnected.'
-        : !ready ? 'Waiting for a fresh Runner control connection.'
-    : !command ? 'Recovery is not offered by this Runner.'
-      : control.busy ? 'Finish the interaction in this Runner terminal.'
-        : !command.enabled ? command.disabled_reason || 'Recovery is currently unavailable.' : '';
+  const reason = view.status === 'failed' ? t('recovery.launchFailed')
+    : view.status === 'exited' ? t('recovery.ended')
+      : control.snapshot.state === 'disconnected' ? t('recovery.disconnected')
+        : !ready ? t('recovery.waiting')
+    : !command ? t('recovery.notOffered')
+      : control.busy ? t('recovery.finish')
+        : !command.enabled ? command.disabled_reason || t('recovery.unavailable') : '';
   async function recover() {
     setError('');
     try { await control.command('/recover'); }
-    catch (reason) { setError(String(reason)); }
+    catch (reason) { setError(errorText(reason)); }
   }
-  return <section className="runner-recovery context-settings" aria-label="Restored Runner recovery">
-    <p><strong>Restored workspace.</strong> {view.status === 'running' ? 'Fresh Runner process started.'
-      : view.status === 'starting' ? 'Creating a fresh Runner process…'
-        : view.status === 'failed' ? 'Runner launch failed.' : 'Previous process ended; no process was restored.'}
-      {' '}Historical work recovery is unconfirmed.</p>
-    {previousContext && <p className="scope-note">Historical target: {previousContext.target.owner || 'Unbound'}
+  return <section className="runner-recovery context-settings" aria-label={t('recovery.label')}>
+    <p><strong>{t('recovery.restored')}</strong> {view.status === 'running' ? t('recovery.fresh')
+      : view.status === 'starting' ? t('recovery.creating')
+        : view.status === 'failed' ? t('recovery.failed') : t('recovery.previousEnded')}
+      {' '}{t('recovery.unconfirmed')}</p>
+    {previousContext && <p className="scope-note">{t('recovery.target', { owner: previousContext.target.owner || t('common.unbound') })}
       {previousContext.target.project && ` / ${previousContext.target.project}`}.
-      {` Binding: ${previousContext.target.binding_state}.`}
-      {previousContext.runMode && ` Previous run mode: ${previousContext.runMode}.`}
-      {previousContext.workflowKind && ` Previous workflow: ${previousContext.workflowKind}.`}
-      {' '}Previous process context only; current settings below come from this Runner.</p>}
+      {t('recovery.binding', { binding: previousContext.target.binding_state })}
+      {previousContext.runMode && t('recovery.mode', { mode: previousContext.runMode })}
+      {previousContext.workflowKind && t('recovery.workflow', { workflow: previousContext.workflowKind })}
+      {' '}{t('recovery.contextHelp')}</p>}
     <button type="button" className="command-button" disabled={!!reason} title={reason || command?.description} onClick={() => void recover()}>
-      Recover earlier work</button>
+      {t('recovery.recover')}</button>
     <p role="status">{last ? `/recover: ${last.state}${last.code ? ` (${last.code})` : ''}. ` : ''}
-      {reason || 'Runner discovers recovery candidates. Select and confirm in this terminal.'}
-      {last?.state === 'accepted' && ' Runner completed the command; its terminal owns the work recovery outcome.'}</p>
-    {error && <p role="alert">{error}</p>}
+      {reason || t('recovery.discovery')}
+      {last?.state === 'accepted' && t('recovery.commandCompleted')}</p>
+    {error && <p role="alert">{tr(error)}</p>}
   </section>;
 }

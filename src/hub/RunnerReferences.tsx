@@ -1,12 +1,14 @@
+import { useHubTranslation, t, tr, errorText, type HubText } from './i18n';
 import { useEffect, useState } from 'react';
 import { watchFileDrop } from '../../.runner/web-app-desktop/io/nativeIO';
 import { commandNamed, type RunnerControl } from './runnerControl';
 import type { RunnerReferenceSelection } from './referenceSelection';
 export function RunnerReferences({ control, selection }: { control: RunnerControl; selection: RunnerReferenceSelection }) {
-  const [error, setError] = useState('');
+  useHubTranslation();
+  const [error, setError] = useState<HubText>('');
   const files = commandNamed(control.snapshot, '/files');
   const available = selection.available;
-  const unavailable = files?.disabled_reason || 'This Runner does not currently offer /files.';
+  const unavailable = files?.disabled_reason || t('references.filesUnavailable');
   const inventory = selection.inventory;
   const pending = selection.pendingSet ?? inventory?.references;
   const foreground = selection.results.some(result => result.state === 'pending-interaction');
@@ -24,105 +26,105 @@ export function RunnerReferences({ control, selection }: { control: RunnerContro
     setError('');
     try {
       await selection.choose(folder);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason)); }
   }
   async function openFiles() {
     setError('');
     try { await control.command('/files'); }
-    catch (reason) { setError(String(reason)); }
+    catch (reason) { setError(errorText(reason)); }
   }
   return <details className="runner-references" open={selection.staging || selection.paths.length > 0 || !!error || !!inventory || !!selection.error}>
-    <summary>Files and images</summary>
+    <summary>{t('references.title')}</summary>
     <div className="reference-actions">
-      <button type="button" disabled={!available} title={available ? selection.capable ? 'Register files with this Runner' : 'Choose paths for the Runner /files flow' : unavailable}
-        onClick={() => void choose(false)}>Choose files</button>
-      <button type="button" disabled={!available} title={available ? 'Choose a folder path' : unavailable}
-        onClick={() => void choose(true)}>Choose folder</button>
-      <button type="button" disabled={!available} title={unavailable} onClick={() => void openFiles()}>Open /files in terminal</button>
+      <button type="button" disabled={!available} title={available ? selection.capable ? t('references.registerFiles') : t('references.manualPaths') : unavailable}
+        onClick={() => void choose(false)}>{t('references.chooseFiles')}</button>
+      <button type="button" disabled={!available} title={available ? t('references.chooseFolderHint') : unavailable}
+        onClick={() => void choose(true)}>{t('references.chooseFolder')}</button>
+      <button type="button" disabled={!available} title={unavailable} onClick={() => void openFiles()}>{t('references.openFiles')}</button>
       <button type="button" disabled={!selection.clipboardAvailable}
-        title={selection.clipboardAvailable ? 'Capture one clipboard image for this Runner'
-          : selection.capable && !control.snapshot.clipboardStaging ? 'Clipboard image capture is unavailable in this build.'
-            : 'Requires supported native clipboard capture and an available authenticated Runner reference capability'}
+        title={selection.clipboardAvailable ? t('references.captureHint')
+          : selection.capable && !control.snapshot.clipboardStaging ? t('references.clipboardBuildUnavailable')
+            : t('references.clipboardRequires')}
         onClick={() => void selection.captureClipboard()}>
-        {selection.capable && control.snapshot.clipboardStaging ? 'Clipboard image' : 'Clipboard image unavailable'}</button>
+        {selection.capable && control.snapshot.clipboardStaging ? t('references.clipboard') : t('references.clipboardUnavailable')}</button>
       {selection.capable && <>
         <button type="button" disabled={!available || !selection.candidates.some(item => item.source !== 'clipboard' && selection.state(item) === 'staged')}
-          onClick={() => void selection.registerSelected()}>Register selected paths</button>
-        <button type="button" disabled={!available} onClick={() => void selection.refresh()}>Reconcile pending references</button>
+          onClick={() => void selection.registerSelected()}>{t('references.registerSelected')}</button>
+        <button type="button" disabled={!available} onClick={() => void selection.refresh()}>{t('references.reconcile')}</button>
       </>}
     </div>
-    {selection.staging && <p role="status">Reading clipboard and staging PNG for this Runner…</p>}
+    {selection.staging && <p role="status">{t('references.staging')}</p>}
     {(selection.registering || selection.listing) && <p role="status">{foreground
-      ? 'Continue in this Runner terminal: select image detail or cancel the pending interaction.'
-      : selection.listing ? 'Reading Runner inventory…' : 'Registering paths with this Runner…'}</p>}
-    <p>{selection.capable ? 'Choose or drop files and folders to register them with this Runner. Image detail and cancellation stay in its terminal.'
-      : 'Choose or drop paths here, then use /files → Add → Direct input in the terminal. Copy the path below into that flow.'}</p>
-    {selection.capable && pending && <section aria-label="Registered pending references">
-      <h3>Registered pending references</h3>
-      {control.snapshot.state !== 'ready' && <p role="status">Last inventory sample · Runner unavailable. References are not restored into another process.</p>}
-      <p>{selection.pendingSet ? pending.length : inventory?.total_count} pending · {selection.pendingSet
-        ? 'Matching complete inventory samples. Send verifies again.' : 'Last receipt page. Reconcile to review the complete pending set.'}</p>
-      {pending.length === 0 && <p>No pending references in this sample.</p>}
+      ? t('references.continueTerminal')
+      : selection.listing ? t('references.readingInventory') : t('references.registering')}</p>}
+    <p>{selection.capable ? t('references.automaticHelp')
+      : t('references.manualHelp')}</p>
+    {selection.capable && pending && <section aria-label={t('references.pendingLabel')}>
+      <h3>{t('references.pendingLabel')}</h3>
+      {control.snapshot.state !== 'ready' && <p role="status">{t('references.lastSample')}</p>}
+      <p>{t('references.pendingCount', { count: (selection.pendingSet ? pending.length : inventory?.total_count) ?? 0 })} · {selection.pendingSet
+        ? t('references.matchingSamples') : t('references.lastPage')}</p>
+      {pending.length === 0 && <p>{t('references.emptySample')}</p>}
       <ol>{pending.map(reference => <li key={reference.reference_id}>
-        {reference.display_name} · {reference.kind}{reference.image_detail && ` · Detail: ${reference.image_detail}`}{reference.media_kind && ` · ${reference.media_kind}`}
+        {reference.display_name} · {reference.kind}{reference.image_detail && t('references.detail', { detail: reference.image_detail })}{reference.media_kind && ` · ${reference.media_kind}`}
         <br /><code>{reference.reference_id}</code>
       </li>)}</ol>
     </section>}
-    {selection.otherPending.length > 0 && <section aria-label="Other pending references">
-      <h3>Other pending references</h3>
-      <p>These references were already pending in this Runner and will also accompany the instruction.</p>
+    {selection.otherPending.length > 0 && <section aria-label={t('references.otherPending')}>
+      <h3>{t('references.otherPending')}</h3>
+      <p>{t('references.otherHelp')}</p>
       <ul>{selection.otherPending.map(reference => <li key={reference.reference_id}>
         {reference.display_name} · <code>{reference.reference_id}</code>
       </li>)}</ul>
-      <button type="button" disabled={selection.locked} onClick={() => selection.reviewOtherPending()}>Include other pending references</button>
+      <button type="button" disabled={selection.locked} onClick={() => selection.reviewOtherPending()}>{t('references.includeOthers')}</button>
     </section>}
-    {selection.candidates.length > 0 && <h3>Attachments and receipts</h3>}
+    {selection.candidates.length > 0 && <h3>{t('references.attachments')}</h3>}
     {selection.candidates.map(candidate => <div className="reference-candidate" key={candidate.key}>
       {candidate.source === 'clipboard' ? <div className="clipboard-candidate">
-        {candidate.thumbnail && <img src={candidate.thumbnail} alt={`Clipboard image ${candidate.key} preview`} width="80" height="60" />}
-        <strong>Clipboard image {candidate.key}</strong>
-      </div> : <label className="reference-path">Selected path
-        <input aria-label={`Selected path ${candidate.path}`} readOnly value={candidate.path} onFocus={event => event.currentTarget.select()} /></label>}
-      <p role="status">{candidate.submitted ? 'Delivered to PTY · workload acceptance unconfirmed' : referenceState(selection.state(candidate))}
-        {selection.referenceId(candidate) && <> · Reference ID: <code>{selection.referenceId(candidate)}</code></>}
+        {candidate.thumbnail && <img src={candidate.thumbnail} alt={t('references.clipboardPreview', { index: candidate.key })} width="80" height="60" />}
+        <strong>{t('references.clipboardNumber', { index: candidate.key })}</strong>
+      </div> : <label className="reference-path">{t('references.selectedPath')}
+        <input aria-label={t('references.selectedNamed', { path: candidate.path })} readOnly value={candidate.path} onFocus={event => event.currentTarget.select()} /></label>}
+      <p role="status">{candidate.submitted ? t('references.delivered') : referenceState(selection.state(candidate))}
+        {selection.referenceId(candidate) && <> · {t('references.id')} <code>{selection.referenceId(candidate)}</code></>}
         {selection.result(candidate)?.code && <> · {selection.result(candidate)!.code}</>}
-        {candidate.cancelRequested && !['removed', 'cancelled'].includes(selection.state(candidate)) && <> · Cancellation requested; awaiting authoritative resolution</>}
-        {candidate.detail && <> · {candidate.detail}</>}</p>
+        {candidate.cancelRequested && !['removed', 'cancelled'].includes(selection.state(candidate)) && <> · {t('references.cancellationPending')}</>}
+        {candidate.detail && <> · {tr(candidate.detail)}</>}</p>
       {!candidate.submitted && !['removed', 'cancelled'].includes(selection.state(candidate)) && <button type="button"
         disabled={selection.locked || control.assignmentLocked || candidate.cancelRequested}
         onClick={() => void selection.cancel(candidate.key)}>
-        {selection.referenceId(candidate) ? 'Remove' : 'Cancel'} {candidate.source === 'clipboard' ? 'image' : 'path'} {candidate.key}
+        {selection.referenceId(candidate) ? t('references.remove') : t('references.cancel')} {candidate.source === 'clipboard' ? t('references.image') : t('references.path')} {candidate.key}
       </button>}
     </div>)}
     {selection.candidates.length > 0 && <button type="button" disabled={selection.locked}
-      title="Clears submitted, removed and cancelled display history. Live attachments and uncertain receipts stay visible."
-      onClick={() => selection.clearHistory()}>Clear registration history</button>}
-    {selection.locked && <p role="status">Attachment selection locked for this instruction. Complete or cancel image-detail prompts in the Runner terminal.</p>}
+      title={t('references.clearHint')}
+      onClick={() => selection.clearHistory()}>{t('references.clear')}</button>}
+    {selection.locked && <p role="status">{t('references.locked')}</p>}
     {selection.capable ? <>
-      {!pending && <p>Pending inventory has not been read. Reconcile to view Runner-owned references.</p>}
-      <p>Clipboard images stay staged until Send. Cancel individual images before sending. {selection.removable
-        ? 'Registered items are removed by their committed ID.'
-        : 'This Runner requires /files → Remove, then Reconcile pending references for registered items.'} Sources remain live until the owning session ends.</p>
-    </> : <p>Selected paths are not confirmed attachments. Use this Runner’s manual /files flow.</p>}
-    {error && <p role="alert">{error}</p>}
-    {selection.error && <p role="alert">{selection.error}</p>}
+      {!pending && <p>{t('references.unread')}</p>}
+      <p>{t('references.clipboardStagedHelp')} {selection.removable
+        ? t('references.removalById')
+        : t('references.manualRemoval')} {t('references.sourcesLifetime')}</p>
+    </> : <p>{t('references.unconfirmedPaths')}</p>}
+    {error && <p role="alert">{tr(error)}</p>}
+    {selection.error && <p role="alert">{tr(selection.error)}</p>}
   </details>;
 }
 
 function referenceState(state: string) {
   switch (state) {
-    case 'capturing': return 'Capturing clipboard image…';
-    case 'staged': return 'Staged · unregistered';
-    case 'registering': return 'Submitting · admission unconfirmed';
-    case 'removing': return 'Removing · awaiting completed Runner receipt';
-    case 'removed': return 'Removed · owning Runner confirmed absence';
-    case 'cancelled': return 'Cancelled · no pending attachment';
-    case 'queued': return 'Queued · registration unconfirmed';
-    case 'pending-interaction': return 'Pending terminal interaction · select image detail or cancel in this Runner terminal';
-    case 'registered': return 'Registered · completed Runner receipt';
-    case 'rejected': return 'Rejected · no registration confirmed';
-    case 'failed': return 'Failed · review or cancel this item before sending';
-    case 'outcome-unknown': return 'Outcome unknown · not repeated. Reconcile in /files or refresh inventory; names cannot identify this attempt.';
+    case 'capturing': return t('references.state.capturing');
+    case 'staged': return t('references.state.staged');
+    case 'registering': return t('references.state.registering');
+    case 'removing': return t('references.state.removing');
+    case 'removed': return t('references.state.removed');
+    case 'cancelled': return t('references.state.cancelled');
+    case 'queued': return t('references.state.queued');
+    case 'pending-interaction': return t('references.state.interaction');
+    case 'registered': return t('references.state.registered');
+    case 'rejected': return t('references.state.rejected');
+    case 'failed': return t('references.state.failed');
+    case 'outcome-unknown': return t('references.state.unknown');
     default: return state;
   }
 }

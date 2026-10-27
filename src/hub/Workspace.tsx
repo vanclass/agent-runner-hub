@@ -1,3 +1,4 @@
+import { useHubTranslation, t, tr } from './i18n';
 import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
@@ -15,45 +16,46 @@ export function Workspace({ runner, session, theme, installation, onInstallation
   installation: RunnerInstallation | null; onInstallation: (value: RunnerInstallation | null) => void;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
 }) {
+  useHubTranslation();
   const singleEntry = !runner;
-  return <main className="workspace" aria-label={singleEntry ? 'Single Entry workspace' : 'Runner workspace'}>
+  return <main className="workspace" aria-label={singleEntry ? t('workspace.singleLabel') : t('workspace.runnerLabel')}>
     <header className="workspace-header">
-      <div className="context-title"><span className="eyebrow">{singleEntry ? 'STARTING POINT' : 'RUNNER WORKSPACE'}</span>
-        <h1 title={runner?.name}>{runner?.name ?? 'Single Entry'}</h1></div>
-      <span className="context-badge">{singleEntry ? 'Assignment defaults' : 'This Runner only'}</span>
+      <div className="context-title"><span className="eyebrow">{singleEntry ? t('workspace.startingPoint') : t('workspace.runnerEyebrow')}</span>
+        <h1 title={runner?.name}>{runner?.name ?? t('common.singleEntry')}</h1></div>
+      <span className="context-badge">{singleEntry ? t('workspace.defaults') : t('workspace.runnerOnly')}</span>
       {session && <button type="button" className="terminate-runner" disabled={runner?.status !== 'running'}
-        onClick={() => void session.terminate()}>Terminate Runner</button>}
+        onClick={() => void session.terminate()}>{t('workspace.terminate')}</button>}
     </header>
     {session && <RunnerRecovery session={session} />}
     {session ? <RunnerControls control={session.control} /> : singleEntry ? <SingleEntrySettings entry={entry} />
-      : <section className="context-settings" aria-label="Selected Runner settings"><div className="settings-grid">
-        {['Project', 'Model', 'Account', 'Mode'].map(label => <label className="setting" key={label}><span>{label}</span>
-          <select aria-label={`Runner ${label}`} disabled><option>Not connected</option></select></label>)}
-        <button className="command-button" type="button" disabled title="Command shortcuts are not connected">⌘ Commands</button>
-      </div><p className="scope-note">Settings belong to this Runner. Single Entry defaults do not change this context.</p></section>}
-    <section className="output" aria-label="Output viewport">
-      <div className="output-label"><span>OUTPUT</span><span className="quiet-status" role="status">{session
-        ? runner?.status === 'starting' ? 'Starting Runner process…'
-          : runner?.status === 'running' ? 'Process running' : runner?.status === 'failed' ? 'Launch failed'
-            : `Process exited (${runner?.exitCode ?? 'unknown'})` : 'Not connected'}</span></div>
-      {runner?.detail && <p role="alert" className="runner-error">{runner.detail}</p>}
+      : <section className="context-settings" aria-label={t('control.settings')}><div className="settings-grid">
+        {[t('fields.project'), t('fields.model'), t('fields.account'), t('fields.mode')].map(label => <label className="setting" key={label}><span>{label}</span>
+          <select aria-label={t('control.runnerField', { field: label })} disabled><option>{t('common.notConnected')}</option></select></label>)}
+        <button className="command-button" type="button" disabled title={t('workspace.commandsUnavailable')}>{t('workspace.commands')}</button>
+      </div><p className="scope-note">{t('workspace.scope')}</p></section>}
+    <section className="output" aria-label={t('workspace.outputLabel')}>
+      <div className="output-label"><span>{t('workspace.output')}</span><span className="quiet-status" role="status">{session
+        ? runner?.status === 'starting' ? t('workspace.starting')
+          : runner?.status === 'running' ? t('workspace.running') : runner?.status === 'failed' ? t('workspace.failed')
+            : t('workspace.exited', { code: runner?.exitCode ?? t('common.unknown') }) : t('common.notConnected')}</span></div>
+      {runner?.detail && <p role="alert" className="runner-error">{tr(runner.detail)}</p>}
       {singleEntry && <RunnerLocation installation={installation} onChange={onInstallation} />}
       {session ? <RunnerTerminal session={session} theme={theme} /> : <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">{singleEntry ? '↗' : '›_'}</div>
-        <h2>{singleEntry ? 'A place to begin.' : 'Ready for a connection.'}</h2>
-        <p>{singleEntry ? 'Bring your next task into focus. Runner output will live here.' : 'This Runner has no connected output stream.'}</p>
-        <span className="empty-note">{singleEntry ? 'Assign below, or use New Runner for a manual session.' : 'No connected process for this preview row.'}</span>
+        <h2>{singleEntry ? t('workspace.begin') : t('workspace.connection')}</h2>
+        <p>{singleEntry ? t('workspace.beginDescription') : t('workspace.noStream')}</p>
+        <span className="empty-note">{singleEntry ? t('workspace.assignHint') : t('workspace.previewDisconnected')}</span>
       </div>}
     </section>
     {session && <RunnerImagePreviews images={session.control.images} />}
     {session && <RunnerReferences control={session.control} selection={session.references} />}
     {session ? <RunnerComposer session={session} /> : singleEntry ? <SingleEntryComposer entry={entry}
-      location={installation?.root} onSelectRunner={onSelectRunner} /> : <section className="composer-area" aria-label="Instruction composer">
-        <div className="composer"><textarea aria-label="Runner instructions" disabled rows={3} />
+      location={installation?.root} onSelectRunner={onSelectRunner} /> : <section className="composer-area" aria-label={t('composer.label')}>
+        <div className="composer"><textarea aria-label={t('composer.runnerInstructions')} disabled rows={3} />
           <div className="composer-actions"><div className="attachments">
-            <button disabled aria-label="Attach file">＋ <span>Attach file</span></button>
-            <button disabled aria-label="Attach folder">▱ <span>Folder</span></button>
-          </div><button className="send-button" disabled>Send instruction <span aria-hidden="true">↗</span></button></div>
-        </div><p className="composer-note">No connected process. Attachments are unavailable.</p></section>}
+            <button disabled aria-label={t('composer.attachFile')}>＋ <span>{t('composer.attachFile')}</span></button>
+            <button disabled aria-label={t('composer.attachFolder')}>▱ <span>{t('composer.folder')}</span></button>
+          </div><button className="send-button" disabled>{t('composer.send')} <span aria-hidden="true">↗</span></button></div>
+        </div><p className="composer-note">{t('workspace.attachmentsUnavailable')}</p></section>}
   </main>;
 }

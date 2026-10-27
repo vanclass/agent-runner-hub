@@ -1,3 +1,4 @@
+import { msg, errorText, HubError } from './i18n';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -6,7 +7,7 @@ import { RunnerInput } from './runnerInput';
 import { RunnerControl, type ControlSnapshot } from './runnerControl';
 import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
-import { SingleEntry } from './singleEntry';
+import { SingleEntry, type EntryDefaults } from './singleEntry';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
 import '@xterm/xterm/css/xterm.css';
 
@@ -64,7 +65,7 @@ export class RunnerSession {
   private protocolChanged() {
     if (this.input && this.view.canSubmit !== this.input.canSubmit) this.update({ canSubmit: this.input.canSubmit });
   }
-  private error(reason: unknown) { this.update({ detail: String(reason) }); }
+  private error(reason: unknown) { this.update({ detail: errorText(reason) }); }
   private manualInput() {
     if (this.assignmentWriting) return false;
     if (this.references.locked && !this.references.results.some(result => result.state === 'pending-interaction')) return false;
@@ -92,7 +93,7 @@ export class RunnerSession {
   async deliver(token: symbol, text: string) {
     if (this.reservation !== token || this.inputUnsettled || this.disposed
       || this.view.status !== 'running' || !this.pty || !this.input.canSubmit) {
-      throw new Error('Runner input ownership changed. Instruction unsent.');
+      throw new HubError(msg('runtime.session.ownershipChanged'));
     }
     this.assignmentWriting = true;
     this.inputUnsettled = true;
@@ -100,9 +101,9 @@ export class RunnerSession {
     try {
       this.input.submit(text);
       await this.lastInput;
-      return { delivered: true, detail: 'Delivered to PTY. Runner acceptance and execution are unconfirmed.' };
+      return { delivered: true, detail: msg('runtime.session.delivered') };
     } catch (reason) {
-      return { delivered: false, detail: `Delivery outcome unknown: ${String(reason)}. Not retried.` };
+      return { delivered: false, detail: msg('runtime.session.deliveryFailure', { diagnostic: errorText(reason) }) };
     } finally {
       this.assignmentWriting = false;
       this.update({ submitting: false });
@@ -123,7 +124,7 @@ export class RunnerSession {
         if (this.disposed) return;
         this.tab = { ...this.tab, launchOnOpen: false };
         const final = (event as typeof event & { control?: ControlSnapshot }).control;
-        this.control.stop('Runner process exited', final);
+        this.control.stop(msg('runtime.control.processExited'), final);
         this.references.dispose();
         this.update({ status: 'exited', exitCode: event.code, detail: event.error ?? undefined });
       }, reason => this.error(reason));
@@ -135,17 +136,17 @@ export class RunnerSession {
       for (const bytes of this.pending.splice(0)) await pty.write(bytes);
       await pty.resize(this.terminal.cols, this.terminal.rows);
     } catch (reason) {
-      if (!this.pty) this.control.stop('Runner failed to launch');
-      this.update({ ...(this.pty ? {} : { status: 'failed' }), detail: String(reason) });
+      if (!this.pty) this.control.stop(msg('runtime.control.launchFailed'));
+      this.update({ ...(this.pty ? {} : { status: 'failed' }), detail: errorText(reason) });
     }
   }
   rename(name: string) { this.tab = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting) this.update({ draft }); }
   async submit() {
-    if (this.view.status !== 'running' || !this.pty) throw new Error('This Runner process is not running.');
-    if (this.view.submitting) throw new Error('Input submission is already pending for this Runner.');
-    if (this.reservation) throw new Error('Single Entry holds this Runner. Resolve its assignment first.');
-    if (this.deliveryUnknown) throw new Error('Previous PTY delivery outcome is unknown. Check this Runner directly; Hub will not replay the instruction.');
+    if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
+    if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
+    if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
+    if (this.deliveryUnknown) throw new HubError(msg('runtime.session.previousUnknown'));
     const draft = this.view.draft ?? '';
     const ordinary = !draft.trimStart().startsWith('/');
     let attempted = false, delivered = false;
@@ -153,7 +154,7 @@ export class RunnerSession {
     try {
       if (ordinary) await this.references.preflight();
       if (this.disposed || this.view.status !== 'running' || !this.input.canSubmit)
-        throw new Error('Runner input is unavailable. Instruction unsent.');
+        throw new HubError(msg('runtime.session.inputUnavailable'));
       if (ordinary) this.references.assertReadyForDelivery();
       this.assignmentWriting = true;
       this.inputUnsettled = true;
@@ -166,7 +167,7 @@ export class RunnerSession {
     } catch (reason) {
       if (attempted) {
         this.deliveryUnknown = true;
-        throw new Error('PTY delivery outcome unknown. Draft retained; check the Runner terminal. Hub will not retry.');
+        throw new HubError(msg('runtime.session.deliveryUnknown'));
       }
       throw reason;
     } finally {
@@ -198,7 +199,7 @@ export class RunnerSession {
   }
   dispose() {
     this.disposed = true;
-    this.control.stop('Runner workspace closed');
+    this.control.stop(msg('runtime.control.workspaceClosed'));
     this.references.dispose();
     clearTimeout(this.resizeTimer);
     this.pending = [];
@@ -217,8 +218,11 @@ export class RunnerSessions {
   private disposed = false;
   readonly workspace = new RunnerWorkspace();
   private consumers = 0;
-  readonly entry = new SingleEntry(() => [...this.sessions.values()],
-    (location, token) => this.create(location, token), () => this.changed());
+  readonly entry: SingleEntry;
+  constructor(defaults: EntryDefaults = {}, saveDefaults: (value: EntryDefaults) => void = () => {}) {
+    this.entry = new SingleEntry(() => [...this.sessions.values()],
+      (location, token) => this.create(location, token), () => this.changed(), defaults, saveDefaults);
+  }
   readonly getSnapshot = () => this.snapshot;
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private readonly changed = () => {
@@ -255,7 +259,7 @@ export class RunnerSessions {
     const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot: location, launchOnOpen: true }, this.changed);
     this.sessions.set(session.view.id, session);
-    if (token && !session.reserve(token)) throw new Error('New Runner reservation failed.');
+    if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
     this.changed();
     return { session, launched: session.open(location) };
   }

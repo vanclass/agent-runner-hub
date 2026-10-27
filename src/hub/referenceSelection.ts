@@ -1,10 +1,11 @@
+import { msg, errorText, HubError, type HubText } from './i18n';
 import { selectFiles, selectFolder } from '../../.runner/web-app-desktop/io/nativeIO';
 import { commandNamed, type RunnerControl } from './runnerControl';
 
 export type ReferenceRequest = { operation: 'references.register'; path: string }
   | { operation: 'references.list'; offset: number }
   | { operation: 'references.remove'; reference_id: string };
-export type ReferenceAdmission = { state: 'admitted'; id: number } | { state: 'failure' | 'outcome-unknown'; detail: string };
+export type ReferenceAdmission = { state: 'admitted'; id: number } | { state: 'failure' | 'outcome-unknown'; detail: HubText };
 export type Reference = { reference_id: string; display_index: number; display_name: string;
   kind: string; image_detail: string | null; media_kind: string | null };
 export type Inventory = { total_count: number; offset: number; next_offset: number | null; references: Reference[] };
@@ -18,7 +19,7 @@ type CandidateState = 'capturing' | 'staged' | 'registering' | 'queued' | 'pendi
   | 'registered' | 'removing' | 'removed' | 'rejected' | 'failed' | 'cancelled' | 'outcome-unknown';
 export type Candidate = { key: number; path: string; sessionId?: string; source?: 'clipboard';
   phase: CandidateState; requestId?: number; removalId?: number; cancelRequested?: boolean;
-  reconciled?: boolean; submitted?: boolean; thumbnail?: string; detail?: string };
+  reconciled?: boolean; submitted?: boolean; thumbnail?: string; detail?: HubText };
 const pending = (state: string) => ['sending', 'queued', 'pending-interaction'].includes(state);
 const identity = (items: Reference[]) => items.map(item => item.reference_id).join(',');
 const inactive = (state: string) => ['removed', 'cancelled'].includes(state);
@@ -29,7 +30,7 @@ export class RunnerReferenceSelection {
   registering = false;
   staging = false;
   listing = false;
-  error = '';
+  error: HubText = '';
   pendingSet?: Reference[];
   otherPending: Reference[] = [];
   private reviewedOthers = '';
@@ -79,7 +80,7 @@ export class RunnerReferenceSelection {
   }
   select(paths: string[]) {
     if (this.locked || this.control.assignmentLocked || this.disposed) {
-      this.error = 'This Runner selection is locked. Paths were not submitted.'; this.changed(); return;
+      this.error = msg('runtime.references.locked'); this.changed(); return;
     }
     if (!this.capable) this.candidates = [];
     for (const path of paths.slice(0, Math.max(0, 128 - this.candidates.length)))
@@ -97,7 +98,7 @@ export class RunnerReferenceSelection {
     this.changed();
   }
   async choose(folder: boolean) {
-    if (!this.available) throw new Error('Finish the Runner interaction before choosing paths.');
+    if (!this.available) throw new HubError(msg('runtime.references.finishChoosing'));
     this.picking++; this.changed();
     try {
       const result = await (folder ? selectFolder() : selectFiles(true));
@@ -115,13 +116,13 @@ export class RunnerReferenceSelection {
     this.staging = true; this.error = ''; this.changed();
     try {
       const source = await this.control.clipboardSource();
-      if (source.sessionId !== candidate.sessionId) throw new Error('The originating Runner changed.');
+      if (source.sessionId !== candidate.sessionId) throw new HubError(msg('runtime.references.originChanged'));
       candidate.path = source.path;
       if (this.disposed || candidate.cancelRequested || this.control.snapshot.state === 'disconnected') candidate.phase = 'cancelled';
       else { candidate.thumbnail = URL.createObjectURL(source.thumbnail); candidate.phase = 'staged'; }
-    } catch {
+    } catch (reason) {
       candidate.phase = candidate.cancelRequested ? 'cancelled' : 'failed';
-      candidate.detail = 'No image was registered. Copy a supported image to the Windows clipboard and try Clipboard image again; check Runner availability and the session staging limit.';
+      candidate.detail = msg('runtime.withDiagnostic', { message: msg('runtime.references.clipboardFailed'), diagnostic: errorText(reason) });
       this.error = candidate.detail;
     } finally { this.staging = false; this.changed(); }
   }
@@ -132,7 +133,7 @@ export class RunnerReferenceSelection {
       if (result && !pending(result.state)) return result;
       if (result?.state === 'pending-interaction') deadline = performance.now() + 65000;
       if (this.disposed || this.control.snapshot.state === 'disconnected' || performance.now() > deadline)
-        throw new Error('Runner receipt unavailable; outcome unknown. The request was not repeated.');
+        throw new HubError(msg('runtime.references.receiptUnknown'));
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
@@ -151,9 +152,9 @@ export class RunnerReferenceSelection {
         if (this.result(candidate)?.state === 'registered') await this.remove(candidate, lease);
         else if (['rejected', 'failure'].includes(this.result(candidate)?.state ?? '')) candidate.phase = 'cancelled';
       }
-    } catch {
+    } catch (reason) {
       candidate.phase = 'outcome-unknown';
-      candidate.detail = 'Registration outcome unknown. Do not recapture or repeat this attempt to resolve it.';
+      candidate.detail = msg('runtime.withDiagnostic', { message: msg('runtime.references.registrationUnknown'), diagnostic: errorText(reason) });
     } finally { this.changed(); }
   }
   async registerSelected() {
@@ -183,7 +184,7 @@ export class RunnerReferenceSelection {
     if (!reference_id || candidate.removalId !== undefined) return;
     if (!this.removable) {
       candidate.phase = 'outcome-unknown';
-      candidate.detail = 'Use /files → Remove in this Runner, then Reconcile pending references. This attachment remains unresolved.';
+      candidate.detail = msg('runtime.references.manualRemoval');
       this.changed(); return;
     }
     candidate.phase = 'removing'; this.changed();
@@ -195,22 +196,22 @@ export class RunnerReferenceSelection {
       candidate.removalId = admission.id;
       const result = await this.settled(admission.id);
       if (result.state !== 'removed' || result.referenceId !== reference_id)
-        candidate.detail = 'Removal is unconfirmed. Reconcile this exact ID in the owning Runner; instruction remains unsent.';
-    } catch {
-      candidate.phase = 'outcome-unknown'; candidate.detail = 'Removal outcome unknown. The request was not repeated.';
+        candidate.detail = msg('runtime.references.removalUnconfirmed');
+    } catch (reason) {
+      candidate.phase = 'outcome-unknown'; candidate.detail = msg('runtime.withDiagnostic', { message: msg('runtime.references.removalUnknown'), diagnostic: errorText(reason) });
     } finally { this.changed(); }
   }
   private async readInventory(offset: number, lease?: symbol) {
     const admission = await this.control.reference({ operation: 'references.list', offset }, this.control.sessionId, lease);
-    if (admission.state !== 'admitted') throw new Error(admission.detail);
+    if (admission.state !== 'admitted') throw new HubError(admission.detail);
     const result = await this.settled(admission.id);
-    if (result.state !== 'accepted' || !result.inventory) throw new Error('Pending inventory is unverified. Instruction unsent.');
+    if (result.state !== 'accepted' || !result.inventory) throw new HubError(msg('runtime.references.inventoryUnverified'));
     return result.inventory;
   }
   private ready() {
     if (!this.control.observationFresh || !commandNamed(this.control.snapshot, '/files')?.enabled
       || this.control.snapshot.observation?.attention.foreground_interaction_active)
-      throw new Error('Finish the Runner terminal interaction, then send again. Instruction unsent.');
+      throw new HubError(msg('runtime.references.finishInteraction'));
   }
   private async stableInventory(lease?: symbol) {
     const pageSize = this.control.snapshot.references?.capability?.inventory_page_size ?? 0;
@@ -223,17 +224,17 @@ export class RunnerReferenceSelection {
           || page.offset !== references.length || page.references.length > pageSize
           || page.references.some((item, index) => item.display_index !== references.length + index + 1
             || !/^[0-9a-f]{32}$/.test(item.reference_id)))
-          throw new Error('Pending references changed or pagination is unverified. Refresh and review before sending.');
+          throw new HubError(msg('runtime.references.paginationChanged'));
         total = page.total_count;
         references.push(...page.references);
         if (new Set(references.map(item => item.reference_id)).size !== references.length || references.length > total)
-          throw new Error('Pending reference identities are inconsistent. Instruction unsent.');
+          throw new HubError(msg('runtime.references.identitiesInconsistent'));
         if (page.next_offset === null) {
-          if (references.length !== total) throw new Error('Pending inventory is incomplete. Instruction unsent.');
+          if (references.length !== total) throw new HubError(msg('runtime.references.inventoryIncomplete'));
           return references;
         }
         if (!page.references.length || page.next_offset !== references.length)
-          throw new Error('Pending inventory made no verified progress. Instruction unsent.');
+          throw new HubError(msg('runtime.references.inventoryNoProgress'));
       }
     };
     await this.control.fresh(); this.ready();
@@ -242,7 +243,7 @@ export class RunnerReferenceSelection {
     const second = await scan();
     await this.control.fresh(); this.ready();
     if (JSON.stringify(first) !== JSON.stringify(second))
-      throw new Error('Pending references changed between samples. Review and send again; instruction unsent.');
+      throw new HubError(msg('runtime.references.samplesChanged'));
     this.pendingSet = second;
     for (const candidate of this.candidates) {
       const id = this.referenceId(candidate), removal = this.results.find(item => item.id === candidate.removalId);
@@ -258,7 +259,7 @@ export class RunnerReferenceSelection {
     try {
       if (offset) await this.readInventory(offset);
       else await this.stableInventory();
-    } catch (reason) { this.error = String(reason); }
+    } catch (reason) { this.error = errorText(reason); }
     finally { this.listing = false; this.changed(); }
   }
   reviewOtherPending() {
@@ -274,32 +275,32 @@ export class RunnerReferenceSelection {
   }
   async preflight() {
     if (this.picking || this.staging || this.registering || this.listing || this.locked)
-      throw new Error('Finish attachment editing before sending. Instruction unsent.');
+      throw new HubError(msg('runtime.references.finishEditing'));
     if (!this.capable) return;
     if (this.unresolvedResults() || this.candidates.some(item => this.state(item) === 'outcome-unknown'))
-      throw new Error('An attachment outcome is unresolved. Reconcile it in this Runner before sending; instruction unsent.');
+      throw new HubError(msg('runtime.references.unresolved'));
     const lease = this.control.reserveAttachments();
     const selected = this.candidates.filter(item => !item.submitted && !item.cancelRequested && !inactive(this.state(item)));
     this.submission = { lease, candidates: selected, verified: false }; this.changed();
     if (selected.some(item => !['staged', 'registered'].includes(this.state(item))))
-      throw new Error('An attachment failed or was rejected. Cancel that item before sending; instruction unsent.');
+      throw new HubError(msg('runtime.references.cancelFailed'));
     const before = await this.stableInventory(lease);
     const excluded = this.candidates.filter(item => item.cancelRequested || inactive(this.state(item)))
       .map(item => this.referenceId(item)).filter((id): id is string => !!id);
     if (before.some(item => excluded.includes(item.reference_id)))
-      throw new Error('A cancelled attachment is still pending in Runner. Remove it and reconcile before sending.');
+      throw new HubError(msg('runtime.references.cancelledPending'));
     const owned = selected.map(item => this.referenceId(item)).filter((id): id is string => !!id);
     this.otherPending = before.filter(item => !owned.includes(item.reference_id));
     if (identity(this.otherPending) !== this.reviewedOthers) {
       this.changed();
-      throw new Error('Review other pending references below, then choose Include other pending references before sending.');
+      throw new HubError(msg('runtime.references.reviewOthers'));
     }
     this.registering = true; this.changed();
     try {
       for (const candidate of selected) {
         await this.register(candidate, lease);
         if (this.state(candidate) !== 'registered' || !this.referenceId(candidate))
-          throw new Error('Attachment registration did not complete. Instruction unsent; completed receipts and draft retained.');
+          throw new HubError(msg('runtime.references.registrationIncomplete'));
       }
     } finally { this.registering = false; this.changed(); }
     const after = await this.stableInventory(lease);
@@ -307,14 +308,14 @@ export class RunnerReferenceSelection {
     const expected = [...before.map(item => item.reference_id), ...intended.filter(id => !before.some(item => item.reference_id === id))];
     if (new Set(intended).size !== intended.length || intended.some(id => !after.some(item => item.reference_id === id))
       || identity(after) !== expected.join(',') || after.some(item => excluded.includes(item.reference_id)))
-      throw new Error('The final pending set does not match this selection. Reconcile and review before sending; instruction unsent.');
+      throw new HubError(msg('runtime.references.finalMismatch'));
     this.submission.verified = true;
   }
   assertReadyForDelivery() {
     if (!this.capable) return;
     this.ready();
     if (!this.submission?.verified || this.unresolvedResults())
-      throw new Error('Attachment verification is incomplete. Instruction unsent.');
+      throw new HubError(msg('runtime.references.verificationIncomplete'));
   }
   finishSubmission(delivered: boolean) {
     const submission = this.submission;
@@ -333,11 +334,11 @@ export class RunnerReferenceSelection {
     return this.results.some(item => item.state === 'registered' && item.id > (sampled?.id ?? 0));
   }
   async verifyAssignment() {
-    if (this.prepared) throw new Error('This Runner has prepared references or an unresolved reference interaction. Instruction unsent.');
+    if (this.prepared) throw new HubError(msg('runtime.references.prepared'));
     if (!this.capable) return;
     const result = await this.readInventory(0);
     if (result.total_count !== 0 || this.prepared)
-      throw new Error('Runner pending references are present or unverified. Use this Runner directly for the intended instruction. Single Entry instruction unsent.');
+      throw new HubError(msg('runtime.references.assignmentPending'));
   }
   dispose() {
     this.disposed = true;
