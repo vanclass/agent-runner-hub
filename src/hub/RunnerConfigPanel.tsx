@@ -31,7 +31,7 @@ const display = (value: unknown) => value === undefined || value === null || val
 const accountKey = (a: { agent_id: string; profile_name: string }) => JSON.stringify([a.agent_id, a.profile_name]);
 function Diagnostic({ code }: { code: string }) { return <span>{codes[code] && `${t(codes[code])} `}<code>{code}</code></span>; }
 
-export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<RunnerControl, 'config' | 'snapshot'>; defaults?: EntryDefaults }) {
+export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<RunnerControl, 'config' | 'snapshot'> & { assignmentLocked?: boolean }; defaults?: EntryDefaults }) {
   useHubTranslation();
   const service = control.config, actual = service.actual, catalog = service.catalog;
   const current = actual?.current;
@@ -39,7 +39,7 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
   const options = catalog?.options;
   const model = options?.models.find(m => m.id === draft?.model.id);
   const connected = control.snapshot.state === 'ready';
-  const blocked = service.busy || !connected || !options;
+  const blocked = service.busy || !connected || !options || control.assignmentLocked;
   const plan = service.plan;
   const mapped = catalog ? entryDefaultsToDesired(defaults, catalog) : undefined;
   const selected = (field: keyof ConfigSettings) => display(draft?.[field]);
@@ -54,9 +54,9 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
     <summary>{t('config.title')}</summary>
     {!service.supports('inspect') && <p role="status">{connected ? t('config.unsupported') : t('config.notReady')} {t('config.terminalHelp')}</p>}
     <div className="config-actions">
-      <button type="button" disabled={!service.supports('inspect') || service.busy}
+      <button type="button" disabled={!service.supports('inspect') || service.busy || control.assignmentLocked}
         onClick={() => void service.inspect(service.draft.account)}>{t('config.inspect')}</button>
-      <button type="button" disabled={!current || service.busy || !connected} onClick={() => service.resetDraft()}>{t('config.reset')}</button>
+      <button type="button" disabled={!current || service.busy || !connected || control.assignmentLocked} onClick={() => service.resetDraft()}>{t('config.reset')}</button>
     </div>
     <p className="config-progress" role="status" aria-live="polite" aria-busy={service.busy}>
       {t(activity[service.activity])}{service.busy && service.progress && <> · {t(states[service.progress.state])}</>}
@@ -119,7 +119,7 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
       {Object.keys(plan.changes).length === 0 && <p>{t('config.noChanges')}</p>}
       {[...plan.errors, ...plan.required_confirmations].map((code, i) => <p key={`${i}/${code}`}><Diagnostic code={code} /></p>)}
       <details><summary>{t('config.impact')}</summary><pre>{JSON.stringify(plan.impact, null, 2)}</pre></details>
-      <button type="button" disabled={!service.canApply} onClick={() => void service.apply()}>{t('config.apply')}</button>
+      <button type="button" disabled={!service.canApply || control.assignmentLocked} onClick={() => void service.apply()}>{t('config.apply')}</button>
     </section>}
     {service.applications.map((application, index) => <section className="config-receipt" key={index} aria-label={t('config.receipts')}>
       <h3>{t('config.receipts')} · {t(application.result ? applyStatuses[application.result.apply_status] : states[application.receipt.state])}</h3>

@@ -20,6 +20,8 @@
 
 - Authenticated Runner session configuration, verified current/destination catalogs, explicit plan/apply, per-setting receipts, uncertainty and legacy default conversion: [Runner session configuration](runner_session_config.md); source owners `../../src-tauri/src/desktop_terminal/features.rs`, `../../src-tauri/src/desktop_terminal/session_config.rs`, `../../src/hub/RunnerConfigService.ts`, `../../src/hub/runnerConfigContract.ts`, `../../src/hub/runnerConfigDefaults.ts` and `../../src/hub/RunnerConfigPanel.tsx`; representative checks `../../src-tauri/src/desktop_terminal/session_config_tests.rs`, `../../src-tauri/src/desktop_terminal/session_config_acceptance.rs`, `../../tests/e2e/session-config.spec.mjs`, `../../tests/e2e/session-config-delivery.spec.mjs` and `../../tests/e2e/session-config-ui.mjs`.
 
+- Single Entry allocation/configuration/work integration and original-request start evidence: [Runner terminal ownership](runner_terminals.md#single-entry-assignment), with configuration receipts under [Runner session configuration](runner_session_config.md#preferences-and-single-entry-boundary). Source owners `../../src/hub/runnerWork.ts`, `../../src/hub/RunnerWorkStatus.tsx` and `../../src-tauri/src/desktop_terminal/work.rs`; focused evidence `../../tests/e2e/work.spec.mjs`, `../../tests/e2e/single-entry-work.mjs`, `../../src-tauri/src/desktop_terminal/work_tests.rs` and `../../src-tauri/src/desktop_terminal/work_acceptance.rs`.
+
 ## 신규 domain 등록 조건
 
 - 반복 작업에서 책임 경계나 현재 동작을 다시 추론해야 하는 안정된 기능 영역이어야 한다.

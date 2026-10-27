@@ -1,41 +1,59 @@
-import { useHubTranslation, t, tr, msg } from './i18n';
+import { useHubTranslation, t, tr } from './i18n';
 import type { SingleEntry, EntryDefaults } from './singleEntry';
 
-const fields = [
-  { key: 'target', label: msg('fields.target'), value: (o: SingleEntry['observed'][number]['observation']) => o.target },
-  { key: 'model', label: msg('fields.model'), value: (o: SingleEntry['observed'][number]['observation']) => ({
-    model: o.selection.model, reasoning_effort: o.selection.reasoning_effort, service_tier: o.selection.service_tier }) },
-  { key: 'account', label: msg('fields.account'), value: (o: SingleEntry['observed'][number]['observation']) => o.selection.account },
-  { key: 'runMode', label: msg('fields.runMode'), value: (o: SingleEntry['observed'][number]['observation']) => o.run_mode },
-] as const;
-const label = (key: keyof EntryDefaults, value: unknown) => {
-  if (typeof value === 'string') return value || t('common.notSelected');
-  const item = value as Record<string, string>;
-  return key === 'target' ? `${item.owner || item.binding_state}${item.project ? ` / ${item.project}` : ''}`
-    : `${item.model} · ${item.reasoning_effort} · ${item.service_tier}`;
-};
+function SingleEntryChoices({ entry }: { entry: SingleEntry }) {
+  const defaults = entry.defaults, options = entry.catalog?.options;
+  const blocked = !entry.editable || entry.loadingOptions || !options;
+  const select = <K extends keyof EntryDefaults>(key: K, title: string, values: { value: EntryDefaults[K]; label: string }[]) => {
+    const current = defaults[key], selected = current === undefined ? '' : JSON.stringify(current);
+    return <label className="setting"><span>{title}</span><select aria-label={t('entry.field', { field: title })}
+      disabled={blocked} value={selected} onChange={e => entry.setDefault(key, e.target.value ? JSON.parse(e.target.value) : undefined)}>
+      <option value="">{t('entry.useRunner')}</option>
+      {selected && !values.some(v => JSON.stringify(v.value) === selected) &&
+        <option value={selected} disabled>{JSON.stringify(current)} · {t('config.unlisted')}</option>}
+      {values.map(v => <option key={JSON.stringify(v.value)} value={JSON.stringify(v.value)}>{v.label}</option>)}
+    </select></label>;
+  };
+  const model = options?.models.find(m => m.id === defaults.model?.model);
+  return <div className="settings-grid">
+    {select('target', t('fields.target'), options?.targets.map(v => ({
+      value: { binding_state: 'bound', owner: v.owner, project: v.project }, label: v.id })) ?? [])}
+    {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
+    {select('model', t('fields.model'), options?.models.map(v => ({ label: v.id, value: { model: v.id,
+      reasoning_effort: v.reasoning_efforts.includes(defaults.model?.reasoning_effort ?? '')
+        ? defaults.model!.reasoning_effort : v.reasoning_efforts[0],
+      service_tier: v.service_tiers.includes(defaults.model?.service_tier ?? '')
+        ? defaults.model!.service_tier : v.service_tiers[0] } })) ?? [])}
+    <label className="setting"><span>{t('config.reasoning')}</span><select aria-label={t('entry.field', { field: t('config.reasoning') })}
+      disabled={blocked || !model} value={defaults.model?.reasoning_effort ?? ''} onChange={e =>
+        defaults.model && entry.setDefault('model', { ...defaults.model, reasoning_effort: e.target.value })}>
+      {!model && <option value="">{t('entry.useRunner')}</option>}
+      {model?.reasoning_efforts.map(v => <option key={v}>{v}</option>)}
+    </select></label>
+    <label className="setting"><span>{t('config.tier')}</span><select aria-label={t('entry.field', { field: t('config.tier') })}
+      disabled={blocked || !model} value={defaults.model?.service_tier ?? ''} onChange={e =>
+        defaults.model && entry.setDefault('model', { ...defaults.model, service_tier: e.target.value })}>
+      {!model && <option value="">{t('entry.useRunner')}</option>}
+      {model?.service_tiers.map(v => <option key={v}>{v}</option>)}
+    </select></label>
+    {select('runMode', t('fields.runMode'), options?.run_modes.map(value => ({ value, label: value })) ?? [])}
+    <label className="setting"><span>{t('config.root')}</span><input aria-label={t('entry.field', { field: t('config.root') })}
+      disabled={blocked || !['pure-direct-run', 'direct-run'].includes(defaults.runMode ?? entry.catalog?.inspection.current.run_mode ?? '')}
+      value={defaults.root ?? ''} onChange={e => entry.setDefault('root', e.target.value || undefined)} /></label>
+  </div>;
+}
 
 export function SingleEntrySettings({ entry }: { entry: SingleEntry }) {
   useHubTranslation();
   return <section className="context-settings" aria-label={t('entry.defaultsLabel')}>
-    <div className="settings-grid">{fields.map(field => {
-      const current = entry.defaults[field.key];
-      const values = new Map<string, unknown>();
-      if (current !== undefined) values.set(JSON.stringify(current), current);
-      entry.observed.forEach(({ observation }) => {
-        const value = field.value(observation);
-        values.set(JSON.stringify(value), value);
-      });
-      return <label className="setting" key={field.key}><span>{tr(field.label)}</span>
-        <select aria-label={t('entry.field', { field: field.label })} disabled={!entry.editable}
-          value={current === undefined ? '' : JSON.stringify(current)} onChange={event =>
-            entry.setDefault(field.key, event.target.value ? JSON.parse(event.target.value) : undefined)}>
-          <option value="">{t('entry.useRunner')}</option>
-          {[...values].map(([value, item]) => <option key={value} value={value}>{label(field.key, item)}</option>)}
-        </select>
-      </label>;
-    })}</div>
+    <label><input type="checkbox" checked={entry.allocationPolicy === 'reuse-idle'} disabled={!entry.editable}
+      onChange={e => entry.setDefault('allocationPolicy', e.target.checked ? 'reuse-idle' : 'always-new')} />{t('work.reuseIdle')}</label>
+    <p className="scope-note">{t('work.allocationHelp')}</p>
+    <button type="button" disabled={!entry.editable || entry.loadingOptions} onClick={() => void entry.inspectOptions()}>
+      {entry.loadingOptions ? t('config.inspecting') : t('work.loadOptions')}</button>
+    <SingleEntryChoices entry={entry} />
     <p className="scope-note">{t('entry.defaultsHelp')}</p>
+    {entry.defaults.account && !entry.defaults.accountIdentity && <p role="status">{t('work.legacyAccount', { account: entry.defaults.account })}</p>}
     {entry.restoredDefaults && <p className="scope-note">{t('entry.restored')}</p>}
   </section>;
 }
@@ -49,7 +67,7 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
       <div className="composer-actions"><span className="composer-note">{t('entry.assignmentHint')}</span>
         <button className="send-button" type="button" disabled={!entry.editable || !entry.draft.trim()}
-          onClick={() => void entry.submit(location)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>
+          onClick={() => void entry.submit(location, onSelectRunner)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>
       </div>
     </div>
     {entry.detail && <p role="status" className="control-status">{tr(entry.detail)}</p>}

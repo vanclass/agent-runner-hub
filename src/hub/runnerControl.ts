@@ -4,6 +4,7 @@ import { clipboardImagePng } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
 import { RunnerImages } from './runnerImages';
 import { RunnerConfigService } from './RunnerConfigService';
+import { RunnerWork } from './runnerWork';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 export type RunnerCommand = {
@@ -32,6 +33,7 @@ export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
 export class RunnerControl {
   readonly images: RunnerImages;
   readonly config: RunnerConfigService;
+  readonly work: RunnerWork;
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
   assignmentLocked = false;
@@ -61,8 +63,15 @@ export class RunnerControl {
     this.config = new RunnerConfigService({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
-      available: () => !this.stopped && this.snapshot.state === 'ready' && !this.controlBusy,
+      available: () => !this.stopped && this.snapshot.state === 'ready' && !this.otherControlBusy,
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'session_config', request } }),
+    }, changed);
+    this.work = new RunnerWork({
+      identity: () => this.id && this.snapshot.features
+        ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
+      available: () => !this.stopped && this.snapshot.state === 'ready' && !this.otherControlBusy
+        && !this.config.busy && !this.config.uncertain,
+      submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'work', request } }),
     }, changed);
   }
   start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
@@ -88,6 +97,7 @@ export class RunnerControl {
       if (this.stopped) return;
       this.snapshot = snapshot;
       this.config.observe(this.id, snapshot.state, snapshot.features);
+      this.work.observe(this.id, snapshot.state, snapshot.features);
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
@@ -97,9 +107,12 @@ export class RunnerControl {
       this.timer = setTimeout(() => void this.refresh(), 500);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
-  get busy() { return this.controlBusy || this.config.busy; }
+  get busy() { return this.controlBusy || this.config.busy || this.work.busy; }
   private get controlBusy() {
-    return this.assignmentLocked || this.attachmentLocked || this.sending || this.referenceAdmissions > 0
+    return this.assignmentLocked || this.otherControlBusy;
+  }
+  private get otherControlBusy() {
+    return this.attachmentLocked || this.sending || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }
@@ -176,6 +189,8 @@ export class RunnerControl {
         ? { ...result, state: 'outcome-unknown' } : result) };
     if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
     this.config.close();
+    if (this.id) this.work.observe(this.id, 'disconnected', this.snapshot.features);
+    this.work.close();
     this.changed();
   }
 }

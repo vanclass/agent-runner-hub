@@ -60,6 +60,7 @@ export class RunnerConfigService {
     this.capability = state === 'ready' ? snapshot?.sessionConfig ?? undefined : undefined;
     if (!this.capability) { this.catalog = undefined; this.plan = undefined; this.planned = undefined; }
     for (const receipt of snapshot?.results ?? []) {
+      if (receipt.feature !== 'session_config') continue;
       if (terminal(receipt)) this.receipts.set(receipt.id, copy(receipt));
       const application = this.applications.find(a => a.receipt.id === receipt.id && a.receipt.phase !== 'completed');
       if (application && receipt.phase === 'completed' && isApply(receipt.reply, application.plan, application.before)) {

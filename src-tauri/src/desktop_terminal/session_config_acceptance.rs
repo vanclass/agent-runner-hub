@@ -19,11 +19,11 @@ fn call(harness: &mut Harness, session: &Arc<Session>, request: config::Request)
 }
 fn inspect(harness: &mut Harness, session: &Arc<Session>) -> config::Inspection {
     let result = call(harness, session, config::Request::Inspect { api_version:1, account:None, offset:0, options_revision:None });
-    match result.reply.unwrap() { config::Response::Inspect(value) => value, value => panic!("inspect: {value:?}") }
+    match result.reply.unwrap() { features::Response::SessionConfig(config::Response::Inspect(value)) => value, value => panic!("inspect: {value:?}") }
 }
 fn plan(harness: &mut Harness, session: &Arc<Session>, desired: config::Desired) -> config::Plan {
     let result = call(harness, session, config::Request::Plan { api_version:1, desired });
-    match result.reply.unwrap() { config::Response::Plan(value) => { assert_eq!(value.plan_status, "ready", "{value:?}"); value },
+    match result.reply.unwrap() { features::Response::SessionConfig(config::Response::Plan(value)) => { assert_eq!(value.plan_status, "ready", "{value:?}"); value },
         value => panic!("plan: {value:?}") }
 }
 fn apply_request(plan: &config::Plan) -> config::Request {
@@ -82,7 +82,7 @@ fn installed_session_config_two_sessions_and_authoritative_receipts() {
     let result = call(&mut harness, &first, apply_request(&planned));
     assert_eq!(result.state, "accepted");
     match result.reply.as_ref().unwrap() {
-        config::Response::Apply(receipt) => {
+        features::Response::SessionConfig(config::Response::Apply(receipt)) => {
             assert_eq!(receipt.apply_status, "applied");
             assert!(!receipt.results.is_empty());
             assert!(receipt.results.iter().all(|r| matches!(r.outcome, config::Outcome::Success) && r.committed.is_some()));

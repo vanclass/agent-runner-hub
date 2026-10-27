@@ -1,4 +1,5 @@
 import type { RunnerObservation } from './runnerControl';
+import type { WorkCapability, WorkRequest } from './runnerWork';
 
 export type ConfigAccount = { agent_id: string; profile_name: string };
 export type ConfigModel = { id: string; reasoning_effort: string };
@@ -27,11 +28,11 @@ export type ConfigApply = { api_version: 1; apply_status: 'applied' | 'partial' 
 export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 1; account?: ConfigAccount; offset: number; options_revision?: string }
   | { operation: 'session_config.plan'; api_version: 1; desired: ConfigDesired }
   | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string };
-export type FeatureResult = { id: number; feature: 'session_config'; operation: ConfigRequest['operation'];
+export type FeatureResult = { id: number; feature: 'session_config' | 'work'; operation: ConfigRequest['operation'] | WorkRequest['operation'];
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown' | 'not-sent';
   admission: 'unconfirmed' | 'queued' | 'rejected' | 'not-sent'; phase?: string | null; code?: string | null;
   reply?: unknown };
-export type FeatureSnapshot = { generation: number; sessionConfig?: ConfigCapability | null; results: FeatureResult[] };
+export type FeatureSnapshot = { generation: number; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null; results: FeatureResult[] };
 export type FeatureAdmission = { state: 'submitted'; id: number; generation: number }
   | { state: 'not-sent' | 'outcome-unknown'; detail: string };
 export type ConfigIdentity = { session: string; generation: number };

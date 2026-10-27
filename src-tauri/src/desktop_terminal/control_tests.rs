@@ -1,6 +1,8 @@
 use super::*;
 #[path = "session_config_tests.rs"]
 mod session_config_tests;
+#[path = "work_tests.rs"]
+mod work_tests;
 #[path = "reference_tests.rs"]
 mod references;
 #[cfg(windows)]

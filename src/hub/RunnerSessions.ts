@@ -79,18 +79,24 @@ export class RunnerSession {
   private error(reason: unknown) { if (!this.disposed) this.update({ detail: errorText(reason) }); }
   private manualInput() {
     if (this.assignmentWriting) return false;
+    if (this.reservation && this.control.assignmentLocked
+      && !this.control.snapshot.observation?.attention.foreground_interaction_active
+      && this.control.config.progress?.state !== 'pending-interaction'
+      && this.control.work.progress?.state !== 'pending-interaction') return false;
     if (this.references.locked && !this.references.results.some(result => result.state === 'pending-interaction')) return false;
     this.inputUnsettled = true;
     return true;
   }
   get assignmentAvailable() {
     return !this.disposed && !this.reservation && !this.control.config.busy && !this.control.config.uncertain
+      && !this.control.work.blocked && !this.control.work.busy
       && !this.inputUnsettled && !this.view.submitting && !this.references.prepared
       && !this.view.draft && this.view.status === 'running' && this.input.canSubmit;
   }
   get assignmentReserved() { return !!this.reservation; }
   reserve(token: symbol) {
     if (this.disposed || this.reservation || this.control.config.busy || this.control.config.uncertain
+      || this.control.work.blocked || this.control.work.busy
       || this.inputUnsettled || this.view.submitting || this.view.draft || this.references.prepared) return false;
     this.reservation = token;
     this.control.assignmentLocked = true;
@@ -121,6 +127,17 @@ export class RunnerSession {
       this.assignmentWriting = false;
       this.update({ submitting: false });
     }
+  }
+  ownsAssignment(token: symbol) {
+    return this.reservation === token && !this.disposed && !this.inputUnsettled && !this.view.draft
+      && !this.view.submitting && !this.references.prepared && this.view.status === 'running'
+      && this.input.canSubmit && !this.control.config.uncertain && !this.control.work.blocked;
+  }
+  async submitWork(token: symbol, instruction: string) {
+    if (!this.ownsAssignment(token)) throw new HubError(msg('runtime.session.ownershipChanged'));
+    this.update({ submitting: true });
+    try { return await this.control.work.submit(instruction); }
+    finally { this.update({ submitting: false }); }
   }
   private queue(bytes: Uint8Array) {
     if (this.disposed || this.view.status === 'exited' || this.view.status === 'failed') return;
@@ -174,6 +191,8 @@ export class RunnerSession {
     if (this.deliveryUnknown) throw new HubError(msg('runtime.session.previousUnknown'));
     const draft = this.view.draft ?? '';
     const ordinary = !draft.trimStart().startsWith('/');
+    if (ordinary && this.control.work.blocked) throw new HubError(msg('work.retained',
+      { state: this.control.work.current?.work?.state || 'unknown' }));
     let attempted = false, delivered = false;
     this.update({ submitting: true });
     try {
@@ -253,12 +272,14 @@ export class RunnerSessions {
   readonly entry: SingleEntry;
   constructor(defaults: EntryDefaults = {}, saveDefaults: (value: EntryDefaults) => void = () => {}) {
     this.entry = new SingleEntry(() => [...this.sessions.values()],
-      (location, token) => this.create(location, token), () => this.changed(), defaults, saveDefaults);
+      (location, token) => this.allocate(location, token), () => this.changed(), defaults, saveDefaults,
+      () => this.spare.optionsSource ?? [...this.sessions.values()].find(s => s.assignmentAvailable));
   }
   readonly getSnapshot = () => this.snapshot;
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private readonly changed = () => {
     if (this.disposed) return;
+    this.entry?.observe();
     this.workspace.save([...this.sessions.values()].map(session => session.tab));
     this.snapshot = [...this.sessions.values()].map(session => session.view);
     this.listeners.forEach(listener => listener());
@@ -297,6 +318,14 @@ export class RunnerSessions {
     if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
     this.changed();
     return { session, launched: session.open(location) };
+  }
+  private allocate(location: string, token: symbol) {
+    if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location) {
+      const session = this.promoteSpare();
+      if (!session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
+      return { session, launched: Promise.resolve(), promoted: true };
+    }
+    return this.create(location, token);
   }
   promoteSpare() {
     if (this.disposed) throw new HubError(msg('spare.closed'));

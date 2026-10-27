@@ -33,6 +33,7 @@ export class RunnerSpare {
     if (!location || this.current.state === 'disposed') return;
     this.prepare(null, location);
   }
+  get optionsSource() { return this.snapshot.state === 'ready' ? this.slot?.session : undefined; }
   setInstallation(installation: RunnerInstallation | null) {
     if (this.current.state === 'disposed') return;
     if (installation && this.current.installation?.root === installation.root

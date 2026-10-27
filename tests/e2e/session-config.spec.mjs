@@ -174,6 +174,6 @@ test('saved defaults map exact candidate IDs and refuse to infer account identit
   expect(result.explicitIds.unresolved).toEqual([]);
   expect(result.explicitIds.desired.model).toEqual({ id: 'm0', reasoning_effort: 'high' });
   expect(result.explicitIds.desired.service_tier).toBe('fast');
-  expect(result.saved).toEqual({ target: { binding_state: 'bound', owner: 'Workspace', project: '' }, account: 'first', runMode: 'task-run',
+  expect(result.saved).toEqual({ target: { binding_state: 'bound', owner: 'Workspace', project: '' }, accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
     model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } });
 });

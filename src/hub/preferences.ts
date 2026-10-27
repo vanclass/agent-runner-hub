@@ -13,8 +13,21 @@ const keys = (value: Record<string, unknown>, allowed: string[]) => Object.keys(
 
 // Only the nonsecret selection projection crosses the preferences boundary.
 export function projectEntryDefaults(value: unknown): EntryDefaults | undefined {
-  if (!object(value) || !keys(value, ['target', 'model', 'account', 'runMode'])) return;
+  if (!object(value) || !keys(value, ['target', 'model', 'account', 'runMode', 'accountIdentity', 'root', 'allocationPolicy'])) return;
   const result: EntryDefaults = {};
+  if (value.allocationPolicy !== undefined) {
+    if (value.allocationPolicy !== 'always-new' && value.allocationPolicy !== 'reuse-idle') return;
+    result.allocationPolicy = value.allocationPolicy;
+  }
+  if (value.accountIdentity !== undefined) {
+    const account = value.accountIdentity;
+    if (!object(account) || !keys(account, ['agent_id', 'profile_name']) || !text(account.agent_id) || !text(account.profile_name)) return;
+    result.accountIdentity = { agent_id: account.agent_id, profile_name: account.profile_name };
+  }
+  if (value.root !== undefined) {
+    if (typeof value.root !== 'string' || !value.root.trim() || value.root.length > 4096 || /[\u0000-\u001f\u007f]/.test(value.root)) return;
+    result.root = value.root;
+  }
   if (value.target !== undefined) {
     const target = value.target;
     if (!object(target) || !keys(target, ['binding_state', 'owner', 'project'])

@@ -1,19 +1,24 @@
 //! Implemented native feature contracts share the v1 transport and identity.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use super::session_config;
+use super::{session_config, work};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "feature", content = "request", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Request { SessionConfig(session_config::Request) }
+pub enum Request { SessionConfig(session_config::Request), Work(work::Request) }
 impl Request {
-    pub fn name(&self) -> &'static str { match self { Self::SessionConfig(_) => "session_config" } }
-    pub fn operation(&self) -> &'static str { match self { Self::SessionConfig(request) => request.operation() } }
-    pub fn validate(&self) -> Result<(), &'static str> { match self { Self::SessionConfig(request) => request.validate() } }
-    pub fn fields(&self) -> Value { match self { Self::SessionConfig(request) => serde_json::to_value(request).unwrap() } }
-    pub fn wait_limit(&self) -> std::time::Duration { match self { Self::SessionConfig(request) => request.wait_limit() } }
-    pub fn response(&self, packet: &Value) -> Result<session_config::Response, &'static str> {
-        match self { Self::SessionConfig(request) => request.response(packet) }
+    pub fn name(&self) -> &'static str { match self { Self::SessionConfig(_) => "session_config", Self::Work(_) => "work" } }
+    pub fn operation(&self) -> &'static str { match self {
+        Self::SessionConfig(r) => r.operation(), Self::Work(r) => r.operation() } }
+    pub fn validate(&self) -> Result<(), &'static str> { match self {
+        Self::SessionConfig(r) => r.validate(), Self::Work(r) => r.validate() } }
+    pub fn fields(&self) -> Value { match self {
+        Self::SessionConfig(r) => serde_json::to_value(r).unwrap(), Self::Work(r) => serde_json::to_value(r).unwrap() } }
+    pub fn wait_limit(&self) -> std::time::Duration { match self {
+        Self::SessionConfig(r) => r.wait_limit(), Self::Work(r) => r.wait_limit() } }
+    pub fn response(&self, packet: &Value, id: u64) -> Result<Response, &'static str> {
+        match self { Self::SessionConfig(r) => r.response(packet).map(Response::SessionConfig),
+            Self::Work(r) => r.response(packet, id).map(Response::Work) }
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -38,25 +43,32 @@ impl Capability {
     }
 }
 #[derive(Clone, Debug, Serialize)]
+#[serde(untagged)]
+pub enum Response { SessionConfig(session_config::Response), Work(work::Response) }
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultView {
     pub id: u64, pub feature: String, pub operation: String, pub state: String,
     pub admission: String, pub phase: Option<String>, pub code: Option<String>,
-    pub reply: Option<session_config::Response>,
+    pub reply: Option<Response>,
 }
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Features {
-    pub generation: u64, pub session_config: Option<Capability>, pub results: Vec<ResultView>,
+    pub generation: u64, pub session_config: Option<Capability>, pub work: Option<work::Capability>, pub results: Vec<ResultView>,
 }
 impl Features {
-    pub fn discover(&mut self, packet: &Value) { self.session_config = Capability::read(&packet["session_config"]); }
+    pub fn discover(&mut self, packet: &Value) {
+        self.session_config = Capability::read(&packet["session_config"]);
+        self.work = work::Capability::read(&packet["work"]);
+    }
     pub fn supports(&self, request: &Request) -> bool { match request {
         Request::SessionConfig(_) => self.session_config.as_ref().is_some_and(|cap| cap.supports(request)),
+        Request::Work(r) => self.work.as_ref().is_some_and(|cap| cap.operations.iter().any(|op| op == r.operation())),
     } }
     pub fn begin(&mut self, id: u64, request: &Request) {
         // Completed reads/plans can retire; apply receipts and uncertain results survive.
-        self.results.retain(|r| r.operation == "session_config.apply"
+        self.results.retain(|r| r.operation == "session_config.apply" || r.operation == "work.submit"
             || !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
         self.results.push(ResultView { id, feature: request.name().into(), operation: request.operation().into(),
             state: "sending".into(), admission: "unconfirmed".into(), phase: None, code: None, reply: None });
@@ -69,11 +81,12 @@ impl Features {
             result.admission = "queued".into();
         } else if finished { result.admission = "rejected".into(); }
         result.code = super::result_code(packet);
-        if finished { result.reply = Some(request.response(packet)?); }
+        if finished { result.reply = Some(request.response(packet, id)?); }
         Ok(())
     }
     pub fn disconnect(&mut self, pending: impl Iterator<Item = (u64, bool)>) {
         self.session_config = None;
+        self.work = None;
         for (id, untouched) in pending {
             if let Some(result) = self.results.iter_mut().find(|r| r.id == id) {
                 let not_sent = untouched && result.admission == "unconfirmed";

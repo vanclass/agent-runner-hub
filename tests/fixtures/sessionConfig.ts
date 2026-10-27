@@ -56,7 +56,8 @@ export class ConfigFixture {
   async submit(session: string, request: ConfigRequest) {
     if (session !== this.session) throw new Error('foreign session');
     this.requests.push(copy(request));
-    const result: FeatureResult = { id: ++this.sequence, feature: 'session_config', operation: request.operation,
+    this.sequence = Math.max(this.sequence, ...this.features.results.map(r => r.id)) + 1;
+    const result: FeatureResult = { id: this.sequence, feature: 'session_config', operation: request.operation,
       state: 'queued', phase: 'queued', admission: 'queued' };
     this.features.results.push(result);
     this.pending.push({ request: copy(request), result });

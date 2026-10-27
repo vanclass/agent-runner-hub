@@ -2,6 +2,7 @@ import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 import { PNG } from 'pngjs';
 import { createHash } from 'node:crypto';
 import { registerSessionConfigUI } from './session-config-ui.mjs';
+import { registerSingleEntryWork } from './single-entry-work.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -89,6 +90,13 @@ async function transport(page, freshTarget, referenceOptions) {
           const id = `pty-${count}`;
           sessions.set(id, { channel: args.onEvent, sequence: 0, control: { state: 'ready', observation: canonical(id), results: [],
             clipboardStaging: !!referenceOptions?.clipboard } });
+          if (referenceOptions?.work) {
+            const { WorkFixture } = await import('/tests/fixtures/work.ts');
+            const fixture = new WorkFixture(id, count);
+            fixture.mode = referenceOptions.workMode ?? 'started';
+            sessions.get(id).feature = fixture;
+            sessions.get(id).control.features = fixture.features;
+          }
           if (referenceOptions?.generatedImages) {
             sessions.get(id).control.generatedImagesSupported = true;
             sessions.get(id).images = referenceOptions.generatedImages.map((image, index) => ({ ...image,
@@ -115,6 +123,15 @@ async function transport(page, freshTarget, referenceOptions) {
           return;
         }
         if (command === 'runner_observe') {
+          const session = sessions.get(args.id), current = session.feature?.config.current;
+          if (current) {
+            Object.assign(session.control.observation, { run_mode: current.run_mode, target: { binding_state: 'bound',
+              owner: current.target === 'workspace' ? 'Workspace' : 'Project', project: current.target === 'workspace' ? '' : 'Exact' } });
+            Object.assign(session.control.observation.selection, { account: current.account.profile_name,
+              model: current.model.id, reasoning_effort: current.model.reasoning_effort, service_tier: current.service_tier,
+              source: 'configuration', next_model: current.model.id, next_reasoning_effort: current.model.reasoning_effort,
+              next_service_tier: current.service_tier });
+          }
           if (sessions.get(args.id).control.age) window.__nativeFixture.observedStale = true;
           observed.set(args.id, JSON.stringify(sessions.get(args.id).control));
           return structuredClone({ ...sessions.get(args.id).control, observationSerial: ++serial,
@@ -137,6 +154,11 @@ async function transport(page, freshTarget, referenceOptions) {
           const control = sessions.get(args.id).control;
           control.results = [{ id: commands.length, command: args.command, state: 'queued', changed: true }];
           return;
+        }
+        if (command === 'runner_feature') {
+          const fixture = sessions.get(args.id).feature;
+          if (args.request.feature === 'session_config') return fixture.config.submit(args.id, args.request.request);
+          return fixture.submit(args.request.request);
         }
         if (command === 'runner_reference') {
           const session = sessions.get(args.id), requestId = ++referenceSequence;
@@ -193,6 +215,7 @@ async function transport(page, freshTarget, referenceOptions) {
 }
 
 registerSessionConfigUI({ test, expect, transport, configure });
+registerSingleEntryWork({ test, expect, transport, configure, create });
 
 test('hidden spare parses output and promotes the original PTY without a workspace record', async ({ page }) => {
   await transport(page);
@@ -566,44 +589,29 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
 });
 
 test('Single Entry preferences restore all safe selections and revalidate them before delivery', async ({ page }) => {
-  await transport(page, { binding_state: 'bound', owner: 'Project', project: 'Preference target' });
+  await transport(page, undefined, { work: true, auto: true });
   await configure(page); await create(page); await entry(page, 'private instruction never saved');
-  for (const name of ['Project / Target', 'Model', 'Account', 'Run Mode']) {
-    const select = page.getByRole('combobox', { name: 'Single Entry ' + name, exact: true });
-    await select.selectOption({ index: 1 });
-  }
+  await page.getByRole('button', { name: 'Load authenticated Runner options' }).click();
+  await page.getByRole('combobox', { name: 'Single Entry Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
+  await expect(page.getByRole('combobox', { name: 'Single Entry Model', exact: true })).toBeEnabled();
+  await page.getByRole('combobox', { name: 'Single Entry Model', exact: true }).selectOption({ label: 'm2' });
+  await page.getByRole('combobox', { name: 'Single Entry Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+  await page.getByRole('combobox', { name: 'Single Entry Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')));
-  expect(Object.keys(saved.singleEntry).sort()).toEqual(['account', 'model', 'runMode', 'target']);
+  expect(Object.keys(saved.singleEntry).sort()).toEqual(['accountIdentity', 'allocationPolicy', 'model', 'runMode', 'target']);
   expect(JSON.stringify(saved)).not.toContain('private instruction');
-  expect(saved.singleEntry.model).toEqual({ model: 'effective-model', reasoning_effort: 'medium', service_tier: 'default' });
   await page.reload();
   await expect(page.getByText('Restored defaults are requests only.', { exact: false })).toBeVisible();
-  for (const name of ['Project / Target', 'Model', 'Account', 'Run Mode']) {
-    const field = { 'Project / Target': 'target', Model: 'model', Account: 'account', 'Run Mode': 'runMode' }[name];
-    await expect(page.getByRole('combobox', { name: 'Single Entry ' + name, exact: true })).toHaveValue(JSON.stringify(saved.singleEntry[field]));
-  }
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-  await page.evaluate(() => {
-    const selected = window.__nativeFixture.sessions.get('pty-1').control.observation.selection;
-    selected.account = 'changed-after-restart';
-    selected.next_model = selected.model;
-    selected.next_reasoning_effort = selected.reasoning_effort;
-    selected.next_service_tier = selected.service_tier;
-  });
-  await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('held after restart');
+  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('confirmed after restart');
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Settings need terminal interaction: /account' })).toBeVisible();
+  await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+  const current = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current);
+  expect(current.account).toEqual(saved.singleEntry.accountIdentity);
+  expect(current.run_mode).toBe(saved.singleEntry.runMode);
+  expect(current.model.id).toBe(saved.singleEntry.model.model);
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
-  await expect(page.getByRole('status').filter({ hasText: '설정을 위해 터미널 상호작용이 필요합니다: /account' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Single Entry 지시문', exact: true })).toHaveValue('held after restart');
-  await page.getByRole('button', { name: '미전송 배정 해제', exact: true }).click();
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.selection.account = 'pty-2'; });
-  await page.getByRole('button', { name: '지시문 배정', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'PTY에 전달했습니다' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(1);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual(saved.singleEntry);
 });
 
@@ -1264,9 +1272,10 @@ test('workspace keeps ended tabs dormant and strips untrusted replay fields', as
 
 test('workspace drops an uncertain Single Entry submission on reopening', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
-  await entry(page, 'WG6 uncertain instruction');
+  await entry(page, '/WG6 uncertain instruction');
   await page.evaluate(() => window.__nativeFixture.failWrite());
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('alert').filter({ hasText: 'automatic retry and reassignment are blocked' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).not.toContain('WG6 uncertain instruction');
   await page.reload();
@@ -1286,9 +1295,10 @@ test('Single Entry creates when no eligible idle Runner exists', async ({ page }
   await entry(page);
   await page.evaluate(() => window.__nativeFixture.readyNew());
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
-  expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-3']);
+  expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-1']);
 });
 
 for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'foreground', 'confirmation', 'incomplete-evidence', 'stale']) {
@@ -1317,41 +1327,32 @@ for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'fo
     }
     await entry(page);
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await assignedEntry(page);
     await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
     expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-3']);
   });
 }
 
-test('Single Entry keeps unsupported settings unsent and can transfer the known-unsent draft', async ({ page }, testInfo) => {
-  await transport(page); await configure(page); await create(page); await create(page);
+test('Single Entry preserves configuration confirmation and can transfer its known-unsent draft', async ({ page }) => {
+  await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
   await entry(page, 'held instruction');
-  await page.getByRole('combobox', { name: 'Single Entry Account', exact: true }).selectOption(JSON.stringify('pty-3'));
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').feature.config.planStatus = 'confirmation_required'; });
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Settings need terminal interaction: /account' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+  await assignedEntry(page);
+  await expect(page.locator('.control-status')).toContainText('Hub cannot approve it');
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
-  await testInfo.attach('single-entry-settings-incomplete', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.getByRole('button', { name: 'Open assigned Runner' }).click();
-  await page.getByRole('button', { name: 'Change Runner Account' }).click();
-  await expect(page.getByText(/Queued · no completed change yet/)).toBeVisible();
-  await page.evaluate(() => {
-    const c = window.__nativeFixture.sessions.get('pty-2').control;
-    c.results[0] = { ...c.results[0], state: 'rejected', ownerStatus: 'CANCELLED', changed: false };
-  });
-  await expect(page.getByText('Cancelled in terminal · No settings changed')).toBeVisible();
-  await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toHaveValue('held instruction');
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   await page.getByRole('button', { name: 'Move unsent instruction to Runner' }).click();
   await page.getByRole('button', { name: 'Open assigned Runner' }).click();
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('held instruction');
-  await expect(page.getByRole('button', { name: 'Change Runner Account' })).toHaveText('pty-2');
 });
 
 test('Single Entry write failure remains ambiguous without replay or reassignment', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   await entry(page); await page.evaluate(() => window.__nativeFixture.failWrite());
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('alert')).toContainText('automatic retry and reassignment are blocked');
   await page.getByRole('button', { name: 'Open assigned Runner' }).click();
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
@@ -1364,8 +1365,11 @@ test('Single Entry write failure remains ambiguous without replay or reassignmen
 test('Single Entry launch failure retains its draft without retry', async ({ page }) => {
   await transport(page); await configure(page);
   await page.getByRole('textbox', { name: 'Single Entry instructions' }).fill('/status');
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.state = 'disconnected'; });
+  await expect(page.getByRole('status').filter({ hasText: 'Spare unavailable:' })).toBeVisible();
   await page.evaluate(() => window.__nativeFixture.failNext());
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'fixture process launch failed' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toHaveValue('/status');
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
@@ -1375,21 +1379,21 @@ test('Single Entry launch failure retains its draft without retry', async ({ pag
 test('Single Entry process exit during readiness leaves the instruction unsent', async ({ page }) => {
   await transport(page); await configure(page); await create(page); await entry(page);
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await page.evaluate(() => window.__nativeFixture.exit('pty-2', 7));
   await expect(page.getByRole('status').filter({ hasText: /Runner process exited|Instruction unsent/ })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
 });
 
-test('Single Entry confirms selected defaults and excludes a delivered but unacknowledged session', async ({ page }) => {
+test('Single Entry excludes delivered terminal input from explicit idle reuse', async ({ page }) => {
   await transport(page); await configure(page); await create(page); await create(page); await entry(page);
-  await page.getByRole('combobox', { name: 'Single Entry Account', exact: true }).selectOption(JSON.stringify('pty-2'));
-  await page.getByRole('combobox', { name: 'Single Entry Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Single Entry Account', exact: true }).selectOption('');
   await page.getByRole('textbox', { name: 'Single Entry instructions' }).fill('/status');
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.map(w => w.id))).toEqual(['pty-2', 'pty-3']);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
 });
@@ -1399,6 +1403,7 @@ test('Single Entry uses one bracketed-paste write on VT terminals', async ({ pag
   await page.evaluate(() => window.__nativeFixture.emit('pty-2', '\x1b[?9001l'));
   await entry(page, '/hub-unknown\n안녕 🌍');
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(writes).toHaveLength(1);
@@ -1412,6 +1417,7 @@ test('Single Entry creates its first Runner and rapid concurrent calls deliver o
   await page.getByRole('button', { name: 'Assign instruction' }).evaluate(button => {
     for (let i = 0; i < 4; i++) button.click();
   });
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(1);
@@ -1423,6 +1429,7 @@ test('terminal color, cursor, device and focus replies preserve idle input owner
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
   await entry(page);
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
@@ -1434,11 +1441,17 @@ test('manual terminal input remains ineligible and is never appended to by assig
   await page.locator('.xterm-helper-textarea').press('x');
   await entry(page); await page.evaluate(() => window.__nativeFixture.readyNew());
   await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(records(writes, 'pty-2').some(record => record.char === 47)).toBe(false);
-  expect(records(writes, 'pty-3').map(record => record.char)).toEqual([47, 115, 116, 97, 116, 117, 115, 13]);
+  expect(records(writes, 'pty-1').map(record => record.char)).toEqual([47, 115, 116, 97, 116, 117, 115, 13]);
 });
+
+async function assignedEntry(page) {
+  await expect(page.getByRole('main', { name: 'Runner workspace', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+}
 
 async function entry(page, text = '/status') {
   await page.evaluate(() => { for (const { control } of window.__nativeFixture.sessions.values()) {
@@ -1446,6 +1459,7 @@ async function entry(page, text = '/status') {
     s.next_model = s.model; s.next_reasoning_effort = s.reasoning_effort; s.next_service_tier = s.service_tier;
   } });
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).check();
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(text);
 }
 
@@ -1471,6 +1485,7 @@ test('Single Entry skips a Runner with prepared references and verifies the chos
   await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
   await create(page); await entry(page);
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.writes.map(item => item.id))).toEqual(['pty-3']);
   expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.list').map(item => item.id))).toEqual(['pty-3']);
@@ -1493,14 +1508,15 @@ test('Single Entry leaves an instruction unsent when a fresh inventory reveals t
   await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.push({ reference_id: 'a'.repeat(32),
     display_index: 1, display_name: 'terminal-only.txt', kind: 'file', image_detail: null, media_kind: null }));
   await entry(page); await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Runner pending references are present or unverified' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('/status');
 });
 
-test('Single Entry reserves the first idle Runner and delivers Unicode once across tabs', async ({ page }, testInfo) => {
+test('Single Entry reserves idle terminal input and delivers slash command Unicode once across tabs', async ({ page }, testInfo) => {
   await transport(page); await configure(page); await create(page); await create(page);
-  await entry(page, 'first line\n안녕 🌍');
+  await entry(page, '/first line\n안녕 🌍');
   await page.evaluate(() => window.__nativeFixture.pauseWrites());
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).evaluate(button => { button.click(); button.click(); });
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBe(1);
@@ -1513,7 +1529,7 @@ test('Single Entry reserves the first idle Runner and delivers Unicode once acro
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(writes).toHaveLength(1); expect(writes[0].id).toBe('pty-2');
-  expect(records(writes, 'pty-2').map(r => r.char)).toEqual([...'first line'].map(c => c.charCodeAt(0)).concat(13, '안'.charCodeAt(0), '녕'.charCodeAt(0), 32, 0xd83c, 0xdf0d, 13));
+  expect(records(writes, 'pty-2').map(r => r.char)).toEqual([...'/first line'].map(c => c.charCodeAt(0)).concat(13, '안'.charCodeAt(0), '녕'.charCodeAt(0), 32, 0xd83c, 0xdf0d, 13));
   await testInfo.attach('single-entry-delivered', { body: await page.screenshot(), contentType: 'image/png' });
 });
 

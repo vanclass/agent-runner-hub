@@ -12,7 +12,11 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
     if (matches.length === 1) desired.target = matches[0].id;
     else unresolved.push('target');
   }
-  if (defaults.account !== undefined) {
+  if (defaults.accountIdentity !== undefined) {
+    if (options.accounts.some(a => same(a, defaults.accountIdentity))
+      && same(defaults.accountIdentity, catalog.inspection.model_options_account)) desired.account = defaults.accountIdentity;
+    else unresolved.push('accountIdentity');
+  } else if (defaults.account !== undefined) {
     // Even a matching current label cannot prove a persisted label's identity.
     // The user selects the exact agent_id/profile_name pair in the API form.
     unresolved.push('account');
@@ -20,7 +24,8 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
   if (defaults.model) {
     const model = options.models.find(m => m.id === defaults.model?.model);
     if (model && model.reasoning_efforts.includes(defaults.model.reasoning_effort)
-      && model.service_tiers.includes(defaults.model.service_tier) && !unresolved.includes('account')) {
+      && model.service_tiers.includes(defaults.model.service_tier) && !unresolved.includes('account')
+      && !unresolved.includes('accountIdentity')) {
       desired.model = { id: model.id, reasoning_effort: defaults.model.reasoning_effort };
       desired.service_tier = defaults.model.service_tier;
     } else unresolved.push('model');
@@ -28,6 +33,10 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
   if (defaults.runMode !== undefined) {
     if (options.run_modes.includes(defaults.runMode)) desired.run_mode = defaults.runMode;
     else unresolved.push('runMode');
+  }
+  if (defaults.root !== undefined) {
+    if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? catalog.inspection.current.run_mode)) desired.root = defaults.root;
+    else unresolved.push('root');
   }
   return { desired, unresolved };
 }
@@ -42,6 +51,7 @@ export function configToEntryDefaults(settings: ConfigSettings, catalog: ConfigC
     || !observation || observation.selection.account !== settings.account.profile_name
     || !same(settings.account, catalog.inspection.current.account)) return;
   return { target: { binding_state: 'bound', owner: target.owner, project: target.project },
-    account: observation.selection.account, runMode: settings.run_mode,
+    accountIdentity: { ...settings.account }, runMode: settings.run_mode,
+    ...(['pure-direct-run', 'direct-run'].includes(settings.run_mode) && settings.root ? { root: settings.root } : {}),
     model: { model: model.id, reasoning_effort: settings.model.reasoning_effort, service_tier: settings.service_tier } };
 }

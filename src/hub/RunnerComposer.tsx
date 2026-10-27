@@ -2,6 +2,7 @@ import { useHubTranslation, t, tr, errorText, type HubText } from './i18n';
 import { useState } from 'react';
 import type { RunnerSession } from './RunnerSessions';
 import { commandNamed } from './runnerControl';
+import { RunnerWorkStatus } from './RunnerWorkStatus';
 
 export function RunnerComposer({ session }: { session: RunnerSession }) {
   useHubTranslation();
@@ -22,6 +23,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
     catch (reason) { setError(errorText(reason)); }
   }
   return <section className="composer-area" aria-label={t('composer.label')}>
+    <RunnerWorkStatus work={session.control.work} />
     <div className="composer">
       <textarea aria-label={t('composer.runnerInstructions')} value={text} rows={3} disabled={!available || pending}
         placeholder={t('composer.placeholder')} onChange={event => session.setDraft(event.target.value)} />

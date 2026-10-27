@@ -10,6 +10,8 @@ use references::{ReferenceRequest, References};
 pub mod session_config;
 #[path = "features.rs"]
 pub mod features;
+#[path = "work.rs"]
+pub mod work;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;

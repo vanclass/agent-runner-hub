@@ -2,16 +2,15 @@ import { msg, errorText, HubError, type HubText } from './i18n';
 import { projectEntryDefaults } from './preferences';
 import type { RunnerSession } from './RunnerSessions';
 import { commandNamed, type RunnerObservation } from './runnerControl';
+import { entryDefaultsToDesired } from './runnerConfigDefaults';
+import { copy, same, type ConfigAccount, type ConfigCatalog } from './runnerConfigContract';
+import type { WorkAttempt } from './runnerWork';
 
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier'>;
-export type EntryDefaults = { target?: Target; model?: Model; account?: string; runMode?: string };
-export function entryDefaultValue<K extends keyof EntryDefaults>(observation: RunnerObservation, key: K): EntryDefaults[K] {
-  const values: EntryDefaults = { target: observation.target, account: observation.selection.account, runMode: observation.run_mode,
-    model: { model: observation.selection.model, reasoning_effort: observation.selection.reasoning_effort,
-      service_tier: observation.selection.service_tier } };
-  return values[key];
-}
+export type EntryDefaults = { target?: Target; model?: Model; account?: string; accountIdentity?: ConfigAccount;
+  runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle' };
+
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';
 
 // /target availability is Runner-owned proof that retained Task/Issue authority
@@ -34,21 +33,6 @@ export function idleReason(session: RunnerSession) {
   return '';
 }
 
-export function settingsMismatch(defaults: EntryDefaults, observation: RunnerObservation) {
-  const changes: HubText[] = [];
-  if (defaults.target && (defaults.target.binding_state !== observation.target.binding_state
-    || defaults.target.owner !== observation.target.owner || defaults.target.project !== observation.target.project)) changes.push('/target');
-  const selected = observation.selection, model = defaults.model;
-  if (model && (model.model !== selected.model || model.reasoning_effort !== selected.reasoning_effort
-    || model.service_tier !== selected.service_tier || model.model !== selected.next_model
-    || model.reasoning_effort !== selected.next_reasoning_effort || model.service_tier !== selected.next_service_tier)) changes.push('/model');
-  if (defaults.account !== undefined && defaults.account !== selected.account) changes.push('/account');
-  if (defaults.runMode !== undefined && defaults.runMode !== observation.run_mode) changes.push('/run-mode');
-  if (!model && (selected.model !== selected.next_model || selected.reasoning_effort !== selected.next_reasoning_effort
-    || selected.service_tier !== selected.next_service_tier)) changes.push(msg('runtime.entry.modelNextMismatch'));
-  return changes;
-}
-
 export class SingleEntry {
   draft = '';
   defaults: EntryDefaults = {};
@@ -56,15 +40,19 @@ export class SingleEntry {
   detail: HubText = '';
   runnerId?: string;
   evidence: HubText[] = [];
-  private active?: { session: RunnerSession; token: symbol };
+  private active?: { session: RunnerSession; token: symbol; attempt?: WorkAttempt };
+  catalog?: ConfigCatalog;
+  loadingOptions = false;
   constructor(private readonly list: () => readonly RunnerSession[],
-    private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void> },
+    private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
-    private readonly saveDefaults: (value: EntryDefaults) => void = () => {}) {
+    private readonly saveDefaults: (value: EntryDefaults) => void = () => {},
+    private readonly optionsSource: () => RunnerSession | undefined = () => this.list()[0]) {
     this.defaults = projectEntryDefaults(defaults) ?? {};
     this.restoredDefaults = Object.keys(this.defaults).length > 0;
   }
   readonly restoredDefaults: boolean;
+  get allocationPolicy() { return this.defaults.allocationPolicy ?? 'always-new'; }
   get pending() { return this.phase === 'preparing' || this.phase === 'writing'; }
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
   setDraft(value: string) {
@@ -74,78 +62,154 @@ export class SingleEntry {
     this.changed();
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
-    if (!this.editable) return;
+    if (!this.editable || this.loadingOptions) return;
     const projected = projectEntryDefaults({ ...this.defaults, [key]: value });
-    if (!projected || value !== undefined && !this.observed.some(({ observation }) =>
-      JSON.stringify(entryDefaultValue(observation, key)) === JSON.stringify(value))) return;
+    if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
+    if (key === 'accountIdentity') { delete projected.account; delete projected.model; }
+    if (key === 'runMode' && !['direct-run', 'pure-direct-run'].includes(String(value))) delete projected.root;
     this.defaults = projected;
     this.saveDefaults(projected);
     this.changed();
+    if (key === 'accountIdentity') void this.inspectOptions();
   }
-  get observed() {
-    return this.list().filter(session => session.control.observationFresh)
-      .map(session => ({ name: session.view.name, observation: session.control.snapshot.observation! }));
+  private choiceAllowed(key: keyof EntryDefaults, value: unknown) {
+    if (key === 'allocationPolicy' || key === 'root') return true;
+    const options = this.catalog?.options;
+    if (!options) return false;
+    if (key === 'accountIdentity') return options.accounts.some(a => same(a, value));
+    if (key === 'target') return options.targets.some(t => same({ binding_state: 'bound', owner: t.owner, project: t.project }, value));
+    if (key === 'runMode') return options.run_modes.includes(String(value));
+    if (key === 'model') {
+      const model = value as Model;
+      return options.models.some(m => m.id === model.model && m.reasoning_efforts.includes(model.reasoning_effort)
+        && m.service_tiers.includes(model.service_tier));
+    }
+    return false;
   }
-  async submit(location?: string) {
-    if (!this.editable || !this.draft.trim()) return;
-    const text = this.draft, defaults = this.defaults, token = Symbol('Single Entry submission');
+  async inspectOptions() {
+    if (!this.editable || this.loadingOptions) return;
+    this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
+    try {
+      const source = this.optionsSource();
+      if (!source?.assignmentAvailable) throw new HubError(msg('config.notReady'));
+      await source.control.config.inspect(this.defaults.accountIdentity);
+      if (!source.control.config.catalog) throw new HubError(source.control.config.error || msg('config.incomplete'));
+      this.catalog = copy(source.control.config.catalog);
+      this.detail = '';
+    } catch (reason) { this.detail = errorText(reason); }
+    finally { this.loadingOptions = false; this.changed(); }
+  }
+  private async configure(session: RunnerSession, defaults: EntryDefaults) {
+    const config = session.control.config;
+    config.resetDraft();
+    await config.inspect(defaults.accountIdentity);
+    if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
+    const mapped = entryDefaultsToDesired(defaults, config.catalog);
+    if (mapped.unresolved.length) throw new HubError(msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') }));
+    config.setDraft(mapped.desired);
+    await config.createPlan();
+    if (!config.canApply || config.plan?.plan_status !== 'ready')
+      throw new HubError(config.error || msg('config.confirmation'));
+    await config.apply();
+    const application = config.latestApplication;
+    if (config.uncertain || config.error || application?.result?.apply_status !== 'applied'
+      || application.verification !== 'verified' || !application.inspection)
+      throw new HubError(config.error || msg('config.partial'));
+    const current = application.inspection.current;
+    if (application.inspection.setup_required || !Object.entries(mapped.desired).every(([key, value]) =>
+      same(current[key as keyof typeof current], value))) throw new HubError(msg('config.stalePlan'));
+  }
+  async submit(location?: string, focus: (id: string) => void = () => {}) {
+    if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
+    const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
     this.phase = 'preparing';
     this.detail = msg('runtime.entry.checking');
     this.evidence = [];
     this.runnerId = undefined;
     this.changed();
+    let attempted = false;
     try {
-      let session = this.list().find(candidate => {
-        const reason = !candidate.assignmentAvailable ? msg('runtime.entry.inputUnsettled') : idleReason(candidate);
-        if (reason) this.evidence.push(msg('runtime.entry.excluded', { name: candidate.view.name, id: candidate.view.id, reason }));
-        return !reason;
-      });
-      if (session) {
-        if (!session.reserve(token)) throw new HubError(msg('runtime.entry.reservationUnavailable'));
-        this.active = { session, token };
-        this.runnerId = session.view.id;
-        this.evidence.push(msg('runtime.entry.reused', { name: session.view.name, id: session.view.id, order: session.view.createdOrder }));
-      } else {
+      let session: RunnerSession | undefined;
+      if (this.allocationPolicy === 'reuse-idle') {
+        for (const candidate of this.list()) {
+          if (candidate.assignmentReserved) continue;
+          if (candidate.control.work.current && candidate.control.work.supported && !candidate.control.work.busy) {
+            try { await candidate.control.work.refreshStatus(); } catch { continue; }
+          }
+          if (!candidate.assignmentAvailable) continue;
+          try { await candidate.control.fresh(); } catch { continue; }
+          const reason = idleReason(candidate);
+          if (reason || !candidate.assignmentAvailable) continue;
+          if (!candidate.reserve(token)) continue;
+          session = candidate;
+          break;
+        }
+      }
+      let launched: Promise<void> | undefined;
+      let promoted = false;
+      if (!session) {
         if (!location) throw new HubError(msg('runtime.entry.noEligible'));
         const created = this.create(location, token);
         session = created.session;
-        this.active = { session, token };
-        this.runnerId = session.view.id;
-        this.detail = msg('runtime.entry.starting', { name: session.view.name });
-        this.evidence.push(msg('runtime.entry.created', { name: session.view.name, id: session.view.id, order: session.view.createdOrder }));
-        this.changed();
-        await created.launched;
-        if (session.view.status !== 'running') throw new HubError(session.view.detail || msg('runtime.entry.launchFailed'));
+        launched = created.launched;
+        promoted = created.promoted === true;
       }
+      this.active = { session, token };
+      this.runnerId = session.view.id;
+      focus(this.runnerId);
+      this.evidence.push(msg(promoted ? 'work.promoted' : launched ? 'runtime.entry.created' : 'runtime.entry.reused',
+        { name: session.view.name, id: session.view.id, order: session.view.createdOrder }));
+      this.detail = msg('work.configuring', { name: session.view.name });
+      this.changed();
+      await launched;
+      if (session.view.status !== 'running') throw new HubError(session.view.detail || msg('runtime.entry.launchFailed'));
       await session.control.fresh();
       const reason = idleReason(session);
       if (reason) throw new HubError(msg('runtime.entry.unsent', { reason }));
       await session.references.verifyAssignment();
-      const afterInventory = idleReason(session);
-      if (afterInventory) throw new HubError(msg('runtime.entry.unsent', { reason: afterInventory }));
-      const snapshot = session.control.snapshot, observation = snapshot.observation!;
-      this.evidence.push(msg('runtime.entry.authenticated', { serial: snapshot.observationSerial }));
-      if (!observation.selection.account || !observation.selection.model || !observation.selection.source || !observation.run_mode)
-        throw new HubError(msg('runtime.entry.settingsIncomplete'));
-      const mismatch = settingsMismatch(defaults, observation);
-      if (mismatch.length) throw new HubError(msg('runtime.entry.settingsMismatch', { commands: mismatch.reduce<HubText>((previous, item) => previous ? msg('common.list', { previous, item }) : item, '') }));
-      this.evidence.push(msg('runtime.entry.confirmed', { settings: JSON.stringify({ target: observation.target, selection: observation.selection, runMode: observation.run_mode }) }));
+      const inventoryReason = idleReason(session);
+      if (inventoryReason || !session.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
+        { reason: inventoryReason || msg('runtime.entry.inputUnsettled') }));
+      if (text.trimStart().startsWith('/')) {
+        attempted = true;
+        const result = await session.deliver(token, text);
+        this.phase = result.delivered ? 'delivered' : 'unknown';
+        this.detail = result.detail;
+        if (result.delivered) { this.draft = ''; session.release(token); this.active = undefined; }
+        return;
+      }
+      if (!session.control.work.supported) throw new HubError(msg('work.unavailable'));
+      await this.configure(session, defaults);
+      await session.control.fresh();
+      await session.references.verifyAssignment();
+      const finalReason = idleReason(session);
+      if (finalReason || !session.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
+        { reason: finalReason || msg('runtime.entry.inputUnsettled') }));
       this.phase = 'writing';
-      this.detail = msg('runtime.entry.sending', { name: session.view.name });
+      this.detail = msg('work.observing', { name: session.view.name });
       this.changed();
-      const result = await session.deliver(token, text);
-      this.detail = msg('runtime.entry.result', { name: session.view.name, detail: result.detail });
-      this.phase = result.delivered ? 'delivered' : 'unknown';
-      if (result.delivered) {
+      attempted = true;
+      const submission = session.submitWork(token, text);
+      this.active!.attempt = session.control.work.current;
+      const attempt = await submission;
+      if (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id) {
+        attempted = false;
+        this.phase = 'incomplete';
+        this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
+      } else if (attempt.work?.started_event_id) {
+        this.phase = 'delivered';
+        this.detail = msg('work.started', { name: session.view.name, event: attempt.work.started_event_id });
         this.draft = '';
         session.release(token);
         this.active = undefined;
+        this.evidence.push(this.detail);
+      } else {
+        this.phase = 'unknown';
+        this.detail = msg('work.retained', { state: attempt.work?.state || 'unknown' });
       }
-      this.evidence.push(this.detail);
     } catch (reason) {
-      this.phase = 'incomplete';
+      this.phase = attempted ? 'unknown' : 'incomplete';
       this.detail = errorText(reason);
-      this.evidence.push(this.detail);
     } finally {
       if (this.active) this.active.session.control.assignmentLocked = false;
       this.changed();
@@ -162,5 +226,20 @@ export class SingleEntry {
     this.phase = 'editing';
     this.detail = transfer ? msg('runtime.entry.transferred') : msg('runtime.entry.released');
     this.changed();
+  }
+  observe() {
+    const active = this.active, attempt = active?.attempt;
+    if (this.phase !== 'unknown' || !active || !attempt) return;
+    if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id)) {
+      this.phase = 'incomplete';
+      this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
+      return;
+    }
+    if (!attempt.work?.started_event_id) return;
+    this.active = undefined;
+    this.phase = 'delivered'; this.draft = '';
+    this.detail = msg('work.started', { name: active.session.view.name, event: attempt.work.started_event_id });
+    this.evidence.push(this.detail);
+    active.session.release(active.token);
   }
 }
