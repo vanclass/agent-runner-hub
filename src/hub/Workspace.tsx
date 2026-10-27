@@ -27,7 +27,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
         onClick={() => void session.terminate()}>{t('workspace.terminate')}</button>}
     </header>
     {session && <RunnerRecovery session={session} />}
-    {session ? <RunnerControls control={session.control} /> : singleEntry ? <SingleEntrySettings entry={entry} />
+    {session ? <RunnerControls control={session.control} defaults={entry.defaults} /> : singleEntry ? <SingleEntrySettings entry={entry} />
       : <section className="context-settings" aria-label={t('control.settings')}><div className="settings-grid">
         {[t('fields.project'), t('fields.model'), t('fields.account'), t('fields.mode')].map(label => <label className="setting" key={label}><span>{label}</span>
           <select aria-label={t('control.runnerField', { field: label })} disabled><option>{t('common.notConnected')}</option></select></label>)}

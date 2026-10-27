@@ -2,6 +2,8 @@ import { useHubTranslation, t, tr, msg, errorText, type HubText } from './i18n';
 import { useState } from 'react';
 import type { RunnerControl, RunnerCommand } from './runnerControl';
 import { commandNamed } from './runnerControl';
+import { RunnerConfigPanel } from './RunnerConfigPanel';
+import type { EntryDefaults } from './singleEntry';
 
 const outcomeText = {
   sending: msg('control.outcome.sending'), queued: msg('control.outcome.queued'),
@@ -9,7 +11,7 @@ const outcomeText = {
   accepted: msg('control.outcome.accepted'), rejected: msg('control.outcome.rejected'),
   failure: msg('control.outcome.failure'), 'outcome-unknown': msg('control.outcome.unknown'),
 };
-export function RunnerControls({ control }: { control: RunnerControl }) {
+export function RunnerControls({ control, defaults }: { control: RunnerControl; defaults?: EntryDefaults }) {
   const [customizing, setCustomizing] = useState(false);
   useHubTranslation();
   const [error, setError] = useState<HubText>('');
@@ -76,5 +78,6 @@ export function RunnerControls({ control }: { control: RunnerControl }) {
           : observation?.attention.foreground_interaction_active ? t('control.interacting') : t('control.connected')}</p>
     {error && <p role="alert" className="runner-error">{tr(error)}</p>}
     {acknowledgement && <p className="scope-note">{acknowledgement}</p>}
+    <RunnerConfigPanel control={control} defaults={defaults} />
   </section>;
 }

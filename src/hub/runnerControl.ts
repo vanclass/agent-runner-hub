@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { clipboardImagePng } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
 import { RunnerImages } from './runnerImages';
+import { RunnerConfigService } from './RunnerConfigService';
+import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 export type RunnerCommand = {
   id: string; text: string; aliases: string[]; parent_id: string | null;
@@ -25,10 +27,11 @@ export type ControlResult = { id: number; command: string;
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: HubText;
   observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean;
-  generatedImagesSupported?: boolean };
+  generatedImagesSupported?: boolean; features?: FeatureSnapshot };
 
 export class RunnerControl {
   readonly images: RunnerImages;
+  readonly config: RunnerConfigService;
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
   assignmentLocked = false;
@@ -53,7 +56,15 @@ export class RunnerControl {
   releaseAttachments(lease: symbol) {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
-  constructor(private readonly changed: () => void) { this.images = new RunnerImages(changed); }
+  constructor(private readonly changed: () => void) {
+    this.images = new RunnerImages(changed);
+    this.config = new RunnerConfigService({
+      identity: () => this.id && this.snapshot.features
+        ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
+      available: () => !this.stopped && this.snapshot.state === 'ready' && !this.controlBusy,
+      submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'session_config', request } }),
+    }, changed);
+  }
   start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
   async fresh() {
     const after = this.snapshot.observationSerial ?? 0;
@@ -76,6 +87,7 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      this.config.observe(this.id, snapshot.state, snapshot.features);
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
@@ -85,7 +97,8 @@ export class RunnerControl {
       this.timer = setTimeout(() => void this.refresh(), 500);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
-  get busy() {
+  get busy() { return this.controlBusy || this.config.busy; }
+  private get controlBusy() {
     return this.assignmentLocked || this.attachmentLocked || this.sending || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
@@ -161,6 +174,8 @@ export class RunnerControl {
           ? { ...result, state: 'outcome-unknown' } : result) },
       results: final.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
         ? { ...result, state: 'outcome-unknown' } : result) };
+    if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
+    this.config.close();
     this.changed();
   }
 }

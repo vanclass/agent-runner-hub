@@ -73,12 +73,14 @@ export class RunnerSession {
     return true;
   }
   get assignmentAvailable() {
-    return !this.disposed && !this.reservation && !this.inputUnsettled && !this.view.submitting && !this.references.prepared
+    return !this.disposed && !this.reservation && !this.control.config.busy && !this.control.config.uncertain
+      && !this.inputUnsettled && !this.view.submitting && !this.references.prepared
       && !this.view.draft && this.view.status === 'running' && this.input.canSubmit;
   }
   get assignmentReserved() { return !!this.reservation; }
   reserve(token: symbol) {
-    if (this.disposed || this.reservation || this.inputUnsettled || this.view.submitting || this.view.draft || this.references.prepared) return false;
+    if (this.disposed || this.reservation || this.control.config.busy || this.control.config.uncertain
+      || this.inputUnsettled || this.view.submitting || this.view.draft || this.references.prepared) return false;
     this.reservation = token;
     this.control.assignmentLocked = true;
     this.changed();

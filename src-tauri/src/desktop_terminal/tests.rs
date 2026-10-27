@@ -4,6 +4,8 @@ use std::{io::{BufRead, Write}, sync::mpsc, time::Duration};
 #[path = "clipboard_acceptance.rs"] mod clipboard_acceptance;
 #[cfg(windows)]
 #[path = "image_acceptance.rs"] mod image_acceptance;
+#[cfg(windows)]
+#[path = "session_config_acceptance.rs"] mod session_config_acceptance;
 
 #[test]
 #[ignore = "Requires an explicitly configured installed Runner on a native host"]

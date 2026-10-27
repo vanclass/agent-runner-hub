@@ -1,6 +1,7 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 import { PNG } from 'pngjs';
 import { createHash } from 'node:crypto';
+import { registerSessionConfigUI } from './session-config-ui.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -188,6 +189,8 @@ async function transport(page, freshTarget, referenceOptions) {
       readyNew: () => { alignNew = true; } };
   }, { freshTarget, referenceOptions });
 }
+
+registerSessionConfigUI({ test, expect, transport, configure });
 
 async function configure(page) {
   await page.goto('/');

@@ -6,11 +6,11 @@ use tauri::{ipc::Channel, Manager, Runtime, State, Window};
 pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
-        runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
+        runner_feature, runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
         pty_resize, pty_ack, pty_close]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
-        runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close]);
+        runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close]);
     builder.manage(Arc::new(Sessions::default()))
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
@@ -35,6 +35,13 @@ async fn runner_reference<R: Runtime>(window: Window<R>, state: State<'_, Arc<Se
     request: control::references::ReferenceRequest) -> Result<control::references::ReferenceAdmission, String> {
     let session = state.owned(&id, window.label())?;
     tauri::async_runtime::spawn_blocking(move || session.control_reference(request)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn runner_feature<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String,
+    request: control::features::Request) -> Result<control::features::Admission, String> {
+    let session = state.owned(&id, window.label())?;
+    tauri::async_runtime::spawn_blocking(move || session.control_feature(request)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

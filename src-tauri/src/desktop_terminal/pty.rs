@@ -99,6 +99,16 @@ impl Session {
         { let _ = request; Err("Runner control is supported only on Windows".into()) }
     }
 
+    pub fn control_feature(&self, request: control::features::Request) -> Result<control::features::Admission, String> {
+        #[cfg(windows)] {
+            let client = self.control.lock().unwrap().clone().ok_or("Runner control is unavailable")?;
+            if self.closing.load(Ordering::Acquire) { return Err("Runner session is closing".into()); }
+            return Ok(client.feature(request));
+        }
+        #[cfg(not(windows))]
+        { let _ = request; Err("Runner control is supported only on Windows".into()) }
+    }
+
     pub fn stage_clipboard(&self, png: &[u8]) -> Result<String, String> {
         #[cfg(windows)] {
             let snapshot = self.control_snapshot()?;

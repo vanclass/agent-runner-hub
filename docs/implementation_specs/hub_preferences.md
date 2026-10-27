@@ -20,6 +20,8 @@ The store accepts the supported schema and values, projects only the known nonse
 
 `HubPreferences.update` is the Hub-side persistence interface; `RunnerSessions` supplies the restored snapshot and a narrow save callback to `SingleEntry`. These interfaces can be reused by later supported settings work. They provide no authority to mutate Runner settings or restore an assignment. The existing assignment implementation remains under the [Runner terminal specification](runner_terminals.md#single-entry-assignment). No inactive allocation-policy control is shown; future Single Entry allocation policy starts from the agreed always-new default when its actual assignment and spare-Runner owners are implemented.
 
+The authenticated configuration panel keeps saved defaults separate from actual Runner state. `runnerConfigDefaults.ts` explicitly maps verified stable candidate identities and model/tier fields; a persisted profile label cannot recover account identity and remains unresolved for user selection. The existing storage format is unchanged. See [Runner session configuration](runner_session_config.md#preferences-and-single-entry-boundary) for that conversion boundary and the reusable service; current Single Entry assignment and submission remain owned here and by the terminal specification.
+
 ## Evidence destinations
 
 - `tools/i18n/check.mjs` and `tests/i18n/catalog.test.mjs`: locale parity, named variables, source arguments, unused keys, untranslated JSX and negative validation cases; `npm run test:i18n`.

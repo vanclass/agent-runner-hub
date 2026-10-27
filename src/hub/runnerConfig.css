@@ -1,0 +1,20 @@
+.runner-config { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); line-height: 1.5; }
+.workspace:has(.runner-config[open]) { overflow-y: auto; }
+.runner-config summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.runner-config h3 { margin: 12px 0 6px; font-size: 12px; }
+.config-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.runner-config button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--inset); }
+.runner-config button:not(:disabled) { color: var(--accent); }
+.config-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.config-fields label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.config-fields input, .config-fields select { min-width: 0; width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 6px; background: var(--inset); color: var(--text); }
+.config-fields :disabled { color: var(--disabled); background: var(--disabled-bg); }
+.runner-config dl { margin: 6px 0; }
+.runner-config dl > div { display: grid; grid-template-columns: minmax(100px, 150px) minmax(0, 1fr); gap: 8px; }
+.runner-config dt { color: var(--muted); }
+.runner-config dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.runner-config p, .runner-config li { overflow-wrap: anywhere; }
+.config-progress { padding: 8px; background: var(--inset); border-left: 3px solid var(--accent); }
+.config-progress[aria-busy='true'] { border-color: var(--attention); color: var(--attention); }
+.config-plan, .config-receipt, .config-defaults { padding: 10px; border: 1px solid var(--border); border-radius: 5px; margin: 10px 0; }
+.runner-config pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; color: var(--muted); }

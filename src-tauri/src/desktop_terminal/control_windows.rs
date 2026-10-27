@@ -8,7 +8,8 @@ use windows_sys::Win32::{Foundation::*, Security::{SECURITY_ATTRIBUTES, Cryptogr
     Storage::FileSystem::{ReadFile, WriteFile}, System::Pipes::*};
 
 fn error() -> String { format!("Runner control I/O failed ({})", io::Error::last_os_error().raw_os_error().unwrap_or(0)) }
-enum Request { Command(String), Reference(ReferenceRequest), Image(generated_images::Request, super::ImageCompletion) }
+enum Request { Command(String), Reference(ReferenceRequest), Image(generated_images::Request, super::ImageCompletion),
+    Feature(super::features::Request) }
 type Admission = mpsc::Sender<Result<u64, String>>;
 struct SubmitError { detail: String, unknown: bool }
 impl From<&str> for SubmitError {
@@ -110,6 +111,19 @@ impl Client {
             Err(error) => ReferenceAdmission::Failure { detail: error.detail },
         }
     }
+    pub fn feature(&self, request: super::features::Request) -> super::features::Admission {
+        use super::features::Admission;
+        if let Err(detail) = request.validate() { return Admission::NotSent { detail: detail.into() }; }
+        let snapshot = self.snapshot();
+        if !snapshot.features.supports(&request) {
+            return Admission::NotSent { detail: "Unsupported native feature".into() };
+        }
+        match self.submit(Request::Feature(request)) {
+            Ok(id) => Admission::Submitted { id, generation: snapshot.features.generation },
+            Err(error) if error.unknown => Admission::OutcomeUnknown { detail: error.detail },
+            Err(error) => Admission::NotSent { detail: error.detail },
+        }
+    }
     fn submit(&self, request: Request) -> Result<u64, SubmitError> {
         if self.stopped.load(Ordering::Acquire) || self.snapshot().state != "ready" {
             return Err("Runner control is disconnected or still connecting".into());
@@ -164,6 +178,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                     Request::Command(command) => protocol.request(Some(command), key),
                     Request::Reference(request) => protocol.reference_request(request, key),
                     Request::Image(request, completion) => protocol.image_request(request, completion, key),
+                    Request::Feature(request) => protocol.feature_request(request, key),
                 };
                 let receipt = result.map(|bytes| {
                     outgoing.extend(bytes);
@@ -183,6 +198,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 &mut count, std::ptr::null_mut()) };
             if result == 0 && unsafe { GetLastError() } != ERROR_NO_DATA { return Err("Runner control write failed"); }
             outgoing.drain(..count as usize);
+            protocol.written_bytes += count as u64;
         }
         *state.lock().unwrap() = protocol.public_snapshot();
         if protocol.expired() { return Err("Runner control completion timed out; uncertain commands were not retried"); }

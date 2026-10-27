@@ -6,6 +6,10 @@ use std::{collections::BTreeMap, time::{Duration, Instant}};
 #[path = "references.rs"]
 pub mod references;
 use references::{ReferenceRequest, References};
+#[path = "session_config.rs"]
+pub mod session_config;
+#[path = "features.rs"]
+pub mod features;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;
@@ -68,20 +72,25 @@ pub struct Snapshot {
     pub references: References,
     pub clipboard_staging: bool,
     pub generated_images_supported: bool,
+    pub features: features::Features,
 }
 impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
             observation_age_ms: None, results: Vec::new(), detail: None, references: References::default(),
-            clipboard_staging: false, generated_images_supported: false }
+            clipboard_staging: false, generated_images_supported: false, features: features::Features::default() }
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum RequestKind { Observe, Command, Reference, Image, Feature }
 struct Pending {
+    kind: RequestKind, feature: Option<features::Request>, wire_start: u64,
     command: Option<String>, reference: Option<ReferenceRequest>, started: Instant, awaiting_interaction: bool,
     #[cfg(windows)] image: Option<(generated_images::Request, ImageCompletion)>,
 }
 struct Protocol {
+    queued_bytes: u64, written_bytes: u64,
     pid: u32, session: String, connection: Option<String>, next: u64,
     pending: BTreeMap<u64, Pending>, snapshot: Snapshot,
     observed_at: Option<Instant>,
@@ -89,8 +98,11 @@ struct Protocol {
 }
 impl Protocol {
     fn new(pid: u32, session: String) -> Self {
+        static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let mut snapshot = Snapshot::default();
+        snapshot.features.generation = GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(),
-            snapshot: Snapshot::default(), observed_at: None,
+            snapshot, observed_at: None, queued_bytes: 0, written_bytes: 0,
             #[cfg(windows)] image_capability: None }
     }
     fn identity_matches(&self, packet: &Value) -> bool {
@@ -145,9 +157,13 @@ impl Protocol {
                 owner_status: None, changed: None, settings_change_count: None });
         }
         if let Some(request) = &reference { self.snapshot.references.begin(self.next, request); }
-        self.pending.insert(self.next, Pending { command, reference, started: Instant::now(), awaiting_interaction: false,
+        let kind = if command.is_some() { RequestKind::Command } else if reference.is_some() {
+            RequestKind::Reference } else { RequestKind::Observe };
+        self.pending.insert(self.next, Pending { kind, feature: None, wire_start: self.queued_bytes,
+            command, reference, started: Instant::now(), awaiting_interaction: false,
             #[cfg(windows)] image: None });
         bytes.push(b'\n');
+        self.queued_bytes += bytes.len() as u64;
         Ok(bytes)
     }
     #[cfg(windows)]
@@ -156,7 +172,20 @@ impl Protocol {
             .ok_or("Generated images are unsupported or disconnected")?;
         if let generated_images::Request::Read { length, .. } = &mut request { *length = (*length).min(cap.max_chunk_bytes); }
         let bytes = self.request_fields(None, None, Some(request.fields()), key)?;
+        self.pending.get_mut(&self.next).unwrap().kind = RequestKind::Image;
         self.pending.get_mut(&self.next).unwrap().image = Some((request, completion));
+        Ok(bytes)
+    }
+    fn feature_request(&mut self, request: features::Request, key: &str) -> Result<Vec<u8>, &'static str> {
+        request.validate()?;
+        if self.snapshot.state != "ready" || !self.snapshot.features.supports(&request) {
+            return Err("Unsupported or unavailable native feature");
+        }
+        let bytes = self.request_fields(None, None, Some(request.fields()), key)?;
+        let pending = self.pending.get_mut(&self.next).unwrap();
+        pending.kind = RequestKind::Feature;
+        pending.feature = Some(request.clone());
+        self.snapshot.features.begin(self.next, &request);
         Ok(bytes)
     }
     fn response(&mut self, packet: Value) -> Result<(), &'static str> {
@@ -177,11 +206,7 @@ impl Protocol {
             (None, "rejected" | "failure") => status,
             _ => return Err("Malformed control result phase"),
         };
-        #[cfg(windows)]
-        let is_image = pending.image.is_some();
-        #[cfg(not(windows))]
-        let is_image = false;
-        if pending.command.is_none() && pending.reference.is_none() && !is_image && finished {
+        if pending.kind == RequestKind::Observe && finished {
             if state != "accepted" { return Err("Runner observation was rejected"); }
             let observation: Observation = serde_json::from_value(packet["observation"].clone())
                 .map_err(|_| "Malformed canonical observation")?;
@@ -192,6 +217,7 @@ impl Protocol {
             self.snapshot.state = "ready".into();
             self.snapshot.references.capability = references::Capability::read(&packet["capabilities"]["references"]);
             self.snapshot.references.removal_capability = references::RemovalCapability::read(&packet["capabilities"]["reference_removal"]);
+            self.snapshot.features.discover(&packet["capabilities"]);
             #[cfg(windows)] {
                 self.image_capability = generated_images::Capability::read(&packet["capabilities"]["generated_images"]);
                 self.snapshot.generated_images_supported = self.image_capability.is_some();
@@ -209,6 +235,9 @@ impl Protocol {
             self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
                 .map_err(|_| "Malformed canonical observation")?);
         }
+        if let Some(request) = &pending.feature {
+            self.snapshot.features.response(id, request, state, finished, &packet)?;
+        }
         self.snapshot.references.response(id, state, finished, &packet)?;
         if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
             result.state = state.into();
@@ -223,7 +252,13 @@ impl Protocol {
             }
             result.code = result_code(&packet);
         }
-        if finished { self.pending.remove(&id); }
+        if finished {
+            let was_front = self.pending.keys().next().copied() == Some(id);
+            self.pending.remove(&id);
+            if was_front {
+                if let Some(mut next) = self.pending.first_entry() { next.get_mut().started = Instant::now(); }
+            }
+        }
         else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
         Ok(())
     }
@@ -233,8 +268,10 @@ impl Protocol {
         snapshot
     }
     fn expired(&self) -> bool {
-        self.pending.values().any(|pending|
-            !pending.awaiting_interaction && pending.started.elapsed() > Duration::from_secs(60))
+        // Runner owns the FIFO and emits no processing-start event. A queued
+        // follower cannot time out while an earlier owner is legitimately busy.
+        self.pending.first_key_value().is_some_and(|(_, pending)| !pending.awaiting_interaction
+            && pending.started.elapsed() > pending.feature.as_ref().map_or(Duration::from_secs(60), |r| r.wait_limit()))
     }
     fn disconnect(&mut self, detail: &str) {
         let unverified = self.snapshot.observation.is_none();
@@ -246,6 +283,8 @@ impl Protocol {
             if self.pending.contains_key(&result.id) { result.state = "outcome-unknown".into(); }
         }
         self.snapshot.references.disconnect();
+        self.snapshot.features.disconnect(self.pending.iter().filter(|(_, p)| p.kind == RequestKind::Feature)
+            .map(|(id, p)| (*id, self.written_bytes <= p.wire_start)));
         self.snapshot.generated_images_supported = false;
         #[cfg(windows)] {
             self.image_capability = None;
