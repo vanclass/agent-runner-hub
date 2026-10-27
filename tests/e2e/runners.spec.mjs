@@ -3,6 +3,8 @@ import { PNG } from 'pngjs';
 import { createHash } from 'node:crypto';
 import { registerSessionConfigUI } from './session-config-ui.mjs';
 import { registerSingleEntryWork } from './single-entry-work.mjs';
+import { registerRunnerTabs } from './runner-tabs.mjs';
+import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -216,6 +218,8 @@ async function transport(page, freshTarget, referenceOptions) {
 
 registerSessionConfigUI({ test, expect, transport, configure });
 registerSingleEntryWork({ test, expect, transport, configure, create });
+registerRunnerTabs({ test, expect, transport, configure, create });
+registerRunnerTabRaces({ test, expect, transport, configure, create });
 
 test('hidden spare parses output and promotes the original PTY without a workspace record', async ({ page }) => {
   await transport(page);

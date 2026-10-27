@@ -26,6 +26,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const [launching, setLaunching] = useState(false);
   useEffect(() => sessions.retain(), [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => { sessions.view(selectedId); return () => sessions.view(null); }, [sessions, selectedId]);
   const [theme, setTheme] = useState<'light' | 'black'>(preferences.value.theme);
   const selected = runners.find(runner => runner.id === selectedId);
   function rename(id: string, name: string) {
@@ -39,6 +40,13 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     const { session, launched } = sessions.create(installation.root);
     setSelectedId(session.view.id);
     void launched.finally(() => setLaunching(false));
+  }
+  async function closeRunner(id: string, method: 'middle' | 'explicit') {
+    if (!await sessions.close(id, method)) return;
+    const remaining = sessions.getSnapshot();
+    const order = runners.find(runner => runner.id === id)?.createdOrder ?? 0;
+    const next = remaining.find(runner => runner.createdOrder > order) ?? remaining.at(-1);
+    setSelectedId(current => current === id ? next?.id ?? null : current);
   }
   return <div className="hub" data-theme={theme}>
     <header className="toolbar">
@@ -55,11 +63,12 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     {preferences.issue && <p role="alert" className="runner-error preferences-error">{tr(preferences.issue)}</p>}
     {sessions.workspace.issue && <p role="alert" className="runner-error">{tr(sessions.workspace.issue)}</p>}
     <div className="shell-body">
-      <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename} />
+      <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
+        onMiddleClose={id => void closeRunner(id, 'middle')} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
         theme={theme} installation={installation} onInstallation={value => sessions.setInstallation(value)}
         sparePreparation={spare.detail}
-        entry={sessions.entry} onSelectRunner={setSelectedId} />
+        entry={sessions.entry} onSelectRunner={setSelectedId} onCloseRunner={id => closeRunner(id, 'explicit')} />
     </div>
   </div>;
 }

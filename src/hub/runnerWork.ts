@@ -17,9 +17,10 @@ export type WorkObservation = {
 };
 export type WorkAttempt = { identity: ConfigIdentity; submissionId?: number; submission?: FeatureResult;
   status?: FeatureResult; work?: WorkObservation; uncertain: boolean; notSent: boolean };
+export type WorkActivity = 'idle' | 'running' | 'attention' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface WorkTransport {
   identity(): ConfigIdentity | undefined;
-  available(): boolean;
+  available(operation: WorkRequest['operation']): boolean;
   submit(session: string, request: WorkRequest): Promise<FeatureAdmission>;
 }
 const settled = (r: FeatureResult) => ['accepted', 'rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(r.state);
@@ -46,6 +47,9 @@ export class RunnerWork {
   private snapshot?: FeatureSnapshot;
   private identity?: ConfigIdentity;
   private closed = false;
+  private poll?: ReturnType<typeof setTimeout>;
+  private viewed = false;
+  unread = false;
   private waiting?: { id?: number; request: WorkRequest; finish: (result: FeatureResult) => void;
     timer: ReturnType<typeof setTimeout> };
   private readonly originals = new Map<number, number>();
@@ -53,6 +57,19 @@ export class RunnerWork {
   constructor(private readonly transport: WorkTransport, private readonly changed: () => void) {}
   get current() { return this.attempts.at(-1); }
   get busy() { return !!this.waiting; }
+  get activity(): WorkActivity {
+    const attempt = this.current, work = attempt?.work;
+    if (!attempt || attempt.notSent) return 'idle';
+    if (attempt.uncertain || !work || work.state === 'unknown') return 'unknown';
+    if (work.terminal) return work.outcome === 'succeeded' ? 'completed'
+      : work.outcome === 'failed' || work.outcome === 'rejected' ? 'failed'
+        : work.outcome === 'interrupted' ? 'interrupted' : work.outcome === 'incomplete' ? 'attention' : 'unknown';
+    return ['suspended', 'incomplete'].includes(work.state) ? 'attention' : 'running';
+  }
+  setViewed(viewed: boolean) {
+    this.viewed = viewed;
+    if (viewed && this.unread) { this.unread = false; this.changed(); }
+  }
   get blocked() {
     const a = this.current;
     return !!a && !a.notSent && (a.uncertain || !a.work?.terminal || a.work.outcome === 'unknown');
@@ -75,12 +92,22 @@ export class RunnerWork {
     const receipt = snapshot?.results.find(r => r.id === wait?.id && r.feature === 'work' && r.operation === wait?.request.operation);
     if (receipt) { this.progress = copy(receipt); if (settled(receipt)) wait?.finish(copy(receipt)); }
     if (state === 'disconnected') this.close();
+    else this.scheduleStatus();
+  }
+  private scheduleStatus() {
+    if (this.closed || this.poll || !this.current?.submissionId || this.current.notSent || this.current.work?.terminal) return;
+    this.poll = setTimeout(() => {
+      this.poll = undefined;
+      if (this.supported && this.transport.available('work.status') && !this.busy) {
+        void this.refreshStatus().catch(() => {}).finally(() => this.scheduleStatus());
+      } else this.scheduleStatus();
+    }, this.current.uncertain ? 5000 : 1500);
   }
   private consume(result: FeatureResult) {
     if (result.feature !== 'work' || !settled(result)) return;
     const original = result.operation === 'work.submit' ? result.id : this.originals.get(result.id);
     const attempt = this.attempts.find(a => a.submissionId === original && same(a.identity, this.identity));
-    if (!attempt) return;
+    if (!attempt || attempt.work?.terminal) return;
     if (same(this.seen.get(result.id), result)) return;
     this.seen.set(result.id, copy(result));
     if (result.operation === 'work.submit') attempt.submission = copy(result);
@@ -104,11 +131,15 @@ export class RunnerWork {
     }
     attempt.work = copy(work);
     attempt.uncertain = work.outcome === 'unknown' || work.admission === 'unknown';
+    if (work.terminal) {
+      clearTimeout(this.poll); this.poll = undefined;
+      if (['succeeded', 'failed', 'interrupted', 'rejected'].includes(work.outcome)) this.unread = !this.viewed;
+    }
     this.changed();
   }
   private request(request: WorkRequest): Promise<FeatureResult> {
     const identity = this.transport.identity();
-    if (!this.supported || !identity || !same(identity, this.identity) || !this.transport.available() || this.waiting)
+    if (!this.supported || !identity || !same(identity, this.identity) || !this.transport.available(request.operation) || this.waiting)
       throw new HubError(msg('work.unavailable'));
     return new Promise(resolve => {
       const unknown = (id = this.waiting?.id ?? 0): FeatureResult => ({ id, feature: 'work', operation: request.operation,
@@ -120,6 +151,7 @@ export class RunnerWork {
         this.progress = result;
         this.consume(result);
         this.changed();
+        this.scheduleStatus();
         resolve(result);
       };
       this.waiting = { request, finish, timer: setTimeout(() => finish(unknown()), 90000) };
@@ -150,6 +182,7 @@ export class RunnerWork {
     const identity = this.transport.identity();
     if (!identity || !this.supported) throw new HubError(msg('work.unavailable'));
     const attempt: WorkAttempt = { identity: copy(identity), uncertain: false, notSent: true };
+    this.unread = false;
     this.attempts.push(attempt);
     try {
       const result = await this.request({ operation: 'work.submit', api_version: 1, instruction });
@@ -171,12 +204,14 @@ export class RunnerWork {
   }
   async refreshStatus() {
     const attempt = this.current;
-    if (!attempt?.submissionId || this.busy || this.closed) return;
+    if (!attempt?.submissionId || attempt.notSent || attempt.work?.terminal || this.busy || this.closed) return;
+    if (!same(attempt.identity, this.transport.identity()) || !same(attempt.identity, this.identity)) return;
     await this.request({ operation: 'work.status', api_version: 1, submission_request_id: attempt.submissionId });
   }
   close() {
     if (this.closed) return;
     this.closed = true;
+    clearTimeout(this.poll); this.poll = undefined;
     this.capability = undefined;
     const wait = this.waiting;
     if (wait) wait.finish({ id: wait.id ?? 0, feature: 'work', operation: wait.request.operation,

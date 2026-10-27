@@ -73,6 +73,19 @@
 .status-dot, .connection-dot { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--status); }
 .status-dot.idle { background: transparent; border: 1.5px solid var(--status); }
 .status-dot.running { background: var(--running); }.status-dot.attention { background: var(--attention); }
+/* 작업 결과 기호의 크기다. 늘리면 기호가 커지고, 줄이면 더 조밀해진다. */
+.status-dot:is(.completed, .failed, .interrupted, .unknown) { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border: 0; background: transparent; color: var(--muted); font-size: 14px; }
+.status-dot.completed { color: var(--running); }
+.status-dot.failed { color: var(--attention); }
+.unread-completion { margin-left: auto; color: var(--running); }
+/* 닫기 창의 크기와 여백이다. 늘리면 창과 간격이 커지고, 줄이면 더 조밀해진다. */
+.tab-close { display: flex; align-items: center; gap: 8px; }
+.tab-close > [role="status"] { color: var(--muted); font-size: 12px; }
+.tab-close-dialog { max-width: min(480px, 90vw); padding: 24px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.tab-close-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.tab-close-dialog p { line-height: 1.6; }
+.tab-close-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.tab-close-actions button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--inset); color: var(--text); }
 .rename-action { position: absolute; right: 3px; top: 4px; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; opacity: 0; }
 .runner-row:hover .rename-action, .runner-row:focus-within .rename-action { opacity: 1; }
 .rename-row { height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 10px; }

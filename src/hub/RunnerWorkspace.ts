@@ -72,23 +72,25 @@ export class RunnerWorkspace {
     }
   }
   save(tabs: readonly RunnerTabRecord[]) {
-    if (!this.writable) return;
+    if (!this.writable) return false;
     const projected = tabs.map(tab => record(tab));
     if (projected.some(tab => !tab)) {
       this.saveFailed = true;
       this.issue = msg('runtime.workspace.invalidTabSave');
-      return;
+      return false;
     }
     const raw = JSON.stringify({ version: 1, tabs: projected });
-    if (raw === this.committed) return;
+    if (raw === this.committed) return true;
     try {
       // One atomic storage replacement leaves the previous committed layout intact on failure.
       localStorage.setItem(runnerWorkspaceKey, raw);
       this.committed = raw;
       if (this.saveFailed) { this.issue = ''; this.saveFailed = false; }
+      return true;
     } catch (reason) {
       this.saveFailed = true;
       this.issue = msg('runtime.workspace.saveFailed', { diagnostic: errorText(reason) });
+      return false;
     }
   }
 }

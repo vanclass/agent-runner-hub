@@ -7,16 +7,23 @@ const runnerStatus = (status: RunnerView['status']) => {
     disconnected: 'status.disconnected', starting: 'status.starting', exited: 'status.exited', failed: 'status.failed' } as const;
   return t(keys[status]);
 };
+const workStatus = (status: NonNullable<RunnerView['activity']>) => {
+  const keys = { idle: 'tabs.states.idle', running: 'tabs.states.running', attention: 'tabs.states.attention',
+    completed: 'tabs.states.completed', failed: 'tabs.states.failed', interrupted: 'tabs.states.interrupted',
+    unknown: 'tabs.states.unknown' } as const;
+  return t(keys[status]);
+};
 
 type SidebarProps = {
   runners: readonly RunnerView[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
+  onMiddleClose: (id: string) => void;
 };
 
-function RunnerRow({ runner, active, onSelect, onRename }: {
-  runner: RunnerView; active: boolean; onSelect: () => void; onRename: (name: string) => void;
+function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
+  runner: RunnerView; active: boolean; onSelect: () => void; onRename: (name: string) => void; onMiddleClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(runner.name);
@@ -31,13 +38,24 @@ function RunnerRow({ runner, active, onSelect, onRename }: {
     setEditing(false);
     if (restoreFocus) requestAnimationFrame(() => rowButton.current?.focus());
   }
-  return <li className={`runner-row ${active ? 'active' : ''}`} data-runner-id={runner.id}>
+  const status = runner.activity ? workStatus(runner.activity) : runnerStatus(runner.status);
+  const symbol = runner.activity === 'completed' ? '✓' : runner.activity === 'failed' ? '×'
+    : runner.activity === 'interrupted' ? '■' : runner.activity === 'unknown' ? '?' : '';
+  return <li className={`runner-row ${active ? 'active' : ''}`} data-runner-id={runner.id}
+    onMouseDown={event => { if (event.button === 1) event.preventDefault(); }}
+    onAuxClick={event => {
+      if (event.button !== 1) return;
+      event.preventDefault(); event.stopPropagation();
+      if (!editing) onMiddleClose();
+    }}>
     <button ref={rowButton} className="nav-row" hidden={editing} type="button"
-      aria-current={active ? 'page' : undefined} onClick={onSelect} onDoubleClick={startRename}
+      aria-current={active ? 'page' : undefined} onClick={event => { if (event.button === 0) onSelect(); }}
+      onDoubleClick={event => { if (event.button === 0) startRename(); }}
       onKeyDown={event => { if (event.key === 'F2') { event.preventDefault(); startRename(); } }}
-      title={t('sidebar.rowHint', { name: runner.name, status: runnerStatus(runner.status) })}>
-      <span className={`status-dot ${runner.status}`} role="img" aria-label={runnerStatus(runner.status)} />
+      title={t('sidebar.rowHint', { name: runner.name, status })}>
+      <span className={`status-dot ${runner.activity ?? runner.status}`} role="img" aria-label={status}>{symbol}</span>
       <span className="runner-name">{runner.name}</span>
+      {runner.unreadCompletion && <span className="unread-completion" role="img" aria-label={t('tabs.unread')}>●</span>}
     </button>
     {editing && <div className="rename-row">
       <span className={`status-dot ${runner.status}`} aria-hidden="true" />
@@ -49,11 +67,11 @@ function RunnerRow({ runner, active, onSelect, onRename }: {
         }} />
     </div>}
     {!editing && <button type="button" className="rename-action" aria-label={t('sidebar.renameNamed', { name: runner.name })}
-      title={t('sidebar.rename')} onClick={startRename}>✎</button>}
+      title={t('sidebar.rename')} onClick={event => { if (event.button === 0) startRename(); }}>✎</button>}
   </li>;
 }
 
-export function Sidebar({ runners, selectedId, onSelect, onRename }: SidebarProps) {
+export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose }: SidebarProps) {
   useHubTranslation();
   return <aside className="sidebar">
     <nav aria-label={t('sidebar.navigation')} onKeyDown={event => {
@@ -72,7 +90,8 @@ export function Sidebar({ runners, selectedId, onSelect, onRename }: SidebarProp
       </button>
       <div className="runner-section-label"><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span></div>
       <ul className="runner-list">{runners.map(runner => <RunnerRow key={runner.id} runner={runner}
-        active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)} />)}</ul>
+        active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
+        onMiddleClose={() => onMiddleClose(runner.id)} />)}</ul>
       {runners.length === 0 && <p className="sidebar-empty">{t('sidebar.empty')}<br />{t('sidebar.emptyHint')}</p>}
     </nav>
     <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />

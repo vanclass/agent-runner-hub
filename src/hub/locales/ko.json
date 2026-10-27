@@ -1,4 +1,24 @@
 {
+  "tabs": {
+    "close": "탭 닫기",
+    "confirmTitle": "{{name}} 닫기",
+    "consequence": "이 Runner와 소유 프로세스를 종료합니다. 실행 중이거나 일시 중단된 작업, 결과가 불확실한 작업도 중단되며 이 탭의 저장하지 않은 입력은 삭제됩니다. 다른 Runner 탭은 유지됩니다.",
+    "confirmClose": "종료하고 탭 닫기",
+    "cancel": "탭 유지",
+    "closing": "Runner 탭을 닫는 중…",
+    "idleRequired": "가운데 클릭은 유휴 상태가 검증된 Runner에서만 가능합니다. 해당 Runner 안의 탭 닫기에서 종료 내용을 확인하세요.",
+    "unconfirmed": "네이티브 정리가 확인되지 않아 탭을 유지했습니다. 다시 닫기 전에 Runner 오류를 확인하세요.",
+    "unread": "읽지 않은 완료 결과",
+    "states": {
+      "idle": "검증된 유휴 상태",
+      "running": "실행 중",
+      "attention": "일시 중단 / 확인 필요",
+      "completed": "완료",
+      "failed": "실패",
+      "interrupted": "중단됨",
+      "unknown": "상태 불명"
+    }
+  },
   "work": {
     "reuseIdle": "사용 가능한 유휴 Runner 재사용",
     "allocationHelp": "기본값은 항상 새 Runner 할당입니다. 재사용을 선택하면 해당 표시 세션을 할당 전에 다시 검증합니다.",

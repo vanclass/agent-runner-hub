@@ -36,12 +36,13 @@ export class WorkFixture {
       if (this.work && this.mode !== 'dispatch') {
         const previous = copy(this.work);
         const state = this.mode === 'started' ? 'active' : this.mode === 'admitted' ? 'instruction_admitted' : this.mode;
-        const started = ['active', 'suspended', 'succeeded', 'incomplete', 'unknown'].includes(state);
+        const started = ['active', 'suspended', 'succeeded', 'failed', 'interrupted', 'incomplete', 'unknown'].includes(state);
+        const kind = this.work.run_mode === 'task-run' ? 'task' : this.work.run_mode === 'issue-run' ? 'issue' : 'direct_turn';
         Object.assign(this.work, { state, admission: state === 'rejected' ? 'rejected' : started || state === 'instruction_admitted' ? 'admitted' : 'unknown',
           event_id: 4, started_event_id: started && state !== 'unknown' ? 3 : 0,
-          work_id: started ? { kind: 'direct_turn', id: 'fixture-work' } : null,
-          terminal: ['rejected', 'succeeded'].includes(state),
-          outcome: ['rejected', 'succeeded', 'incomplete', 'unknown'].includes(state) ? state : 'pending',
+          work_id: started ? { kind, id: 'fixture-work' } : null,
+          terminal: ['rejected', 'succeeded', 'failed', 'interrupted'].includes(state),
+          outcome: ['rejected', 'succeeded', 'failed', 'interrupted', 'incomplete', 'unknown'].includes(state) ? state : 'pending',
           code: state === 'rejected' ? 'FIXTURE_REJECTED' : '' });
         this.work.started_event_id = previous.started_event_id || (started && state !== 'unknown' ? previous.event_id + 2 : 0);
         this.work.event_id = same({ ...previous, event_id: 0 }, { ...this.work, event_id: 0 })

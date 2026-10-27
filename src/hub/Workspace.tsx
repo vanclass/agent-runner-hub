@@ -10,12 +10,14 @@ import { RunnerImagePreviews } from './RunnerImagePreviews';
 import { RunnerLocation, type RunnerInstallation } from './RunnerLocation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer, SingleEntrySettings } from './SingleEntryComposer';
+import { RunnerTabClose } from './RunnerTabClose';
 
-export function Workspace({ runner, session, theme, installation, onInstallation, sparePreparation, entry, onSelectRunner }: {
+export function Workspace({ runner, session, theme, installation, onInstallation, sparePreparation, entry, onSelectRunner, onCloseRunner }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null; onInstallation: (value: RunnerInstallation | null) => void;
   sparePreparation: HubText;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
+  onCloseRunner: (id: string) => Promise<void>;
 }) {
   useHubTranslation();
   const singleEntry = !runner;
@@ -24,8 +26,10 @@ export function Workspace({ runner, session, theme, installation, onInstallation
       <div className="context-title"><span className="eyebrow">{singleEntry ? t('workspace.startingPoint') : t('workspace.runnerEyebrow')}</span>
         <h1 title={runner?.name}>{runner?.name ?? t('common.singleEntry')}</h1></div>
       <span className="context-badge">{singleEntry ? t('workspace.defaults') : t('workspace.runnerOnly')}</span>
-      {session && <button type="button" className="terminate-runner" disabled={runner?.status !== 'running'}
+      {session && <button type="button" className="terminate-runner" disabled={!!runner?.closing || runner?.status !== 'running'}
         onClick={() => void session.terminate()}>{t('workspace.terminate')}</button>}
+      {session && <RunnerTabClose name={session.view.name} closing={!!runner?.closing}
+        onClose={() => onCloseRunner(session.view.id)} />}
     </header>
     {session && <RunnerRecovery session={session} />}
     {session ? <RunnerControls control={session.control} defaults={entry.defaults} /> : singleEntry ? <SingleEntrySettings entry={entry} />

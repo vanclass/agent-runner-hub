@@ -45,7 +45,7 @@ test('work v1 keeps dispatch admission and canonical start distinct with origina
     { operation: 'work.status', api_version: 1, submission_request_id: 1001 }]);
 });
 
-for (const mode of ['rejected', 'suspended', 'incomplete', 'unknown', 'succeeded']) {
+for (const mode of ['rejected', 'suspended', 'incomplete', 'unknown', 'succeeded', 'failed', 'interrupted']) {
   test('work v1 preserves ' + mode + ' without inferring whole Task completion', async ({ page }) => {
     await page.goto('/');
     const result = await page.evaluate(async mode => {
@@ -62,8 +62,8 @@ for (const mode of ['rejected', 'suspended', 'incomplete', 'unknown', 'succeeded
       return { attempt, refused, submissions: fixture.requests.filter(r => r.operation === 'work.submit').length };
     }, mode);
     expect(result.attempt.work.state).toBe(mode);
-    expect(result.attempt.work.terminal).toBe(['rejected', 'succeeded'].includes(mode));
-    if (!['rejected', 'succeeded'].includes(mode)) { expect(result.refused).toBe(true); expect(result.submissions).toBe(1); }
+    expect(result.attempt.work.terminal).toBe(['rejected', 'succeeded', 'failed', 'interrupted'].includes(mode));
+    if (!['rejected', 'succeeded', 'failed', 'interrupted'].includes(mode)) { expect(result.refused).toBe(true); expect(result.submissions).toBe(1); }
   });
 }
 for (const fault of ['lost-admission', 'crossed', 'not-sent']) {

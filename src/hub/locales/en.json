@@ -1,4 +1,24 @@
 {
+  "tabs": {
+    "close": "Close Tab",
+    "confirmTitle": "Close {{name}}?",
+    "consequence": "This stops this Runner and its owned processes, including active, suspended or uncertain work. Unsaved input in this tab will be discarded. Other Runner tabs stay open.",
+    "confirmClose": "Terminate and close tab",
+    "cancel": "Keep tab open",
+    "closing": "Closing Runner tab…",
+    "idleRequired": "Middle-click requires a verified idle Runner. Use Close Tab inside this Runner to review and confirm termination.",
+    "unconfirmed": "Native cleanup is unconfirmed. The tab was retained. Review the Runner error before closing again.",
+    "unread": "Unread completion",
+    "states": {
+      "idle": "Verified idle",
+      "running": "Running",
+      "attention": "Suspended / needs attention",
+      "completed": "Completed",
+      "failed": "Failed",
+      "interrupted": "Interrupted",
+      "unknown": "Status unknown"
+    }
+  },
   "work": {
     "reuseIdle": "Reuse an eligible idle Runner",
     "allocationHelp": "Always create a new Runner by default. Reuse checks the exact visible Runner again before assignment.",
