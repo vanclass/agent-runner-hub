@@ -19,7 +19,8 @@ export function RunnerWorkStatus({ work }: { work: RunnerWork }) {
         : attempt.notSent ? t('work.notSent') : t('work.unknown')}</p>
     <p>{current?.started_event_id ? t('work.startEvidence', { event: current.started_event_id }) : t('work.noStart')}</p>
     {current?.code && <code>{current.code}</code>}
-    <button type="button" disabled={!work.supported || work.busy || !attempt.submissionId}
+    <button type="button" disabled={!work.supported || work.busy || current?.terminal
+      || !(work.discoverySupported && attempt.observationId || attempt.submissionId)}
       onClick={() => { setError(''); void work.refreshStatus().catch(reason => setError(errorText(reason))); }}>{t('work.refresh')}</button>
     {error && <p role="alert">{tr(error)}</p>}
   </section>;

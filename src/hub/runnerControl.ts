@@ -71,7 +71,8 @@ export class RunnerControl {
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
       available: operation => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready' && !this.otherControlBusy
-        && !this.config.busy && (operation === 'work.status' || !this.config.uncertain),
+        && (operation !== 'work.list' || !this.assignmentLocked)
+        && !this.config.busy && !this.images.busy && (operation !== 'work.submit' || !this.config.uncertain),
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'work', request } }),
     }, changed);
   }
@@ -108,7 +109,7 @@ export class RunnerControl {
       this.timer = setTimeout(() => void this.refresh(), 500);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
-  get pending() { return this.controlBusy || this.config.busy || this.work.busy; }
+  get pending() { return this.controlBusy || this.config.busy || this.work.writing; }
   get busy() { return this.tabClosing || this.pending; }
   private get controlBusy() {
     return this.assignmentLocked || this.otherControlBusy;

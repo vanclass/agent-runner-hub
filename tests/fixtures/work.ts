@@ -2,6 +2,12 @@ import { ConfigFixture } from './sessionConfig';
 import { copy, same, type FeatureResult } from '../../src/hub/runnerConfigContract';
 import { runModes, type WorkRequest, type WorkObservation } from '../../src/hub/runnerWork';
 
+export function terminalWork(id: number, event: number, changes: Partial<WorkObservation> = {}): WorkObservation {
+  return { observation_id: `terminal:${id}`, origin: 'terminal', submission_request_id: null, run_mode: 'direct-run',
+    state: 'active', admission: 'admitted', work_id: { kind: 'direct_turn', id: `turn-${id}` }, execution_id: `exec-${id}`,
+    event_id: event, started_event_id: event, terminal: false, outcome: 'pending', code: '', owner: 'turn', owner_revision: 0, ...changes };
+}
+
 /** Synthetic Runner contract responses; never Provider or native transport evidence. */
 export class WorkFixture {
   readonly config: ConfigFixture;
@@ -10,6 +16,11 @@ export class WorkFixture {
   holdSubmit = false;
   fault = '';
   work?: WorkObservation;
+  readonly observations = new Map<string, WorkObservation>();
+  enableDiscovery(size = 2) {
+    this.config.features.work = { version: 1, operations: ['work.submit', 'work.status', 'work.list', 'work.observe'],
+      run_modes: [...runModes], origins: ['api', 'terminal'], max_page_size: size };
+  }
   changed: () => void = () => {};
   private held?: FeatureResult;
   constructor(session: string, generation = 1) {
@@ -29,9 +40,14 @@ export class WorkFixture {
       this.work = { submission_request_id: id, run_mode: this.config.current.run_mode, state: 'dispatching', admission: 'pending',
         work_id: null, execution_id: '', event_id: 1, started_event_id: 0, terminal: false, outcome: 'pending',
         code: '', owner: 'input_consumer', owner_revision: 0 };
+      if (this.features.work?.origins) {
+        Object.assign(this.work, { observation_id: `api:${id}`, origin: 'api',
+          event_id: Math.max(0, ...[...this.observations.values()].map(w => w.event_id)) + 1 });
+      }
       if (this.holdSubmit) this.held = result;
       else { result.state = 'accepted'; result.phase = 'completed'; result.reply = { receipt: 'dispatch_received', work: copy(this.work) }; }
-    } else {
+    } else if (request.operation === 'work.status' || request.operation === 'work.observe'
+      && request.observation_id === this.work?.observation_id) {
       const original = this.work?.submission_request_id;
       if (this.work && this.mode !== 'dispatch') {
         const previous = copy(this.work);
@@ -50,10 +66,22 @@ export class WorkFixture {
       }
       result.state = 'accepted'; result.phase = 'completed';
       if (this.fault === 'completion-unknown' && this.work) Object.assign(this.work, { state: 'unknown', outcome: 'unknown' });
-      result.reply = original === request.submission_request_id ? { work: copy(this.work) }
+      result.reply = (request.operation === 'work.status' ? original === request.submission_request_id
+        : request.observation_id === this.work?.observation_id) ? { work: copy(this.work) }
         : { code: 'SUBMISSION_NOT_OBSERVED', outcome_unknown: true };
-      if (this.fault === 'crossed' && this.work) (result.reply as { work: WorkObservation }).work.submission_request_id++;
+      if (this.fault === 'crossed' && this.work) (result.reply as { work: WorkObservation }).work.submission_request_id!++;
+    } else {
+      result.state = 'accepted'; result.phase = 'completed';
+      if (request.operation === 'work.observe') result.reply = { work: copy(this.observations.get(request.observation_id)) };
+      else {
+        const changed = [...this.observations.values()].filter(w => w.event_id > request.after_event_id).sort((a, b) => a.event_id - b.event_id);
+        const works = changed.slice(0, request.limit), has_more = changed.length > works.length;
+        const latest_event_id = Math.max(0, ...[...this.observations.values()].map(w => w.event_id));
+        result.reply = { works: copy(works), has_more, latest_event_id,
+          next_after_event_id: has_more ? works.at(-1)!.event_id : latest_event_id };
+      }
     }
+    if (this.work?.observation_id) this.observations.set(this.work.observation_id, copy(this.work));
     this.changed();
     return { state: 'submitted' as const, id, generation: this.features.generation };
   }

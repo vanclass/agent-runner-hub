@@ -44,6 +44,7 @@ export class RunnerImages {
   private discoveredAt = -Infinity;
   constructor(private readonly changed: () => void) {}
   start(id: string) { this.id = id; }
+  get busy() { return this.working; }
   get preview() { return previews.get(this.owner); }
   get selected() { return this.items.find(image => image.imageId === this.selectedId); }
   mount() { this.active = true; this.tick(); return () => { this.active = false; }; }

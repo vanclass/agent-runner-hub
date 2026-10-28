@@ -235,7 +235,8 @@ export class RunnerSession {
     if (this.deliveryUnknown) throw new HubError(msg('runtime.session.previousUnknown'));
     const draft = this.view.draft ?? '';
     const ordinary = !draft.trimStart().startsWith('/');
-    if (ordinary && this.control.work.blocked) throw new HubError(msg('work.retained',
+    const answering = this.control.observationFresh && this.control.snapshot.observation?.attention.foreground_interaction_active;
+    if (ordinary && this.control.work.blocked && !answering) throw new HubError(msg('work.retained',
       { state: this.control.work.current?.work?.state || 'unknown' }));
     let attempted = false, delivered = false;
     this.update({ submitting: true });

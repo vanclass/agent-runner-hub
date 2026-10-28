@@ -5,6 +5,7 @@ import { registerSessionConfigUI } from './session-config-ui.mjs';
 import { registerSingleEntryWork } from './single-entry-work.mjs';
 import { registerRunnerTabs } from './runner-tabs.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
+import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -95,6 +96,7 @@ async function transport(page, freshTarget, referenceOptions) {
           if (referenceOptions?.work) {
             const { WorkFixture } = await import('/tests/fixtures/work.ts');
             const fixture = new WorkFixture(id, count);
+            if (referenceOptions.workDiscovery) fixture.enableDiscovery();
             fixture.mode = referenceOptions.workMode ?? 'started';
             sessions.get(id).feature = fixture;
             sessions.get(id).control.features = fixture.features;
@@ -220,6 +222,7 @@ registerSessionConfigUI({ test, expect, transport, configure });
 registerSingleEntryWork({ test, expect, transport, configure, create });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create });
+registerRunnerDiscovery({ test, expect, transport, configure, create, records });
 
 test('hidden spare parses output and promotes the original PTY without a workspace record', async ({ page }) => {
   await transport(page);

@@ -50,7 +50,7 @@ fn public_work_identity_receipts_status_and_exact_owned_shutdown() {
     if submit.state == "accepted" { assert_eq!(receipt.receipt.as_deref(), Some("dispatch_received")); }
     let status = call(&mut harness, &first, work::Request::Status { api_version:1, submission_request_id:original });
     let work = observed(&status).work.as_ref().unwrap();
-    assert_eq!(work.submission_request_id, original);
+    assert_eq!(work.submission_request_id, Some(original));
     let foreign = call(&mut harness, &second, work::Request::Status { api_version:1, submission_request_id:original });
     assert_eq!(foreign.state, "outcome-unknown");
     assert_eq!(observed(&foreign).code.as_deref(), Some("SUBMISSION_NOT_OBSERVED"));
