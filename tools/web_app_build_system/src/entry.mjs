@@ -7,7 +7,7 @@ import { menu, lineInput } from './menu.mjs';
 const root = await fs.realpath(fileURLToPath(new URL('../../../', import.meta.url)));
 const local = fileURLToPath(new URL('../.local/', import.meta.url));
 const args = process.argv.slice(2);
-const lines = !process.stdin.isTTY ? lineInput() : null;
+const lines = !process.stdin.isTTY || !process.stdout.isTTY ? lineInput() : null;
 let active;
 const lifetime = new AbortController();
 function cancel() {
@@ -53,4 +53,4 @@ try {
     }
   }
 } catch (error) { console.error('Build System failed: ' + error.message); process.exitCode = lifetime.signal.aborted ? 130 : 1; }
-finally { lines?.close(); if (process.stdin.isTTY) { process.stdin.setRawMode(false); process.stdout.write('\x1b[?25h'); } }
+finally { lines?.close(); }

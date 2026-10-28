@@ -11,7 +11,7 @@
             "receipts": [],
             "requires": [],
             "resource": {
-              "digest": "7048fa4ade92d1ff4e42eded7ba2b2d0cdaa24fa5ee0f47072e0e446cab8d817",
+              "digest": "cf06c6e2c41748c5c0582ff3778998909f235e2ad4ba19e71bb8ad96be01a2f0",
               "identity": "WebApp.ViteVanillaTS"
             }
           },
@@ -144,7 +144,7 @@
                 "path": [
                   "custom_backend"
                 ],
-                "value": false
+                "value": true
               },
               {
                 "path": [
@@ -156,7 +156,7 @@
                 "path": [
                   "resource_version"
                 ],
-                "value": "49b1a4d54cf639ae1aadaadebd9364da4281854face2da1c78f39a51c35365f5"
+                "value": "2296843e27b27a1f0edd3928276d5e0c6b5b35929f0bcdc953075d9559be35dd"
               },
               {
                 "path": [
@@ -182,20 +182,6 @@
               {
                 "path": [
                   "tauri_sha256",
-                  "2bbbe7b57dff6323c4d5ef9c6510e442b9df12bdbd9fb9f27befcedef395f17f"
-                ],
-                "value": "8c09f24433785b227e2ef6da71d0f21b7c8819211aa216857f24e0e0d60c44b7"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "2f5e0a90d4195e9986f5e24928dce16b59a80a2cf30f7059b38d55bd7d1eff69"
-                ],
-                "value": "34bfec08372624ef310512a870b04144ba682231e21b8452c301a1dbe8bc263c"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
                   "313ab10674c9484b40e2a50ad011b5fa9a9563c74724a998bfc5618e9e35d784"
                 ],
                 "value": "ff2680c3b9d08ad069fd486d3cd211f466e5d8d886ec7026c328994c71b79102"
@@ -217,16 +203,9 @@
               {
                 "path": [
                   "tauri_sha256",
-                  "41fba5ceb87bfcf3f0491182fd45f364585d884498d2c321bae1df31b9661e73"
-                ],
-                "value": "68bd486b1211403e90fb4779bbfbb1328e22328fe670d7472ce89481464f708d"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
                   "5460dfb0697548fce77d56b7c05f785e735bdce82b722bfdf1f3b941bf4c6c86"
                 ],
-                "value": "f49aea51921aa2e9fe93a0842e145a677df46574fbb54bb28a5e0abebdaeea2a"
+                "value": "0eac2e59096ebb1f342905b1f6c751144abd0a7c65c4978dcf3c5942de080bfd"
               },
               {
                 "path": [
@@ -252,23 +231,9 @@
               {
                 "path": [
                   "tauri_sha256",
-                  "62b3694c638cd67fd6631ab1949d8ae6f40ce2171ef908d9eedeea5070df683d"
-                ],
-                "value": "c544d9db6dc0ccd26d5c7e66f43b4f96108a58efb7e247bdd1b7dbebf640fb3e"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "62fb0e69387015b4a10062f4527cbb9c5f8b122d80731ea36a393f154c1c7b73"
-                ],
-                "value": "8a15636adbeba9cf0b088cbb1316412b19938b7092fd0fbee7719d4adfe788a1"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
                   "6cbe82a59a40dfb4a3272abbe25ca74f228a05350b3116ea807f877235608120"
                 ],
-                "value": "536a22ba94e171e9d76d20014b6354899494302b78c0325e3170a2287eeeb641"
+                "value": "3f4a414ed4cda0b524bb3bb4a2cd2fec93d80a9d371eb93720061915fad217aa"
               },
               {
                 "path": [
@@ -276,20 +241,6 @@
                   "7cd91d01b1443e1cf552c0abf91e34509d5fabe6ffaedf122cd891885007483e"
                 ],
                 "value": "5a992421605aa4150a6eb6fc8ca9085496f70048630aba481e5097b4dfd27b61"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "7d1ef5b0b986fee369d8f5fa4361f21fa3075601e5416738ba4f4d1ea5dfb2ed"
-                ],
-                "value": "3714a4f640fc4e11fc16ee62a4ee43888a5327114c769cf0d3f1b3e42df112e5"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "8fe2bbfebcddedcaa718510825d2a4bd04f59d2826a6848ea55fa086c5bb4213"
-                ],
-                "value": "ec658109cba16c723b7b1b713075799dc7c48c119e4de0b76a343eb1900ce203"
               },
               {
                 "path": [
@@ -304,20 +255,6 @@
                   "9b00bfccb04a57b3783cf3e9f10c214883b4f5dea7bac6c91cdb6c1499ba5859"
                 ],
                 "value": "5f3fedf7244f777f262854072becba36cf0310ffa748be6928b92e8b32f73ff6"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "9f4339997afd37f5dcd70929ffdb5ffc759f80f39d873b0b7a943080dab088b4"
-                ],
-                "value": "ee6ca27e8e83fa560f1f043e50c13702da13d42e58fa168413d186d0a1a14e19"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "aa7219e80eaa71d8926c93a1106aa7418521af173c5e2f152d525a9e0e7e9cc8"
-                ],
-                "value": "f1654a1f26585f76ea7292ee7b17b9607f00d03be401ddeac573989df4f16d85"
               },
               {
                 "path": [
@@ -343,44 +280,9 @@
               {
                 "path": [
                   "tauri_sha256",
-                  "e60bfa15871c92fde552f10051e99a207fd90a9e7c8ea5c3bc7b30af390e4f63"
-                ],
-                "value": "c05166ab876e9a326c764213cf0af657ef32c6a7931c6290f692abbb7791d5f6"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "eabcebd0ae5c9b77a5247e1bdbdb88b1869fc0c932d0ef0cf2ecf9ee5221be7c"
-                ],
-                "value": "df1b37d4d43466af5c7c71524876821058ddc44c6825a30f882a646e88500cb3"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "eccaeb30f28af59168fc9123effcb956631c38f4aa0462fc6379bb965b0e2e5b"
-                ],
-                "value": "c8341773a4a38f10ebd8e51485d2e5b2fda920255d3f34da63b8da37d285df28"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
                   "f44070608895ee0d86b0636c43bbbdf0d0caf8c1b785ee3a0fb82213d8dc558e"
                 ],
                 "value": "5f13660a494447d8371a274103ad54fe4e701eae2aeed9c855b93ad93701845a"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "fa09f1dac39604a735cd6a53957d3c35e0c3298cca9cf4829180f167abbd69b7"
-                ],
-                "value": "d3c6713ec9bc6aff01caf25f9126d78613f2897075884ec340872942a2f56c66"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "fe4c6a80a21e81339e2e0faeb9134d0f9636c168987df13c8abf1927a1caee39"
-                ],
-                "value": "e0083799ee97c7cf765ea17cdfdb0a20d8434d9f1550327381991588f0d7a06d"
               }
             ],
             "group_id": "Runtimes",
@@ -531,118 +433,6 @@
                 }
               },
               {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/.cargo/config.toml",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/Cargo.toml",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/build.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/capabilities/default.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/icons/icon.ico",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/icons/icon.png",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/desktop_terminal.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/desktop_terminal/process.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/desktop_terminal/pty.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/desktop_terminal/startup.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/desktop_terminal/tests.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/lib.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/src/main.rs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "src-tauri/tauri.conf.json",
-                  "root": "project"
-                }
-              },
-              {
                 "keys": [
                   "scripts",
                   "dev:tauri"
@@ -657,7 +447,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "16a768796fb29deee340eb2933fafc587ee7121fd4fbc9726ae64825d77c5ead",
+              "digest": "7907d5128e4a83b793b4c33d89544a13a431e3d30992f1fc598fde7ecee351d4",
               "identity": "WebApp.Tauri2"
             }
           },
@@ -1006,7 +796,7 @@
                   "build_system.sha256",
                   "2e9a80763364b37de0c1623bea777b5901a60745b368b5803e899029d88d381c"
                 ],
-                "value": "a4d0d5e99eb761284f2a8a15ee9492e7102c32322c00d395bb67c63975c752dc"
+                "value": "4f7fa17031c6ecf5ff0b9b336bbb475a72f1f645c7852131d365983540d49da3"
               },
               {
                 "path": [
@@ -1055,7 +845,7 @@
                   "build_system.sha256",
                   "501a251a90c82c7cb270b7b9efe3f6d38fcef69c68e4d47afc85ab51c7420bff"
                 ],
-                "value": "0e669a32473328b93af04784ad4c2f7be981e687dbc794f5134144f65f17e627"
+                "value": "a7e868f4c304e26bda44d611e10a48c4fa6d62d6996d3e67e47772ea1347eeca"
               },
               {
                 "path": [
@@ -1076,7 +866,7 @@
                   "build_system.sha256",
                   "5d1a8c1f0cf259b0ef0ad38234ee6760764b2eb416f063f62bb7e54bf84d03c7"
                 ],
-                "value": "2ffd850724028ded4a9b8454fe54e9a6c04164fa95ae4ee92fae139cd669fe26"
+                "value": "b1a8d53dff744c723926e28e4a7daaa9c22aa0ae0a8cf330f008891ffb3189ee"
               },
               {
                 "path": [
@@ -1097,7 +887,7 @@
                   "build_system.sha256",
                   "6f4cf9fb62901ff6c173451a27b0d3b7e71b23bf6e2aade7fbfeb9fbcd55f0b0"
                 ],
-                "value": "f49aea51921aa2e9fe93a0842e145a677df46574fbb54bb28a5e0abebdaeea2a"
+                "value": "0eac2e59096ebb1f342905b1f6c751144abd0a7c65c4978dcf3c5942de080bfd"
               },
               {
                 "path": [
@@ -1153,7 +943,7 @@
                   "build_system.sha256",
                   "b5bfc7196fc638c11acf5ba5fefbee5514cc91dc69d919efc9e813022be21078"
                 ],
-                "value": "f9a3db7b5b06aff51c3443d81080d1d23511ea2b5e00b9518f883d4130b1ec8c"
+                "value": "149baa7785af2f50d6a14ce0ed7a61ca2dbc1bb1c40f24eceea4c22eb197f65e"
               },
               {
                 "path": [
@@ -1238,6 +1028,13 @@
                   "db7141a54cb4efdb2ae549a8eb5b6360a6fbee28229b8967aac55348bf607b07"
                 ],
                 "value": "d9b8a0811e80a3655e053daf8168b99d6bdd467c3cac1d70fde5d0ca6e22ac64"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "de5e93a805708eab22b948f7039f819c3ee174b485c52bd92f0471bece9a39e4"
+                ],
+                "value": "e8ac41a9b3a718b3e91af73c1e4e764226521d7ee6b028009fdce2942749096c"
               },
               {
                 "path": [
@@ -1660,6 +1457,14 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
+                  "path": "tools/web_app_build_system/src/windows-console.cs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
                   "path": "tools/web_app_build_system/targets.json",
                   "root": "project"
                 }
@@ -1667,7 +1472,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "12bae7e0cd6c71b943f563fbff301f365bd67e2d584bad4b6c15592f2f86b95c",
+              "digest": "c409db3d6955a09269b53f6833bb7a5a58c4dac8a0979869dcbae0189b5fb725",
               "identity": "WebApp.WebAppBuildSystem"
             }
           }
@@ -1720,7 +1525,7 @@
             }
           },
           {
-            "after": "d8d5db5aafedffcb7778564a51704e1fee628bc5733dd71d33aa4287f7ceaaae",
+            "after": "1d38274ed8126898204821cbdca88e18fd5d14ddee0ff0cb9288da799eb9e158",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -2109,7 +1914,7 @@
           }
         ],
         "resource": {
-          "digest": "c9d0b48f2bb8e8ebe5a78a9fc303f55362d6b3afb2c67421bd2845231962d88e",
+          "digest": "fb373e8da1e47988649e943901c5cb30390451fc159cb2c44e12d19623528575",
           "identity": "WebApp"
         }
       }

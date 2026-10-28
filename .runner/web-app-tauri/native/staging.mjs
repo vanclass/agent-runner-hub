@@ -105,6 +105,13 @@ export async function developmentEnvironment(root, config, environment) {
 export async function prepareCargo(environment, folder, target, signal, run) {
   const childEnvironment = { ...environment.developerEnvironment, CARGO_TARGET_DIR: target, ...(environment.rustToolchain
     ? { RUSTUP_TOOLCHAIN: environment.rustToolchain } : {}) };
+  // Tauri launches Cargo by name even when our own probes use its absolute path.
+  const pathKeys = Object.keys(childEnvironment).filter(key => key.toLowerCase() === 'path');
+  const inheritedPath = childEnvironment[pathKeys[0]] ?? process.env.PATH ?? '';
+  const toolDirectories = [environment.cargo, environment.rustc, environment.rustup]
+    .filter(file => file && path.isAbsolute(file)).map(file => path.dirname(file));
+  for (const key of pathKeys) delete childEnvironment[key];
+  childEnvironment.PATH = [...new Set(toolDirectories), inheritedPath].filter(Boolean).join(path.delimiter);
   if (environment.allowDependencyInstall === false) childEnvironment.CARGO_NET_OFFLINE = 'true';
   const locked = await fs.access(path.join(folder, 'Cargo.lock')).then(() => true, () => false);
   if (!locked) {

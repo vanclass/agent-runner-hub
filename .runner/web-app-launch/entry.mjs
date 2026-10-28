@@ -33,21 +33,25 @@ try {
   if (process.argv.length > 2) throw new Error('This launcher takes no arguments.');
   console.log('[Web App] Project: ' + root);
   const target = await defaultTarget(root);
+  const nativeAssets = target === 'tauri' && process.platform === 'win32';
   const build = await currentBuild(root, cache, controller.signal, stage);
   snapshot = build.snapshot;
   controller.signal.throwIfAborted();
-  stage(target === 'browser' ? 'Starting browser preview' : 'Starting desktop preview', 'Check loopback access and your selected runtime, then retry.');
-  server = await preview(snapshot, build.base, { spa: build.foundation !== 'AstroTS' });
+  if (!nativeAssets) {
+    stage(target === 'browser' ? 'Starting browser preview' : 'Starting desktop preview', 'Check loopback access and your selected runtime, then retry.');
+    server = await preview(snapshot, build.base, { spa: build.foundation !== 'AstroTS' });
+  }
   controller.signal.throwIfAborted();
   stage(target === 'browser' ? 'Opening browser' : 'Opening desktop runtime', 'Check your selected runtime prerequisites or choose Browser with target.mjs.');
   if (target === 'browser') await openBrowser(server.url);
-  console.log('[Web App] ' + (target === 'browser' ? 'Application ready: ' : 'Desktop preview ready: ') + server.url);
+  if (server) console.log('[Web App] ' + (target === 'browser' ? 'Application ready: ' : 'Desktop preview ready: ') + server.url);
   console.log('[Web App] Keep this launcher open. Press Ctrl+C or type q then Enter to stop.');
   process.stdin.on('data', input);
   process.stdin.resume();
   if (target !== 'browser') {
     const native = await import(pathToFileURL(root + '/.runner/web-app-' + target + '/launch.mjs'));
-    await native.launch(root, server.url, controller.signal, stage);
+    await native.launch(root, nativeAssets ? { frontend: snapshot + '/app', base: build.base } : server.url,
+      controller.signal, stage);
     cancel('Quit');
   }
   await stopped;

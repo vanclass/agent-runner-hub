@@ -8,14 +8,20 @@
 
 Select Web App → Tools → Web App Build System in New, Link Existing or Project Settings.
 It is Off by default. Apply deploys this package and project-root build.cmd, build.sh and
-build.command. Open the root entry from any directory. This installed package uses only
+build.command. Open the root entry from any directory. This installed package uses
 Node/npm and the project's dependencies; Runner and the Codex workspace are unnecessary.
+On Windows, build.cmd also uses the installed .NET Framework C# compiler for a temporary
+console bridge. Its executable is removed after the Node process exits. The bridge restores
+the caller's cursor, console modes and output code page, including cancellation and errors.
+Menu sizing follows the visible console window even when its backing buffer is wider.
 
 The menu separates Build Ready, Environment Preparation Required, Runtime Selection Required, Native Verification
 Unavailable and Not Implemented, with readiness and verification shown under each target.
 Each registered implemented target has its own number, stable across readiness changes.
 Use Up/Down to select, its number / Enter to build, P to prepare that target only, or
 B / Q / Esc to leave. After success, failure or cancellation the selected target retains focus.
+Interactive navigation replaces changed rows in a bounded viewport; resize keeps the logical
+selection visible. Build logs remain in console history while transient menu rows are reused.
 Web remains target 1 and the default selection, labeled Vite or Astro from the applied Foundation; Windows/Tauri is target 2 when selected.
 Ctrl+C cancels an active build/preparation; an interrupted install may need Prepare again.
 Windows cmd may ask its own batch confirmation after an interrupted session exits; the tool has already released its build lease before returning to the menu.
