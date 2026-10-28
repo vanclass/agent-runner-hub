@@ -4,6 +4,15 @@ import { Hub } from '../../src/hub/Hub';
 import type { RunnerView } from '../../src/hub/model';
 import '../../src/style.css';
 
+// Shell-only fixture: simulated verification, with no process or native picker acceptance.
+Object.assign(window, { isTauri: true, __TAURI_INTERNALS__: {
+  invoke: async (command: string) => {
+    if (command === 'runner_resolve') return { root: '/fixture/install', python: '/fixture/python' };
+    throw new Error('Shell fixture has no native process');
+  },
+} });
+localStorage.setItem('agent-runner-hub.installation', '/fixture/install');
+
 const runners: readonly RunnerView[] = Object.freeze([
   Object.freeze({ id: 'second', projectId: 'project-b', sessionId: 'session-b', createdOrder: 2,
     name: 'A very long Runner name that must remain intact when truncated in the sidebar', status: 'running' as const }),

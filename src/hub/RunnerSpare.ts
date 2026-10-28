@@ -1,7 +1,7 @@
 import { errorText, HubError, msg, type HubText } from './i18n';
 import type { RunnerSession } from './RunnerSessions';
 import { idleReason } from './singleEntry';
-import { resolveRunnerInstallation, savedRunnerLocation, type RunnerInstallation } from './runnerInstallation';
+import type { RunnerInstallation } from './runnerInstallation';
 
 type SpareSnapshot = Readonly<{
   state: 'unavailable' | 'preparing' | 'ready' | 'disposed';
@@ -28,11 +28,6 @@ export class RunnerSpare {
     }
     return this.current;
   }
-  restore() {
-    const location = savedRunnerLocation();
-    if (!location || this.current.state === 'disposed') return;
-    this.prepare(null, location);
-  }
   get optionsSource() { return this.snapshot.state === 'ready' ? this.slot?.session : undefined; }
   setInstallation(installation: RunnerInstallation | null) {
     if (this.current.state === 'disposed') return;
@@ -40,17 +35,17 @@ export class RunnerSpare {
       && this.current.installation.python === installation.python && this.slot) return;
     this.prepare(installation);
   }
-  private prepare(installation: RunnerInstallation | null, savedLocation?: string) {
+  private prepare(installation: RunnerInstallation | null) {
     const generation = ++this.generation;
     const cleanup = this.retire();
-    this.current = { installation, state: installation || savedLocation ? 'preparing' : 'unavailable',
-      detail: msg(installation || savedLocation ? 'spare.preparing' : 'spare.verify') };
+    this.current = { installation, state: installation ? 'preparing' : 'unavailable',
+      detail: msg(installation ? 'spare.preparing' : 'spare.verify') };
     this.changed();
     // Join the previous launch and its exact cleanup before admitting a new hidden process.
     this.work = Promise.all([this.work, cleanup]).then(async () => {
       if (!this.active(generation)) return;
       if (this.cleanupFailure) throw new HubError(this.cleanupFailure);
-      const verified = savedLocation ? await resolveRunnerInstallation(savedLocation) : installation;
+      const verified = installation;
       if (!this.active(generation) || !verified) return;
       this.current = { ...this.current, installation: verified };
       await this.launch(verified.root, generation);

@@ -7,6 +7,7 @@ import { registerRunnerTabs } from './runner-tabs.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
 import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
+import { registerInstallationSetup } from './installation-setup.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -225,6 +226,7 @@ registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create });
 registerRunnerDiscovery({ test, expect, transport, configure, create, records });
 registerRunnerAddDirectory({ test, expect, transport, configure, create });
+registerInstallationSetup({ test, expect, transport, configure, create });
 
 test('hidden spare parses output and promotes the original PTY without a workspace record', async ({ page }) => {
   await transport(page);
@@ -470,37 +472,18 @@ test('installation change and shutdown join late spare launches and discard stal
     .toEqual({ state: 'disposed', count: 3, closed: ['pty-1', 'pty-2', 'pty-3'], tabs: 0 });
 });
 
-test('saved installation is reverified before restart prewarming and late resolver results cannot override a change', async ({ page }) => {
+test('invalid saved installation blocks restart prewarming until the user verifies a correction', async ({ page }) => {
   await transport(page);
   await page.addInitScript(() => localStorage.setItem('agent-runner-hub.installation', '/missing'));
   await page.goto('/');
-  await expect(page.getByRole('status').filter({ hasText: 'Spare unavailable:' })).toContainText('native bootstrap');
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('native bootstrap');
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
-  await page.evaluate(async () => {
-    const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
-    const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
-    let release;
-    window.__resolveGate = new Promise(resolve => { release = resolve; });
-    window.__releaseResolve = release;
-    native.invoke = async (command, args) => {
-      if (command === 'runner_resolve') {
-        await window.__resolveGate;
-        return { root: '/stale/install', python: '/stale/python' };
-      }
-      return invoke(command, args);
-    };
-    localStorage.setItem('agent-runner-hub.installation', '/previous/install');
-    window.__spares = new RunnerSessions();
-    window.__spares.restore();
-  });
-  await page.evaluate(() => {
-    window.__spares.setInstallation({ root: '/fixture/install', python: '/fixture/python' });
-    window.__releaseResolve();
-  });
-  await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
-  expect(await page.evaluate(() => window.__spares.spareSnapshot.installation.root)).toBe('/fixture/install');
+  await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
+  await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.installation'))).toBe('/fixture/install');
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
-  await page.evaluate(() => window.__spares.dispose());
 });
 
 test('spare cleanup failure prevents competing launches and remains observable on shutdown', async ({ page }) => {
@@ -560,7 +543,7 @@ test('spare startup deadline refuses late PTY completion and joins it before rep
 async function configure(page) {
   await page.goto('/');
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
-  await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
+  await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
   await expect(page.getByRole('button', { name: 'New Runner', exact: true })).toBeEnabled();
   await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
 }
@@ -582,12 +565,16 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
   await expect(page.locator('.reference-candidate')).toContainText('Registered · completed Runner receipt');
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Runner 프로젝트 / 대상 변경', exact: true })).toHaveText(target);
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toHaveValue('draft /status 그대로');
   await expect(page.locator('.reference-candidate')).toContainText('등록됨 · Runner 완료 확인');
   await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '앱 설정', exact: true }).click();
   await page.getByRole('button', { name: '블랙', exact: true }).click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('.xterm-scrollable-element')).toHaveCSS('background-color', 'rgb(17, 18, 20)');
   await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
@@ -627,9 +614,12 @@ test('Single Entry preferences restore all safe selections and revalidate them b
 test('Runner observations do not become Hub defaults and raw native errors retain their diagnostic language', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.preferences.v1'))).toBeNull();
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual({});
+  await page.getByRole('button', { name: '앱 설정', exact: true }).click();
   await page.getByRole('textbox', { name: 'AgentRunner 위치', exact: true }).fill('/missing');
   await page.getByRole('button', { name: '설치 검증', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Runner managed Python is missing. Run native bootstrap.');
@@ -1173,6 +1163,7 @@ for (const target of [
 test('workspace isolates malformed records, duplicate identities and launch failures', async ({ page }) => {
   await transport(page);
   await page.addInitScript(() => {
+    localStorage.setItem('agent-runner-hub.installation', '/fixture/install');
     const tab = (index, root = '/fixture/install') => ({ id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
       name: `Saved ${index}`, createdOrder: index, installationRoot: root, launchOnOpen: true });
     localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1,
@@ -1183,7 +1174,7 @@ test('workspace isolates malformed records, duplicate identities and launch fail
   });
   await page.goto('/');
   await expect(page.locator('.runner-row')).toHaveCount(3);
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(3);
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(4);
   expect(await page.locator('.runner-row .runner-name').allTextContents()).toEqual(['Saved 1', 'Saved 2', 'Saved 3']);
   await page.locator('.runner-row').nth(0).locator('.nav-row').click();
   await expect(page.getByText('fixture process launch failed', { exact: false })).toBeVisible();
@@ -1200,9 +1191,9 @@ for (const raw of ['{"version":1,"tabs":[', '{"version":99,"tabs":[]}']) {
   test(`workspace retains unreadable or unsupported data: ${raw}`, async ({ page }) => {
     await transport(page);
     await page.addInitScript(raw => localStorage.setItem('agent-runner-hub.workspace.v1', raw), raw);
-    await page.goto('/');
+    await configure(page);
     await expect(page.getByRole('alert').filter({ hasText: 'Workspace restoration unavailable' })).toBeVisible();
-    expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
+    expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
     expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).toBe(raw);
   });
 }
@@ -1265,9 +1256,9 @@ test('workspace keeps ended tabs dormant and strips untrusted replay fields', as
       recoveryHint: { target: { binding_state: 'bound', owner: 'Project', project: 'Retained A', key: 'private' },
         runMode: 'task-run', workflowKind: 'TaskRun', instructions: 'never persist' },
       pid: 42, pty: 'old', key: 'secret', draft: 'replay', instruction: 'execute', sessionId: 'stale' }] })));
-  await page.goto('/');
+  await configure(page);
   await expect(page.locator('.runner-row')).toHaveCount(1);
-  expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
+  expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
   expect(Object.keys(stored.tabs[0]).sort()).toEqual(['createdOrder', 'id', 'installationRoot', 'launchOnOpen', 'name', 'recoveryHint']);
   expect(stored.tabs[0].recoveryHint).toEqual({ target: { binding_state: 'bound', owner: 'Project', project: 'Retained A' },
@@ -1700,7 +1691,9 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await page.locator('.xterm-helper-textarea').press('Shift+Enter');
   const physical = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-1');
   expect(physical.some(record => record.down && record.vk === 13 && record.modifiers === 16)).toBe(true);
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('button', { name: 'Black', exact: true }).click();
+  await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.resizes.length)).toBeGreaterThan(1);
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();
@@ -1720,12 +1713,12 @@ test('two terminal sessions survive keyed views and keep independent output, inp
 test('configuration failure, launch failure and unexpected exit stay local to their affected context', async ({ page }) => {
   await transport(page); await page.goto('/');
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/missing');
-  await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
+  await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('native bootstrap');
   await expect(page.getByRole('button', { name: 'New Runner', exact: true })).toBeDisabled();
   await expect(page.locator('.runner-row')).toHaveCount(0);
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
-  await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
+  await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
   await create(page);
   const firstId = await page.locator('.runner-row').first().getAttribute('data-runner-id');

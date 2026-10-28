@@ -133,7 +133,9 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
         Object.assign(fixture.features.results.find(r => r.operation === 'session_config.apply'), { state: 'pending-interaction', phase: 'awaiting_interaction' }); });
       await page.waitForFunction(() => JSON.parse(window.__nativeFixture.observed.get('pty-1')).features.results
         .some(r => r.operation === 'session_config.apply' && r.state === 'pending-interaction'));
+      await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await page.keyboard.press('Escape');
       await page.locator('.xterm-helper-textarea').press('Escape');
       expect(await page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
@@ -166,7 +168,9 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       expect(result.safe.accountIdentity).toEqual(result.current.account); expect(result.safe).not.toHaveProperty('account');
       const apply = result.requests.find(r => r.operation === 'session_config.apply');
       expect(apply.desired.account).toEqual(result.current.account);
+      await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await page.keyboard.press('Escape');
       await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
       await home(page);
       await expect(page.locator('.control-status')).toContainText(language === 'en' ? 'Runner verified start' : 'Runner 시작 확인');

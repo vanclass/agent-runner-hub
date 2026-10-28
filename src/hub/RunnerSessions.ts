@@ -341,7 +341,11 @@ export class RunnerSessions {
   private readonly spare = new RunnerSpare(
     (installationRoot, changed) => new RunnerSession({ installationRoot }, changed), () => this.changed());
   get spareSnapshot() { return this.spare.snapshot; }
-  setInstallation(installation: RunnerInstallation | null) { this.spare.setInstallation(installation); }
+  setInstallation(installation: RunnerInstallation | null) {
+    if (this.disposed) return;
+    if (installation) this.restore();
+    this.spare.setInstallation(installation);
+  }
   readonly entry: SingleEntry;
   constructor(defaults: EntryDefaults = {}, saveDefaults: (value: EntryDefaults) => void = () => {}) {
     this.entry = new SingleEntry(() => [...this.sessions.values()],
@@ -353,7 +357,7 @@ export class RunnerSessions {
   private readonly changed = () => {
     if (this.disposed) return;
     this.entry?.observe();
-    this.workspace.save([...this.sessions.values()].map(session => session.tab));
+    if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab));
     this.snapshot = [...this.sessions.values()].map(session => session.tabView);
     this.listeners.forEach(listener => listener());
   };
@@ -383,7 +387,6 @@ export class RunnerSessions {
   }
   retain() {
     this.consumers++;
-    this.restore();
     return () => {
       this.consumers--;
       queueMicrotask(() => {
@@ -391,7 +394,7 @@ export class RunnerSessions {
       });
     };
   }
-  restore() {
+  private restore() {
     if (this.restored) return;
     this.restored = true;
     const tabs = this.workspace.load();
@@ -404,10 +407,10 @@ export class RunnerSessions {
     for (const session of this.sessions.values()) {
       if (session.tab.launchOnOpen) void session.open(session.tab.installationRoot);
     }
-    this.spare.restore();
   }
   create(location: string, token?: symbol) {
     if (this.disposed) throw new HubError(msg('spare.closed'));
+    this.restore();
     const order = ++this.order;
     const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot: location, launchOnOpen: true }, this.changed);

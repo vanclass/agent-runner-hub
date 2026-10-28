@@ -31,7 +31,9 @@ test('a missing runtime Korean key falls back to English without breaking other 
     const { i18n } = await import('/src/hub/i18n.ts');
     delete i18n.getResourceBundle('ko', 'translation').composer.send;
   });
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toBeVisible();
 });
@@ -41,7 +43,7 @@ test('missing preferences start in English independently of browser language and
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page.getByRole('combobox', { name: 'Language', exact: true })).toHaveValue('en');
   await expect(page.getByRole('button', { name: 'Light', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('private unsent instruction');
+  await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('private unsaved path');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBeNull();
   await expect(page.getByRole('combobox', { name: /assignment policy/i })).toHaveCount(0);
 });
@@ -75,17 +77,19 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await page.goto('/tests/fixtures/hub.html');
     await page.locator('[data-runner-id="second"] .nav-row').click();
     const title = await page.getByRole('heading', { level: 1 }).textContent();
+    await page.getByRole('button', { name: language === 'en' ? 'App settings' : '앱 설정', exact: true }).click();
     const languagePicker = page.locator('.language-picker select');
     await languagePicker.selectOption(language === 'en' ? 'ko' : 'en');
     await expect(page.locator('[data-runner-id="second"] .nav-row')).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+    await expect(page.locator('.workspace h1')).toHaveText(title);
     await languagePicker.selectOption(language);
+    await page.keyboard.press('Escape');
     const name = language === 'en' ? 'Runner instructions' : 'Runner 지시문';
     await expect(page.getByRole('textbox', { name, exact: true })).toBeDisabled();
     for (const width of [1400, 1000, 760, 626]) {
       await page.setViewportSize({ width, height: width === 626 ? 450 : 700 });
       await expect(page.getByRole('button', { name: language === 'en' ? 'Send instruction' : '지시문 전송', exact: true })).toBeInViewport();
-      await expect(languagePicker).toBeInViewport();
+      await expect(page.locator('.app-settings-trigger')).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect((await page.locator('.output').boundingBox()).height).toBeGreaterThan(90);
       await testInfo.attach(language + '-' + theme + '-' + width, { body: await page.screenshot(), contentType: 'image/png' });
@@ -93,13 +97,14 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     const composer = page.getByRole('textbox', { name: language === 'en' ? 'Single Entry instructions' : 'Single Entry 지시문', exact: true });
     await composer.fill('keep this draft /status 안녕');
+    await page.locator('.app-settings-trigger').click();
     await languagePicker.selectOption(language === 'en' ? 'ko' : 'en');
     await expect(composer).toHaveCount(0);
     await expect(page.locator('.composer textarea')).toHaveValue('keep this draft /status 안녕');
     await expect(page.locator('.hub')).toHaveAttribute('data-theme', theme);
     await languagePicker.focus();
     await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => document.activeElement?.closest('.hub-preferences') !== null)).toBe(true);
+    expect(await page.evaluate(() => document.activeElement?.closest('.app-appearance') !== null)).toBe(true);
   });
 }
 const invalid = [

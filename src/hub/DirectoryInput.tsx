@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { selectFolder } from '../../.runner/web-app-desktop/io/nativeIO';
-import { errorText, t, tr, type HubText } from './i18n';
+import { isTauri } from '@tauri-apps/api/core';
+import { errorText, HubError, msg, t, tr, type HubText } from './i18n';
 
 /** A picker edits one directory draft; verification and apply stay with its owner. */
 export function DirectoryInput({ label, value, onChange, disabled = false, placeholder, scope, isCurrent }: {
@@ -23,6 +24,7 @@ export function DirectoryInput({ label, value, onChange, disabled = false, place
       && latest.current.value === initial.value && latest.current.scope === initial.scope && !latest.current.disabled;
     picking.current = true; setPending(true); setError('');
     try {
+      if (!isTauri()) throw new HubError(msg('location.nativeRequired'));
       const folder = await selectFolder();
       if (valid() && typeof folder === 'string') onChange(folder);
     } catch (reason) { if (valid()) setError(errorText(reason)); }

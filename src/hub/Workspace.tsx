@@ -7,14 +7,14 @@ import { RunnerControls } from './RunnerControls';
 import { RunnerRecovery } from './RunnerRecovery';
 import { RunnerReferences } from './RunnerReferences';
 import { RunnerImagePreviews } from './RunnerImagePreviews';
-import { RunnerLocation, type RunnerInstallation } from './RunnerLocation';
+import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer, SingleEntrySettings } from './SingleEntryComposer';
 import { RunnerTabClose } from './RunnerTabClose';
 
-export function Workspace({ runner, session, theme, installation, onInstallation, sparePreparation, entry, onSelectRunner, onCloseRunner }: {
+export function Workspace({ runner, session, theme, installation, sparePreparation, entry, onSelectRunner, onCloseRunner }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
-  installation: RunnerInstallation | null; onInstallation: (value: RunnerInstallation | null) => void;
+  installation: RunnerInstallation | null;
   sparePreparation: HubText;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
   onCloseRunner: (id: string) => Promise<void>;
@@ -44,7 +44,7 @@ export function Workspace({ runner, session, theme, installation, onInstallation
           : runner?.status === 'running' ? t('workspace.running') : runner?.status === 'failed' ? t('workspace.failed')
             : t('workspace.exited', { code: runner?.exitCode ?? t('common.unknown') }) : t('common.notConnected')}</span></div>
       {runner?.detail && <p role="alert" className="runner-error">{tr(runner.detail)}</p>}
-      {singleEntry && <RunnerLocation installation={installation} onChange={onInstallation} preparation={sparePreparation} />}
+      {singleEntry && <p className="spare-status" role="status">{tr(sparePreparation)}</p>}
       {session ? <RunnerTerminal session={session} theme={theme} /> : <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">{singleEntry ? '↗' : '›_'}</div>
         <h2>{singleEntry ? t('workspace.begin') : t('workspace.connection')}</h2>

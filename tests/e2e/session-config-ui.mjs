@@ -23,8 +23,10 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();
     expect(await page.evaluate(() => window.__configFixtures.get('pty-1').requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
     await testInfo.attach('configuration-reviewed-plan-light', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.locator('.app-settings-trigger').click();
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
     await page.getByRole('button', { name: '블랙', exact: true }).click();
+    await page.keyboard.press('Escape');
     await expect(page.getByRole('textbox', { name: '설정 초안: Direct / Pure Direct 작업 경로', exact: true })).toHaveValue('C:/explicit root');
     await expect(page.getByRole('button', { name: '검토한 계획 적용', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '검토한 계획 적용', exact: true }).click();

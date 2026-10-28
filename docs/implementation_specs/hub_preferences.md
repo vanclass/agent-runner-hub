@@ -8,6 +8,8 @@ Hub-owned UI, status, validation, tooltips and accessibility labels use semantic
 
 ## Independent preference storage
 
+`AppSettings.tsx`, opened from the toolbar, presents language and theme alongside installation management. The same controls remain available during mandatory installation setup. Changes retain the current selected Runner and live session objects. Installation startup and admission belong to [the installation gate](runner_terminals.md#installation-startup-gate), independently of preference persistence.
+
 `preferences.ts` owns the versioned `agent-runner-hub.preferences.v1` local-storage document and the explicit language, theme and Single Entry selection projection. The application uses the existing desktop WebView/browser origin's local storage; it requires no Runner settings API, extension storage or cross-project runtime dependency.
 
 The store accepts the supported schema and values, projects only the known nonsecret selection fields, and writes one atomic storage replacement after a user changes a setting. It never derives defaults from a Runner observation without a user selection. Missing data uses defaults without creating a preference record during startup or draft editing. Malformed, unsupported and unreadable data remains untouched; this window uses defaults and disables preference writes. If another window changes the record, the older window also retains that original rather than replacing it. A failed write keeps the last saved record and displays a translated warning while current window choices continue working.

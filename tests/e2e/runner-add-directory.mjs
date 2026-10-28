@@ -1,6 +1,6 @@
 export function registerRunnerAddDirectory({ test, expect, transport, configure, create }) {
   const add = page => page.locator('.add-runner');
-  const root = page => page.locator('.directory-field').filter({ has: page.locator('input[aria-label*="Root"]') });
+  const root = page => page.locator('.context-settings .directory-field, .config-fields .directory-field');
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   async function ready(page) {
     await transport(page, undefined, { auto: true, work: true });
@@ -79,11 +79,12 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
       await expect(add(page)).toBeVisible(); await expect(add(page)).toBeDisabled();
       await page.getByLabel('AgentRunner location', { exact: true }).fill('/fixture/install');
-      await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
+      await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
       await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
       await page.getByRole('button', { name: 'Load authenticated Runner options', exact: true }).click();
       await page.getByLabel('Single Entry Run Mode', { exact: true }).selectOption('direct-run');
       await picker(page);
+      await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.getByRole('button', { name: language === 'en' ? (theme === 'light' ? 'Light' : 'Black') : (theme === 'light' ? '라이트' : '블랙'), exact: true }).click();
       await expect(add(page)).toHaveAccessibleName(language === 'en' ? 'New Runner' : '새 Runner');
@@ -97,16 +98,16 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       expect(shape.height).toBeGreaterThanOrEqual(44); expect(shape.size).toBeGreaterThanOrEqual(28);
       expect(shape.dx).toBeLessThan(1); expect(shape.dy).toBeLessThan(1);
       expect(shape.background).toBe(theme === 'light' ? 'rgb(214, 239, 223)' : 'rgb(25, 59, 41)');
-      const fields = page.locator('.directory-field');
-      await expect(fields).toHaveCount(2);
+      const fields = page.locator('dialog .directory-field');
+      await expect(fields).toHaveCount(1);
       await fields.first().locator('button').click();
       await expect(fields.first().locator('input')).toHaveValue('/fixture/chosen folder');
-      await fields.nth(1).locator('button').click();
-      await expect(fields.nth(1).locator('input')).toHaveValue('/fixture/chosen folder');
+      await page.keyboard.press('Escape');
+      await root(page).locator('button').click();
+      await expect(root(page).locator('input')).toHaveValue('/fixture/chosen folder');
       expect(await page.evaluate(() => window.__directoryPicker.resolves)).toBe(0);
-      await fields.nth(1).locator('input').fill('/fixture/install');
-      await fields.nth(1).locator('button').click();
-      await page.locator('.runner-location > button').click();
+      await root(page).locator('input').fill('/fixture/install');
+      await root(page).locator('button').click();
       await expect(add(page)).toBeEnabled();
       await page.getByRole('navigation').locator('.single-entry').focus();
       await page.keyboard.press('End'); await expect(add(page)).toBeFocused();
@@ -124,6 +125,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
   }
   test('add directory: installation typing cancellation errors and delayed unmounted picker preserve paths', async ({ page }) => {
     await ready(page); await picker(page);
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     const field = page.locator('.runner-location .directory-field'), input = field.locator('input');
     await input.fill('/manual paste');
     await page.evaluate(() => { window.__directoryPicker.mode = 'cancel'; }); await field.locator('button').click();
@@ -135,9 +137,9 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await page.evaluate(() => window.__directoryPicker.finish('/stale')); await expect(input).toHaveValue('/newer draft');
     await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
     await expect(add(page)).toBeEnabled();
-    await delayed(page, field); await add(page).click();
+    await delayed(page, field); await page.keyboard.press('Escape');
     await page.evaluate(() => window.__directoryPicker.finish('/wrong tab'));
-    await home(page);
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await expect(page.locator('.runner-location input')).toHaveValue('/fixture/install');
     expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('/wrong tab');
   });

@@ -1,4 +1,12 @@
 {
+  "setup": {
+    "title": "Connect your AgentRunner",
+    "description": "Choose your installation to get started. We’ll verify Runner and its managed Python before opening your workspace.",
+    "start": "Verify and Start",
+    "settings": "App settings",
+    "close": "Close settings",
+    "changeHelp": "Verify a location for new Runners. Open tabs keep their own installation and work context."
+  },
   "directory": {
     "browse": "Browse…",
     "browseFor": "Browse for {{field}}",
@@ -257,7 +265,7 @@
     "language": "Language"
   },
   "location": {
-    "nativeRequired": "Open the native desktop Hub to connect to local Runner processes.",
+    "nativeRequired": "Native browsing and verification require the Tauri desktop Hub. Select Tauri with node .runner/web-app-launch/target.mjs tauri, then open run.cmd on Windows. You can still type or paste a path here.",
     "installation": "AgentRunner installation",
     "label": "AgentRunner location",
     "placeholder": "Local installation path",

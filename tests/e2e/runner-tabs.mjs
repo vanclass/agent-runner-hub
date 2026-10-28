@@ -17,7 +17,9 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
   ]) {
     test(`runner tabs background ${outcome} unread and exact status stop ${language}`, async ({ page }, info) => {
       await ready(page); await assign(page); await create(page);
+      await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await page.keyboard.press('Escape');
       await page.evaluate(outcome => { window.__nativeFixture.sessions.get('pty-1').feature.mode = outcome; }, outcome);
       const own = row(page, 'Runner 1'), neighbor = row(page, 'Runner 2');
       await expect(own.locator(`.status-dot.${state}`)).toHaveAttribute('aria-label', label[language === 'en' ? 0 : 1]);
@@ -28,7 +30,9 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await page.waitForTimeout(1700);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length)).toBe(before);
       await info.attach(`tab-${outcome}-${language}`, { body: await page.screenshot({ path: info.outputPath('tab-status.png') }), contentType: 'image/png' });
+      await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: language === 'en' ? 'Language' : '언어', exact: true }).selectOption(language === 'en' ? 'ko' : 'en');
+      await page.keyboard.press('Escape');
       await expect(own.locator('.unread-completion')).toBeVisible();
       await neighbor.locator('.nav-row').dblclick();
       await page.locator('.rename-row input').fill('Neighbor');
@@ -73,7 +77,9 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
       await own.locator('.nav-row').click();
+      await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await page.keyboard.press('Escape');
       await page.getByRole('button', { name: language === 'en' ? 'Close Tab' : '탭 닫기', exact: true }).click();
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();

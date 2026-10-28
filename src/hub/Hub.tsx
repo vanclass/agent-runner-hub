@@ -4,8 +4,7 @@ import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
 import { HubPreferences } from './preferences';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
-import { LanguagePicker } from './LanguagePicker';
-import { ThemePicker } from './ThemePicker';
+import { AppSettings } from './AppSettings';
 import type { RunnerView } from './model';
 import './hub.css';
 
@@ -23,6 +22,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const runners = [...fixtures, ...liveRunners];
   const spare = sessions.spareSnapshot;
   const installation = spare.installation;
+  const [setupRequired, setSetupRequired] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const launchPending = useRef(false);
   const [launchError, setLaunchError] = useState<HubText>('');
@@ -59,8 +60,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       <div className="brand"><span className="brand-mark" aria-hidden="true">A</span><strong>AgentRunnerHub</strong></div>
       <span className="toolbar-location">{t('hub.workspace')} <span aria-hidden="true">/</span> {selected ? 'Runner' : t('common.singleEntry')}</span>
       <div className="hub-preferences">
-        <LanguagePicker onChange={language => { preferences.update({ language }); initializeHubLanguage(language); }} />
-        <ThemePicker theme={theme} onChange={value => { preferences.update({ theme: value }); setTheme(value); }} />
+        <button type="button" className="app-settings-trigger" aria-haspopup="dialog"
+          onClick={() => setSettingsOpen(true)}>{t('setup.settings')}</button>
       </div>
     </header>
     {preferences.issue && <p role="alert" className="runner-error preferences-error">{tr(preferences.issue)}</p>}
@@ -71,9 +72,16 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         onAdd={() => void createRunner()} addDisabled={!installation || launching} adding={launching}
         onMiddleClose={id => void closeRunner(id, 'middle')} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
-        theme={theme} installation={installation} onInstallation={value => sessions.setInstallation(value)}
+        theme={theme} installation={installation}
         sparePreparation={spare.detail}
         entry={sessions.entry} onSelectRunner={setSelectedId} onCloseRunner={id => closeRunner(id, 'explicit')} />
     </div>
+    {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
+      onLanguage={language => { preferences.update({ language }); initializeHubLanguage(language); }}
+      onTheme={value => { preferences.update({ theme: value }); setTheme(value); }}
+      onVerified={value => {
+        sessions.setInstallation(value);
+        if (setupRequired) { setSetupRequired(false); setSelectedId(null); }
+      }} onClose={() => setSettingsOpen(false)} />}
   </div>;
 }

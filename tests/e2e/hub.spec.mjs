@@ -51,7 +51,9 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
   await expect(longRow.locator('.runner-name')).toHaveText('Saved on blur');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
   await longRow.locator('.nav-row').click();
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('button', { name: 'Black', exact: true }).click();
+  await page.keyboard.press('Escape');
   await expect(longRow.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
   await testInfo.attach('selected-black', { body: await page.screenshot(), contentType: 'image/png' });
 });
@@ -68,7 +70,7 @@ test('keyboard navigation and scrolling keep Single Entry accessible', async ({ 
   await expect(first).toHaveAttribute('aria-current', 'page');
   const entryTop = (await entry.boundingBox()).y;
   await page.keyboard.press('End');
-  await expect(page.locator('.runner-row').last().locator('.nav-row')).toBeFocused();
+  await expect(page.locator('.add-runner')).toBeFocused();
   await expect(entry).toBeInViewport();
   expect((await entry.boundingBox()).y).toBe(entryTop);
   await page.keyboard.press('Home');
@@ -83,6 +85,7 @@ for (const theme of ['Light', 'Black']) {
     await page.setViewportSize({ width: 1000, height: 700 });
     await page.goto('/tests/fixtures/hub.html');
     await page.locator('[data-runner-id="third"] .nav-row').click();
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('button', { name: theme, exact: true }).click();
     const surfaces = ['.toolbar', '.sidebar', '.workspace', '.composer', 'select', '.theme-picker', '.runner-row.active', '.send-button'];
     const colors = await page.evaluate(selectors => selectors.map(selector =>
@@ -93,11 +96,12 @@ for (const theme of ['Light', 'Black']) {
     expect(colors).toEqual(expected);
     await expect(page.locator('.hub')).toHaveCSS('background-color', theme === 'Light' ? 'rgb(255, 255, 255)' : 'rgb(17, 18, 20)');
     const active = page.locator('.runner-row.active .nav-row');
+    await expect(page.getByRole('button', { name: theme, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Tab');
     await active.focus();
     await expect(active).toHaveCSS('outline-style', 'solid');
     await expect(active).toHaveCSS('outline-width', '2px');
-    await expect(page.getByRole('button', { name: theme, exact: true })).toHaveAttribute('aria-pressed', 'true');
     await testInfo.attach(`${theme}-1000x700`, { body: await page.screenshot(), contentType: 'image/png' });
     for (const size of [{ width: 760, height: 560 }, { width: 626, height: 450 }, { width: 1400, height: 900 }]) {
       await page.setViewportSize(size);
