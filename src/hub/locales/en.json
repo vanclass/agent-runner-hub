@@ -328,9 +328,7 @@
   "workspace": {
     "singleLabel": "Single Entry workspace",
     "runnerLabel": "Runner workspace",
-    "startingPoint": "STARTING POINT",
     "runnerEyebrow": "RUNNER WORKSPACE",
-    "defaults": "Assignment defaults",
     "runnerOnly": "This Runner only",
     "terminate": "Terminate Runner",
     "outputLabel": "Output viewport",
@@ -338,11 +336,8 @@
     "starting": "Starting Runner process…",
     "running": "Process running",
     "failed": "Launch failed",
-    "begin": "A place to begin.",
     "connection": "Ready for a connection.",
-    "beginDescription": "Choose settings and assign your next instruction. Full output stays in the allocated Runner tab.",
     "noStream": "This Runner has no connected output stream.",
-    "assignHint": "Assign below, or use New Runner for a manual session.",
     "previewDisconnected": "No connected process for this preview row.",
     "attachmentsUnavailable": "No connected process. Attachments are unavailable.",
     "exited": "Process exited ({{code}})"
@@ -399,8 +394,6 @@
     "navigation": "Workspace navigation",
     "workspace": "WORKSPACE",
     "runners": "RUNNERS",
-    "empty": "No Runners yet.",
-    "emptyHint": "Your Runners will appear here.",
     "rowHint": "{{name}} · {{status}}. Double-click or press F2 to rename.",
     "renameNamed": "Rename {{name}}",
     "processes": "{{count}} processes running"
@@ -411,7 +404,6 @@
     "defaultsHelp": "Requested settings are saved locally, then resolved and applied through the allocated Runner’s authenticated API before submission. Confirmations stay in its terminal.",
     "instructions": "Single Entry instructions",
     "placeholder": "Assign an instruction to an eligible Runner…",
-    "assignmentHint": "Allocate, verify settings and submit once. Full output stays in the Runner tab.",
     "assigning": "Assigning…",
     "assign": "Assign instruction",
     "openAssigned": "Open assigned Runner",

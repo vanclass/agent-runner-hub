@@ -49,7 +49,7 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
   await input.fill('Saved on blur');
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await expect(longRow.locator('.runner-name')).toHaveText('Saved on blur');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
+  await expect(page.locator('.workspace-header')).toHaveCount(0);
   await longRow.locator('.nav-row').click();
   await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('button', { name: 'Black', exact: true }).click();

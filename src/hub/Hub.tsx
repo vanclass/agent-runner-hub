@@ -74,7 +74,6 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         onMiddleClose={id => void closeRunner(id, 'middle')} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
         theme={theme} installation={installation}
-        sparePreparation={spare.detail}
         entry={sessions.entry} onSelectRunner={setSelectedId} onCloseRunner={id => closeRunner(id, 'explicit')} />
       <TaskPanel entry={sessions.entry} control={sessions.get(selectedId ?? undefined)?.control}
         scope={selectedId ?? 'single-entry'} />

@@ -77,7 +77,7 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
     <div className="composer">
       <textarea aria-label={t('entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
-      <div className="composer-actions"><span className="composer-note">{t('entry.assignmentHint')}</span>
+      <div className="composer-actions">
         <button className="send-button" type="button" disabled={!entry.editable || !entry.draft.trim()}
           onClick={() => void entry.submit(location, onSelectRunner)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>
       </div>

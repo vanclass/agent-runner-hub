@@ -4,7 +4,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options });
     await configure(page);
-    await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+    await expect(page.locator('.spare-status')).toHaveCount(0);
   }
   test('work Single Entry defaults to a promoted spare focuses immediately and submits exactly once', async ({ page }, info) => {
     await ready(page);
@@ -183,7 +183,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.evaluate(mode => localStorage.setItem('agent-runner-hub.preferences.v1', JSON.stringify({ version: 1, language: 'en', theme: 'light',
         singleEntry: { runMode: mode, ...(['pure-direct-run', 'direct-run'].includes(mode) ? { root: 'C:/explicit-root' } : {}) } })), mode);
       await page.reload();
-      await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+      await expect(page.locator('.spare-status')).toHaveCount(0);
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('mode once'); await assign(page);
       await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe(mode);
@@ -205,7 +205,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       }
       if (fault === 'legacy-account') {
         await page.evaluate(() => localStorage.setItem('agent-runner-hub.preferences.v1', JSON.stringify({ version: 1, language: 'en', theme: 'light', singleEntry: { account: 'first' } })));
-        await page.reload(); await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+        await page.reload(); await expect(page.locator('.spare-status')).toHaveCount(0);
       }
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('retain this draft'); await assign(page);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 1');

@@ -74,7 +74,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       const own = row(page, 'Runner 1');
       await expect(own.locator('.status-dot.running')).toBeVisible();
       await middle(own);
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
+      await expect(page.locator('.workspace-header')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
       await own.locator('.nav-row').click();
       await page.locator('.app-settings-trigger').click();
@@ -92,7 +92,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await page.getByRole('button', { name: language === 'en' ? 'Close Tab' : '탭 닫기', exact: true }).click();
       await dialog.getByRole('button', { name: language === 'en' ? 'Terminate and close tab' : '종료하고 탭 닫기' }).click();
       await expect(own).toHaveCount(0);
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
+      await expect(page.locator('.workspace-header')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
       expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs)).toEqual([]);
       const before = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length);
@@ -111,7 +111,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 3');
     await middle(row(page, 'Runner 3'));
     await expect(page.locator('.runner-row')).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
+    await expect(page.locator('.workspace-header')).toHaveCount(0);
     expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1', 'pty-2', 'pty-3']);
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-4').control.state)).toBe('ready');
   });

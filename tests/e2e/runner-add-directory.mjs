@@ -38,11 +38,11 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(2);
     expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
     await home(page);
-    await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+    await expect(page.locator('.spare-status')).toHaveCount(0);
     await create(page);
     await expect(page.locator('.xterm-rows')).toContainText('pty-2: 안녕 🌍');
     await home(page);
-    await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+    await expect(page.locator('.spare-status')).toHaveCount(0);
     await page.getByLabel('Single Entry instructions', { exact: true }).fill('same append order');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
@@ -63,7 +63,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       f.sessions.get('pty-1').control.state = 'disconnected';
       f.failNext();
     });
-    await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed.includes('pty-1'))).toBe(true);
     await add(page).evaluate(button => { button.click(); button.click(); });
     await expect(page.locator('.runner-row')).toHaveCount(1);
     await expect(page.getByRole('alert').filter({ hasText: 'fixture process launch failed' })).toBeVisible();
@@ -80,7 +80,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await expect(add(page)).toBeVisible(); await expect(add(page)).toBeDisabled();
       await page.getByLabel('AgentRunner location', { exact: true }).fill('/fixture/install');
       await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
-      await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+      await expect(page.locator('.spare-status')).toHaveCount(0);
       await page.getByRole('button', { name: 'Load authenticated Runner options', exact: true }).click();
       await page.getByLabel('Single Entry Run Mode', { exact: true }).selectOption('direct-run');
       await picker(page);

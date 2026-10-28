@@ -16,6 +16,7 @@ import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
   readonly terminal = new Terminal({ cursorBlink: true, scrollback: 10000 });
+  searchQuery = '';
   readonly fit = new FitAddon();
   readonly search = new SearchAddon();
   readonly input: RunnerInput;

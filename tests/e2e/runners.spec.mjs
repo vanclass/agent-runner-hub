@@ -9,9 +9,11 @@ import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
 import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
 import { registerInstallationSetup } from './installation-setup.mjs';
 import { registerTaskPanel } from './task-panel.mjs';
+import { registerLogViewport } from './log-viewport.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
+registerLogViewport({ test, expect, transport, configure, create });
 
 async function transport(page, freshTarget, referenceOptions) {
   await page.addInitScript(({ freshTarget, referenceOptions }) => {
@@ -483,7 +485,7 @@ test('invalid saved installation blocks restart prewarming until the user verifi
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
   await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.installation'))).toBe('/fixture/install');
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
 });
@@ -547,7 +549,7 @@ async function configure(page) {
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
   await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
   await expect(page.getByRole('button', { name: 'New Runner', exact: true })).toBeEnabled();
-  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
 }
 
 function generatedFixture() {
@@ -601,7 +603,7 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   await page.reload();
   await expect(page.getByText('Restored defaults are requests only.', { exact: false })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
-  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('confirmed after restart');
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
@@ -1782,7 +1784,7 @@ test('configuration failure, launch failure and unexpected exit stay local to th
   await expect(page.locator('.runner-row')).toHaveCount(0);
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
   await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
   await create(page);
   const firstId = await page.locator('.runner-row').first().getAttribute('data-runner-id');
   await page.evaluate(() => {

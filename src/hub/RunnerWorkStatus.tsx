@@ -13,7 +13,7 @@ export function RunnerWorkStatus({ work }: { work: RunnerWork }) {
   const attempt = work.current;
   if (!attempt) return null;
   const current = attempt.work;
-  return <section aria-label={t('work.status')}>
+  return <section className="runner-work-status" aria-label={t('work.status')}>
     <p role="status">{attempt.uncertain ? t('work.unknown') : current ? t(states[current.state])
       : work.busy ? t(work.progress?.state === 'queued' ? 'work.queued' : 'config.sending')
         : attempt.notSent ? t('work.notSent') : t('work.unknown')}</p>

@@ -328,9 +328,7 @@
   "workspace": {
     "singleLabel": "Single Entry 작업 공간",
     "runnerLabel": "Runner 작업 공간",
-    "startingPoint": "시작 지점",
     "runnerEyebrow": "RUNNER 작업 공간",
-    "defaults": "배정 기본 설정",
     "runnerOnly": "이 Runner에만 적용",
     "terminate": "Runner 종료",
     "outputLabel": "출력 영역",
@@ -338,11 +336,8 @@
     "starting": "Runner 프로세스를 시작하는 중…",
     "running": "프로세스 실행 중",
     "failed": "시작 실패",
-    "begin": "여기서 시작하세요.",
     "connection": "연결할 준비가 되었습니다.",
-    "beginDescription": "설정을 선택하고 다음 지시문을 배정하세요. 전체 출력은 할당된 Runner 탭에 표시됩니다.",
     "noStream": "이 Runner에 연결된 출력 스트림이 없습니다.",
-    "assignHint": "아래에서 배정하거나 새 Runner를 눌러 직접 세션을 시작하세요.",
     "previewDisconnected": "이 미리 보기 항목에는 연결된 프로세스가 없습니다.",
     "attachmentsUnavailable": "연결된 프로세스가 없습니다. 첨부를 사용할 수 없습니다.",
     "exited": "프로세스 종료 ({{code}})"
@@ -399,8 +394,6 @@
     "navigation": "작업 공간 탐색",
     "workspace": "작업 공간",
     "runners": "RUNNER",
-    "empty": "아직 Runner가 없습니다.",
-    "emptyHint": "Runner가 여기에 표시됩니다.",
     "rowHint": "{{name}} · {{status}}. 두 번 클릭하거나 F2를 눌러 이름을 변경하세요.",
     "renameNamed": "{{name}} 이름 변경",
     "processes": "프로세스 {{count}}개 실행 중"
@@ -411,7 +404,6 @@
     "defaultsHelp": "요청한 설정을 로컬에 저장한 뒤 할당된 Runner의 인증 API로 검증하고 적용한 후 작업을 제출합니다. 확인 절차는 해당 터미널에서 진행합니다.",
     "instructions": "Single Entry 지시문",
     "placeholder": "배정 가능한 Runner에 지시문 배정…",
-    "assignmentHint": "할당 및 설정 검증 후 한 번 제출합니다. 전체 출력은 Runner 탭에 유지됩니다.",
     "assigning": "배정 중…",
     "assign": "지시문 배정",
     "openAssigned": "배정된 Runner 열기",

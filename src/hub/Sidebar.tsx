@@ -101,7 +101,6 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose
           <span aria-hidden="true">+</span>
         </button></li>
       </ul>
-      {runners.length === 0 && <p className="sidebar-empty">{t('sidebar.empty')}<br />{t('sidebar.emptyHint')}</p>}
     </nav>
     <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />
       {t('sidebar.processes', { count: runners.filter(runner => runner.status === 'running').length })}</div>
