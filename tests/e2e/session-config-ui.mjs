@@ -21,7 +21,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('textbox', { name: 'Draft Direct / Pure Direct Root', exact: true }).fill('C:/explicit root');
     await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();
-    expect(await page.evaluate(() => window.__configFixtures.get('pty-2').requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
+    expect(await page.evaluate(() => window.__configFixtures.get('pty-1').requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
     await testInfo.attach('configuration-reviewed-plan-light', { body: await page.screenshot(), contentType: 'image/png' });
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
     await page.getByRole('button', { name: '블랙', exact: true }).click();
@@ -49,7 +49,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toBeEnabled();
     await page.getByRole('combobox', { name: 'Draft Run Mode', exact: true }).selectOption('issue-run');
-    await page.evaluate(() => { window.__configFixtures.get('pty-2').hold = true; });
+    await page.evaluate(() => { window.__configFixtures.get('pty-1').hold = true; });
     await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
     await expect(page.locator('.config-progress')).toContainText('Queued by Runner');
     await secondRow.locator('.nav-row').click();
@@ -57,21 +57,21 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toBeEnabled();
     await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toHaveValue('task-run');
-    await page.evaluate(() => { const fixture = window.__configFixtures.get('pty-2'); fixture.hold = false; fixture.complete(); });
+    await page.evaluate(() => { const fixture = window.__configFixtures.get('pty-1'); fixture.hold = false; fixture.complete(); });
     await firstRow.locator('.nav-row').click();
     await page.getByText('Runner configuration', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();
-    await page.evaluate(() => { window.__configFixtures.get('pty-2').holdOperation = 'session_config.apply'; });
+    await page.evaluate(() => { window.__configFixtures.get('pty-1').holdOperation = 'session_config.apply'; });
     await page.getByRole('button', { name: 'Apply reviewed plan', exact: true }).click();
-    await expect.poll(() => page.evaluate(() => window.__configFixtures.get('pty-2').requests.some(r => r.operation.endsWith('.apply')))).toBe(true);
-    await page.evaluate(() => { const native = window.__nativeFixture; native.exit('pty-2', 0, native.sessions.get('pty-2').control); });
+    await expect.poll(() => page.evaluate(() => window.__configFixtures.get('pty-1').requests.some(r => r.operation.endsWith('.apply')))).toBe(true);
+    await page.evaluate(() => { const native = window.__nativeFixture; native.exit('pty-1', 0, native.sessions.get('pty-1').control); });
     await expect(page.locator('.config-receipt')).toContainText('Completion is unconfirmed.');
-    await page.evaluate(() => window.__configFixtures.get('pty-2').complete());
+    await page.evaluate(() => window.__configFixtures.get('pty-1').complete());
     await expect(page.locator('.config-receipt')).toContainText('Completion is unconfirmed.');
     await secondRow.locator('.nav-row').click();
     await page.getByText('Runner configuration', { exact: true }).click();
     await expect(page.locator('.config-current')).toContainText('task-run');
-    expect(await page.evaluate(() => window.__configFixtures.get('pty-3').requests.some(r => r.operation.endsWith('.apply')))).toBe(false);
+    expect(await page.evaluate(() => window.__configFixtures.get('pty-2').requests.some(r => r.operation.endsWith('.apply')))).toBe(false);
   });
 
   test('session config UI retains a partial commit when the final inspection fails', async ({ page }, testInfo) => {
@@ -83,7 +83,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('combobox', { name: 'Draft Project / Target', exact: true }).selectOption('project:Exact');
     await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();
-    await page.evaluate(() => { const fixture = window.__configFixtures.get('pty-2'); fixture.applyOutcome = 'partial'; fixture.postApplyFailure = true; });
+    await page.evaluate(() => { const fixture = window.__configFixtures.get('pty-1'); fixture.applyOutcome = 'partial'; fixture.postApplyFailure = true; });
     await page.getByRole('button', { name: 'Apply reviewed plan', exact: true }).click();
     await expect(page.locator('.config-receipt')).toContainText('Some settings committed.');
     await expect(page.locator('.config-receipt')).toContainText('Owner-confirmed commit');

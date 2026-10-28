@@ -22,6 +22,8 @@
 
 - Single Entry allocation/configuration/work integration and original-request start evidence: [Runner terminal ownership](runner_terminals.md#single-entry-assignment), with configuration receipts under [Runner session configuration](runner_session_config.md#preferences-and-single-entry-boundary). API/terminal work discovery, unread indicators and owned tab closing: [Tab status and closing](runner_terminals.md#tab-status-and-closing). Source owners `../../src/hub/runnerWork.ts`, `../../src/hub/RunnerWorkStatus.tsx`, `../../src/hub/RunnerTabClose.tsx` and `../../src-tauri/src/desktop_terminal/work.rs`; focused evidence `../../tests/e2e/work.spec.mjs`, `../../tests/e2e/work-background.spec.mjs`, `../../tests/e2e/work-discovery.spec.mjs`, `../../tests/e2e/runner-work-discovery.mjs`, `../../tests/e2e/single-entry-work.mjs`, `../../tests/e2e/runner-tabs.mjs`, `../../tests/e2e/runner-tab-races.mjs`, `../../src-tauri/src/desktop_terminal/work_tests.rs` and `../../src-tauri/src/desktop_terminal/work_acceptance.rs`.
 
+- Sidebar add action and manual/Single Entry allocation order: [Hidden spare and promotion](runner_terminals.md#hidden-spare-and-promotion). Native browsing for installation and Direct Root drafts: [Directory input integration](runner_terminals.md#single-entry-assignment), with configuration draft behavior under [Runner session configuration](runner_session_config.md#draft-plan-and-apply). Source owners `../../src/hub/DirectoryInput.tsx`, `../../src/hub/RunnerLocation.tsx`, `../../src/hub/RunnerConfigPanel.tsx` and the shell/allocation owners above; focused checks `../../tests/e2e/runner-add-directory.mjs`, registered by `../../tests/e2e/runners.spec.mjs`.
+
 ## 신규 domain 등록 조건
 
 - 반복 작업에서 책임 경계나 현재 동작을 다시 추론해야 하는 안정된 기능 영역이어야 한다.

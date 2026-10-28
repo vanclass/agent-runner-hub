@@ -1,4 +1,10 @@
 {
+  "directory": {
+    "browse": "Browse…",
+    "browseFor": "Browse for {{field}}",
+    "picking": "Choosing folder…",
+    "failed": "Could not choose a folder: {{reason}}"
+  },
   "tabs": {
     "close": "Close Tab",
     "confirmTitle": "Close {{name}}?",
@@ -377,6 +383,8 @@
     "runMode": "Run Mode"
   },
   "hub": {
+    "launching": "Creating Runner…",
+    "verifyFirst": "Verify the Runner installation to add a Runner",
     "newRunner": "New Runner",
     "workspace": "Workspace"
   },

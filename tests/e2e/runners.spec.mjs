@@ -6,6 +6,7 @@ import { registerSingleEntryWork } from './single-entry-work.mjs';
 import { registerRunnerTabs } from './runner-tabs.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
+import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -105,7 +106,7 @@ async function transport(page, freshTarget, referenceOptions) {
             sessions.get(id).control.generatedImagesSupported = true;
             sessions.get(id).images = referenceOptions.generatedImages.map((image, index) => ({ ...image,
               imageId: (count * 10 + index).toString(16).padStart(32, '0') }));
-            if (count === 2 && referenceOptions.pauseFirstImage) {
+            if (count === 1 && referenceOptions.pauseFirstImage) {
               const session = sessions.get(id);
               session.imageReadGate = new Promise(resolve => { session.releaseImage = resolve; });
             }
@@ -223,6 +224,7 @@ registerSingleEntryWork({ test, expect, transport, configure, create });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create });
 registerRunnerDiscovery({ test, expect, transport, configure, create, records });
+registerRunnerAddDirectory({ test, expect, transport, configure, create });
 
 test('hidden spare parses output and promotes the original PTY without a workspace record', async ({ page }) => {
   await transport(page);
@@ -587,7 +589,7 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '블랙', exact: true }).click();
   await expect(page.locator('.xterm-scrollable-element')).toHaveCSS('background-color', 'rgb(17, 18, 20)');
-  await expect(page.locator('.xterm-rows')).toContainText('pty-2: 안녕 🌍');
+  await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
@@ -640,7 +642,7 @@ test('generated image reads retain their original owner across asynchronous tab 
   const firstId = await page.getByRole('combobox', { name: 'Select generated image' }).inputValue();
   await create(page); const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
   await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').releaseImage());
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').releaseImage());
   await expect(image).toHaveAttribute('src', secondUrl);
   expect(await page.getByRole('combobox', { name: 'Select generated image' }).inputValue()).not.toBe(firstId);
   await page.locator('.runner-row').first().locator('.nav-row').click();
@@ -657,11 +659,11 @@ test('generated image resources revoke on selection and owned exit without affec
   await page.getByRole('combobox', { name: 'Select generated image' }).selectOption({ index: 1 }); await expect(image).toBeVisible();
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), original)).toBe(true);
   const first = await image.getAttribute('src'); await create(page); await expect(image).toBeVisible();
-  const second = await image.getAttribute('src'); await page.evaluate(() => window.__nativeFixture.exit('pty-2'));
+  const second = await image.getAttribute('src'); await page.evaluate(() => window.__nativeFixture.exit('pty-1'));
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), first)).toBe(true);
   expect(await page.evaluate(url => window.__revokedImages.includes(url), second)).toBe(false);
   await expect(image).toHaveAttribute('src', second);
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-3').control.generatedImagesSupported = false; });
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').control.generatedImagesSupported = false; });
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unsupported');
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), second)).toBe(true);
 });
@@ -669,20 +671,20 @@ test('generated image resources revoke on selection and owned exit without affec
 test('generated image states reject unavailable sources and discard late reads after Runner exit', async ({ page }) => {
   await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
-  await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-2');
+  await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-1');
     a.imageFailure = { state: 'unavailable', detail: 'Fixture image expired' }; });
   await page.getByRole('button', { name: 'Refresh images' }).click();
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
   await expect(page.locator('.generated-image-preview')).toHaveCount(0);
-  await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-2'); a.imageFailure = undefined; a.images = []; });
+  await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-1'); a.imageFailure = undefined; a.images = []; });
   await page.getByRole('button', { name: 'Refresh images' }).click();
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'empty');
   await create(page); await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
-  await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-3');
+  await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-2');
     a.imageReadGate = new Promise(resolve => { a.releaseImage = resolve; }); });
   await page.getByRole('button', { name: 'Refresh images' }).click();
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'loading');
-  await page.evaluate(() => { window.__nativeFixture.exit('pty-3'); window.__nativeFixture.sessions.get('pty-3').releaseImage(); });
+  await page.evaluate(() => { window.__nativeFixture.exit('pty-2'); window.__nativeFixture.sessions.get('pty-2').releaseImage(); });
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
   await expect(page.locator('.generated-image-preview')).toHaveCount(0);
   const stored = await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'));
@@ -715,11 +717,11 @@ test('reference extension keeps duplicate picker identities and reconciles compl
     await page.getByRole('button', { name: 'Choose files', exact: true }).click();
     await expect(page.locator('.reference-candidate').filter({ hasText: 'Registered · completed Runner receipt' })).toHaveCount(n + 1);
   }
-  const ids = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.map(item => item.reference_id));
+  const ids = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.reference_id));
   expect(new Set(ids).size).toBe(3);
   await page.getByRole('button', { name: 'Reconcile pending references' }).click();
   await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids);
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.shift());
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.shift());
   await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
   await page.getByRole('button', { name: 'Reconcile pending references' }).click();
   await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(1));
@@ -751,10 +753,10 @@ test('clipboard capture stages independent previews, cancels B, and sends only A
     const f = window.__nativeFixture;
     const registrations = f.referenceRequests.filter(item => item.request.operation === 'references.register');
     const instruction = f.deliveredSets.filter(item => new TextDecoder().decode(new Uint8Array(item.bytes)).endsWith('\u001b[13;0;13;1;0;1_'));
-    return { registrations: registrations.map(item => [item.id, item.request.path]), ids: f.sessions.get('pty-2').items.map(item => item.reference_id),
+    return { registrations: registrations.map(item => [item.id, item.request.path]), ids: f.sessions.get('pty-1').items.map(item => item.reference_id),
       instruction, persisted: localStorage.getItem('agent-runner-hub.workspace.v1') ?? '', closes: f.imageCloses, reads: f.clipboardReads.length };
   });
-  expect(outcome.registrations).toEqual([1, 3, 4, 5].map(n => ['pty-2', `/fixture/hub-owned/pty-2/clipboard-${n}.png`]));
+  expect(outcome.registrations).toEqual([1, 3, 4, 5].map(n => ['pty-1', `/fixture/hub-owned/pty-1/clipboard-${n}.png`]));
   expect(outcome.ids).toHaveLength(4); expect(new Set(outcome.ids).size).toBe(4);
   expect(outcome.instruction).toHaveLength(1); expect(outcome.instruction[0].ids).toEqual(outcome.ids);
   expect(outcome.persisted).not.toContain('clipboard-'); expect(outcome.persisted).not.toContain('blob:');
@@ -774,7 +776,7 @@ test('clipboard capture retains its originating session across tab switches and 
   await page.evaluate(() => window.__nativeFixture.resumeStage());
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.staged.map(item => item.id))).toEqual(['pty-2']);
+  expect(await page.evaluate(() => window.__nativeFixture.staged.map(item => item.id))).toEqual(['pty-1']);
   expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
   await page.evaluate(() => window.__nativeFixture.pauseStage());
   await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
@@ -816,9 +818,9 @@ test('clipboard stays unavailable without native staging or during foreground in
   await page.getByText('Files and images', { exact: true }).click();
   const capture = page.getByRole('button', { name: 'Clipboard image', exact: true });
   await expect(capture).toBeEnabled();
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').control.observation.attention.foreground_interaction_active = true; });
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true; });
   await expect(capture).toBeDisabled();
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').control.clipboardStaging = false; });
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.clipboardStaging = false; });
   await expect(page.getByRole('button', { name: 'Clipboard image unavailable', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.clipboardReads.length)).toBe(0);
 });
@@ -865,11 +867,11 @@ test('cancelling a queued registration settles its exact attempt then removes by
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
   await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel path 1', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 101));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove').length)).toBe(1);
   const removal = await page.evaluate(() => {
     const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.remove');
-    return { request, committed: f.sessions.get('pty-2').items[0].reference_id };
+    return { request, committed: f.sessions.get('pty-1').items[0].reference_id };
   });
   expect(removal.request.request).toEqual({ operation: 'references.remove', reference_id: removal.committed });
   await page.evaluate(request => window.__nativeFixture.finishReference(request.id, request.requestId, 'outcome-unknown'), removal.request);
@@ -878,7 +880,7 @@ test('cancelling a queued registration settles its exact attempt then removes by
   await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-  await page.evaluate(id => { const session = window.__nativeFixture.sessions.get('pty-2');
+  await page.evaluate(id => { const session = window.__nativeFixture.sessions.get('pty-1');
     session.items = session.items.filter(item => item.reference_id !== id); }, removal.committed);
   await page.getByRole('button', { name: 'Reconcile pending references' }).click();
   await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
@@ -895,18 +897,18 @@ test('completed registration removal retains receipts and isolates independent R
   await create(page);
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
   await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
-  const other = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-3').items[0].reference_id);
+  const other = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items[0].reference_id);
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await page.getByRole('button', { name: 'Remove path 1', exact: true }).click();
   await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
   const result = await page.evaluate(() => {
     const f = window.__nativeFixture;
-    return { a: f.sessions.get('pty-2').items, b: f.sessions.get('pty-3').items,
+    return { a: f.sessions.get('pty-1').items, b: f.sessions.get('pty-2').items,
       removal: f.referenceRequests.filter(item => item.request.operation === 'references.remove'),
-      receipts: f.sessions.get('pty-2').control.references.results.map(item => item.state) };
+      receipts: f.sessions.get('pty-1').control.references.results.map(item => item.state) };
   });
   expect(result.a).toEqual([]); expect(result.b.map(item => item.reference_id)).toEqual([other]);
-  expect(result.removal).toHaveLength(1); expect(result.removal[0].id).toBe('pty-2');
+  expect(result.removal).toHaveLength(1); expect(result.removal[0].id).toBe('pty-1');
   expect(result.removal[0].request.reference_id).not.toBe(other);
   expect(result.receipts).toEqual(['registered', 'removed']);
 });
@@ -921,7 +923,7 @@ test('legacy removal requires /files and authoritative reconciliation before ord
   await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
   await page.getByRole('button', { name: 'Open /files in terminal' }).click();
-  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-2'); session.items = [];
+  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1'); session.items = [];
     session.control.results.forEach(result => result.state = 'accepted'); });
   await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
   await page.getByRole('button', { name: 'Reconcile pending references' }).click();
@@ -934,10 +936,10 @@ test('legacy removal requires /files and authoritative reconciliation before ord
 test('pending terminal cancellation and unknown completion remain distinct without automatic replay', async ({ page }) => {
   await transport(page, undefined, {}); await configure(page); await create(page);
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 101, 'pending-interaction'));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
   await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
   await page.getByRole('button', { name: 'Cancel path 1', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 101, 'outcome-unknown'));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
   await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
   await page.getByRole('button', { name: 'Clear registration history' }).click();
   await expect(page.locator('.reference-candidate')).toHaveCount(1);
@@ -975,7 +977,7 @@ test('preflight permits Runner-owned terminal cancellation and preserves the uns
 test('other pending references require review and remain present alongside the selected clipboard image', async ({ page }) => {
   await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
   await page.getByText('Files and images', { exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.push(...[1, 2, 3].map(n => ({
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push(...[1, 2, 3].map(n => ({
     reference_id: n.toString(16).padStart(32, 'e'), display_index: n, display_name: 'terminal-' + n + '.txt', kind: 'file', image_detail: null, media_kind: null }))));
   await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
   await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
@@ -988,14 +990,14 @@ test('other pending references require review and remain present alongside the s
   await page.getByRole('button', { name: 'Include other pending references', exact: true }).click();
   await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
   await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.map(item => item.display_name)))
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.display_name)))
     .toEqual(['terminal-1.txt', 'terminal-2.txt', 'terminal-3.txt', 'clipboard-1.png']);
   expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(0);
 });
 
 test('changing paginated inventory blocks without inventing a snapshot or sending an instruction', async ({ page }) => {
   await transport(page, undefined, { auto: true }); await configure(page); await create(page);
-  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-2');
+  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1');
     session.items = [1, 2, 3].map(n => ({ reference_id: n.toString(16).padStart(32, 'e'), display_index: n,
       display_name: 'terminal-' + n, kind: 'file', image_detail: null, media_kind: null })); session.changeInventoryAt = 2; });
   await page.getByLabel('Runner instructions', { exact: true }).fill('Do not send changing inventory');
@@ -1027,7 +1029,7 @@ test('clipboard previews revoke on owned session exit and late capture never cro
   await expect(page.getByText('Reading clipboard and staging PNG for this Runner…')).toBeVisible();
   await create(page);
   await page.getByText('Files and images', { exact: true }).click();
-  await page.evaluate(() => { window.__nativeFixture.exit('pty-2'); window.__nativeFixture.resumeStage(); });
+  await page.evaluate(() => { window.__nativeFixture.exit('pty-1'); window.__nativeFixture.resumeStage(); });
   await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
   await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
   const secondUrl = await page.getByAltText('Clipboard image 1 preview').getAttribute('src');
@@ -1061,17 +1063,17 @@ test('reference drop submissions keep individual receipts and their original Run
   const paths = ['C:\\참조 폴더\\input.txt', 'C:\\참조 폴더\\image.png'];
   await page.evaluate(paths => window.__nativeFixture.drop(paths), paths);
   await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 101, 'pending-interaction'));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
   await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
   await create(page);
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 101));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(2);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => [item.id, item.request.path]))).toEqual(paths.map(path => ['pty-2', path]));
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 102, 'rejected'));
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => [item.id, item.request.path]))).toEqual(paths.map(path => ['pty-1', path]));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 102, 'rejected'));
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await expect(page.getByText(/Registered · completed Runner receipt/)).toHaveCount(1);
   await expect(page.getByText(/Rejected · no registration confirmed/)).toHaveCount(1);
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-3').items)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
 });
 
@@ -1116,7 +1118,7 @@ for (const target of [
     const historical = { target: { binding_state: 'bound', owner: 'Project', project: 'Historical A' },
       runMode: 'issue-run', workflowKind: 'IssueRun' };
     await page.evaluate(context => {
-      const observation = window.__nativeFixture.sessions.get('pty-2').control.observation;
+      const observation = window.__nativeFixture.sessions.get('pty-1').control.observation;
       observation.target = context.target; observation.run_mode = context.runMode;
       observation.execution.workflow_kind = context.workflowKind;
     }, historical);
@@ -1211,7 +1213,7 @@ test('workspace retains the last atomic commit when storage rejects a write', as
   await page.locator('.runner-row .nav-row').click();
   await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).toHaveText('Project / pty-1');
   const before = await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'));
-  expect(JSON.parse(before).tabs[0].recoveryHint.target.project).toBe('pty-2');
+  expect(JSON.parse(before).tabs[0].recoveryHint.target.project).toBe('pty-1');
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
@@ -1227,7 +1229,7 @@ test('workspace retains the last atomic commit when storage rejects a write', as
   await page.reload();
   await expect(page.locator('.runner-row')).toHaveCount(1);
   await page.locator('.runner-row .nav-row').click();
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / pty-2');
+  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / pty-1');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0].name)).toBe('Runner 1');
 });
 
@@ -1294,10 +1296,10 @@ test('workspace drops an uncertain Single Entry submission on reopening', async 
 
 test('Single Entry creates when no eligible idle Runner exists', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').control.observation.execution.owned_execution_alive = true; });
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.execution.owned_execution_alive = true; });
   await page.waitForFunction(() => {
     const f = window.__nativeFixture;
-    return f.observed.get('pty-2') === JSON.stringify(f.sessions.get('pty-2').control);
+    return f.observed.get('pty-1') === JSON.stringify(f.sessions.get('pty-1').control);
   });
   await entry(page);
   await page.evaluate(() => window.__nativeFixture.readyNew());
@@ -1305,14 +1307,14 @@ test('Single Entry creates when no eligible idle Runner exists', async ({ page }
   await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
-  expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-1']);
+  expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-2']);
 });
 
 for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'foreground', 'confirmation', 'incomplete-evidence', 'stale']) {
   test(`Single Entry excludes ${exclusion} Runner`, async ({ page }) => {
     await transport(page); await configure(page); await create(page); await create(page);
     await page.evaluate(kind => {
-      const c = window.__nativeFixture.sessions.get('pty-2').control;
+      const c = window.__nativeFixture.sessions.get('pty-1').control;
       if (kind === 'suspended') c.observation.attention.suspension_status = 'active';
       if (kind === 'disconnected') c.state = 'disconnected';
       if (kind === 'retained') c.observation.commands.find(c => c.text === '/target').enabled = false;
@@ -1324,7 +1326,7 @@ for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'fo
     }, exclusion);
     await page.waitForFunction(() => {
       const f = window.__nativeFixture;
-      return f.observed.get('pty-2') === JSON.stringify(f.sessions.get('pty-2').control);
+      return f.observed.get('pty-1') === JSON.stringify(f.sessions.get('pty-1').control);
     });
     if (['disconnected', 'unknown', 'stale'].includes(exclusion)) {
       await page.locator('.runner-row').first().locator('.nav-row').click();
@@ -1336,18 +1338,18 @@ for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'fo
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await assignedEntry(page);
     await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
-    expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-3']);
+    expect((await page.evaluate(() => window.__nativeFixture.writes)).map(w => w.id)).toEqual(['pty-2']);
   });
 }
 
 test('Single Entry preserves configuration confirmation and can transfer its known-unsent draft', async ({ page }) => {
   await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
   await entry(page, 'held instruction');
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').feature.config.planStatus = 'confirmation_required'; });
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.planStatus = 'confirmation_required'; });
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await assignedEntry(page);
   await expect(page.locator('.control-status')).toContainText('Hub cannot approve it');
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toHaveValue('held instruction');
   await page.getByRole('button', { name: 'Move unsent instruction to Runner' }).click();
@@ -1387,7 +1389,7 @@ test('Single Entry process exit during readiness leaves the instruction unsent',
   await transport(page); await configure(page); await create(page); await entry(page);
   await page.getByRole('button', { name: 'Assign instruction' }).click();
   await assignedEntry(page);
-  await page.evaluate(() => window.__nativeFixture.exit('pty-2', 7));
+  await page.evaluate(() => window.__nativeFixture.exit('pty-1', 7));
   await expect(page.getByRole('status').filter({ hasText: /Runner process exited|Instruction unsent/ })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
@@ -1401,13 +1403,13 @@ test('Single Entry excludes delivered terminal input from explicit idle reuse', 
   await page.getByRole('textbox', { name: 'Single Entry instructions' }).fill('/status');
   await page.getByRole('button', { name: 'Assign instruction' }).click();
   await assignedEntry(page);
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.map(w => w.id))).toEqual(['pty-2', 'pty-3']);
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.map(w => w.id))).toEqual(['pty-1', 'pty-2']);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
 });
 
 test('Single Entry uses one bracketed-paste write on VT terminals', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
-  await page.evaluate(() => window.__nativeFixture.emit('pty-2', '\x1b[?9001l'));
+  await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\x1b[?9001l'));
   await entry(page, '/hub-unknown\n안녕 🌍');
   await page.getByRole('button', { name: 'Assign instruction' }).click();
   await assignedEntry(page);
@@ -1432,7 +1434,7 @@ test('Single Entry creates its first Runner and rapid concurrent calls deliver o
 
 test('terminal color, cursor, device and focus replies preserve idle input ownership', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
-  await page.evaluate(() => window.__nativeFixture.emit('pty-2', '\x1b]10;?\x07\x1b[5n\x1b[6n\x1b[c\x1b[?1004h'));
+  await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\x1b]10;?\x07\x1b[5n\x1b[6n\x1b[c\x1b[?1004h'));
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
   await entry(page);
   await page.getByRole('button', { name: 'Assign instruction' }).click();
@@ -1440,7 +1442,7 @@ test('terminal color, cursor, device and focus replies preserve idle input owner
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
-  expect(records(writes, 'pty-2').map(record => record.char)).toEqual([47, 115, 116, 97, 116, 117, 115, 13]);
+  expect(records(writes, 'pty-1').map(record => record.char)).toEqual([47, 115, 116, 97, 116, 117, 115, 13]);
 });
 
 test('manual terminal input remains ineligible and is never appended to by assignment', async ({ page }) => {
@@ -1451,8 +1453,8 @@ test('manual terminal input remains ineligible and is never appended to by assig
   await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
-  expect(records(writes, 'pty-2').some(record => record.char === 47)).toBe(false);
-  expect(records(writes, 'pty-1').map(record => record.char)).toEqual([47, 115, 116, 97, 116, 117, 115, 13]);
+  expect(records(writes, 'pty-1').some(record => record.char === 47)).toBe(false);
+  expect(records(writes, 'pty-2').map(record => record.char)).toEqual([47, 115, 116, 97, 116, 117, 115, 13]);
 });
 
 async function assignedEntry(page) {
@@ -1474,7 +1476,7 @@ test('uncertain reference remains explicit across clearing, refreshing and tab s
   await transport(page, undefined, {}); await configure(page); await create(page);
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
   await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-2', 101, 'outcome-unknown'));
+  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
   await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
   await page.getByRole('button', { name: 'Clear registration history' }).click();
   await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
@@ -1494,9 +1496,9 @@ test('Single Entry skips a Runner with prepared references and verifies the chos
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.writes.map(item => item.id))).toEqual(['pty-3']);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.list').map(item => item.id))).toEqual(['pty-3']);
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.length)).toBe(1);
+  expect(await page.evaluate(() => window.__nativeFixture.writes.map(item => item.id))).toEqual(['pty-2']);
+  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.list').map(item => item.id))).toEqual(['pty-2']);
+  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.length)).toBe(1);
 });
 
 test('reference admission failure is distinct from uncertainty and is never automatically retried', async ({ page }) => {
@@ -1512,7 +1514,7 @@ test('reference admission failure is distinct from uncertainty and is never auto
 
 test('Single Entry leaves an instruction unsent when a fresh inventory reveals terminal-prepared references', async ({ page }) => {
   await transport(page, undefined, {}); await configure(page); await create(page);
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items.push({ reference_id: 'a'.repeat(32),
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push({ reference_id: 'a'.repeat(32),
     display_index: 1, display_name: 'terminal-only.txt', kind: 'file', image_detail: null, media_kind: null }));
   await entry(page); await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await assignedEntry(page);
@@ -1535,26 +1537,26 @@ test('Single Entry reserves idle terminal input and delivers slash command Unico
   await expect(page.getByRole('status').filter({ hasText: 'Delivered to PTY' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
-  expect(writes).toHaveLength(1); expect(writes[0].id).toBe('pty-2');
-  expect(records(writes, 'pty-2').map(r => r.char)).toEqual([...'/first line'].map(c => c.charCodeAt(0)).concat(13, '안'.charCodeAt(0), '녕'.charCodeAt(0), 32, 0xd83c, 0xdf0d, 13));
+  expect(writes).toHaveLength(1); expect(writes[0].id).toBe('pty-1');
+  expect(records(writes, 'pty-1').map(r => r.char)).toEqual([...'/first line'].map(c => c.charCodeAt(0)).concat(13, '안'.charCodeAt(0), '녕'.charCodeAt(0), 32, 0xd83c, 0xdf0d, 13));
   await testInfo.attach('single-entry-delivered', { body: await page.screenshot(), contentType: 'image/png' });
 });
 
 test('canonical settings, terminal interactions and uncertain commands stay per session', async ({ page }, testInfo) => {
   await transport(page); await configure(page); await create(page);
-  await expect(page.getByRole('button', { name: 'Change Runner Project / Target' })).toHaveText('Project / pty-2');
+  await expect(page.getByRole('button', { name: 'Change Runner Project / Target' })).toHaveText('Project / pty-1');
   await expect(page.getByText(/Next configured: configured-model/)).toBeVisible();
   await page.getByRole('button', { name: 'Change Runner Model', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Queued' })).toBeVisible();
   await expect(page.getByText('Settings changed', { exact: true })).toHaveCount(0);
-  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-2', command: '/model' }]);
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-2').control.results[0].state = 'pending-interaction'; });
+  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/model' }]);
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results[0].state = 'pending-interaction'; });
   await expect(page.getByText(/Waiting for answers or confirmation/)).toBeVisible();
   await expect(page.getByText('Settings changed', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
   await create(page);
-  await expect(page.getByRole('button', { name: 'Change Runner Account' })).toHaveText('pty-3');
-  await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-2').control; c.state = 'disconnected'; c.results[0].state = 'outcome-unknown'; });
+  await expect(page.getByRole('button', { name: 'Change Runner Account' })).toHaveText('pty-2');
+  await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-1').control; c.state = 'disconnected'; c.results[0].state = 'outcome-unknown'; });
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await expect(page.getByText(/Control disconnected/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Change Runner Model', exact: true })).toBeDisabled();
@@ -1567,8 +1569,8 @@ test('process exit preserves a completed native command result between snapshot 
   await page.getByRole('button', { name: 'Change Runner Model', exact: true }).click();
   await expect(page.getByText(/Queued/)).toBeVisible();
   await page.evaluate(() => {
-    const c = window.__nativeFixture.sessions.get('pty-2').control;
-    window.__nativeFixture.exit('pty-2', 0, { ...c, state: 'disconnected',
+    const c = window.__nativeFixture.sessions.get('pty-1').control;
+    window.__nativeFixture.exit('pty-1', 0, { ...c, state: 'disconnected',
       results: [{ id: 1, command: '/model', state: 'accepted', ownerStatus: 'SETTINGS_CHANGED', changed: true, settingsChangeCount: 1 }] });
   });
   await expect(page.getByText('Process exited (0)', { exact: true })).toBeVisible();
@@ -1594,7 +1596,7 @@ test('selected paths remain unregistered and unsupported media is explicit', asy
   await page.getByRole('button', { name: 'Attach folder', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Selected path /fixture/folder', exact: true })).toHaveValue('/fixture/folder');
   await page.getByRole('button', { name: 'Open /files in terminal' }).click();
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-2', command: '/files' }]);
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/files' }]);
   await expect(page.locator('.runner-references img')).toHaveCount(0);
 });
 
@@ -1622,7 +1624,7 @@ for (const state of ['not-ready', 'disabled', 'busy', 'disconnected']) {
     await page.evaluate(() => window.__nativeFixture.drop(['C:\\selected.txt']));
     await expect(page.locator('.reference-path input')).toHaveValue('C:\\selected.txt');
     await page.evaluate(state => {
-      const control = window.__nativeFixture.sessions.get('pty-2').control;
+      const control = window.__nativeFixture.sessions.get('pty-1').control;
       if (state === 'not-ready') control.state = 'connecting';
       if (state === 'disconnected') control.state = 'disconnected';
       if (state === 'disabled') Object.assign(control.observation.commands.find(command => command.text === '/files'),
@@ -1651,7 +1653,7 @@ test('shortcut preferences preserve canonical availability and stay local across
   await expect(page.locator('.shortcut-bar button').first()).toHaveText('/status');
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/status', exact: true })).toHaveCount(0);
-  await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-2').control.observation.commands; c.find(v => v.text === '/resume').enabled = true; c.find(v => v.text === '/resume').disabled_reason = ''; });
+  await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-1').control.observation.commands; c.find(v => v.text === '/resume').enabled = true; c.find(v => v.text === '/resume').disabled_reason = ''; });
   await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/resume', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
 });
@@ -1666,12 +1668,12 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await composer.fill('first line\n안녕 🌍');
   await create(page);
   const secondId = await page.locator('.runner-row').last().getAttribute('data-runner-id');
-  await expect(page.locator('.xterm-rows')).toContainText('pty-3: 안녕 🌍');
-  await page.evaluate(() => window.__nativeFixture.emit('pty-3', '\x1b[6n'));
+  await expect(page.locator('.xterm-rows')).toContainText('pty-2: 안녕 🌍');
+  await page.evaluate(() => window.__nativeFixture.emit('pty-2', '\x1b[6n'));
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.some(write =>
-    write.id === 'pty-3' && /^\x1b\[\d+;\d+R$/.test(String.fromCharCode(...write.bytes))))).toBe(true);
-  await page.evaluate(() => window.__nativeFixture.emit('pty-2', '\r\ninactive output, Task complete is just terminal text\r\n'));
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.filter(value => value.id === 'pty-2').length)).toBeGreaterThan(1);
+    write.id === 'pty-2' && /^\x1b\[\d+;\d+R$/.test(String.fromCharCode(...write.bytes))))).toBe(true);
+  await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\r\ninactive output, Task complete is just terminal text\r\n'));
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.filter(value => value.id === 'pty-1').length)).toBeGreaterThan(1);
   for (let index = 0; index < 4; index++) {
     await page.locator(`[data-runner-id="${firstId}"] .nav-row`).click();
     await expect(page.locator('.xterm-rows')).toContainText('inactive output');
@@ -1691,12 +1693,12 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
   await page.evaluate(() => window.__nativeFixture.resumeWrites());
   await expect(composer).toHaveValue('');
-  const sent = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-2').filter(record => record.down);
+  const sent = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-1').filter(record => record.down);
   expect(sent.filter(record => record.vk === 13 && record.modifiers === 0)).toHaveLength(1);
   expect(sent.at(-1)).toMatchObject({ vk: 13, char: 13, modifiers: 0 });
   expect(sent.slice(0, -1).map(record => record.vk === 13 && record.modifiers === 16 ? '\n' : String.fromCharCode(record.char)).join('')).toBe('first line\n안녕 🌍');
   await page.locator('.xterm-helper-textarea').press('Shift+Enter');
-  const physical = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-2');
+  const physical = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-1');
   expect(physical.some(record => record.down && record.vk === 13 && record.modifiers === 16)).toBe(true);
   await page.getByRole('button', { name: 'Black', exact: true }).click();
   await page.setViewportSize({ width: 1100, height: 800 });
@@ -1707,11 +1709,11 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await testInfo.attach('persistent-black-terminal', { body: await page.screenshot(), contentType: 'image/png' });
   await page.getByRole('button', { name: 'Terminate Runner', exact: true }).click();
   await expect(page.getByText('Process exited (1)', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
+  expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
   await page.locator(`[data-runner-id="${secondId}"] .nav-row`).click();
   await expect(composer).toBeEnabled();
   await composer.fill('/status'); await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  expect(records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-3').filter(record => record.down).map(record => String.fromCharCode(record.char)).join('')).toBe('/status\r');
+  expect(records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-2').filter(record => record.down).map(record => String.fromCharCode(record.char)).join('')).toBe('/status\r');
   await expect(page.getByRole('navigation').locator('.nav-row').first()).toHaveAccessibleName('Single Entry');
 });
 
@@ -1724,16 +1726,21 @@ test('configuration failure, launch failure and unexpected exit stay local to th
   await expect(page.locator('.runner-row')).toHaveCount(0);
   await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
   await page.getByRole('button', { name: 'Verify installation', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Spare Runner ready.' })).toBeVisible();
   await create(page);
   const firstId = await page.locator('.runner-row').first().getAttribute('data-runner-id');
-  await page.evaluate(() => window.__nativeFixture.failNext());
+  await page.evaluate(() => {
+    window.__nativeFixture.sessions.get('pty-2').control.state = 'disconnected';
+    window.__nativeFixture.failNext();
+  });
+  await page.waitForFunction(() => JSON.parse(window.__nativeFixture.observed.get('pty-2') ?? '{}').state === 'disconnected');
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
   await expect(page.getByText('Launch failed', { exact: true })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('fixture process launch failed');
   await page.locator(`[data-runner-id="${firstId}"] .nav-row`).click();
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();
-  await page.evaluate(() => window.__nativeFixture.exit('pty-2', 23));
+  await page.evaluate(() => window.__nativeFixture.exit('pty-1', 23));
   await expect(page.getByText('Process exited (23)', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
-  expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
 });

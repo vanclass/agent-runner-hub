@@ -39,13 +39,13 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await assign(page);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 1');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page); await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).uncheck();
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('always new');
     await assign(page);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 2');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.allocationPolicy)).toBe('always-new');
   });
   test('work Single Entry falls back to supported fresh launch when no spare is ready', async ({ page }) => {

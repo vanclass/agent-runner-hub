@@ -1,4 +1,10 @@
 {
+  "directory": {
+    "browse": "찾아보기…",
+    "browseFor": "{{field}} 폴더 찾아보기",
+    "picking": "폴더 선택 중…",
+    "failed": "폴더를 선택하지 못했습니다: {{reason}}"
+  },
   "tabs": {
     "close": "탭 닫기",
     "confirmTitle": "{{name}} 닫기",
@@ -377,6 +383,8 @@
     "runMode": "실행 모드"
   },
   "hub": {
+    "launching": "Runner 생성 중…",
+    "verifyFirst": "Runner를 추가하려면 설치 경로를 검증하세요",
     "newRunner": "새 Runner",
     "workspace": "작업 공간"
   },

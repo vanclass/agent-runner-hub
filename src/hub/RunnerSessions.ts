@@ -407,6 +407,7 @@ export class RunnerSessions {
     this.spare.restore();
   }
   create(location: string, token?: symbol) {
+    if (this.disposed) throw new HubError(msg('spare.closed'));
     const order = ++this.order;
     const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot: location, launchOnOpen: true }, this.changed);
@@ -415,10 +416,10 @@ export class RunnerSessions {
     this.changed();
     return { session, launched: session.open(location) };
   }
-  private allocate(location: string, token: symbol) {
+  allocate(location: string, token?: symbol) {
     if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location) {
       const session = this.promoteSpare();
-      if (!session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
+      if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
       return { session, launched: Promise.resolve(), promoted: true };
     }
     return this.create(location, token);

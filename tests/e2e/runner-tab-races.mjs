@@ -42,14 +42,14 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
     await page.evaluate(() => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
-      native.invoke = (command, args) => command === 'pty_close' && args.id === 'pty-2'
+      native.invoke = (command, args) => command === 'pty_close' && args.id === 'pty-1'
         ? Promise.reject(new Error('fixture failed close before native exit')) : invoke(command, args);
     });
     await confirm(page);
     await expect(page.getByRole('alert').filter({ hasText: 'fixture failed close before native exit' })).toBeVisible();
     await middle(page);
     await expect(own(page)).toBeVisible();
-    await page.evaluate(() => window.__nativeFixture.exit('pty-2', 0));
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
     await middle(page);
     await expect(own(page)).toHaveCount(0);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs)).toEqual([]);
@@ -65,7 +65,7 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     await page.locator('.runner-row').filter({ has: page.getByText('Runner 2', { exact: true }) }).locator('.nav-row').dblclick({ button: 'middle' });
     await expect(page.locator('.runner-row')).toHaveCount(1);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 1');
-    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-3']);
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
     await expect(page.locator('.rename-row input')).toHaveCount(0);
   });
   for (const reason of reasons) {
@@ -110,7 +110,7 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     await page.evaluate(() => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
-        if (command === 'pty_close' && args.id === 'pty-2') throw new Error('fixture exact termination failed');
+        if (command === 'pty_close' && args.id === 'pty-1') throw new Error('fixture exact termination failed');
         return invoke(command, args);
       };
     });
@@ -129,7 +129,7 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       window.__closeCalls = 0;
       native.invoke = async (command, args) => {
-        if (command === 'pty_close' && args.id === 'pty-2') {
+        if (command === 'pty_close' && args.id === 'pty-1') {
           window.__closeCalls++;
           await new Promise(resolve => { window.__releaseClose = resolve; });
           return;
@@ -139,7 +139,7 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     });
     await confirm(page);
     await expect(page.getByRole('status').filter({ hasText: 'Closing Runner tab' })).toBeVisible();
-    await page.evaluate(() => window.__nativeFixture.exit('pty-2', 0));
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
     await expect(own(page)).toBeVisible();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs)).toHaveLength(2);
     await middle(page);
@@ -148,16 +148,16 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     await expect(own(page)).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 2');
     expect(await page.evaluate(() => window.__closeCalls)).toBe(1);
-    await page.evaluate(() => { window.__nativeFixture.exit('pty-2', 99); window.__nativeFixture.emit('pty-2', 'late stale output'); });
+    await page.evaluate(() => { window.__nativeFixture.exit('pty-1', 99); window.__nativeFixture.emit('pty-1', 'late stale output'); });
     await expect(page.getByText('Process running', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs)).toHaveLength(1);
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').control.state)).toBe('ready');
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-3').control.state)).toBe('ready');
   });
   test('runner tab unconfirmed close acknowledgment retains tab until exact native exit is settled', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
     await page.evaluate(() => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
-      native.invoke = (command, args) => command === 'pty_close' && args.id === 'pty-2' ? Promise.resolve() : invoke(command, args);
+      native.invoke = (command, args) => command === 'pty_close' && args.id === 'pty-1' ? Promise.resolve() : invoke(command, args);
     });
     await page.clock.install();
     await confirm(page);
@@ -167,7 +167,7 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs)).toHaveLength(1);
     await middle(page);
     await expect(own(page)).toBeVisible();
-    await page.evaluate(() => window.__nativeFixture.exit('pty-2', 0));
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
     await middle(page);
     await expect(own(page)).toHaveCount(0);
   });

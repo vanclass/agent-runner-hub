@@ -3,6 +3,7 @@ import type { RunnerControl } from './runnerControl';
 import type { EntryDefaults } from './singleEntry';
 import { same, type ConfigDesired, type ConfigSettings } from './runnerConfigContract';
 import { entryDefaultsToDesired } from './runnerConfigDefaults';
+import { DirectoryInput } from './DirectoryInput';
 import './runnerConfig.css';
 
 const fields: Record<keyof ConfigSettings, MessageKey> = { target: 'fields.target', account: 'fields.account',
@@ -35,6 +36,7 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
   useHubTranslation();
   const service = control.config, actual = service.actual, catalog = service.catalog;
   const current = actual?.current;
+  const draftScope = service.draft;
   const draft = current ? { ...current, ...service.draft } : undefined;
   const options = catalog?.options;
   const model = options?.models.find(m => m.id === draft?.model.id);
@@ -97,9 +99,10 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
         </select></label>
         {selector('service_tier', model?.service_tiers ?? [], actual.availability.service_tier === true)}
         {selector('run_mode', options?.run_modes ?? [], actual.availability.run_mode === true)}
-        <label>{t('config.root')}<input aria-label={t('config.choose', { field: t('config.root') })} value={draft?.root ?? ''}
+        <DirectoryInput label={t('config.choose', { field: t('config.root') })} value={draft?.root ?? ''} scope={draftScope}
+          isCurrent={() => service.draft === draftScope && !service.busy && !control.assignmentLocked && control.snapshot.state === 'ready'}
           disabled={blocked || !actual.availability.run_mode || !['direct-run', 'pure-direct-run'].includes(draft?.run_mode ?? '')}
-          onChange={e => choose('root', e.target.value)} /></label>
+          onChange={value => choose('root', value)} />
       </div>
       <p>{t('config.rootHelp')}</p>
       {Object.keys(defaults).length > 0 && <div className="config-defaults"><h3>{t('config.defaults')}</h3>

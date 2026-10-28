@@ -1,9 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RunnerSessions } from './RunnerSessions';
 import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
 import { HubPreferences } from './preferences';
-import { initializeHubLanguage, useHubTranslation } from './i18n';
+import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { LanguagePicker } from './LanguagePicker';
 import { ThemePicker } from './ThemePicker';
 import type { RunnerView } from './model';
@@ -24,6 +24,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const spare = sessions.spareSnapshot;
   const installation = spare.installation;
   const [launching, setLaunching] = useState(false);
+  const launchPending = useRef(false);
+  const [launchError, setLaunchError] = useState<HubText>('');
   useEffect(() => sessions.retain(), [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => { sessions.view(selectedId); return () => sessions.view(null); }, [sessions, selectedId]);
@@ -34,12 +36,16 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     if (session) { session.rename(name); return; }
     setRunners(current => current.map(runner => runner.id === id ? { ...runner, name } : runner));
   }
-  function createRunner() {
-    if (!installation || launching) return;
-    setLaunching(true);
-    const { session, launched } = sessions.create(installation.root);
-    setSelectedId(session.view.id);
-    void launched.finally(() => setLaunching(false));
+  async function createRunner() {
+    if (!installation || launchPending.current) return;
+    launchPending.current = true;
+    setLaunching(true); setLaunchError('');
+    try {
+      const { session, launched } = sessions.allocate(installation.root);
+      setSelectedId(session.view.id);
+      await launched;
+    } catch (reason) { setLaunchError(errorText(reason)); }
+    finally { launchPending.current = false; setLaunching(false); }
   }
   async function closeRunner(id: string, method: 'middle' | 'explicit') {
     if (!await sessions.close(id, method)) return;
@@ -56,14 +62,13 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         <LanguagePicker onChange={language => { preferences.update({ language }); initializeHubLanguage(language); }} />
         <ThemePicker theme={theme} onChange={value => { preferences.update({ theme: value }); setTheme(value); }} />
       </div>
-      <button type="button" className="new-runner" onClick={createRunner} disabled={!installation || launching}>
-        {t('hub.newRunner')}
-      </button>
     </header>
     {preferences.issue && <p role="alert" className="runner-error preferences-error">{tr(preferences.issue)}</p>}
     {sessions.workspace.issue && <p role="alert" className="runner-error">{tr(sessions.workspace.issue)}</p>}
+    {launchError && <p role="alert" className="runner-error">{tr(launchError)}</p>}
     <div className="shell-body">
       <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
+        onAdd={() => void createRunner()} addDisabled={!installation || launching} adding={launching}
         onMiddleClose={id => void closeRunner(id, 'middle')} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
         theme={theme} installation={installation} onInstallation={value => sessions.setInstallation(value)}

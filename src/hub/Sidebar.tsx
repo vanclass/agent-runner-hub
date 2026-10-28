@@ -20,6 +20,9 @@ type SidebarProps = {
   onSelect: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
   onMiddleClose: (id: string) => void;
+  onAdd: () => void;
+  addDisabled: boolean;
+  adding: boolean;
 };
 
 function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
@@ -48,7 +51,7 @@ function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
       event.preventDefault(); event.stopPropagation();
       if (!editing) onMiddleClose();
     }}>
-    <button ref={rowButton} className="nav-row" hidden={editing} type="button"
+    <button ref={rowButton} className="nav-row" hidden={editing} type="button" autoFocus={active}
       aria-current={active ? 'page' : undefined} onClick={event => { if (event.button === 0) onSelect(); }}
       onDoubleClick={event => { if (event.button === 0) startRename(); }}
       onKeyDown={event => { if (event.key === 'F2') { event.preventDefault(); startRename(); } }}
@@ -71,12 +74,12 @@ function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
   </li>;
 }
 
-export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose }: SidebarProps) {
+export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose, onAdd, addDisabled, adding }: SidebarProps) {
   useHubTranslation();
   return <aside className="sidebar">
     <nav aria-label={t('sidebar.navigation')} onKeyDown={event => {
       if (!(event.target instanceof HTMLButtonElement) || !event.target.matches('.nav-row')) return;
-      const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.nav-row:not([hidden])')];
+      const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.nav-row:not([hidden]):not(:disabled)')];
       const index = buttons.indexOf(event.target);
       const next = event.key === 'ArrowDown' ? Math.min(index + 1, buttons.length - 1)
         : event.key === 'ArrowUp' ? Math.max(index - 1, 0)
@@ -91,7 +94,13 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose
       <div className="runner-section-label"><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span></div>
       <ul className="runner-list">{runners.map(runner => <RunnerRow key={runner.id} runner={runner}
         active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
-        onMiddleClose={() => onMiddleClose(runner.id)} />)}</ul>
+        onMiddleClose={() => onMiddleClose(runner.id)} />)}
+        <li className="add-runner-row"><button type="button" className="nav-row add-runner"
+          aria-label={t('hub.newRunner')} title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
+          disabled={addDisabled} aria-busy={adding} onClick={onAdd}>
+          <span aria-hidden="true">+</span>
+        </button></li>
+      </ul>
       {runners.length === 0 && <p className="sidebar-empty">{t('sidebar.empty')}<br />{t('sidebar.emptyHint')}</p>}
     </nav>
     <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />

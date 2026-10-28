@@ -1,5 +1,6 @@
 import { useHubTranslation, t, tr } from './i18n';
 import type { SingleEntry, EntryDefaults } from './singleEntry';
+import { DirectoryInput } from './DirectoryInput';
 
 function SingleEntryChoices({ entry }: { entry: SingleEntry }) {
   const defaults = entry.defaults, options = entry.catalog?.options;
@@ -37,9 +38,10 @@ function SingleEntryChoices({ entry }: { entry: SingleEntry }) {
       {model?.service_tiers.map(v => <option key={v}>{v}</option>)}
     </select></label>
     {select('runMode', t('fields.runMode'), options?.run_modes.map(value => ({ value, label: value })) ?? [])}
-    <label className="setting"><span>{t('config.root')}</span><input aria-label={t('entry.field', { field: t('config.root') })}
+    <DirectoryInput label={t('entry.field', { field: t('config.root') })} scope={defaults}
+      isCurrent={() => entry.defaults === defaults && entry.editable && !entry.loadingOptions}
       disabled={blocked || !['pure-direct-run', 'direct-run'].includes(defaults.runMode ?? entry.catalog?.inspection.current.run_mode ?? '')}
-      value={defaults.root ?? ''} onChange={e => entry.setDefault('root', e.target.value || undefined)} /></label>
+      value={defaults.root ?? ''} onChange={value => entry.setDefault('root', value || undefined)} />
   </div>;
 }
 

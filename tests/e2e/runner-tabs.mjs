@@ -106,8 +106,8 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
     await middle(row(page, 'Runner 3'));
     await expect(page.locator('.runner-row')).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Single Entry');
-    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2', 'pty-3', 'pty-4']);
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').control.state)).toBe('ready');
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1', 'pty-2', 'pty-3']);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-4').control.state)).toBe('ready');
   });
   test('runner tabs persistence failure retains exited row and settled retry removes it', async ({ page }) => {
     await ready(page); await create(page);
@@ -124,14 +124,14 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
     await expect(page.getByRole('alert').filter({ hasText: 'fixture quota failure' }).first()).toBeVisible();
     await expect(own).toBeVisible();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs)).toHaveLength(1);
-    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
     await home(page);
     await own.locator('.nav-row').click();
     await expect(page.getByRole('alert').filter({ hasText: 'fixture quota failure' }).first()).toBeVisible();
-    await expect(page.locator('.xterm-rows')).toContainText('pty-2: 안녕');
+    await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕');
     await page.evaluate(() => window.__restoreStorage());
     await middle(own);
     await expect(own).toHaveCount(0);
-    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
   });
 }
