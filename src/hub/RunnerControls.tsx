@@ -31,7 +31,9 @@ export function RunnerControls({ control }: { control: RunnerControl }) {
     return <span className="shortcut" key={`${command.parent_id}/${command.id}`}>
       <button type="button" disabled={!connected || control.busy || !command.enabled}
         title={command.disabled_reason || command.description} onClick={() => void run(command)}>
-        {primaryLabels[command.text] && <span>{t(primaryLabels[command.text])} </span>}<code>{command.text}</code>
+        <span>{primaryLabels[command.text] ? t(primaryLabels[command.text])
+          : command.text === '/files' ? t('panel.files')
+          : command.description || command.id.replace(/[-_]/g, ' ')} </span><code>{command.text}</code>
       </button>
       {!command.enabled && <small>{command.disabled_reason}</small>}
     </span>;

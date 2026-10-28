@@ -97,7 +97,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeDisabled();
       await expect(page.locator('.config-plan')).toContainText(status === 'invalid' ? 'CONFIG_MODEL_INVALID' : 'release_context_in_runner_terminal');
       await page.getByText('More commands', { exact: true }).click();
-      await page.locator('.more-commands').getByRole('button', { name: '/files', exact: true }).click();
+      await page.locator('.more-commands').getByRole('button', { name: 'Files /files', exact: true }).click();
       expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/files' }]);
       expect(await page.evaluate(() => window.__configFixtures.get('pty-1').requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
     });

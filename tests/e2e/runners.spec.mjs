@@ -613,6 +613,31 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual(saved.singleEntry);
 });
 
+test('Single Entry explicitly recovers retained Fast while preserving model and other defaults', async ({ page }) => {
+  await transport(page, undefined, { auto: true, work: true }); await configure(page);
+  await page.getByRole('button', { name: 'Load authenticated Runner options' }).click();
+  const model = page.getByRole('combobox', { name: 'Single Entry Model', exact: true });
+  await expect(model).toBeEnabled();
+  await model.selectOption({ label: 'm0' });
+  await page.getByRole('combobox', { name: 'Single Entry Reasoning effort', exact: true }).selectOption('high');
+  await page.getByRole('combobox', { name: 'Single Entry Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+  await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
+  await model.selectOption({ label: 'm1' });
+  await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
+  await expect(page.getByRole('status').filter({ hasText: 'Saved value retained: fast' })).toBeVisible();
+  await page.locator('.app-settings-trigger').click();
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '기본 서비스 등급 사용', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry);
+  expect(saved.model).toEqual({ model: 'm1', reasoning_effort: 'high', service_tier: 'default' });
+  expect(saved.runMode).toBe('issue-run');
+  await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+});
+
 test('Runner observations do not become Hub defaults and raw native errors retain their diagnostic language', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.preferences.v1'))).toBeNull();
@@ -1632,6 +1657,26 @@ for (const state of ['not-ready', 'disabled', 'busy', 'disconnected']) {
   });
 }
 
+for (const language of ['en', 'ko']) test(`promoted secondary command metadata stays readable and executable in ${language}`, async ({ page }) => {
+  await transport(page); await configure(page); await create(page);
+  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').control.observation.commands.push({
+    id: 'discover', text: '/discover', aliases: [], parent_id: null, visible: true, enabled: true,
+    disabled_reason: '', description: 'Discover retained work', children: [],
+  }));
+  if (language === 'ko') {
+    await page.locator('.app-settings-trigger').click();
+    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+    await page.keyboard.press('Escape');
+  }
+  await page.getByRole('button', { name: language === 'en' ? 'Shortcuts' : '바로 가기', exact: true }).click();
+  const up = page.locator('.shortcut-editor-row').filter({ hasText: '/discover' }).getByRole('button').first();
+  for (let i = 0; i < 7; i++) await up.click();
+  const primary = page.locator('.runner-controls > .shortcut-bar');
+  await expect(primary.getByRole('button', { name: 'Discover retained work /discover', exact: true })).toBeVisible();
+  await primary.getByRole('button', { name: 'Discover retained work /discover', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/discover' }]);
+});
+
 test('shortcut preferences preserve canonical availability and stay local across tabs', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Select', exact: true })).toHaveCount(0);
@@ -1643,7 +1688,20 @@ test('shortcut preferences preserve canonical availability and stay local across
   await page.getByRole('button', { name: 'Move /model up', exact: true }).click();
   await expect(page.locator('.shortcut-bar button').first()).toHaveText('Model /model');
   for (let i = 0; i < 5; i++) await page.getByRole('button', { name: 'Move /files up', exact: true }).click();
-  await expect(page.locator('.shortcut-bar button').first()).toHaveText('/files');
+  await expect(page.locator('.shortcut-bar button').first()).toHaveText('Files /files');
+  await page.locator('.shortcut-bar button').first().click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.at(-1)?.command)).toBe('/files');
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results[0].state = 'accepted'; });
+  await page.locator('.app-settings-trigger').click();
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.shortcut-bar button').first()).toHaveText('파일 /files');
+  await page.locator('.shortcut-bar button').first().click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.length)).toBe(2);
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results[0].state = 'accepted'; });
+  await page.locator('.app-settings-trigger').click();
+  await page.getByRole('combobox', { name: '언어', exact: true }).selectOption('en');
+  await page.keyboard.press('Escape');
   await create(page);
   await expect(page.locator('.shortcut-bar button').first()).toHaveText('Status /status');
   await page.locator('.runner-row').first().locator('.nav-row').click();
@@ -1651,7 +1709,7 @@ test('shortcut preferences preserve canonical availability and stay local across
   await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-1').control.observation.commands; c.find(v => v.text === '/resume').enabled = true; c.find(v => v.text === '/resume').disabled_reason = ''; });
   await page.getByText('More commands', { exact: true }).click();
   await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Resume /resume', exact: true })).toBeEnabled();
-  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
+  expect(await page.evaluate(() => window.__nativeFixture.commands.map(v => v.command))).toEqual(['/files', '/files']);
 });
 
 test('two terminal sessions survive keyed views and keep independent output, input, drafts and geometry', async ({ page }, testInfo) => {

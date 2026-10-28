@@ -7,6 +7,29 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await expect(page.getByRole('button', { name: 'Inspect settings and options', exact: true })).toBeEnabled();
   }
+  test('session config UI explicitly recovers retained Fast without changing other draft values', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Draft Run Mode', exact: true }).selectOption('issue-run');
+    await page.getByRole('combobox', { name: 'Draft Reasoning effort', exact: true }).selectOption('high');
+    await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
+    await page.getByRole('combobox', { name: 'Draft Model', exact: true }).selectOption('m1');
+    await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
+    await expect(page.locator('.runner-config')).toContainText('Saved value retained: fast');
+    await page.getByRole('button', { name: 'Use default tier', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).not.toBeChecked();
+    await expect(page.getByRole('combobox', { name: 'Draft Model', exact: true })).toHaveValue('m1');
+    await expect(page.getByRole('combobox', { name: 'Draft Reasoning effort', exact: true })).toHaveValue('high');
+    await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toHaveValue('issue-run');
+    expect(await page.evaluate(() => window.__configFixtures.get('pty-1').requests.some(r => r.operation.endsWith('.apply')))).toBe(false);
+    await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Apply reviewed plan', exact: true }).click();
+    await expect(page.locator('.config-current')).toContainText('m1');
+    await expect(page.locator('.config-current')).toContainText('default');
+  });
   test('session config UI selects actual identities, reviews a plan and explicitly applies without PTY submission', async ({ page }, testInfo) => {
     await open(page);
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();

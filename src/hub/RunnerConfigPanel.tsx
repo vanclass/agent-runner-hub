@@ -114,6 +114,9 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
           onChange={e => choose('service_tier', e.target.checked ? 'fast' : 'default')} />{t('panel.fast')}</label>
         {draft && (!model?.service_tiers.includes(draft.service_tier) || !['default', 'fast'].includes(draft.service_tier))
           && <p role="status">{t('panel.retained', { value: draft.service_tier })}</p>}
+        {draft && draft.service_tier !== 'default' && model?.service_tiers.includes('default') &&
+          <button type="button" disabled={blocked || !actual.availability.service_tier}
+            onClick={() => choose('service_tier', 'default')}>{t('panel.useDefaultTier')}</button>}
         </fieldset>
       </div>
       {Object.keys(defaults).length > 0 && <div className="config-defaults"><h3>{t('config.defaults')}</h3>

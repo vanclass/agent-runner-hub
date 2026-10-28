@@ -47,6 +47,10 @@ function SingleEntryChoices({ entry }: { entry: SingleEntry }) {
     {defaults.model && (!model?.service_tiers.includes(defaults.model.service_tier)
       || !['default', 'fast'].includes(defaults.model.service_tier)) &&
       <p role="status">{t('panel.retained', { value: defaults.model.service_tier })}</p>}
+    {defaults.model && defaults.model.service_tier !== 'default' && model?.service_tiers.includes('default') &&
+      <button type="button" disabled={blocked} onClick={() => entry.setDefault('model', {
+        ...defaults.model!, service_tier: 'default',
+      })}>{t('panel.useDefaultTier')}</button>}
     </fieldset>
   </div>;
 }
