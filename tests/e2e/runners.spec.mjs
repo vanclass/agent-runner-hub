@@ -8,6 +8,7 @@ import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
 import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
 import { registerInstallationSetup } from './installation-setup.mjs';
+import { registerTaskPanel } from './task-panel.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -221,6 +222,7 @@ async function transport(page, freshTarget, referenceOptions) {
 }
 
 registerSessionConfigUI({ test, expect, transport, configure });
+registerTaskPanel({ test, expect, transport, configure, create, generatedFixture });
 registerSingleEntryWork({ test, expect, transport, configure, create });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create });
@@ -560,7 +562,7 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   await transport(page, undefined, { clipboard: true, auto: true, ...generatedFixture() });
   await configure(page); await create(page);
   const id = await page.locator('.runner-row').first().getAttribute('data-runner-id');
-  const target = await page.getByRole('button', { name: 'Change Runner Project / Target', exact: true }).textContent();
+  const target = await page.locator('.terminal-observation [data-field=target]').textContent();
   await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('draft /status 그대로');
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
   await expect(page.locator('.reference-candidate')).toContainText('Registered · completed Runner receipt');
@@ -568,7 +570,7 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Runner 프로젝트 / 대상 변경', exact: true })).toHaveText(target);
+  await expect(page.locator('.terminal-observation [data-field=target]')).toHaveText(target);
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toHaveValue('draft /status 그대로');
   await expect(page.locator('.reference-candidate')).toContainText('등록됨 · Runner 완료 확인');
   await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
@@ -1112,7 +1114,7 @@ for (const target of [
       observation.target = context.target; observation.run_mode = context.runMode;
       observation.execution.workflow_kind = context.workflowKind;
     }, historical);
-    const current = page.getByRole('button', { name: 'Change Runner Project / Target', exact: true });
+    const current = page.locator('.terminal-observation [data-field=target]');
     await expect(current).toHaveText('Project / Historical A');
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')));
     expect(saved.tabs[0].lastVerified).toEqual(historical);
@@ -1131,11 +1133,11 @@ for (const target of [
       expect(persisted.tabs[0].recoveryHint).toEqual(historical);
       await expect(recovery).toContainText('Previous run mode: issue-run');
       await expect(recovery).toContainText('Previous workflow: IssueRun');
-      await expect(page.getByRole('button', { name: 'Change Runner Run Mode', exact: true })).toHaveText('task-run');
+      await expect(page.locator('.terminal-observation [data-field=runMode]')).toHaveText('task-run');
       await expect(recovery).toContainText('Historical work recovery is unconfirmed');
       expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
       if (reopening === 0) {
-        await current.click();
+        await page.getByRole('button', { name: 'Project / Target /target', exact: true }).click();
         await page.evaluate(() => {
           const control = window.__nativeFixture.sessions.get('pty-1').control;
           control.observation.target = { binding_state: 'bound', owner: 'Project', project: 'Changed C' };
@@ -1145,7 +1147,7 @@ for (const target of [
             visible: true, enabled: true, disabled_reason: '', description: 'Discover work', children: [] });
         });
         await expect(current).toHaveText('Project / Changed C');
-        await expect(page.getByRole('button', { name: 'Change Runner Run Mode', exact: true })).toHaveText('direct-run');
+        await expect(page.locator('.terminal-observation [data-field=runMode]')).toHaveText('direct-run');
         await page.getByRole('button', { name: 'Recover earlier work', exact: true }).click();
         await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
           { id: 2, command: '/recover', state: 'accepted', code: 'SUCCESS' }]; });
@@ -1202,7 +1204,7 @@ test('workspace retains the last atomic commit when storage rejects a write', as
   await transport(page); await configure(page); await create(page);
   await page.reload();
   await page.locator('.runner-row .nav-row').click();
-  await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).toHaveText('Project / pty-1');
+  await expect(page.locator('.terminal-observation [data-field=target]')).toHaveText('Project / pty-1');
   const before = await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'));
   expect(JSON.parse(before).tabs[0].recoveryHint.target.project).toBe('pty-1');
   await page.evaluate(() => {
@@ -1265,8 +1267,8 @@ test('workspace keeps ended tabs dormant and strips untrusted replay fields', as
     runMode: 'task-run', workflowKind: 'TaskRun' });
   await page.locator('.runner-row .nav-row').click();
   await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / Retained A');
-  await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).not.toContainText('Retained A');
-  await expect(page.getByRole('button', { name: 'Change Runner Project / Target', exact: true })).toBeDisabled();
+  await expect(page.locator('.terminal-observation [data-field=target]')).not.toContainText('Retained A');
+  await expect(page.getByRole('button', { name: 'Project / Target /target', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Recover earlier work', exact: true })).toBeDisabled();
 });
 
@@ -1535,9 +1537,9 @@ test('Single Entry reserves idle terminal input and delivers slash command Unico
 
 test('canonical settings, terminal interactions and uncertain commands stay per session', async ({ page }, testInfo) => {
   await transport(page); await configure(page); await create(page);
-  await expect(page.getByRole('button', { name: 'Change Runner Project / Target' })).toHaveText('Project / pty-1');
-  await expect(page.getByText(/Next configured: configured-model/)).toBeVisible();
-  await page.getByRole('button', { name: 'Change Runner Model', exact: true }).click();
+  await expect(page.locator('.terminal-observation [data-field=target]')).toHaveText('Project / pty-1');
+  await expect(page.getByText(/Next execution: configured-model/)).toBeVisible();
+  await page.getByRole('button', { name: 'Model /model', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Queued' })).toBeVisible();
   await expect(page.getByText('Settings changed', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/model' }]);
@@ -1546,18 +1548,18 @@ test('canonical settings, terminal interactions and uncertain commands stay per 
   await expect(page.getByText('Settings changed', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
   await create(page);
-  await expect(page.getByRole('button', { name: 'Change Runner Account' })).toHaveText('pty-2');
+  await expect(page.locator('.terminal-observation [data-field=account]')).toHaveText('pty-2');
   await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-1').control; c.state = 'disconnected'; c.results[0].state = 'outcome-unknown'; });
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await expect(page.getByText(/Control disconnected/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Change Runner Model', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Model /model', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toHaveLength(1);
   await testInfo.attach('canonical-controls', { body: await page.screenshot(), contentType: 'image/png' });
 });
 
 test('process exit preserves a completed native command result between snapshot polls', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
-  await page.getByRole('button', { name: 'Change Runner Model', exact: true }).click();
+  await page.getByRole('button', { name: 'Model /model', exact: true }).click();
   await expect(page.getByText(/Queued/)).toBeVisible();
   await page.evaluate(() => {
     const c = window.__nativeFixture.sessions.get('pty-1').control;
@@ -1634,18 +1636,21 @@ test('shortcut preferences preserve canonical availability and stay local across
   await transport(page); await configure(page); await create(page);
   await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Select', exact: true })).toHaveCount(0);
   await expect(page.locator('.shortcut-bar button').filter({ hasText: /^$/ })).toHaveCount(0);
-  await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/resume', exact: true })).toBeDisabled();
-  await expect(page.locator('.shortcut-bar')).toContainText('No suspended execution');
+  await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Resume /resume', exact: true })).toBeDisabled();
+  await expect(page.locator('.runner-controls')).toContainText('No suspended execution');
   await page.getByRole('button', { name: 'Shortcuts', exact: true }).click();
   await page.getByRole('checkbox', { name: '/status', exact: true }).uncheck();
   await page.getByRole('button', { name: 'Move /model up', exact: true }).click();
-  await expect(page.locator('.shortcut-bar button').first()).toHaveText('/model');
+  await expect(page.locator('.shortcut-bar button').first()).toHaveText('Model /model');
+  for (let i = 0; i < 5; i++) await page.getByRole('button', { name: 'Move /files up', exact: true }).click();
+  await expect(page.locator('.shortcut-bar button').first()).toHaveText('/files');
   await create(page);
-  await expect(page.locator('.shortcut-bar button').first()).toHaveText('/status');
+  await expect(page.locator('.shortcut-bar button').first()).toHaveText('Status /status');
   await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/status', exact: true })).toHaveCount(0);
+  await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Status /status', exact: true })).toHaveCount(0);
   await page.evaluate(() => { const c = window.__nativeFixture.sessions.get('pty-1').control.observation.commands; c.find(v => v.text === '/resume').enabled = true; c.find(v => v.text === '/resume').disabled_reason = ''; });
-  await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/resume', exact: true })).toBeEnabled();
+  await page.getByText('More commands', { exact: true }).click();
+  await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Resume /resume', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
 });
 

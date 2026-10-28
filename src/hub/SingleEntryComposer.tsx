@@ -17,31 +17,37 @@ function SingleEntryChoices({ entry }: { entry: SingleEntry }) {
   };
   const model = options?.models.find(m => m.id === defaults.model?.model);
   return <div className="settings-grid">
+    <fieldset><legend>{t('panel.execution')}</legend>
     {select('target', t('fields.target'), options?.targets.map(v => ({
       value: { binding_state: 'bound', owner: v.owner, project: v.project }, label: v.id })) ?? [])}
-    {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
-    {select('model', t('fields.model'), options?.models.map(v => ({ label: v.id, value: { model: v.id,
-      reasoning_effort: v.reasoning_efforts.includes(defaults.model?.reasoning_effort ?? '')
-        ? defaults.model!.reasoning_effort : v.reasoning_efforts[0],
-      service_tier: v.service_tiers.includes(defaults.model?.service_tier ?? '')
-        ? defaults.model!.service_tier : v.service_tiers[0] } })) ?? [])}
-    <label className="setting"><span>{t('config.reasoning')}</span><select aria-label={t('entry.field', { field: t('config.reasoning') })}
-      disabled={blocked || !model} value={defaults.model?.reasoning_effort ?? ''} onChange={e =>
-        defaults.model && entry.setDefault('model', { ...defaults.model, reasoning_effort: e.target.value })}>
-      {!model && <option value="">{t('entry.useRunner')}</option>}
-      {model?.reasoning_efforts.map(v => <option key={v}>{v}</option>)}
-    </select></label>
-    <label className="setting"><span>{t('config.tier')}</span><select aria-label={t('entry.field', { field: t('config.tier') })}
-      disabled={blocked || !model} value={defaults.model?.service_tier ?? ''} onChange={e =>
-        defaults.model && entry.setDefault('model', { ...defaults.model, service_tier: e.target.value })}>
-      {!model && <option value="">{t('entry.useRunner')}</option>}
-      {model?.service_tiers.map(v => <option key={v}>{v}</option>)}
-    </select></label>
     {select('runMode', t('fields.runMode'), options?.run_modes.map(value => ({ value, label: value })) ?? [])}
     <DirectoryInput label={t('entry.field', { field: t('config.root') })} scope={defaults}
       isCurrent={() => entry.defaults === defaults && entry.editable && !entry.loadingOptions}
       disabled={blocked || !['pure-direct-run', 'direct-run'].includes(defaults.runMode ?? entry.catalog?.inspection.current.run_mode ?? '')}
       value={defaults.root ?? ''} onChange={value => entry.setDefault('root', value || undefined)} />
+    </fieldset>
+    <fieldset><legend>{t('panel.model')}</legend>
+    {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
+    {select('model', t('fields.model'), options?.models.map(v => ({ label: v.id, value: { model: v.id,
+      reasoning_effort: defaults.model?.reasoning_effort ?? v.reasoning_efforts[0],
+      service_tier: defaults.model?.service_tier ?? 'default' } })) ?? [])}
+    <label className="setting"><span>{t('config.reasoning')}</span><select aria-label={t('entry.field', { field: t('config.reasoning') })}
+      disabled={blocked || !model} value={defaults.model?.reasoning_effort ?? ''} onChange={e =>
+        defaults.model && entry.setDefault('model', { ...defaults.model, reasoning_effort: e.target.value })}>
+      {!model && <option value="">{t('entry.useRunner')}</option>}
+      {defaults.model && !model?.reasoning_efforts.includes(defaults.model.reasoning_effort) &&
+        <option value={defaults.model.reasoning_effort} disabled>{defaults.model.reasoning_effort} · {t('config.unlisted')}</option>}
+      {model?.reasoning_efforts.map(v => <option key={v}>{v}</option>)}
+    </select></label>
+    <label className="fast-option"><input type="checkbox" aria-label={t('panel.fast')}
+      checked={defaults.model?.service_tier === 'fast'}
+      disabled={blocked || !model?.service_tiers.includes('fast') || !model.service_tiers.includes('default')}
+      onChange={e => defaults.model && entry.setDefault('model', { ...defaults.model,
+        service_tier: e.target.checked ? 'fast' : 'default' })} />{t('panel.fast')}</label>
+    {defaults.model && (!model?.service_tiers.includes(defaults.model.service_tier)
+      || !['default', 'fast'].includes(defaults.model.service_tier)) &&
+      <p role="status">{t('panel.retained', { value: defaults.model.service_tier })}</p>}
+    </fieldset>
   </div>;
 }
 

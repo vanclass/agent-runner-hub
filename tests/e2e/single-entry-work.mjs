@@ -153,7 +153,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await expect(page.getByRole('combobox', { name: 'Single Entry Model', exact: true })).toBeEnabled();
       await page.getByRole('combobox', { name: 'Single Entry Model', exact: true }).selectOption({ label: 'm2' });
       await page.getByRole('combobox', { name: 'Single Entry Reasoning effort', exact: true }).selectOption('high');
-      await page.getByRole('combobox', { name: 'Single Entry Service tier', exact: true }).selectOption('fast');
+      await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
       await page.getByRole('combobox', { name: 'Single Entry Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
       await page.getByRole('combobox', { name: 'Single Entry Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
       await page.getByRole('textbox', { name: 'Single Entry Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');

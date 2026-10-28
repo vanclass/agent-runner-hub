@@ -65,7 +65,7 @@ export class SingleEntry {
     if (!this.editable || this.loadingOptions) return;
     const projected = projectEntryDefaults({ ...this.defaults, [key]: value });
     if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
-    if (key === 'accountIdentity') { delete projected.account; delete projected.model; }
+    if (key === 'accountIdentity') delete projected.account;
     if (key === 'runMode' && !['direct-run', 'pure-direct-run'].includes(String(value))) delete projected.root;
     this.defaults = projected;
     this.saveDefaults(projected);
@@ -81,8 +81,9 @@ export class SingleEntry {
     if (key === 'runMode') return options.run_modes.includes(String(value));
     if (key === 'model') {
       const model = value as Model;
-      return options.models.some(m => m.id === model.model && m.reasoning_efforts.includes(model.reasoning_effort)
-        && m.service_tiers.includes(model.service_tier));
+      return options.models.some(m => m.id === model.model
+        && (m.reasoning_efforts.includes(model.reasoning_effort) || model.reasoning_effort === this.defaults.model?.reasoning_effort)
+        && (m.service_tiers.includes(model.service_tier) || model.service_tier === this.defaults.model?.service_tier));
     }
     return false;
   }

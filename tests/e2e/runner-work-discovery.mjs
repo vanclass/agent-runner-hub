@@ -98,8 +98,8 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
       };
     });
     await expect.poll(() => page.evaluate(() => window.__readHeld)).toBe(true);
-    await expect(page.locator('.shortcut-bar').getByRole('button', { name: '/status', exact: true })).toBeEnabled();
-    await page.getByText('Runner configuration', { exact: true }).click();
+    await expect(page.locator('.shortcut-bar').getByRole('button', { name: 'Status /status', exact: true })).toBeEnabled();
+    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Draft Account', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Refresh images', exact: true }).click();

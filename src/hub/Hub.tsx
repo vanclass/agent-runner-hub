@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { RunnerSessions } from './RunnerSessions';
 import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
+import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { AppSettings } from './AppSettings';
@@ -75,6 +76,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         theme={theme} installation={installation}
         sparePreparation={spare.detail}
         entry={sessions.entry} onSelectRunner={setSelectedId} onCloseRunner={id => closeRunner(id, 'explicit')} />
+      <TaskPanel entry={sessions.entry} control={sessions.get(selectedId ?? undefined)?.control}
+        scope={selectedId ?? 'single-entry'} />
     </div>
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
       onLanguage={language => { preferences.update({ language }); initializeHubLanguage(language); }}

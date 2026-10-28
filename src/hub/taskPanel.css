@@ -1,0 +1,46 @@
+.shell-body { position: relative; }
+/* 오른쪽 패널 너비다. 늘리면 설정이 넓어지고, 줄이면 중앙 작업 영역이 넓어진다. */
+.task-panel { width: 320px; flex: 0 0 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--surface); }
+.task-panel-toggle { flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 14px; border: 0; border-bottom: 1px solid var(--border); background: var(--toolbar); text-align: left; }
+.task-panel-body { min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px; }
+.task-panel-body[hidden] { display: none; }
+.task-panel.collapsed { width: 44px; }
+.task-panel.collapsed .task-panel-toggle { height: 100%; flex-direction: column; padding: 14px 8px; }
+.task-panel.collapsed .task-panel-toggle span:last-child { writing-mode: vertical-rl; }
+.task-panel .context-settings { margin: 0; padding: 0; border: 0; }
+.task-panel .runner-controls { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); max-height: none; overflow: visible; }
+.task-panel .runner-config { margin: 0; padding: 0; border: 0; }
+.task-panel h2 { font-size: 14px; margin: 0 0 10px; }
+.task-panel .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.task-panel fieldset { min-width: 0; margin: 0; padding: 12px; display: grid; gap: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.task-panel legend { padding: 0 4px; color: var(--text); font-size: 12px; font-weight: 600; }
+.task-panel .setting select:not(:disabled) { color: var(--text); }
+.task-panel .fast-option { display: flex; flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+.task-panel .fast-option input { width: auto; }
+.task-panel .shortcut-bar { display: grid; grid-template-columns: minmax(0, 1fr); max-height: none; overflow: visible; }
+.task-panel .shortcut { max-width: none; }
+.task-panel .shortcut button { width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 8px; }
+.task-panel .shortcut code { color: var(--muted); font-size: 10px; }
+.task-panel .shortcut-editor { max-height: none; overflow: visible; }
+.task-panel .shortcut-editor-row { flex-wrap: wrap; }
+.task-panel .shortcut-editor-row label { overflow-wrap: anywhere; }
+.task-panel .more-commands { margin: 12px 0; }
+.task-panel summary { cursor: pointer; }
+.task-panel p, .task-panel small { overflow-wrap: anywhere; }
+.task-panel .directory-input { flex-wrap: wrap; }
+.task-panel .directory-input input { flex-basis: 120px; }
+/* 이 너비 이하에서는 패널을 접는다. 늘리면 중앙 영역을 더 일찍 확보하고, 줄이면 3열을 더 오래 유지한다. */
+@media (max-width: 1100px) {
+  .task-panel { width: 44px; }
+  .task-panel .task-panel-toggle { height: 100%; flex-direction: column; padding: 14px 8px; }
+  .task-panel .task-panel-toggle span:last-child { writing-mode: vertical-rl; }
+  .task-panel-body:not([hidden]) { position: absolute; right: 44px; top: 0; bottom: 0; width: min(340px, calc(100% - 44px)); z-index: 5; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 24px #0003; }
+}
+@media (max-width: 620px) {
+  .sidebar { width: 132px; }
+  .workspace-header { flex-wrap: wrap; padding: 12px; }
+  .output { padding: 12px; }
+  .composer-area { padding: 0 10px 10px; }
+  .composer-actions { flex-wrap: wrap; }
+  .context-badge { display: none; }
+}

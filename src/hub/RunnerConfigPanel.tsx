@@ -52,7 +52,7 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
       {!values.includes(draft?.[field] ?? '') && <option value={draft?.[field] ?? ''} disabled>{selected(field)} · {t('config.unlisted')}</option>}
       {values.map(value => <option key={value} value={value}>{value}</option>)}
     </select></label>;
-  return <details className="runner-config">
+  return <details className="runner-config" open>
     <summary>{t('config.title')}</summary>
     {!service.supports('inspect') && <p role="status">{connected ? t('config.unsupported') : t('config.notReady')} {t('config.terminalHelp')}</p>}
     <div className="config-actions">
@@ -65,7 +65,7 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
     </p>
     {service.error && <p role="alert" className="runner-error">{tr(service.error)}</p>}
     {current && <>
-      <h3>{t('config.actual')}</h3>
+      <details className="config-verified"><summary>{t('config.actual')}</summary>
       <dl className="config-current">{Object.entries(fields).map(([field, key]) => <div key={field}>
         <dt>{t(key)}</dt><dd>{display(current[field as keyof ConfigSettings])}</dd></div>)}</dl>
       <p>{t('config.effective', { model: actual.effective.model, effort: actual.effective.reasoning_effort,
@@ -74,10 +74,20 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
         tier: actual.effective.next_service_tier })}</p>
       {actual.setup_required && <p className="runner-error">{t('config.setupRequired')}</p>}
       {!!actual.constraints.length && <ul>{actual.constraints.map(code => <li key={code}><Diagnostic code={code} /></li>)}</ul>}
+      </details>
       {!catalog && <p>{t('config.incomplete')} {t('config.terminalHelp')}</p>}
       <h3>{t('config.draft')}</h3>
       <div className="config-fields">
+        <fieldset><legend>{t('panel.execution')}</legend>
         {selector('target', options?.targets.map(v => v.id) ?? [], actual.availability.target === true)}
+        {selector('run_mode', options?.run_modes ?? [], actual.availability.run_mode === true)}
+        <DirectoryInput label={t('config.choose', { field: t('config.root') })} value={draft?.root ?? ''} scope={draftScope}
+          isCurrent={() => service.draft === draftScope && !service.busy && !control.assignmentLocked && control.snapshot.state === 'ready'}
+          disabled={blocked || !actual.availability.run_mode || !['direct-run', 'pure-direct-run'].includes(draft?.run_mode ?? '')}
+          onChange={value => choose('root', value)} />
+        <p>{t('config.rootHelp')}</p>
+        </fieldset>
+        <fieldset><legend>{t('panel.model')}</legend>
         <label>{t('fields.account')}<select aria-label={t('config.choose', { field: t('fields.account') })}
           disabled={blocked || !actual.availability.account} value={draft ? accountKey(draft.account) : ''}
           onChange={e => { const account = options?.accounts.find(a => accountKey(a) === e.target.value);
@@ -97,14 +107,15 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
           {!model?.reasoning_efforts.includes(draft?.model.reasoning_effort ?? '') && <option value={draft?.model.reasoning_effort ?? ''} disabled>{draft?.model.reasoning_effort || '—'} · {t('config.unlisted')}</option>}
           {model?.reasoning_efforts.map(e => <option key={e} value={e}>{e}</option>)}
         </select></label>
-        {selector('service_tier', model?.service_tiers ?? [], actual.availability.service_tier === true)}
-        {selector('run_mode', options?.run_modes ?? [], actual.availability.run_mode === true)}
-        <DirectoryInput label={t('config.choose', { field: t('config.root') })} value={draft?.root ?? ''} scope={draftScope}
-          isCurrent={() => service.draft === draftScope && !service.busy && !control.assignmentLocked && control.snapshot.state === 'ready'}
-          disabled={blocked || !actual.availability.run_mode || !['direct-run', 'pure-direct-run'].includes(draft?.run_mode ?? '')}
-          onChange={value => choose('root', value)} />
+        <label className="fast-option"><input type="checkbox" aria-label={t('panel.fast')}
+          checked={draft?.service_tier === 'fast'}
+          disabled={blocked || !actual.availability.service_tier || !model?.service_tiers.includes('fast')
+            || !model.service_tiers.includes('default')}
+          onChange={e => choose('service_tier', e.target.checked ? 'fast' : 'default')} />{t('panel.fast')}</label>
+        {draft && (!model?.service_tiers.includes(draft.service_tier) || !['default', 'fast'].includes(draft.service_tier))
+          && <p role="status">{t('panel.retained', { value: draft.service_tier })}</p>}
+        </fieldset>
       </div>
-      <p>{t('config.rootHelp')}</p>
       {Object.keys(defaults).length > 0 && <div className="config-defaults"><h3>{t('config.defaults')}</h3>
         <pre>{JSON.stringify(defaults, null, 2)}</pre>
         {!!mapped?.unresolved.length && <p>{t('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') })}</p>}

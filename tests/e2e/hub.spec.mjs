@@ -24,7 +24,7 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(longName);
   await expect(longRow.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('This Runner only', { exact: true })).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Runner Project', exact: true })).toBeDisabled();
+  await expect(page.locator('.workspace .context-settings')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send instruction' })).toBeDisabled();
   await page.keyboard.press('F2');
   const input = page.getByRole('textbox', { name: 'Runner name', exact: true });

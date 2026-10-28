@@ -4,7 +4,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await configure(page);
     for (let i = 0; i < count; i++) await page.getByRole('button', { name: 'New Runner', exact: true }).click();
     await page.evaluate(async () => (await import('/tests/fixtures/sessionConfig.ts')).attachConfigToHub());
-    await page.getByText('Runner configuration', { exact: true }).click();
+    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await expect(page.getByRole('button', { name: 'Inspect settings and options', exact: true })).toBeEnabled();
   }
   test('session config UI selects actual identities, reviews a plan and explicitly applies without PTY submission', async ({ page }, testInfo) => {
@@ -15,7 +15,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect(page.getByRole('combobox', { name: 'Draft Model', exact: true })).toBeEnabled();
     await page.getByRole('combobox', { name: 'Draft Model', exact: true }).selectOption('s0');
     await page.getByRole('combobox', { name: 'Draft Reasoning effort', exact: true }).selectOption('high');
-    await page.getByRole('combobox', { name: 'Draft Service tier', exact: true }).selectOption('fast');
+    await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
     await page.getByRole('combobox', { name: 'Draft Project / Target', exact: true }).selectOption('project:Exact');
     await page.getByRole('combobox', { name: 'Draft Run Mode', exact: true }).selectOption('direct-run');
     await page.getByRole('textbox', { name: 'Draft Direct / Pure Direct Root', exact: true }).fill('C:/explicit root');
@@ -47,7 +47,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await open(page, 2);
     const firstRow = page.locator('.runner-row').nth(0), secondRow = page.locator('.runner-row').nth(1);
     await firstRow.locator('.nav-row').click();
-    await page.getByText('Runner configuration', { exact: true }).click();
+    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toBeEnabled();
     await page.getByRole('combobox', { name: 'Draft Run Mode', exact: true }).selectOption('issue-run');
@@ -55,13 +55,13 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
     await expect(page.locator('.config-progress')).toContainText('Queued by Runner');
     await secondRow.locator('.nav-row').click();
-    await page.getByText('Runner configuration', { exact: true }).click();
+    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toBeEnabled();
     await expect(page.getByRole('combobox', { name: 'Draft Run Mode', exact: true })).toHaveValue('task-run');
     await page.evaluate(() => { const fixture = window.__configFixtures.get('pty-1'); fixture.hold = false; fixture.complete(); });
     await firstRow.locator('.nav-row').click();
-    await page.getByText('Runner configuration', { exact: true }).click();
+    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();
     await page.evaluate(() => { window.__configFixtures.get('pty-1').holdOperation = 'session_config.apply'; });
     await page.getByRole('button', { name: 'Apply reviewed plan', exact: true }).click();
@@ -71,7 +71,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.evaluate(() => window.__configFixtures.get('pty-1').complete());
     await expect(page.locator('.config-receipt')).toContainText('Completion is unconfirmed.');
     await secondRow.locator('.nav-row').click();
-    await page.getByText('Runner configuration', { exact: true }).click();
+    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await expect(page.locator('.config-current')).toContainText('task-run');
     expect(await page.evaluate(() => window.__configFixtures.get('pty-2').requests.some(r => r.operation.endsWith('.apply')))).toBe(false);
   });
@@ -81,7 +81,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'Draft Model', exact: true })).toBeEnabled();
     await page.getByRole('combobox', { name: 'Draft Model', exact: true }).selectOption('m2');
-    await page.getByRole('combobox', { name: 'Draft Service tier', exact: true }).selectOption('fast');
+    await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
     await page.getByRole('combobox', { name: 'Draft Project / Target', exact: true }).selectOption('project:Exact');
     await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeEnabled();

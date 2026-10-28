@@ -3,13 +3,12 @@ import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
 import { RunnerComposer } from './RunnerComposer';
-import { RunnerControls } from './RunnerControls';
 import { RunnerRecovery } from './RunnerRecovery';
 import { RunnerReferences } from './RunnerReferences';
 import { RunnerImagePreviews } from './RunnerImagePreviews';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
-import { SingleEntryComposer, SingleEntrySettings } from './SingleEntryComposer';
+import { SingleEntryComposer } from './SingleEntryComposer';
 import { RunnerTabClose } from './RunnerTabClose';
 
 export function Workspace({ runner, session, theme, installation, sparePreparation, entry, onSelectRunner, onCloseRunner }: {
@@ -32,12 +31,6 @@ export function Workspace({ runner, session, theme, installation, sparePreparati
         onClose={() => onCloseRunner(session.view.id)} />}
     </header>
     {session && <RunnerRecovery session={session} />}
-    {session ? <RunnerControls control={session.control} defaults={entry.defaults} /> : singleEntry ? <SingleEntrySettings entry={entry} />
-      : <section className="context-settings" aria-label={t('control.settings')}><div className="settings-grid">
-        {[t('fields.project'), t('fields.model'), t('fields.account'), t('fields.mode')].map(label => <label className="setting" key={label}><span>{label}</span>
-          <select aria-label={t('control.runnerField', { field: label })} disabled><option>{t('common.notConnected')}</option></select></label>)}
-        <button className="command-button" type="button" disabled title={t('workspace.commandsUnavailable')}>{t('workspace.commands')}</button>
-      </div><p className="scope-note">{t('workspace.scope')}</p></section>}
     <section className="output" aria-label={t('workspace.outputLabel')}>
       <div className="output-label"><span>{t('workspace.output')}</span><span className="quiet-status" role="status">{session
         ? runner?.status === 'starting' ? t('workspace.starting')

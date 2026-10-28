@@ -1,4 +1,16 @@
 {
+  "panel": {
+    "title": "Task settings & commands",
+    "execution": "Execution Target",
+    "model": "Model Settings",
+    "fast": "Fast",
+    "retained": "Saved value retained: {{value}} · unavailable for this model. Select a supported value before applying.",
+    "commands": "Runner commands",
+    "observation": "Terminal observation",
+    "moreCommands": "More commands",
+    "status": "Status",
+    "resume": "Resume"
+  },
   "setup": {
     "title": "Connect your AgentRunner",
     "description": "Choose your installation to get started. We’ll verify Runner and its managed Python before opening your workspace.",
@@ -319,9 +331,6 @@
     "defaults": "Assignment defaults",
     "runnerOnly": "This Runner only",
     "terminate": "Terminate Runner",
-    "commandsUnavailable": "Command shortcuts are not connected",
-    "commands": "⌘ Commands",
-    "scope": "Settings belong to this Runner. Single Entry defaults do not change this context.",
     "outputLabel": "Output viewport",
     "output": "OUTPUT",
     "starting": "Starting Runner process…",
@@ -340,8 +349,6 @@
     "singleEntry": "Single Entry",
     "notConnected": "Not connected",
     "unknown": "unknown",
-    "notSelected": "Not selected",
-    "unavailable": "Unavailable",
     "unbound": "Unbound"
   },
   "control": {
@@ -355,13 +362,9 @@
       "failure": "Command failed",
       "unknown": "Outcome unknown · not retried"
     },
-    "waiting": "Waiting for Runner",
     "cancelled": "Cancelled in terminal",
     "unchanged": "No settings changed",
     "changed": "Settings changed",
-    "unavailable": "Runner control is unavailable",
-    "finishCurrent": "Finish the current terminal interaction",
-    "notOffered": "Not offered by this Runner",
     "shortcuts": "Shortcuts",
     "shortcutsLabel": "Runner command shortcuts",
     "customize": "Customize shortcuts",
@@ -370,23 +373,15 @@
     "sending": "Sending command…",
     "interacting": "Runner is waiting for interaction in its terminal.",
     "connected": "Runner settings connected",
-    "runnerField": "Runner {{field}}",
-    "effective": "Effective: {{effort}} · {{tier}}",
     "changeCount": "Settings changes: {{count}}",
-    "changeField": "Change Runner {{field}}",
-    "openCommand": "Open {{command}} in Runner",
-    "source": "Settings source: {{source}}.",
-    "next": " Next configured: {{model}} · {{effort}} · {{tier}}.",
     "menuHelp": "Changes open Runner menus; answer in its terminal.",
     "moveUp": "Move {{command}} up",
     "moveDown": "Move {{command}} down",
     "disconnected": "Control disconnected · displayed settings may be stale. {{detail}}{{last}}"
   },
   "fields": {
-    "project": "Project",
     "model": "Model",
     "account": "Account",
-    "mode": "Mode",
     "target": "Project / Target",
     "runMode": "Run Mode"
   },
