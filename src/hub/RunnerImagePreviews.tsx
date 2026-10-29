@@ -14,7 +14,8 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
     else dialog.current?.close();
   }, [enlarged, preview]);
   useEffect(() => { if (!preview) setEnlarged(false); }, [preview]);
-  return <section className="generated-images" aria-label={t('images.label')} data-state={images.state}>
+  return <details className="generated-images" aria-label={t('images.label')} data-state={images.state}>
+    <summary>{t('images.label')}</summary>
     <div className="generated-images-toolbar">
       <strong>{t('images.label')}</strong>
       <span role="status" className="generated-image-status">{images.state === 'loading' ? t('images.loading') : ''}{tr(images.detail)}</span>
@@ -33,5 +34,5 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
       <div><strong>{t('images.image')}</strong><button type="button" onClick={() => setEnlarged(false)}>{t('images.close')}</button></div>
       {preview && <img src={preview.url} alt={t('images.verifiedEnlarged')} />}
     </dialog>
-  </section>;
+  </details>;
 }

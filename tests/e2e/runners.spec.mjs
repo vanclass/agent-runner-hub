@@ -11,12 +11,13 @@ import { registerInstallationSetup } from './installation-setup.mjs';
 import { registerTaskPanel } from './task-panel.mjs';
 import { registerLogViewport } from './log-viewport.mjs';
 import { registerHubSelectionUI } from './hub-selection-ui.mjs';
+import { registerComposerAttachments } from './composer-attachments.mjs';
 
 test.setTimeout(90_000);
-const referenceExpect = expect.configure({ timeout: 30000 });
 test.use({ navigationTimeout: 60_000 });
 registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
+registerComposerAttachments({ test, expect, transport, configure, create: createWork });
 
 async function transport(page, freshTarget, referenceOptions) {
   await page.addInitScript(({ freshTarget, referenceOptions }) => {
@@ -572,14 +573,15 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   const target = await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).inputValue();
   await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('draft /status 그대로');
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.locator('.reference-candidate')).toContainText('Registered · completed Runner receipt');
+  await expect(page.locator('.attachment-chip')).toContainText('Staged');
+  await page.locator('.generated-images summary').click();
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('combobox', { name: '요청 프로젝트 / 대상', exact: true })).toHaveValue(target);
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toHaveValue('draft /status 그대로');
-  await expect(page.locator('.reference-candidate')).toContainText('등록됨 · Runner 완료 확인');
+  await expect(page.locator('.attachment-chip')).toContainText('임시');
   await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '앱 설정', exact: true }).click();
   await page.getByRole('button', { name: '블랙', exact: true }).click();
@@ -592,6 +594,7 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   expect(await page.locator('.runner-row').first().getAttribute('data-runner-id')).toBe(id);
   await testInfo.attach('live-runner-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
 });
+
 
 test('Single Entry preferences restore all safe selections and revalidate them before delivery', async ({ page }) => {
   await transport(page, undefined, { work: true, auto: true });
@@ -662,15 +665,16 @@ test('Runner observations do not become Hub defaults and raw native errors retai
 });
 
 test('generated image reads retain their original owner across asynchronous tab switches', async ({ page }) => {
-  await transport(page, undefined, { ...generatedFixture(), pauseFirstImage: true }); await configure(page); await create(page);
+  await transport(page, undefined, { ...generatedFixture(), pauseFirstImage: true }); await configure(page); await create(page); await page.locator('.generated-images summary').click();
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'loading');
   const firstId = await page.getByRole('combobox', { name: 'Select generated image' }).inputValue();
-  await create(page); const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
+  await create(page); await page.locator('.generated-images summary').click(); const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
   await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
   await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').releaseImage());
   await expect(image).toHaveAttribute('src', secondUrl);
   expect(await page.getByRole('combobox', { name: 'Select generated image' }).inputValue()).not.toBe(firstId);
   await page.locator('.runner-row').first().locator('.nav-row').click();
+  await page.locator('.generated-images summary').click();
   await expect(page.getByRole('combobox', { name: 'Select generated image' })).toHaveValue(firstId);
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', secondUrl);
 });
@@ -678,12 +682,12 @@ test('generated image reads retain their original owner across asynchronous tab 
 test('generated image resources revoke on selection and owned exit without affecting another live Runner', async ({ page }) => {
   await page.addInitScript(() => { const original = URL.revokeObjectURL.bind(URL); window.__revokedImages = [];
     URL.revokeObjectURL = url => { window.__revokedImages.push(url); original(url); }; });
-  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page); await page.locator('.generated-images summary').click();
   const image = page.getByRole('img', { name: 'Verified generated image', exact: true }); await expect(image).toBeVisible();
   const original = await image.getAttribute('src');
   await page.getByRole('combobox', { name: 'Select generated image' }).selectOption({ index: 1 }); await expect(image).toBeVisible();
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), original)).toBe(true);
-  const first = await image.getAttribute('src'); await create(page); await expect(image).toBeVisible();
+  const first = await image.getAttribute('src'); await create(page); await page.locator('.generated-images summary').click(); await expect(image).toBeVisible();
   const second = await image.getAttribute('src'); await page.evaluate(() => window.__nativeFixture.exit('pty-1'));
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), first)).toBe(true);
   expect(await page.evaluate(url => window.__revokedImages.includes(url), second)).toBe(false);
@@ -694,7 +698,7 @@ test('generated image resources revoke on selection and owned exit without affec
 });
 
 test('generated image states reject unavailable sources and discard late reads after Runner exit', async ({ page }) => {
-  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page); await page.locator('.generated-images summary').click();
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-1');
     a.imageFailure = { state: 'unavailable', detail: 'Fixture image expired' }; });
@@ -704,7 +708,7 @@ test('generated image states reject unavailable sources and discard late reads a
   await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-1'); a.imageFailure = undefined; a.images = []; });
   await page.getByRole('button', { name: 'Refresh images' }).click();
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'empty');
-  await create(page); await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
+  await create(page); await page.locator('.generated-images summary').click(); await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-2');
     a.imageReadGate = new Promise(resolve => { a.releaseImage = resolve; }); });
   await page.getByRole('button', { name: 'Refresh images' }).click();
@@ -717,7 +721,7 @@ test('generated image states reject unavailable sources and discard late reads a
 });
 
 test('generated image previews render verified delivery, select, enlarge, refresh and isolate tabs', async ({ page }, testInfo) => {
-  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page); await page.locator('.generated-images summary').click();
   const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
   await expect(image).toBeVisible();
   expect(await image.evaluate(element => element.naturalWidth)).toBe(2);
@@ -727,130 +731,19 @@ test('generated image previews render verified delivery, select, enlarge, refres
   await page.getByRole('button', { name: 'Close preview' }).click();
   await page.getByRole('combobox', { name: 'Select generated image' }).selectOption({ index: 1 });
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', firstUrl);
-  await create(page); await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
+  await create(page); await page.locator('.generated-images summary').click(); await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
   await page.locator('.runner-row').first().locator('.nav-row').click();
+  await page.locator('.generated-images summary').click();
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', secondUrl);
   await page.getByRole('button', { name: 'Refresh images' }).click(); await expect(image).toBeVisible();
   expect(await page.locator('.terminal-host').evaluate(element => !!element.querySelector('.xterm'))).toBe(true);
   await testInfo.attach('synthetic-generated-image-preview', { body: await page.screenshot(), contentType: 'image/png' });
 });
 
-test('reference extension keeps duplicate picker identities and reconciles complete paginated inventory', async ({ page }) => {
-  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  for (let n = 0; n < 3; n++) {
-    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
-    await expect(page.locator('.reference-candidate').filter({ hasText: 'Registered · completed Runner receipt' })).toHaveCount(n + 1);
-  }
-  const ids = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.reference_id));
-  expect(new Set(ids).size).toBe(3);
-  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
-  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids);
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.shift());
-  await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
-  await expect(page.getByRole('region', { name: 'Registered pending references' }).locator('li code')).toHaveText(ids.slice(1));
-});
 
-test('clipboard capture stages independent previews, cancels B, and sends only A C D E in order', async ({ page }, testInfo) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, clipboard: true, auto: true }); await configure(page); await createWork(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  for (let n = 0; n < 3; n++) {
-    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 1);
-  }
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
-  const cancelledPreview = await page.getByAltText('Clipboard image 2 preview').getAttribute('src');
-  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
-  await expect(page.locator('.clipboard-candidate img')).toHaveCount(2);
-  expect(await page.evaluate(url => window.__nativeFixture.revokedUrls.includes(url), cancelledPreview)).toBe(true);
-  for (let n = 0; n < 2; n++) {
-    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 3);
-  }
-  await page.screenshot({ path: testInfo.outputPath('clipboard-selection.png'), fullPage: true });
-  await page.locator('.reference-candidate').filter({ has: page.getByAltText('Clipboard image 1 preview') })
-    .screenshot({ path: testInfo.outputPath('clipboard-item.png') });
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Inspect these four selected images');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
-  const outcome = await page.evaluate(() => {
-    const f = window.__nativeFixture;
-    const registrations = f.referenceRequests.filter(item => item.request.operation === 'references.register');
-    const instruction = f.deliveredSets.filter(item => item.instruction === 'Inspect these four selected images');
-    return { registrations: registrations.map(item => [item.id, item.request.path]), ids: f.sessions.get('pty-1').items.map(item => item.reference_id),
-      instruction, persisted: localStorage.getItem('agent-runner-hub.workspace.v1') ?? '', closes: f.imageCloses, reads: f.clipboardReads.length };
-  });
-  expect(outcome.registrations).toEqual([1, 3, 4, 5].map(n => ['pty-1', `/fixture/hub-owned/pty-1/clipboard-${n}.png`]));
-  expect(outcome.ids).toHaveLength(4); expect(new Set(outcome.ids).size).toBe(4);
-  expect(outcome.instruction).toHaveLength(1); expect(outcome.instruction[0].ids).toEqual(outcome.ids);
-  expect(outcome.persisted).not.toContain('clipboard-'); expect(outcome.persisted).not.toContain('blob:');
-  expect(outcome.reads).toBe(5); expect(outcome.closes).toHaveLength(5);
-  await expect(page.locator('.clipboard-candidate img')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Clear registration history' }).click();
-  await expect(page.locator('.reference-candidate')).toHaveCount(0);
-});
 
-test('clipboard capture retains its originating session across tab switches and cancellation during capture', async ({ page }) => {
-  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.pauseStage());
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByText('Reading clipboard and staging PNG for this Runner…')).toBeVisible();
-  await create(page);
-  await page.evaluate(() => window.__nativeFixture.resumeStage());
-  await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.staged.map(item => item.id))).toEqual(['pty-1']);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
-  await page.evaluate(() => window.__nativeFixture.pauseStage());
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Cancel image 2', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.resumeStage());
-  await expect(page.locator('.reference-candidate').filter({ hasText: 'Cancelled' })).toHaveCount(1);
-  await expect(page.locator('.clipboard-candidate img')).toHaveCount(1);
-});
 
-test('empty clipboard and staging failures stay actionable and unknown registration never replays', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, clipboard: true, unknownAdmission: true }); await configure(page); await createWork(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.missingImage(true));
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Copy a supported image' })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel image 1', exact: true }).click();
-  await page.evaluate(() => { window.__nativeFixture.missingImage(false); window.__nativeFixture.stageFailure(true); });
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.stageFailure(false));
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByAltText('Clipboard image 3 preview')).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Keep the uncertain draft');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'registration did not complete' })).toBeVisible();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Keep the uncertain draft');
-  await page.getByRole('button', { name: 'Clear registration history' }).click();
-  await expect(page.locator('.reference-candidate')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
-  expect(await page.evaluate(() => window.__nativeFixture.deliveredSets.filter(item => new TextDecoder().decode(new Uint8Array(item.bytes)).endsWith('\u001b[13;0;13;1;0;1_')))).toHaveLength(0);
-});
 
-test('clipboard stays unavailable without native staging or during foreground interaction', async ({ page }) => {
-  await transport(page, undefined, { clipboard: true }); await configure(page); await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  const capture = page.getByRole('button', { name: 'Clipboard image', exact: true });
-  await expect(capture).toBeEnabled();
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true; });
-  await expect(capture).toBeDisabled();
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.clipboardStaging = false; });
-  await expect(page.getByRole('button', { name: 'Clipboard image unavailable', exact: true })).toBeDisabled();
-  expect(await page.evaluate(() => window.__nativeFixture.clipboardReads.length)).toBe(0);
-});
 
 async function create(page) {
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
@@ -887,189 +780,12 @@ async function createPrepared(page) {
   await expect.poll(prepared).toBe(true);
 }
 
-test('later clipboard registration failure holds the exact draft and selection without partial instruction delivery', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, clipboard: true }); await configure(page); await createWork(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  for (let n = 0; n < 3; n++) {
-    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 1);
-  }
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Keep this exact draft');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register').length)).toBe(1);
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Cancel image 2', exact: true })).toBeDisabled();
-  await page.evaluate(() => { const f = window.__nativeFixture; const request = f.referenceRequests.find(item => item.request.operation === 'references.register');
-    f.finishReference(request.id, request.requestId); });
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register').length)).toBe(2);
-  await page.evaluate(() => { const f = window.__nativeFixture; const request = f.referenceRequests.filter(item => item.request.operation === 'references.register')[1];
-    f.finishReference(request.id, request.requestId, 'rejected'); });
-  await expect(page.getByRole('alert').filter({ hasText: 'registration did not complete' })).toBeVisible();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Keep this exact draft');
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(2);
-  await page.getByRole('button', { name: 'Cancel image 2', exact: true }).click();
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register').length)).toBe(3);
-  await page.evaluate(() => { const f = window.__nativeFixture; const request = f.referenceRequests.filter(item => item.request.operation === 'references.register')[2];
-    f.finishReference(request.id, request.requestId); });
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit'))).toHaveLength(1);
-});
 
-test('cancelling a queued registration settles its exact attempt then removes by committed ID', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true }); await configure(page); await createWork(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel path 1', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove').length)).toBe(1);
-  const removal = await page.evaluate(() => {
-    const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.remove');
-    return { request, committed: f.sessions.get('pty-1').items[0].reference_id };
-  });
-  expect(removal.request.request).toEqual({ operation: 'references.remove', reference_id: removal.committed });
-  await page.evaluate(request => window.__nativeFixture.finishReference(request.id, request.requestId, 'outcome-unknown'), removal.request);
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Do not send unresolved removals');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-  await page.evaluate(id => { const session = window.__nativeFixture.sessions.get('pty-1');
-    session.items = session.items.filter(item => item.reference_id !== id); }, removal.committed);
-  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
-  await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(1);
-});
 
-test('completed registration removal retains receipts and isolates independent Runner identities', async ({ page }) => {
-  await transport(page, undefined, { auto: true }); await configure(page); await create(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
-  await create(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
-  const other = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items[0].reference_id);
-  await page.locator('.runner-row').first().locator('.nav-row').click();
-  await page.getByRole('button', { name: 'Remove path 1', exact: true }).click();
-  await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
-  const result = await page.evaluate(() => {
-    const f = window.__nativeFixture;
-    return { a: f.sessions.get('pty-1').items, b: f.sessions.get('pty-2').items,
-      removal: f.referenceRequests.filter(item => item.request.operation === 'references.remove'),
-      receipts: f.sessions.get('pty-1').control.references.results.map(item => item.state) };
-  });
-  expect(result.a).toEqual([]); expect(result.b.map(item => item.reference_id)).toEqual([other]);
-  expect(result.removal).toHaveLength(1); expect(result.removal[0].id).toBe('pty-1');
-  expect(result.removal[0].request.reference_id).not.toBe(other);
-  expect(result.receipts).toEqual(['registered', 'removed']);
-});
 
-test('legacy removal requires /files and authoritative reconciliation before ordinary submission', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, auto: true, legacyRemoval: true }); await configure(page); await createWork(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
-  await page.getByRole('button', { name: 'Remove path 1', exact: true }).click();
-  await expect(page.getByText(/This attachment remains unresolved/)).toBeVisible();
-  await page.getByLabel('Runner instructions', { exact: true }).fill('After manual removal');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
-  await page.getByRole('button', { name: 'Open /files in terminal' }).click();
-  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1'); session.items = [];
-    session.control.results.forEach(result => result.state = 'accepted'); });
-  await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
-  await expect(page.getByText(/Removed · owning Runner confirmed absence/)).toBeVisible();
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(0);
-});
 
-test('pending terminal cancellation and unknown completion remain distinct without automatic replay', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true }); await configure(page); await createWork(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
-  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel path 1', exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await page.getByRole('button', { name: 'Clear registration history' }).click();
-  await expect(page.locator('.reference-candidate')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Reconcile pending references' })).toBeEnabled();
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Unknown registration must not send');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'unresolved' })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
-});
 
-test('preflight permits Runner-owned terminal cancellation and preserves the unsent draft', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, clipboard: true }); await configure(page); await createWork(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Terminal cancellation keeps this draft');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.some(item => item.request.operation === 'references.register'))).toBe(true);
-  await page.evaluate(() => { const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.register');
-    f.finishReference(request.id, request.requestId, 'pending-interaction'); });
-  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
-  await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Escape');
-  await page.evaluate(() => { const f = window.__nativeFixture, request = f.referenceRequests.find(item => item.request.operation === 'references.register');
-    f.finishReference(request.id, request.requestId, 'rejected');
-    f.sessions.get(request.id).control.references.results.find(item => item.id === request.requestId).code = 'REFERENCE_SELECTION_CANCELLED'; });
-  await expect(page.getByRole('alert').filter({ hasText: 'registration did not complete' })).toBeVisible();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Terminal cancellation keeps this draft');
-  await expect(page.getByText(/Cancelled · no pending attachment/)).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.writes.every(item => new TextDecoder().decode(new Uint8Array(item.bytes)).includes('[27;')))).toBe(true);
-});
 
-test('other pending references require review and remain present alongside the selected clipboard image', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, clipboard: true, auto: true }); await configure(page); await createWork(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push(...[1, 2, 3].map(n => ({
-    reference_id: n.toString(16).padStart(32, 'e'), display_index: n, display_name: 'terminal-' + n + '.txt', kind: 'file', image_detail: null, media_kind: null }))));
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Include the reviewed terminal references');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Other pending references' }).locator('li')).toHaveCount(3);
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-  await page.getByRole('button', { name: 'Clear registration history' }).click();
-  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  await page.getByRole('button', { name: 'Include other pending references', exact: true }).click();
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('');
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.map(item => item.display_name)))
-    .toEqual(['terminal-1.txt', 'terminal-2.txt', 'terminal-3.txt', 'clipboard-1.png']);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.remove'))).toHaveLength(0);
-});
-
-test('changing paginated inventory blocks without inventing a snapshot or sending an instruction', async ({ page }) => {
-  const expect = referenceExpect;
-  await transport(page, undefined, { work: true, auto: true }); await configure(page); await createWork(page);
-  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1');
-    session.items = [1, 2, 3].map(n => ({ reference_id: n.toString(16).padStart(32, 'e'), display_index: n,
-      display_name: 'terminal-' + n, kind: 'file', image_detail: null, media_kind: null })); session.changeInventoryAt = 2; });
-  await page.getByLabel('Runner instructions', { exact: true }).fill('Do not send changing inventory');
-  await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'pagination is unverified' })).toBeVisible();
-  await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('Do not send changing inventory');
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
-});
 
 test('foreground PTY uncertainty preserves the draft and blocks Hub replay', async ({ page }) => {
   await transport(page, undefined, { auto: true }); await configure(page); await create(page);
@@ -1083,64 +799,8 @@ test('foreground PTY uncertainty preserves the draft and blocks Hub replay', asy
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(1);
 });
 
-test('clipboard previews revoke on owned session exit and late capture never crosses into another Runner', async ({ page }) => {
-  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  const firstUrl = await page.getByAltText('Clipboard image 1 preview').getAttribute('src');
-  await page.evaluate(() => window.__nativeFixture.pauseStage());
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByText('Reading clipboard and staging PNG for this Runner…')).toBeVisible();
-  await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.evaluate(() => { window.__nativeFixture.exit('pty-1'); window.__nativeFixture.resumeStage(); });
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByAltText('Clipboard image 1 preview')).toBeVisible();
-  const secondUrl = await page.getByAltText('Clipboard image 1 preview').getAttribute('src');
-  expect(firstUrl).not.toBe(secondUrl);
-  const released = await page.evaluate(() => window.__nativeFixture.revokedUrls);
-  expect(released).toContain(firstUrl); expect(released).not.toContain(secondUrl);
-  await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.locator('.clipboard-candidate img')).toHaveCount(0);
-  await expect(page.locator('.reference-candidate').filter({ hasText: 'Cancelled' })).toHaveCount(2);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
-});
 
-test('clipboard preview selection stays bounded and a cancelled slot can be replaced', async ({ page }) => {
-  await transport(page, undefined, { clipboard: true, auto: true }); await configure(page); await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  for (let n = 0; n < 16; n++) {
-    await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-    await expect(page.locator('.clipboard-candidate img')).toHaveCount(n + 1);
-  }
-  await expect(page.getByRole('button', { name: 'Clipboard image', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Cancel image 8', exact: true }).click();
-  await page.getByRole('button', { name: 'Clipboard image', exact: true }).click();
-  await expect(page.getByAltText('Clipboard image 17 preview')).toBeVisible();
-  await expect(page.locator('.clipboard-candidate img')).toHaveCount(16);
-  expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(17);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(0);
-});
 
-test('reference drop submissions keep individual receipts and their original Runner through tab switches', async ({ page }) => {
-  await transport(page, undefined, {}); await configure(page); await create(page);
-  const paths = ['C:\\참조 폴더\\input.txt', 'C:\\참조 폴더\\image.png'];
-  await page.evaluate(paths => window.__nativeFixture.drop(paths), paths);
-  await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'pending-interaction'));
-  await expect(page.getByText(/Pending terminal interaction · select image detail/)).toBeVisible();
-  await create(page);
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101));
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.referenceRequests.length)).toBe(2);
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.map(item => [item.id, item.request.path]))).toEqual(paths.map(path => ['pty-1', path]));
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 102, 'rejected'));
-  await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.getByText(/Registered · completed Runner receipt/)).toHaveCount(1);
-  await expect(page.getByText(/Rejected · no registration confirmed/)).toHaveCount(1);
-  expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').items)).toEqual([]);
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-});
 
 function records(writes, id) {
   const text = writes.filter(write => write.id === id).map(write => String.fromCharCode(...write.bytes)).join('');
@@ -1543,21 +1203,6 @@ async function entry(page, text = '/status') {
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(text);
 }
 
-test('uncertain reference remains explicit across clearing, refreshing and tab switches without replay', async ({ page }) => {
-  await transport(page, undefined, {}); await configure(page); await create(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText('Queued · registration unconfirmed', { exact: true })).toBeVisible();
-  await page.evaluate(() => window.__nativeFixture.finishReference('pty-1', 101, 'outcome-unknown'));
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await page.getByRole('button', { name: 'Clear registration history' }).click();
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  await create(page); await page.locator('.runner-row').first().locator('.nav-row').click();
-  await page.getByRole('button', { name: 'Reconcile pending references' }).click();
-  await expect(page.getByText(/0 pending · Matching complete/)).toBeVisible();
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.register'))).toHaveLength(1);
-  await expect(page.getByRole('button', { name: 'Register selected paths' })).toBeDisabled();
-});
 
 test('Single Entry skips a Runner with prepared references and verifies the chosen empty inventory', async ({ page }) => {
   await transport(page, undefined, { auto: true }); await configure(page); await create(page);
@@ -1572,16 +1217,6 @@ test('Single Entry skips a Runner with prepared references and verifies the chos
   expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.length)).toBe(1);
 });
 
-test('reference admission failure is distinct from uncertainty and is never automatically retried', async ({ page }) => {
-  await transport(page, undefined, { admissionFailure: true }); await configure(page); await create(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByText(/Failed · review or cancel/)).toBeVisible();
-  await expect(page.getByText(/fixture queue unavailable/)).toBeVisible();
-  await expect(page.getByText(/Outcome unknown · not repeated/)).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Register selected paths' })).toBeDisabled();
-  await create(page); await page.locator('.runner-row').first().locator('.nav-row').click();
-  expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toHaveLength(1);
-});
 
 test('Single Entry leaves an instruction unsent when a fresh inventory reveals terminal-prepared references', async ({ page }) => {
   await transport(page, undefined, {}); await configure(page); await create(page);
@@ -1638,81 +1273,7 @@ test('process exit retains final output without restoring command controls', asy
   await expect(page.locator('.task-panel .command-button, .task-panel .shortcut-bar')).toHaveCount(0);
 });
 
-test('selected paths remain unregistered and unsupported media is explicit', async ({ page }) => {
-  await transport(page); await configure(page); await create(page);
-  await page.getByText('Files and images', { exact: true }).click();
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Selected path /fixture/image.png', exact: true })).toHaveValue('/fixture/image.png');
-  await expect(page.getByText(/Selected paths are not confirmed attachments/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Clipboard image unavailable' })).toBeDisabled();
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-  await create(page);
-  await page.evaluate(() => window.__nativeFixture.drop(['/fixture/dropped.png']));
-  await expect(page.getByRole('textbox', { name: 'Selected path /fixture/dropped.png', exact: true })).toHaveValue('/fixture/dropped.png');
-  await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.getByRole('textbox', { name: 'Selected path /fixture/image.png', exact: true })).toHaveValue('/fixture/image.png');
-  await expect(page.getByRole('textbox', { name: 'Selected path /fixture/dropped.png', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Attach folder', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Selected path /fixture/folder', exact: true })).toHaveValue('/fixture/folder');
-  await page.getByRole('button', { name: 'Open /files in terminal' }).click();
-  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/files' }]);
-  await expect(page.locator('.runner-references img')).toHaveCount(0);
-});
 
-test('browser-simulated drops preserve native paths and ignore other targets and DOM drops', async ({ page }) => {
-  await transport(page); await configure(page); await create(page);
-  const paths = ['C:\\Task 10\\한글 file.txt', 'C:\\Task 10\\folder', '\\\\server\\share\\folder'];
-  await page.evaluate(paths => {
-    const fixture = window.__nativeFixture;
-    const payload = { paths, position: { x: 10, y: 20 } };
-    fixture.nativeEvent('tauri://drag-enter', payload);
-    fixture.nativeEvent('tauri://drag-drop', payload, 'other');
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(new File(['fixture'], 'browser-file.txt'));
-    document.querySelector('.workspace').dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer }));
-  }, paths);
-  await expect(page.locator('.reference-path input')).toHaveCount(0);
-  await page.evaluate(paths => window.__nativeFixture.drop(paths), paths);
-  await expect.poll(() => page.locator('.reference-path input').evaluateAll(inputs => inputs.map(input => input.value))).toEqual(paths);
-  expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]);
-});
-
-for (const state of ['not-ready', 'disabled', 'busy', 'disconnected']) {
-  test(`browser-simulated drop rejects a ${state} Runner without changing candidates`, async ({ page }) => {
-    await transport(page); await configure(page); await create(page);
-    await page.evaluate(() => window.__nativeFixture.drop(['C:\\selected.txt']));
-    await expect(page.locator('.reference-path input')).toHaveValue('C:\\selected.txt');
-    await page.evaluate(state => {
-      const control = window.__nativeFixture.sessions.get('pty-1').control;
-      if (state === 'not-ready') control.state = 'connecting';
-      if (state === 'disconnected') control.state = 'disconnected';
-      if (state === 'disabled') Object.assign(control.observation.commands.find(command => command.text === '/files'),
-        { enabled: false, disabled_reason: 'Reference interaction unavailable' });
-      if (state === 'busy') control.results = [{ id: 1, command: '/status', state: 'pending-interaction' }];
-    }, state);
-    await expect(page.getByRole('button', { name: 'Attach file', exact: true })).toBeDisabled();
-    await page.evaluate(() => window.__nativeFixture.drop(['C:\\rejected folder']));
-    await expect(page.locator('.reference-path input')).toHaveValue('C:\\selected.txt');
-    await expect(page.getByRole('alert')).toBeVisible();
-    expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]);
-  });
-}
-
-for (const language of ['en', 'ko']) test(`observed secondary commands do not expose shortcuts in ${language}`, async ({ page }) => {
-  await transport(page); await configure(page); await create(page);
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').control.observation.commands.push({
-    id: 'discover', text: '/discover', aliases: [], parent_id: null, visible: true, enabled: true,
-    disabled_reason: '', description: 'Discover retained work', children: [],
-  }));
-  if (language === 'ko') {
-    await page.locator('.app-settings-trigger').click();
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
-    await page.keyboard.press('Escape');
-  }
-  await expect(page.locator('.task-panel .command-button, .task-panel .shortcut-bar')).toHaveCount(0);
-  await expect(page.locator('.task-panel')).not.toContainText('/discover');
-  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
-});
 
 test('Runner panels expose selection fields without command shortcuts in both languages', async ({ page }) => {
   await transport(page); await configure(page); await create(page); await create(page);

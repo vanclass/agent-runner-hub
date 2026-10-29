@@ -143,20 +143,7 @@
 .setting select { width: 100%; height: 32px; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--disabled); background: var(--inset); opacity: 1; font-size: 10px; }
 .setting > button { min-height: 32px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--inset); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .setting small { min-height: 12px; font-size: 10px; overflow-wrap: anywhere; }
-.reference-actions button { border: 1px solid var(--border); border-radius: 4px; background: var(--inset); padding: 4px 7px; font-size: 11px; }
 .control-status { font-size: 11px; margin: 8px 0 0; }
-.runner-references { flex-shrink: 0; margin: 0 28px 8px; max-height: 22vh; overflow: auto; font-size: 11px; }
-.runner-references summary { cursor: pointer; padding: 5px 0; }
-.runner-references p { color: var(--muted); line-height: 1.5; }
-.reference-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.reference-path { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
-.reference-path input { flex: 1; min-width: 0; background: var(--inset); color: var(--text); border: 1px solid var(--border); padding: 5px; }
-.reference-candidate { border-left: 2px solid var(--border); padding-left: 8px; margin: 8px 0; }
-.clipboard-candidate { display: flex; align-items: center; gap: 10px; }
-.clipboard-candidate img { object-fit: contain; border: 1px solid var(--border); border-radius: 5px; flex-shrink: 0; }
-.runner-references code { overflow-wrap: anywhere; user-select: text; }
-.runner-references h3 { font-size: 12px; margin: 10px 0 4px; }
-.runner-references li { margin-bottom: 6px; }
 .command-button { height: 32px; border: 1px solid var(--border); background: var(--inset); border-radius: 5px; font-size: 11px !important; }
 .scope-note { font-size: 10px; line-height: 1.6; margin: 10px 0 0; color: var(--muted); }
 .output { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; padding: 18px 28px; }
@@ -168,6 +155,17 @@
 .empty-workspace p { max-width: 330px; margin: 0; color: var(--muted); line-height: 1.8; font-size: 12px; }
 .empty-note { color: var(--muted); font-size: 10px; margin-top: 14px; }
 .composer-area { padding: 0 28px 13px; }.composer { border: 1px solid var(--border); border-radius: 10px; background: var(--inset); overflow: hidden; }
+.attachment-composer { position: relative; max-height: 40vh; overflow: auto; }
+.attachment-drop-active { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--selected-bg, var(--inset)); }
+.attachment-drop-hint { padding: 16px; text-align: center; color: var(--accent); font-weight: 600; border-bottom: 1px dashed var(--accent); }
+.pending-attachments { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; margin: 0; list-style: none; }
+.attachment-chip { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 6px; font-size: 11px; }
+.attachment-chip > span { max-width: 260px; overflow-wrap: anywhere; }
+.attachment-chip > [role=status] { color: var(--muted); }
+.attachment-chip img { width: 72px; height: 54px; object-fit: contain; }
+.attachment-chip button { border: 1px solid var(--border); border-radius: 4px; background: var(--inset); }
+.attachment-composer > .attachments { padding: 0 10px 8px; flex-wrap: wrap; align-items: center; }
+.attachment-composer .composer-actions { justify-content: flex-end; }
 .composer textarea { width: 100%; display: block; resize: none; min-height: 75px; padding: 16px; border: 0; background: transparent; color: var(--text); opacity: 1; }
 .composer textarea::placeholder { color: var(--disabled); opacity: 1; }
 .composer-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 0 10px 10px; }

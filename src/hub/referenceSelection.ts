@@ -18,8 +18,8 @@ export type ReferenceSnapshot = { capability: { version: number; inventory_page_
 type CandidateState = 'capturing' | 'staged' | 'registering' | 'queued' | 'pending-interaction'
   | 'registered' | 'removing' | 'removed' | 'rejected' | 'failed' | 'cancelled' | 'outcome-unknown';
 export type Candidate = { key: number; path: string; sessionId?: string; source?: 'clipboard';
-  phase: CandidateState; requestId?: number; removalId?: number; cancelRequested?: boolean;
-  reconciled?: boolean; submitted?: boolean; thumbnail?: string; detail?: HubText };
+  phase: CandidateState; requestId?: number; removalId?: number; cancelRequested?: boolean; removalBlocked?: boolean;
+  reconciled?: boolean; submitted?: boolean; thumbnail?: string; image?: Blob; detail?: HubText };
 const pending = (state: string) => ['sending', 'queued', 'pending-interaction'].includes(state);
 const identity = (items: Reference[]) => items.map(item => item.reference_id).join(',');
 const inactive = (state: string) => ['removed', 'cancelled'].includes(state);
@@ -38,29 +38,50 @@ export class RunnerReferenceSelection {
   private picking = 0;
   private disposed = false;
   private submission?: { lease: symbol; candidates: Candidate[]; verified: boolean };
-  constructor(readonly control: RunnerControl, private readonly changed: () => void) {}
-  get capable() { return !!this.control.snapshot.references?.capability; }
+  private frozen = false;
+  constructor(private owner: RunnerControl | undefined, private readonly changed: () => void) {}
+  get control() { if (!this.owner) throw new HubError(msg('runtime.control.ownerUnavailable')); return this.owner; }
+  bind(control: RunnerControl) {
+    if (this.owner && this.owner !== control) throw new HubError(msg('runtime.references.originChanged'));
+    this.owner = control;
+    this.candidates.forEach(item => { item.sessionId ??= control.sessionId; });
+  }
+  unbind() {
+    if (this.candidates.some(item => this.state(item) === 'outcome-unknown'
+      || item.requestId !== undefined && !inactive(this.state(item)))) return false;
+    this.candidates.forEach(item => {
+      if (inactive(this.state(item))) { item.phase = 'cancelled'; item.requestId = undefined; item.removalId = undefined; }
+      else if (item.phase === 'failed' && item.requestId === undefined) item.phase = 'staged';
+    });
+    this.owner = undefined;
+    this.candidates.forEach(item => { item.sessionId = undefined; item.path = item.image ? '' : item.path; });
+    return true;
+  }
+  freeze() { if (this.locked || this.picking || this.staging) throw new HubError(msg('runtime.references.finishEditing')); this.frozen = true; }
+  get capable() { return !!this.owner?.snapshot.references?.capability; }
   get removable() { return !!this.control.snapshot.references?.removalCapability; }
-  get locked() { return !!this.submission; }
+  get locked() { return this.frozen || !!this.submission; }
   get deliveryLease() { return this.submission?.verified ? this.submission.lease : undefined; }
   get paths() { return this.candidates.map(item => item.path); }
-  get results() { return this.control.snapshot.references?.results ?? []; }
+  get results() { return this.owner?.snapshot.references?.results ?? []; }
   get inventoryResult() { return [...this.results].reverse().find(result => !!result.inventory); }
   get inventory() { return this.inventoryResult?.inventory; }
   get available() {
-    return !this.disposed && !this.locked && this.control.snapshot.state === 'ready'
-      && !!commandNamed(this.control.snapshot, '/files')?.enabled && !this.control.busy
+    return !this.disposed && !this.locked && !this.owner?.assignmentLocked
       && !this.registering && !this.listing && !this.staging && !this.picking;
   }
-  get clipboardAvailable() {
-    return this.capable && this.control.snapshot.clipboardStaging === true && this.available
-      && this.candidates.length < 128 && this.candidates.filter(item => !item.submitted && !inactive(this.state(item))).length < 16
-      && this.control.observationFresh && !this.control.snapshot.observation?.attention.foreground_interaction_active;
+  move(key: number, offset: number) {
+    if (!this.available) return;
+    const index = this.candidates.findIndex(item => item.key === key), next = index + offset;
+    if (index < 0 || next < 0 || next >= this.candidates.length) return;
+    [this.candidates[index], this.candidates[next]] = [this.candidates[next], this.candidates[index]];
+    this.changed();
   }
   result(candidate: Candidate) { return this.results.find(result => result.id === candidate.requestId); }
   referenceId(candidate: Candidate) { return this.result(candidate)?.reference?.reference_id; }
   state(candidate: Candidate): CandidateState {
     if (candidate.reconciled || candidate.phase === 'cancelled') return candidate.reconciled ? 'removed' : 'cancelled';
+    if (candidate.removalBlocked) return 'outcome-unknown';
     if (candidate.removalId !== undefined) {
       const removal = this.results.find(result => result.id === candidate.removalId);
       if (!removal || pending(removal.state)) return removal?.state === 'pending-interaction' ? 'pending-interaction' : 'removing';
@@ -80,23 +101,13 @@ export class RunnerReferenceSelection {
     candidate.thumbnail = undefined;
   }
   select(paths: string[]) {
-    if (this.locked || this.control.assignmentLocked || this.disposed) {
+    if (this.locked || this.owner?.assignmentLocked || this.disposed) {
       this.error = msg('runtime.references.locked'); this.changed(); return;
     }
-    if (!this.capable) this.candidates = [];
+    this.candidates = this.candidates.filter(item => item.phase !== 'cancelled' || item.requestId !== undefined);
     for (const path of paths.slice(0, Math.max(0, 128 - this.candidates.length)))
-      this.candidates.push({ key: ++this.sequence, path, sessionId: this.control.sessionId, phase: 'staged' });
+      this.candidates.push({ key: ++this.sequence, path, sessionId: this.owner?.sessionId, phase: 'staged' });
     this.error = ''; this.changed();
-    if (this.capable && this.available) void this.registerSelected();
-  }
-  clearHistory() {
-    if (this.locked) return;
-    this.candidates = this.candidates.filter(item => {
-      const clear = item.submitted || inactive(this.state(item));
-      if (clear) this.releasePreview(item);
-      return !clear;
-    });
-    this.changed();
   }
   async choose(folder: boolean) {
     if (!this.available) throw new HubError(msg('runtime.references.finishChoosing'));
@@ -106,21 +117,20 @@ export class RunnerReferenceSelection {
       if (result && !this.disposed) this.select(Array.isArray(result) ? result : [result]);
     } finally {
       this.picking--; this.changed();
-      if (this.capable && this.available) void this.registerSelected();
     }
   }
-  async captureClipboard() {
-    if (!this.clipboardAvailable) return;
-    const candidate: Candidate = { key: ++this.sequence, path: '', sessionId: this.control.sessionId,
+  async captureImage(image: Blob) {
+    if (!this.available || this.candidates.filter(item => !item.submitted && !inactive(this.state(item))).length >= 16) return;
+    const candidate: Candidate = { key: ++this.sequence, path: '', sessionId: this.owner?.sessionId,
       source: 'clipboard', phase: 'capturing' };
     this.candidates.push(candidate);
     this.staging = true; this.error = ''; this.changed();
     try {
-      const source = await this.control.clipboardSource();
-      if (source.sessionId !== candidate.sessionId) throw new HubError(msg('runtime.references.originChanged'));
-      candidate.path = source.path;
-      if (this.disposed || candidate.cancelRequested || this.control.snapshot.state === 'disconnected') candidate.phase = 'cancelled';
-      else { candidate.thumbnail = URL.createObjectURL(source.thumbnail); candidate.phase = 'staged'; }
+      if (image.type !== 'image/png' || !image.size || image.size > 64 * 1024 * 1024)
+        throw new HubError(msg('runtime.control.clipboardUnsupported'));
+      candidate.image = image.slice(0, image.size, image.type);
+      candidate.thumbnail = URL.createObjectURL(candidate.image);
+      candidate.phase = 'staged';
     } catch (reason) {
       candidate.phase = candidate.cancelRequested ? 'cancelled' : 'failed';
       candidate.detail = msg('runtime.withDiagnostic', { message: msg('runtime.references.clipboardFailed'), diagnostic: errorText(reason) });
@@ -158,32 +168,22 @@ export class RunnerReferenceSelection {
       candidate.detail = msg('runtime.withDiagnostic', { message: msg('runtime.references.registrationUnknown'), diagnostic: errorText(reason) });
     } finally { this.changed(); }
   }
-  async registerSelected() {
-    if (!this.capable || !this.available) return;
-    const selected = this.candidates.filter(item => item.source !== 'clipboard' && this.state(item) === 'staged');
-    this.registering = true; this.error = ''; this.changed();
-    try {
-      for (const candidate of selected) {
-        await this.register(candidate);
-        if (!['registered', 'removed', 'cancelled'].includes(this.state(candidate))) break;
-      }
-    } finally { this.registering = false; this.changed(); }
-  }
   async cancel(key: number) {
     const candidate = this.candidates.find(item => item.key === key);
-    if (!candidate || candidate.submitted || candidate.cancelRequested || this.locked || this.control.assignmentLocked) return;
+    if (!candidate || candidate.submitted || candidate.cancelRequested || this.locked || this.owner?.assignmentLocked) return;
     candidate.cancelRequested = true; this.releasePreview(candidate); this.changed();
     const state = this.state(candidate);
     if (candidate.phase === 'capturing' || pending(this.result(candidate)?.state ?? '')
       || candidate.phase === 'registering' && candidate.requestId === undefined) return;
     if (this.referenceId(candidate)) await this.remove(candidate);
-    else if (state !== 'outcome-unknown') candidate.phase = 'cancelled';
+    else if (state !== 'outcome-unknown') { candidate.phase = 'cancelled'; candidate.image = undefined; }
     this.changed();
   }
   private async remove(candidate: Candidate, lease?: symbol) {
     const reference_id = this.referenceId(candidate);
     if (!reference_id || candidate.removalId !== undefined) return;
     if (!this.removable) {
+      candidate.removalBlocked = true;
       candidate.phase = 'outcome-unknown';
       candidate.detail = msg('runtime.references.manualRemoval');
       this.changed(); return;
@@ -192,13 +192,14 @@ export class RunnerReferenceSelection {
     try {
       const admission = await this.control.reference({ operation: 'references.remove', reference_id }, candidate.sessionId, lease);
       if (admission.state !== 'admitted') {
-        candidate.detail = admission.detail; candidate.phase = 'outcome-unknown'; return;
+        candidate.removalBlocked = true; candidate.detail = admission.detail; candidate.phase = 'outcome-unknown'; return;
       }
       candidate.removalId = admission.id;
       const result = await this.settled(admission.id);
       if (result.state !== 'removed' || result.referenceId !== reference_id)
         candidate.detail = msg('runtime.references.removalUnconfirmed');
     } catch (reason) {
+      candidate.removalBlocked = candidate.removalId === undefined;
       candidate.phase = 'outcome-unknown'; candidate.detail = msg('runtime.withDiagnostic', { message: msg('runtime.references.removalUnknown'), diagnostic: errorText(reason) });
     } finally { this.changed(); }
   }
@@ -275,11 +276,18 @@ export class RunnerReferenceSelection {
     });
   }
   async preflight() {
-    if (this.picking || this.staging || this.registering || this.listing || this.locked)
+    this.bind(this.control);
+    if (this.picking || this.staging || this.registering || this.listing || this.submission)
       throw new HubError(msg('runtime.references.finishEditing'));
-    if (!this.capable) return;
+    if (!this.capable) {
+      if (this.candidates.some(item => !item.submitted && !inactive(this.state(item))))
+        throw new HubError(msg('runtime.control.referenceUnavailable'));
+      return;
+    }
     if (this.unresolvedResults() || this.candidates.some(item => this.state(item) === 'outcome-unknown'))
       throw new HubError(msg('runtime.references.unresolved'));
+    if (this.candidates.some(item => !item.cancelRequested && item.removalId !== undefined && this.state(item) === 'removed'))
+      throw new HubError(msg('runtime.references.cancelFailed'));
     const lease = this.control.reserveAttachments();
     const selected = this.candidates.filter(item => !item.submitted && !item.cancelRequested && !inactive(this.state(item)));
     this.submission = { lease, candidates: selected, verified: false }; this.changed();
@@ -299,6 +307,13 @@ export class RunnerReferenceSelection {
     this.registering = true; this.changed();
     try {
       for (const candidate of selected) {
+        if (candidate.image && !candidate.path) {
+          const source = await this.control.stageImage(candidate.image, lease);
+          if (source.sessionId !== candidate.sessionId) throw new HubError(msg('runtime.references.originChanged'));
+          candidate.path = source.path;
+        }
+      }
+      for (const candidate of selected) {
         await this.register(candidate, lease);
         if (this.state(candidate) !== 'registered' || !this.referenceId(candidate))
           throw new HubError(msg('runtime.references.registrationIncomplete'));
@@ -306,7 +321,7 @@ export class RunnerReferenceSelection {
     } finally { this.registering = false; this.changed(); }
     const after = await this.stableInventory(lease);
     const intended = selected.map(item => this.referenceId(item)!);
-    const expected = [...before.map(item => item.reference_id), ...intended.filter(id => !before.some(item => item.reference_id === id))];
+    const expected = [...this.otherPending.map(item => item.reference_id), ...intended];
     if (new Set(intended).size !== intended.length || intended.some(id => !after.some(item => item.reference_id === id))
       || identity(after) !== expected.join(',') || after.some(item => excluded.includes(item.reference_id)))
       throw new HubError(msg('runtime.references.finalMismatch'));
@@ -318,11 +333,27 @@ export class RunnerReferenceSelection {
     if (!this.submission?.verified || this.unresolvedResults())
       throw new HubError(msg('runtime.references.verificationIncomplete'));
   }
+  async reconcile(key: number) {
+    if (this.locked || !this.owner) return;
+    const candidate = this.candidates.find(item => item.key === key);
+    if (!candidate || candidate.submitted) return;
+    if (this.referenceId(candidate)) {
+      await this.remove(candidate);
+      if (this.state(candidate) !== 'removed') return;
+    } else if (!['rejected', 'failed'].includes(this.state(candidate))) return;
+    candidate.requestId = undefined; candidate.removalId = undefined;
+    candidate.cancelRequested = false; candidate.reconciled = false;
+    candidate.phase = 'staged'; candidate.detail = undefined;
+    this.changed();
+  }
   finishSubmission(delivered: boolean) {
+    this.frozen = false;
     const submission = this.submission;
     if (!submission) return;
     if (delivered) {
-      for (const candidate of submission.candidates) { candidate.submitted = true; this.releasePreview(candidate); }
+      for (const candidate of submission.candidates) {
+        candidate.submitted = true; candidate.image = undefined; this.releasePreview(candidate);
+      }
       this.reviewedOthers = ''; this.otherPending = [];
     }
     this.submission = undefined; this.control.releaseAttachments(submission.lease); this.changed();
@@ -345,6 +376,7 @@ export class RunnerReferenceSelection {
     this.disposed = true;
     this.candidates.forEach(item => {
       this.releasePreview(item);
+      item.image = undefined;
       if (['capturing', 'staged'].includes(item.phase)) { item.phase = 'cancelled'; item.cancelRequested = true; }
     });
   }

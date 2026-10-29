@@ -69,6 +69,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     await transport(page, undefined, { auto: true, clipboard: true, ...generatedFixture() });
     await configure(page); await create(page);
     await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+    await page.locator('.generated-images summary').click();
     await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
     for (const size of [{ width: 626, height: 450 }, { width: 608, height: 416 }]) {
       await page.setViewportSize(size);

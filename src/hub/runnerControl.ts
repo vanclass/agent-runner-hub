@@ -1,6 +1,5 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
-import { clipboardImagePng } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
 import { RunnerImages } from './runnerImages';
 import { RunnerConfigService } from './RunnerConfigService';
@@ -49,6 +48,7 @@ export class RunnerControl {
   private attachmentLease?: symbol;
   get sessionId() { return this.id; }
   get attachmentLocked() { return !!this.attachmentLease; }
+  ownsAttachments(lease?: symbol) { return !!lease && lease === this.attachmentLease; }
   reserveAttachments() {
     if (this.stopped || this.busy || this.snapshot.state !== 'ready')
       throw new HubError(msg('runtime.control.finishAttachments'));
@@ -149,17 +149,18 @@ export class RunnerControl {
     try { await invoke<void>('runner_command', { id: this.id, command: text }); }
     catch (reason) { this.sending = false; this.changed(); throw reason; }
   }
-  async clipboardSource() {
+  async stageImage(blob: Blob, lease?: symbol) {
     const id = this.id;
-    if (this.stopped || !id || this.busy || !this.snapshot.clipboardStaging || !this.snapshot.references?.capability)
+    if (this.stopped || !id || this.otherControlBusyExceptAttachments || this.assignmentLocked
+      || this.attachmentLease !== lease || !this.snapshot.clipboardStaging || !this.snapshot.references?.capability)
       throw new HubError(msg('runtime.control.clipboardRequires'));
-    const blob = await clipboardImagePng();
     if (blob.type !== 'image/png' || !blob.size || blob.size > 64 * 1024 * 1024)
       throw new HubError(msg('runtime.control.clipboardUnsupported'));
     const png = new Uint8Array(await blob.arrayBuffer());
     if (![137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => png[index] === byte))
       throw new HubError(msg('runtime.control.clipboardInvalid'));
-    if (this.stopped || id !== this.id || this.busy || this.snapshot.state !== 'ready')
+    if (this.stopped || id !== this.id || this.otherControlBusyExceptAttachments || this.assignmentLocked
+      || this.attachmentLease !== lease || this.snapshot.state !== 'ready')
       throw new HubError(msg('runtime.control.ownerUnavailable'));
     const thumbnail = await clipboardThumbnail(blob);
     const path = await invoke<string>('runner_stage_clipboard', { id, png: Array.from(png) });

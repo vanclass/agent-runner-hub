@@ -3,6 +3,7 @@ import type { SingleEntry, EntryDefaults } from './singleEntry';
 import type { HubSelections } from './HubSelections';
 import { same } from './runnerConfigContract';
 import { DirectoryInput } from './DirectoryInput';
+import { ComposerAttachments } from './ComposerAttachments';
 
 export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
@@ -86,14 +87,14 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
   entry: SingleEntry; location?: string; onSelectRunner: (id: string) => void;
 }) {
   return <section className="composer-area" aria-label={t('composer.label')}>
-    <div className="composer">
+    <ComposerAttachments selection={entry.attachments} disabled={entry.pending || entry.phase === 'unknown'}>
       <textarea aria-label={t('entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
       <div className="composer-actions">
         <button className="send-button" type="button" disabled={!entry.editable || !entry.draft.trim()}
           onClick={() => void entry.submit(location, onSelectRunner)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>
       </div>
-    </div>
+    </ComposerAttachments>
     {entry.detail && <p role="status" className="control-status">{tr(entry.detail)}</p>}
     {entry.runnerId && <button type="button" onClick={() => onSelectRunner(entry.runnerId!)}>{t('entry.openAssigned')}</button>}
     {entry.phase === 'incomplete' && <div className="composer-actions">

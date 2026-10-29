@@ -5,6 +5,7 @@ import { commandNamed, type RunnerObservation } from './runnerControl';
 import { submitConfiguredWork } from './runnerSubmission';
 import { copy, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
+import { RunnerReferenceSelection } from './referenceSelection';
 
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier'>;
@@ -36,6 +37,7 @@ export function idleReason(session: RunnerSession, allowReferences = false) {
 export class SingleEntry {
   draft = '';
   readonly selections: HubSelections;
+  attachments: RunnerReferenceSelection;
   get defaults() { return this.selections.defaults; }
   get catalog() { return this.selections.catalog; }
   get loadingOptions() { return this.selections.loadingOptions; }
@@ -51,6 +53,7 @@ export class SingleEntry {
     saveDefaults: (value: EntryDefaults) => void = () => {},
     optionsSource: () => RunnerSession | undefined = () => this.list()[0]) {
     this.selections = new HubSelections(() => optionsSource()?.control.config, changed, defaults, saveDefaults, () => this.editable);
+    this.attachments = new RunnerReferenceSelection(undefined, changed);
   }
   get allocationPolicy() { return this.defaults.allocationPolicy ?? 'always-new'; }
   get pending() { return this.phase === 'preparing' || this.phase === 'writing'; }
@@ -66,6 +69,7 @@ export class SingleEntry {
   async submit(location?: string, focus: (id: string) => void = () => {}) {
     if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
+    try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.phase = 'preparing';
     this.detail = msg('runtime.entry.checking');
     this.evidence = [];
@@ -115,15 +119,21 @@ export class SingleEntry {
       if (inventoryReason || !session.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
         { reason: inventoryReason || msg('runtime.entry.inputUnsettled') }));
       if (text.trimStart().startsWith('/')) {
+        if (this.attachments.candidates.some(item => !item.submitted && !['cancelled', 'removed'].includes(this.attachments.state(item))))
+          throw new HubError(msg('attachments.instructionOnly'));
         attempted = true;
         const result = await session.deliver(token, text);
         this.phase = result.delivered ? 'delivered' : 'unknown';
         this.detail = result.detail;
-        if (result.delivered) { this.draft = ''; session.release(token); this.active = undefined; }
+        if (result.delivered) {
+          this.draft = ''; session.release(token); this.active = undefined;
+          this.attachments.finishSubmission(false);
+        }
         return;
       }
       if (!session.control.work.supported) throw new HubError(msg('work.unavailable'));
       const destination = session;
+      this.attachments.bind(destination.control);
       const previous = session.control.work.current;
       const submission = submitConfiguredWork(session.control.config, session.control.work, defaults, text, async () => {
         await destination.control.fresh();
@@ -131,10 +141,18 @@ export class SingleEntry {
         const finalReason = idleReason(destination);
         if (finalReason || !destination.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
           { reason: finalReason || msg('runtime.entry.inputUnsettled') }));
+        destination.control.assignmentLocked = false;
+        await this.attachments.preflight();
+        await destination.control.fresh();
+        this.attachments.assertReadyForDelivery();
+        const attachmentReason = idleReason(destination, true);
+        if (attachmentReason || !destination.ownsAssignment(token, this.attachments.deliveryLease)) throw new HubError(msg('runtime.entry.unsent',
+          { reason: attachmentReason || msg('runtime.entry.inputUnsettled') }));
         this.phase = 'writing';
         this.detail = msg('work.observing', { name: destination.view.name });
         attempted = true;
         this.changed();
+        return this.attachments.deliveryLease;
       });
       let attempt: WorkAttempt;
       try { attempt = await submission; }
@@ -150,6 +168,8 @@ export class SingleEntry {
         this.phase = 'delivered';
         this.detail = msg('work.started', { name: session.view.name, event: attempt.work.started_event_id });
         this.draft = '';
+        this.attachments.finishSubmission(true);
+        this.attachments = new RunnerReferenceSelection(undefined, this.changed);
         session.release(token);
         this.active = undefined;
         this.evidence.push(this.detail);
@@ -161,12 +181,20 @@ export class SingleEntry {
       this.phase = attempted ? 'unknown' : 'incomplete';
       this.detail = errorText(reason);
     } finally {
+      if (!attempted) this.attachments.finishSubmission(false);
       if (this.active) this.active.session.control.assignmentLocked = false;
       this.changed();
     }
   }
   releaseUnsent(transfer = false) {
     if (this.phase !== 'incomplete') return;
+    this.attachments.finishSubmission(false);
+    if (!this.attachments.unbind()) {
+      this.detail = msg('runtime.references.unresolved'); this.changed(); return;
+    }
+    if (transfer && this.attachments.candidates.some(item => !item.submitted && item.phase !== 'cancelled')) {
+      this.detail = msg('runtime.references.finishEditing'); this.changed(); return;
+    }
     if (this.active) {
       const { session, token } = this.active;
       session.release(token);
@@ -181,6 +209,7 @@ export class SingleEntry {
     const active = this.active, attempt = active?.attempt;
     if (this.phase !== 'unknown' || !active || !attempt) return;
     if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id)) {
+      this.attachments.finishSubmission(false);
       this.phase = 'incomplete';
       this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
       return;
@@ -188,6 +217,8 @@ export class SingleEntry {
     if (!attempt.work?.started_event_id) return;
     this.active = undefined;
     this.phase = 'delivered'; this.draft = '';
+    this.attachments.finishSubmission(true);
+    this.attachments = new RunnerReferenceSelection(undefined, this.changed);
     this.detail = msg('work.started', { name: active.session.view.name, event: attempt.work.started_event_id });
     this.evidence.push(this.detail);
     active.session.release(active.token);

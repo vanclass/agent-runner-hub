@@ -4,7 +4,6 @@ import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
 import { RunnerComposer } from './RunnerComposer';
 import { RunnerRecovery } from './RunnerRecovery';
-import { RunnerReferences } from './RunnerReferences';
 import { RunnerImagePreviews } from './RunnerImagePreviews';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
@@ -45,7 +44,6 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
     </section>
     {session && <div className="workspace-context">
       <RunnerImagePreviews images={session.control.images} />
-      <RunnerReferences control={session.control} selection={session.references} />
     </div>}
     {session ? <RunnerComposer session={session} /> : singleEntry ? <SingleEntryComposer entry={entry}
       location={installation?.root} onSelectRunner={onSelectRunner} /> : <section className="composer-area" aria-label={t('composer.label')}>

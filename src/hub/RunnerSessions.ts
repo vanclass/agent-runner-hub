@@ -191,9 +191,9 @@ export class RunnerSession {
       this.update({ submitting: false });
     }
   }
-  ownsAssignment(token: symbol) {
+  ownsAssignment(token: symbol, attachmentLease?: symbol) {
     return this.reservation === token && !this.disposed && !this.view.closing && !this.inputUnsettled && !this.view.draft
-      && !this.view.submitting && !this.references.prepared && this.view.status === 'running'
+      && !this.view.submitting && (!this.references.prepared || this.control.ownsAttachments(attachmentLease)) && this.view.status === 'running'
       && this.input.canSubmit && !this.control.config.uncertain && !this.control.work.blocked;
   }
   private queue(bytes: Uint8Array) {
@@ -306,7 +306,11 @@ export class RunnerSession {
     const draft = this.view.draft ?? '';
     const ordinary = !draft.trimStart().startsWith('/');
     if (!draft.trim()) return;
+    if ((!ordinary || this.foregroundInteraction) && this.references.candidates.some(item =>
+      !item.submitted && !['cancelled', 'removed'].includes(this.references.state(item))))
+      throw new HubError(msg('attachments.instructionOnly'));
     const defaults = copy(this.hubSelections?.defaults ?? {});
+    if (ordinary && !this.foregroundInteraction) this.references.freeze();
     let attempted = false, delivered = false;
     this.update({ submitting: true });
     try {
@@ -543,6 +547,7 @@ export class RunnerSessions {
   }
   dispose() {
     this.disposed = true;
+    this.entry.attachments.dispose();
     return Promise.all([this.spare.dispose(), ...[...this.sessions.values()].map(session => session.dispose())]);
   }
 }

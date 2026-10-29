@@ -23,8 +23,10 @@ export function selectFiles(multiple = false, filters?: DialogFilter[]) {
 }
 export function selectFolder() { return open({ directory: true, multiple: false }); }
 
-export function watchFileDrop(onDrop: (paths: string[], position: { x: number; y: number }) => void) {
+export function watchFileDrop(onDrop: (paths: string[], position: { x: number; y: number }) => void,
+  onHover?: (position?: { x: number; y: number }) => void) {
   return getCurrentWindow().onDragDropEvent(event => {
     if (event.payload.type === 'drop') onDrop(event.payload.paths, event.payload.position);
+    onHover?.(event.payload.type === 'enter' || event.payload.type === 'over' ? event.payload.position : undefined);
   });
 }
