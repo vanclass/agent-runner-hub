@@ -59,6 +59,8 @@ export class SingleEntry {
   }
   get allocationPolicy() { return this.defaults.allocationPolicy ?? 'always-new'; }
   get pending() { return this.phase === 'preparing' || this.phase === 'writing'; }
+  get progress() { return this.pending && this.active?.session.control.brief.busy
+    ? this.active.session.control.brief.detail : this.detail; }
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
   setDraft(value: string) {
     if (!this.editable) return;

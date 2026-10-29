@@ -30,7 +30,7 @@
 
 - Hub keyboard configuration/persistence and current-order navigation: [Hub preferences](hub_preferences.md#independent-preference-storage) and [Hub keyboard navigation](runner_terminals.md#hub-keyboard-navigation); owners `../../src/hub/shortcuts.ts`, `../../src/hub/ShortcutSettings.tsx`, `../../src/hub/preferences.ts` and `../../src/hub/Hub.tsx`; focused checks `../../tests/e2e/hub-shortcuts.mjs` registered by `../../tests/e2e/runners.spec.mjs`, `../../tests/e2e/preferences.spec.mjs` and `../../tests/e2e/hub.spec.mjs`.
 
-- Independent IssueRun Brief staging followed by canonical Run: [Brief staging and Run](runner_terminals.md#independent-brief-staging-and-run); owners `../../src/hub/RunnerBrief.ts`, `../../src/hub/runnerSubmission.ts`, `../../src/hub/instructionKey.ts`, `../../src-tauri/src/desktop_terminal/brief.rs` and native feature/command transport; focused checks `../../tests/e2e/brief-submission.mjs`, `../../src-tauri/src/desktop_terminal/brief_tests.rs` and `../../src-tauri/tests/control_handles.rs`.
+- Independent IssueRun Brief staging and verified Run initiation: [Brief staging and Run](runner_terminals.md#independent-brief-staging-and-run); owners `../../src/hub/RunnerBrief.ts`, `../../src/hub/runnerRunContract.ts`, `../../src/hub/runnerSubmission.ts`, `../../src/hub/instructionKey.ts`, `../../src-tauri/src/desktop_terminal/brief.rs`, `../../src-tauri/src/desktop_terminal/run.rs` and native feature transport; focused checks `../../tests/e2e/brief-submission.mjs`, `../../tests/e2e/brief-initiation.spec.mjs`, `../../src-tauri/src/desktop_terminal/brief_tests.rs`, `../../src-tauri/src/desktop_terminal/run_tests.rs` and `../../src-tauri/tests/control_handles.rs`.
 
 ## 신규 domain 등록 조건
 

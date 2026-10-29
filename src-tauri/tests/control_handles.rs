@@ -36,6 +36,8 @@ png=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('>IIBBBBB',2,1,8,2,0,0,0)
 images=[dict(image_id=letter*32,source_sequence=sequence,output_index=0,source='codex.imageGeneration',mime_type='image/png',byte_length=len(png),sha256=hashlib.sha256(png).hexdigest() if letter=='a' else '0'*64,width=2,height=1) for letter,sequence in [('a',31),('b',17)]]
 image_cap=dict(version=1,operations=['generated_images.list','generated_images.read'],mime_types=['image/png'],max_image_bytes=16777216,max_chunk_bytes=17,page_size=1,lifetime='owning_control_connection',read_only=True)
 brief_cap=dict(version=1,operations=['brief.stage'],run_modes=['issue-run'],lifetime='process_session',automatic_retry=False)
+run_cap=dict(version=1,operations=['run.invoke','run.status'],run_modes=['issue-run'],observation_lifetime='process_session',automatic_retry=False,receipt='request_accepted')
+run=None
 staged=0
 buffer=b''
 previous=0
@@ -61,9 +63,18 @@ while True:
             staged+=1
             send(request_id=request_id,status='accepted',phase='completed',staging_status='staged',owner='brief_staging',count=staged,outcome_unknown=False)
         continue
-    if packet['operation']=='command' and packet['command']=='/run':
+    if packet['operation']=='run.invoke':
         assert staged==1
-        send(request_id=request_id,status='accepted',phase='completed',owner_status='SUCCESS')
+        assert run is None
+        run=dict(invocation_request_id=request_id,request_status='accepted',initiation_status='pending',dispatch_status='dispatching',
+            issue_run_id='',authority_digest='',state_revision=0,lifecycle_status='',lifecycle_terminal=False,
+            terminal_reason='',outcome='',owner_status='',outcome_unknown=False)
+        send(request_id=request_id,status='accepted',phase='completed',receipt='request_accepted',run=run)
+        continue
+    if packet['operation']=='run.status':
+        assert run and packet['invocation_request_id']==run['invocation_request_id']
+        run.update(initiation_status='started',issue_run_id='issue-pipe',authority_digest='a'*64,state_revision=1,lifecycle_status='running')
+        send(request_id=request_id,status='accepted',phase='completed',run=run)
         continue
     if packet['operation']=='generated_images.list':
         offset=packet['offset']
@@ -83,7 +94,7 @@ while True:
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
         attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[])
-    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap))
+    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap))
 "#;
 
 #[test]
@@ -153,18 +164,27 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
             assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
         }
         if expected == "accepted" {
-            let run = client.command("/run".into()).unwrap();
-            let id = match run { control::features::Admission::Submitted { id, .. } => id, other => panic!("{other:?}") };
-            loop {
-                let snapshot = client.snapshot();
-                if let Some(r) = snapshot.results.iter().find(|r| r.id == id && r.phase.as_deref() == Some("completed")) {
-                    assert_eq!(r.command, "/run"); assert_eq!(r.owner_status.as_deref(), Some("SUCCESS")); break;
+            let mut original = 0;
+            for started in [false, true] {
+                let request = if started { control::run::Request::Status { api_version:1, invocation_request_id:original } }
+                    else { control::run::Request::Invoke { api_version:1 } };
+                let run = client.feature(control::features::Request::Run(request));
+                let id = match run { control::features::Admission::Submitted { id, generation } => {
+                    assert_eq!(generation, ready.features.generation); id }, other => panic!("{other:?}") };
+                if !started { original = id; }
+                loop {
+                    let snapshot = client.snapshot();
+                    if let Some(r) = snapshot.features.results.iter().find(|r| r.id == id && r.phase.as_deref() == Some("completed")) {
+                        let Some(control::features::Response::Run(reply)) = &r.reply else { panic!("{r:?}") };
+                        let evidence = reply.run.as_ref().unwrap(); assert_eq!(evidence.invocation_request_id, original);
+                        assert_eq!(evidence.initiation_status, if started { "started" } else { "pending" }); break;
+                    }
+                    assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
                 }
-                assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
             }
         }
     }
-    assert_eq!(client.snapshot().results.iter().filter(|r| r.command == "/run").count(), 1);
+    assert!(client.snapshot().results.is_empty());
     while client.snapshot().features.brief.is_some() {
         assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
     }

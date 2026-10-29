@@ -24,7 +24,7 @@ fn brief_capability_is_authenticated_and_validated_without_build_gates() {
     assert!(serde_json::from_value::<brief::Request>(json!({"operation":"brief.stage","api_version":1,"body":"x","extra":0})).is_err());
 }
 #[test]
-fn brief_exact_body_completed_receipt_and_independent_run_correlation() {
+fn brief_exact_body_completed_receipt_and_correlation() {
     let mut p = ready(); p.snapshot.features.discover(&json!({"brief":capability()}));
     let body = "  한글 🌍\n    indentation\t \n/run stays text  \n\n";
     let wire: Value = serde_json::from_slice(&p.feature_request(request(body), "private").unwrap()).unwrap();
@@ -34,12 +34,7 @@ fn brief_exact_body_completed_receipt_and_independent_run_correlation() {
     assert!(p.snapshot.features.results[0].reply.is_none()); assert!(p.snapshot.results.is_empty());
     let mut crossed = staged(2); crossed["session_id"] = json!("other"); assert!(p.response(crossed).is_err());
     p.response(staged(2)).unwrap();
-    let run: Value = serde_json::from_slice(&p.request(Some("/run".into()), "private").unwrap()).unwrap();
-    assert_eq!(run["request_id"], 3); assert_eq!(run["command"], "/run");
-    p.response(packet(3, "accepted", "queued")).unwrap(); assert_eq!(p.snapshot.results[0].phase.as_deref(), Some("queued"));
-    let mut done = packet(3, "accepted", "completed"); done["owner_status"] = json!("SUCCESS");
-    p.response(done).unwrap(); assert_eq!(p.snapshot.results[0].owner_status.as_deref(), Some("SUCCESS"));
-    assert_eq!(p.snapshot.results[0].phase.as_deref(), Some("completed"));
+    assert!(p.snapshot.results.is_empty());
     assert_eq!(p.snapshot.features.results.len(), 1);
 }
 #[test]

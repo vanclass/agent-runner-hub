@@ -1,4 +1,4 @@
-//! Independent session-local Brief staging; execution remains canonical command("/run").
+//! Independent session-local Brief staging; Run invocation is a separate operation.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

@@ -308,15 +308,19 @@
     "instructionOnly": "Attachments require a new work instruction. Remove them before sending commands or terminal replies."
   },
   "brief": {
-    "unavailable": "Brief → Run unavailable. Select IssueRun and use a Runner advertising Brief staging.",
+    "unavailable": "Brief → Run unavailable. Select IssueRun and use a Runner advertising Brief staging and independent Run initiation.",
     "staging": "Staging Brief…",
     "staged": "Brief staged.",
     "requesting": "Brief staged · requesting Run…",
-    "requested": "Brief staged · Run requested and confirmed by Runner.",
+    "requested": "Brief staged · IssueRun start confirmed by committed Runner authority. Execution remains with Runner.",
+    "pending": "Run request accepted · waiting for committed IssueRun start evidence…",
+    "attention": "Brief staged · Run requires human input or is suspended before confirmed start. Assignment retained; continue in Runner without replay.",
+    "notStarted": "Brief staged · Runner confirms Run did not start. Staged Brief and original assignment retained; do not replay.",
+    "ownerReturned": "Brief staged · Run owner returned without confirmed initiation. Assignment retained; inspect Runner without replay.",
     "stageRejected": "Brief rejected. Run was not requested; draft retained.",
     "stageUnknown": "Brief staging uncertain. Run was not requested. Original assignment retained; do not replay.",
     "runRejected": "Brief staged · Run rejected. Staged Brief and original assignment retained.",
-    "runUnknown": "Brief staged · Run outcome uncertain. Original assignment retained; do not replay."
+    "runUnknown": "Brief staged · Run initiation unconfirmed. Request acceptance does not prove start. Original assignment retained; inspect Runner without replay."
   },
   "composer": {
     "label": "Instruction composer",

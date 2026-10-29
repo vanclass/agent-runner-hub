@@ -5,6 +5,8 @@ mod session_config_tests;
 mod work_tests;
 #[path = "brief_tests.rs"]
 mod brief_tests;
+#[path = "run_tests.rs"]
+mod run_tests;
 #[path = "reference_tests.rs"]
 mod references;
 #[cfg(windows)]

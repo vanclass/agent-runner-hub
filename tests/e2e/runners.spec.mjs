@@ -115,6 +115,10 @@ async function transport(page, freshTarget, referenceOptions) {
             sessions.get(id).control.features = fixture.features;
             if (referenceOptions.brief !== undefined && referenceOptions.brief !== 'unsupported')
               fixture.features.brief = { version: 1, operations: ['brief.stage'] };
+            if (referenceOptions.brief !== undefined) {
+              const { RunFixture } = await import('/tests/fixtures/run.ts');
+              sessions.get(id).run = new RunFixture(fixture.features, referenceOptions.runResult);
+            }
           }
           if (referenceOptions?.generatedImages) {
             sessions.get(id).control.generatedImagesSupported = true;
@@ -171,17 +175,12 @@ async function transport(page, freshTarget, referenceOptions) {
         if (command === 'runner_command') {
           commands.push(args);
           const control = sessions.get(args.id).control;
-          if (referenceOptions?.brief !== undefined) {
-            const id = 8000 + commands.length, mode = referenceOptions.runResult ?? 'accepted';
-            control.results.push({ id, command: args.command, state: mode, phase: mode === 'queued' ? 'queued' : 'completed',
-              ownerStatus: mode === 'accepted' ? 'SUCCESS' : null });
-            return { state: 'submitted', id, generation: control.features.generation };
-          }
           control.results = [{ id: commands.length, command: args.command, state: 'queued', changed: true }];
           return;
         }
         if (command === 'runner_feature') {
           const fixture = sessions.get(args.id).feature;
+          if (args.request.feature === 'run') return sessions.get(args.id).run.submit(args.request.request);
           if (args.request.feature === 'brief') {
             const session = sessions.get(args.id), id = 7000;
             (session.briefRequests ??= []).push(structuredClone(args.request.request));

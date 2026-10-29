@@ -95,7 +95,7 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
           onClick={() => void entry.submit(location, onSelectRunner)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>
       </div>
     </ComposerAttachments>
-    {entry.detail && <p role="status" className="control-status">{tr(entry.detail)}</p>}
+    {entry.progress && <p role="status" className="control-status">{tr(entry.progress)}</p>}
     {entry.runnerId && <button type="button" onClick={() => onSelectRunner(entry.runnerId!)}>{t('entry.openAssigned')}</button>}
     {entry.phase === 'incomplete' && <div className="composer-actions">
       <button type="button" onClick={() => entry.releaseUnsent()}>{t('entry.release')}</button>

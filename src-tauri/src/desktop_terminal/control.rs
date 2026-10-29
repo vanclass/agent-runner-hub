@@ -20,6 +20,8 @@ pub mod features;
 pub mod work;
 #[path = "brief.rs"]
 pub mod brief;
+#[path = "run.rs"]
+pub mod run;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;

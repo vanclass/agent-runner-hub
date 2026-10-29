@@ -77,8 +77,9 @@ export class RunnerControl {
         && (!this.attachmentLease || this.attachmentLease === lease),
       stage: (id, body) => invoke<FeatureAdmission>('runner_feature', { id,
         request: { feature: 'brief', request: { operation: 'brief.stage', api_version: 1, body } } }),
-      run: id => invoke<FeatureAdmission>('runner_command', { id, command: '/run' }),
+      run: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'run', request } }),
       completionMs: controlTiming.completionMs,
+      pollMs: controlTiming.pollMs,
     }, changed);
     this.images = new RunnerImages(changed);
     this.config = new RunnerConfigService({
