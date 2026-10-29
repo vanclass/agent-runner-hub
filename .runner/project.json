@@ -121,7 +121,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "f3c6cf86ede1aaaabf1fd2c48e846d54c02413b0ecd7318515efb612e679d80d",
+              "digest": "739e3fa46f3b138008e0ed1e100dfe6b459b60fba83737bab4c1374b28f1204c",
               "identity": "WebApp.React"
             }
           },
