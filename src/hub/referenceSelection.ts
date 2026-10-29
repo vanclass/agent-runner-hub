@@ -42,6 +42,7 @@ export class RunnerReferenceSelection {
   get capable() { return !!this.control.snapshot.references?.capability; }
   get removable() { return !!this.control.snapshot.references?.removalCapability; }
   get locked() { return !!this.submission; }
+  get deliveryLease() { return this.submission?.verified ? this.submission.lease : undefined; }
   get paths() { return this.candidates.map(item => item.path); }
   get results() { return this.control.snapshot.references?.results ?? []; }
   get inventoryResult() { return [...this.results].reverse().find(result => !!result.inventory); }

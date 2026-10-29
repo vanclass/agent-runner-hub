@@ -115,9 +115,8 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await page.keyboard.press('End'); await expect(add(page)).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(page.locator('.runner-row')).toHaveCount(1);
-      await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
-      await page.locator('.config-actions button').first().click();
       const runMode = page.getByRole('combobox', { name: language === 'en' ? 'Requested Run Mode' : '요청 실행 모드', exact: true });
+      await runMode.focus();
       await expect(runMode).toBeEnabled();
       await runMode.selectOption({ label: 'pure-direct-run' });
       await root(page).locator('button').click();
@@ -156,8 +155,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await page.evaluate(() => window.__directoryPicker.finish('/stale mode'));
     await expect(root(page).locator('input')).toHaveValue('/entry original');
     await create(page);
-    await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
-    await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
+    await page.getByLabel('Requested Run Mode', { exact: true }).focus();
     await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
     await root(page).locator('input').fill('/config original');
     await delayed(page, root(page));
@@ -168,7 +166,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await page.evaluate(() => window.__directoryPicker.fail(new Error('late wrong-tab error')));
     await expect(root(page).locator('input')).toHaveValue('/entry original');
     await expect(page.getByRole('alert').filter({ hasText: 'late wrong-tab error' })).toHaveCount(0);
-    await page.locator('.runner-row .nav-row').click(); await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
+    await page.locator('.runner-row .nav-row').click();
     await expect(root(page).locator('input')).toHaveValue('/config newer');
     await delayed(page, root(page));
     await page.evaluate(() => { const f = window.__nativeFixture; f.exit('pty-1', 0, f.sessions.get('pty-1').control); window.__directoryPicker.finish('/ended'); });

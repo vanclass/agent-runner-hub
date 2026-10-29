@@ -58,7 +58,10 @@ export class RunnerInput {
       // Let the browser/xterm own clipboard shortcuts and selected-text copying.
       if (event.ctrlKey && (event.key.toLowerCase() === 'v'
         || event.key.toLowerCase() === 'c' && (event.shiftKey || terminal.hasSelection()))) return true;
-      if (!this.userInput()) { event.preventDefault(); return false; }
+      if (!this.userInput()) {
+        if (event.key !== 'Tab') event.preventDefault();
+        return false;
+      }
       const characters: Record<string, number> = { Enter: 13, Backspace: 8, Tab: 9, Escape: 27 };
       const control = event.ctrlKey ? 8 : 0;
       const modifiers = control | (event.altKey ? 2 : 0) | (event.shiftKey ? 16 : 0);

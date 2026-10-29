@@ -54,12 +54,10 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     expect(await model.inputValue()).toContain('m1');
     await model.selectOption({ label: 's0' }); await expect(fast).toBeEnabled();
     await create(page); await create(page);
-    await page.evaluate(async () => (await import('/tests/fixtures/sessionConfig.ts')).attachConfigToHub());
-    const inspect = page.getByRole('button', { name: 'Inspect settings and options', exact: true });
     const draft = page.getByRole('combobox', { name: 'Requested Model', exact: true });
-    await inspect.click(); await draft.selectOption({ label: 's2' }); await fast.check();
+    await draft.focus(); await draft.selectOption({ label: 's2' }); await fast.check();
     await page.locator('.runner-row').first().locator('.nav-row').click();
-    await inspect.click(); await expect(draft).toHaveValue(/s0/); await expect(fast).toBeChecked();
+    await draft.focus(); await expect(draft).toHaveValue(/s0/); await expect(fast).toBeChecked();
     await draft.selectOption({ label: 's1' }); await expect(fast).toBeDisabled();
     await page.locator('.runner-row').nth(1).locator('.nav-row').click();
     await expect(draft).toHaveValue(/s2/); await expect(fast).toBeChecked();
@@ -85,22 +83,23 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   });
   for (const status of ['invalid', 'confirmation_required']) {
-    test(`task panel blocks Apply for ${status} plans and keeps commands separate`, async ({ page }) => {
-      await transport(page); await configure(page); await create(page);
-      await page.evaluate(async status => {
-        (await import('/tests/fixtures/sessionConfig.ts')).attachConfigToHub();
-        window.__configFixtures.get('pty-1').planStatus = status;
+    test(`task panel blocks work for ${status} plans without command controls`, async ({ page }) => {
+      await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+      await page.evaluate(status => {
+        for (const s of window.__nativeFixture.sessions.values()) s.feature.config.planStatus = status;
       }, status);
-      await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Requested Model', exact: true }).focus();
       await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
       await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
-      await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeDisabled();
+      await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('unsent');
+      await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toHaveCount(0);
       await expect(page.locator('.config-plan')).toContainText(status === 'invalid' ? 'CONFIG_MODEL_INVALID' : 'release_context_in_runner_terminal');
-      await page.getByText('More commands', { exact: true }).click();
-      await page.locator('.more-commands').getByRole('button', { name: 'Files /files', exact: true }).click();
-      expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/files' }]);
-      expect(await page.evaluate(() => window.__configFixtures.get('pty-1').requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
+      await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('unsent');
+      await expect(page.locator('.task-panel .shortcut-bar, .task-panel .command-button')).toHaveCount(0);
+      expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
     });
   }
 }

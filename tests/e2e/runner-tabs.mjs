@@ -5,6 +5,8 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options });
     await configure(page);
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
   }
   async function assign(page) {
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('observe exactly this work');

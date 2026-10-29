@@ -9,7 +9,8 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   const text = session.view.draft ?? '';
   const pending = !!session.view.submitting;
   const [error, setError] = useState<HubText>('');
-  const available = session.view.status === 'running' && session.view.canSubmit && !session.assignmentReserved && !session.submissionUncertain;
+  const available = session.view.status === 'running' && session.view.canSubmit
+    && (!session.assignmentReserved || session.foregroundInteraction) && !session.submissionUncertain;
   const files = commandNamed(session.control.snapshot, '/files');
   const canSelect = session.references.available;
   async function pick(folder: boolean) {
@@ -18,6 +19,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
     catch (reason) { setError(errorText(reason)); }
   }
   async function submit() {
+    if (session.view.submitting) return;
     setError('');
     try { await session.submit(); }
     catch (reason) { setError(errorText(reason)); }
@@ -39,7 +41,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
     <p className="composer-note">{pending ? t('composer.verifying')
       : session.submissionUncertain ? t('composer.uncertain')
       : session.assignmentReserved ? t('composer.reserved') : session.view.status === 'running'
-      ? available ? t('composer.appends')
+      ? available ? t(session.foregroundInteraction ? 'composer.reply' : 'composer.appends')
         : t('runtime.input.waiting')
       : t('runtime.session.notRunning')}</p>
   </section>;

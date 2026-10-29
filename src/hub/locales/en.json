@@ -1,17 +1,11 @@
 {
   "panel": {
-    "title": "Task settings & commands",
+    "title": "Task settings",
     "execution": "Execution Target",
     "model": "Model Settings",
     "fast": "Fast",
-    "files": "Files",
     "useDefaultTier": "Use default tier",
-    "retained": "Saved value retained: {{value}} · unavailable for this model. Select a supported value before applying.",
-    "commands": "Runner commands",
-    "observation": "Terminal observation",
-    "moreCommands": "More commands",
-    "status": "Status",
-    "resume": "Resume"
+    "retained": "Saved value retained: {{value}} · unavailable for this model. Select a supported value before applying."
   },
   "setup": {
     "title": "Connect your AgentRunner",
@@ -90,10 +84,8 @@
     "ready": "Plan ready — review before applying",
     "invalid": "Plan invalid",
     "confirmation": "Use the official context release / Brief discard flow in this Runner terminal, then inspect and plan again. Hub cannot approve it for you.",
-    "planHelp": "Changes are sequential, not atomic. Existing work is preserved; execution settings affect the next run. Review each effect and explicitly choose Apply.",
     "noChanges": "No setting changes.",
     "impact": "Runner impact details (original diagnostics)",
-    "apply": "Apply reviewed plan",
     "receipts": "Setting completion receipts",
     "applied": "Runner confirmed the configuration commits. This does not mean work has started.",
     "partial": "Some settings committed. Earlier successful receipts are preserved; no rollback was attempted.",
@@ -111,8 +103,6 @@
     "notAttempted": "Not attempted",
     "unsupported": "This Runner does not offer a supported session configuration API.",
     "notReady": "Runner control is not ready.",
-    "inspect": "Inspect settings and options",
-    "reset": "Discard configuration plan",
     "unlisted": "Not in verified options",
     "actual": "Actual Runner settings",
     "effective": "Effective: {{model}} / {{effort}} / {{tier}}",
@@ -121,7 +111,6 @@
     "incomplete": "A complete, consistent candidate list is unavailable. Refresh before selecting.",
     "rootHelp": "Choose an explicit absolute working directory for Direct modes. Runner validates access and Pure Direct policy during plan and apply.",
     "defaultsUnresolved": "Saved defaults lack a verified identity or combination: {{fields}}. Nothing was substituted.",
-    "plan": "Plan changes",
     "planResult": "Runner configuration plan",
     "title": "Runner configuration",
     "tier": "Service tier",
@@ -142,8 +131,7 @@
     "failure": "Failed",
     "unknown": "Outcome unknown; never automatically retried.",
     "notSent": "Confirmed not sent. No setting change was requested.",
-    "success": "Owner-confirmed commit",
-    "terminalHelp": "Use this Runner’s existing /target, /account, /model or /run-mode terminal settings."
+    "success": "Owner-confirmed commit"
   },
   "spare": {
     "verify": "Spare unavailable. Verify an AgentRunner installation to prepare one.",
@@ -287,7 +275,7 @@
   "composer": {
     "label": "Instruction composer",
     "runnerInstructions": "Runner instructions",
-    "placeholder": "Text or a Runner command…",
+    "placeholder": "Write an instruction…",
     "attachFile": "Attach file",
     "attachFolder": "Attach folder",
     "folder": "Folder",
@@ -298,7 +286,8 @@
     "verifying": "Verifying attachments and sending this input. Continue any image-detail prompt in this Runner terminal…",
     "uncertain": "PTY delivery is uncertain. Draft retained; check the terminal before any manual action. Hub will not replay it.",
     "reserved": "Single Entry holds this Runner. Review the assignment in Single Entry before using this composer.",
-    "appends": "Appends to this terminal’s current input, then presses Enter. Line breaks stay within one submission."
+    "appends": "Send applies the requested settings, then submits one instruction to this Runner.",
+    "reply": "Reply to the active Runner prompt. Settings and new work are not submitted."
   },
   "terminal": {
     "label": "Runner terminal",
@@ -343,34 +332,6 @@
     "notConnected": "Not connected",
     "unknown": "unknown",
     "unbound": "Unbound"
-  },
-  "control": {
-    "settings": "Selected Runner settings",
-    "outcome": {
-      "sending": "Sending command",
-      "queued": "Queued · no completed change yet",
-      "interaction": "Waiting for answers or confirmation in this Runner terminal",
-      "accepted": "Completed · accepted by Runner",
-      "rejected": "Completed · rejected by Runner",
-      "failure": "Command failed",
-      "unknown": "Outcome unknown · not retried"
-    },
-    "cancelled": "Cancelled in terminal",
-    "unchanged": "No settings changed",
-    "changed": "Settings changed",
-    "shortcuts": "Shortcuts",
-    "shortcutsLabel": "Runner command shortcuts",
-    "customize": "Customize shortcuts",
-    "visibilityHelp": "Visibility and order apply to this Hub session only.",
-    "connecting": "Connecting to Runner…",
-    "sending": "Sending command…",
-    "interacting": "Runner is waiting for interaction in its terminal.",
-    "connected": "Runner settings connected",
-    "changeCount": "Settings changes: {{count}}",
-    "menuHelp": "Changes open Runner menus; answer in its terminal.",
-    "moveUp": "Move {{command}} up",
-    "moveDown": "Move {{command}} down",
-    "disconnected": "Control disconnected · displayed settings may be stale. {{detail}}{{last}}"
   },
   "fields": {
     "model": "Model",

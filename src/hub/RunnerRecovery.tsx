@@ -34,9 +34,9 @@ export function RunnerRecovery({ session }: { session: RunnerSession }) {
       {previousContext.runMode && t('recovery.mode', { mode: previousContext.runMode })}
       {previousContext.workflowKind && t('recovery.workflow', { workflow: previousContext.workflowKind })}
       {' '}{t('recovery.contextHelp')}</p>}
-    <button type="button" className="command-button" disabled={!!reason} title={reason || command?.description} onClick={() => void recover()}>
+    <button type="button" className="command-button" disabled={!!reason} title={reason} onClick={() => void recover()}>
       {t('recovery.recover')}</button>
-    <p role="status">{last ? `/recover: ${last.state}${last.code ? ` (${last.code})` : ''}. ` : ''}
+    <p role="status">{last ? `${t('recovery.recover')}: ${last.state}${last.code ? ` (${last.code})` : ''}. ` : ''}
       {reason || t('recovery.discovery')}
       {last?.state === 'accepted' && t('recovery.commandCompleted')}</p>
     {error && <p role="alert">{tr(error)}</p>}

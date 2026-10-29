@@ -70,7 +70,9 @@ export class RunnerControl {
     this.work = new RunnerWork({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
-      available: operation => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready' && !this.otherControlBusy
+      available: (operation, lease) => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
+        && !(['work.status', 'work.observe'].includes(operation) || operation === 'work.submit' && lease && lease === this.attachmentLease
+          ? this.otherControlBusyExceptAttachments : this.otherControlBusy)
         && (operation !== 'work.list' || !this.assignmentLocked)
         && !this.config.busy && !this.images.busy && (operation !== 'work.submit' || !this.config.uncertain),
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'work', request } }),
@@ -115,7 +117,10 @@ export class RunnerControl {
     return this.assignmentLocked || this.otherControlBusy;
   }
   private get otherControlBusy() {
-    return this.attachmentLocked || this.sending || this.referenceAdmissions > 0
+    return this.attachmentLocked || this.otherControlBusyExceptAttachments;
+  }
+  private get otherControlBusyExceptAttachments() {
+    return this.sending || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }

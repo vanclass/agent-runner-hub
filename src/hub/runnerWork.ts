@@ -22,7 +22,7 @@ export type WorkAttempt = { identity: ConfigIdentity; submissionId?: number; sub
 export type WorkActivity = 'idle' | 'running' | 'attention' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface WorkTransport {
   identity(): ConfigIdentity | undefined;
-  available(operation: WorkRequest['operation']): boolean;
+  available(operation: WorkRequest['operation'], attachmentLease?: symbol): boolean;
   submit(session: string, request: WorkRequest): Promise<FeatureAdmission>;
 }
 const settled = (r: FeatureResult) => ['accepted', 'rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(r.state);
@@ -226,9 +226,9 @@ export class RunnerWork {
     }
     this.changed();
   }
-  private request(request: WorkRequest, attempt?: WorkAttempt): Promise<FeatureResult> {
+  private request(request: WorkRequest, attempt?: WorkAttempt, attachmentLease?: symbol): Promise<FeatureResult> {
     const identity = this.transport.identity();
-    if (!this.supported || !identity || !same(identity, this.identity) || !this.transport.available(request.operation) || this.waiting
+    if (!this.supported || !identity || !same(identity, this.identity) || !this.transport.available(request.operation, attachmentLease) || this.waiting
       || ['work.list', 'work.observe'].includes(request.operation) && !this.discoverySupported)
       throw new HubError(msg('work.unavailable'));
     return new Promise(resolve => {
@@ -268,7 +268,7 @@ export class RunnerWork {
       }, () => finish(unknown()));
     });
   }
-  async submit(instruction: string) {
+  async submit(instruction: string, attachmentLease?: symbol) {
     if (this.blocked || this.busy || !instruction.trim() || instruction.includes('\0') || instruction.trimStart().startsWith('/'))
       throw new HubError(msg('work.unavailable'));
     const identity = this.transport.identity();
@@ -276,7 +276,7 @@ export class RunnerWork {
     const attempt: WorkAttempt = { identity: copy(identity), uncertain: false, notSent: true };
     this.attempts.push(attempt);
     try {
-      const result = await this.request({ operation: 'work.submit', api_version: 1, instruction }, attempt);
+      const result = await this.request({ operation: 'work.submit', api_version: 1, instruction }, attempt, attachmentLease);
       attempt.submission = copy(result);
       if (result.state === 'not-sent' || result.admission === 'rejected') { attempt.notSent = true; return attempt; }
       attempt.notSent = false;

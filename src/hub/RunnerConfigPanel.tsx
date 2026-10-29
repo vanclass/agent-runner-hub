@@ -1,8 +1,6 @@
-import { t, tr, msg, useHubTranslation, type MessageKey } from './i18n';
+import { t, tr, useHubTranslation, type MessageKey } from './i18n';
 import type { RunnerControl } from './runnerControl';
 import type { ConfigSettings } from './runnerConfigContract';
-import { entryDefaultsToDesired } from './runnerConfigDefaults';
-import type { HubSelections } from './HubSelections';
 import './runnerConfig.css';
 
 const fields: Record<keyof ConfigSettings, MessageKey> = { target: 'fields.target', account: 'fields.account',
@@ -30,43 +28,20 @@ const display = (value: unknown) => value === undefined || value === null || val
   : typeof value === 'string' ? value : JSON.stringify(value);
 function Diagnostic({ code }: { code: string }) { return <span>{codes[code] && `${t(codes[code])} `}<code>{code}</code></span>; }
 
-export function RunnerConfigPanel({ control, hubSelections }: {
-  control: Pick<RunnerControl, 'config' | 'snapshot'> & { assignmentLocked?: boolean };
-  hubSelections: HubSelections;
+export function RunnerConfigPanel({ control }: {
+  control: Pick<RunnerControl, 'config'>;
 }) {
   useHubTranslation();
-  const service = control.config, actual = service.actual, catalog = service.catalog;
+  const service = control.config, actual = service.actual;
   const current = actual?.current;
-  const connected = control.snapshot.state === 'ready';
   const plan = service.plan;
-  const mapped = catalog ? entryDefaultsToDesired(hubSelections.defaults, catalog) : undefined;
-  async function planRequested() {
-    const requested = hubSelections.defaults;
-    service.resetDraft();
-    await hubSelections.inspectOptions();
-    if (requested !== hubSelections.defaults || !hubSelections.catalog) return;
-    const mapped = entryDefaultsToDesired(requested, hubSelections.catalog);
-    if (mapped.unresolved.length) {
-      service.error = msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') });
-      return;
-    }
-    service.setDraft(mapped.desired);
-    await service.createPlan();
-  }
-  return <details className="runner-config" open>
+  if (!service.busy && !service.error && !plan && !service.applications.length) return null;
+  return <details className="config-evidence" open>
     <summary>{t('config.title')}</summary>
-    {!service.supports('inspect') && <p role="status">{connected ? t('config.unsupported') : t('config.notReady')} {t('config.terminalHelp')}</p>}
-    <div className="config-actions">
-      <button type="button" disabled={!service.supports('inspect') || service.busy || control.assignmentLocked}
-        onClick={() => void hubSelections.inspectOptions()}>{t('config.inspect')}</button>
-      <button type="button" disabled={!current || service.busy || !connected || control.assignmentLocked} onClick={() => service.resetDraft()}>{t('config.reset')}</button>
-    </div>
     <p className="config-progress" role="status" aria-live="polite" aria-busy={service.busy}>
       {t(activity[service.activity])}{service.busy && service.progress && <> · {t(states[service.progress.state])}</>}
     </p>
     {service.error && <p role="alert" className="runner-error">{tr(service.error)}</p>}
-    {hubSelections && !!mapped?.unresolved.length &&
-      <p role="status">{t('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') })}</p>}
     {current && <>
       <details className="config-verified"><summary>{t('config.actual')}</summary>
       <dl className="config-current">{Object.entries(fields).map(([field, key]) => <div key={field}>
@@ -78,19 +53,14 @@ export function RunnerConfigPanel({ control, hubSelections }: {
       {actual.setup_required && <p className="runner-error">{t('config.setupRequired')}</p>}
       {!!actual.constraints.length && <ul>{actual.constraints.map(code => <li key={code}><Diagnostic code={code} /></li>)}</ul>}
       </details>
-      {!catalog && <p>{t('config.incomplete')} {t('config.terminalHelp')}</p>}
     </>}
-    <div className="config-actions"><button type="button" disabled={service.busy || !connected || control.assignmentLocked || !service.supports('plan')}
-      onClick={() => void planRequested()}>{t('config.plan')}</button></div>
     {plan && <section className="config-plan" aria-label={t('config.planResult')}>
       <h3>{t(plan.plan_status === 'ready' ? 'config.ready' : plan.plan_status === 'invalid' ? 'config.invalid' : 'config.confirmation')}</h3>
-      <p>{t('config.planHelp')}</p>
       <dl>{Object.entries(plan.changes).map(([field, change]) => change && <div key={field}><dt>{t(fields[field as keyof ConfigSettings])}</dt>
         <dd>{display(change.from)} → {display(change.to)}</dd></div>)}</dl>
       {Object.keys(plan.changes).length === 0 && <p>{t('config.noChanges')}</p>}
       {[...plan.errors, ...plan.required_confirmations].map((code, i) => <p key={`${i}/${code}`}><Diagnostic code={code} /></p>)}
       <details><summary>{t('config.impact')}</summary><pre>{JSON.stringify(plan.impact, null, 2)}</pre></details>
-      <button type="button" disabled={!service.canApply || control.assignmentLocked} onClick={() => void service.apply()}>{t('config.apply')}</button>
     </section>}
     {service.applications.map((application, index) => <section className="config-receipt" key={index} aria-label={t('config.receipts')}>
       <h3>{t('config.receipts')} · {t(application.result ? applyStatuses[application.result.apply_status] : states[application.receipt.state])}</h3>

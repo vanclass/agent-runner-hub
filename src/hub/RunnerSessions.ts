@@ -7,16 +7,20 @@ import { RunnerInput } from './runnerInput';
 import { RunnerControl, commandNamed, type ControlSnapshot } from './runnerControl';
 import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
-import { SingleEntry, type EntryDefaults } from './singleEntry';
+import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
+import { submitConfiguredWork } from './runnerSubmission';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
 import { RunnerSpare } from './RunnerSpare';
 import type { RunnerInstallation } from './runnerInstallation';
-import { same } from './runnerConfigContract';
+import { copy, same } from './runnerConfigContract';
+import type { WorkAttempt } from './runnerWork';
 import { HubSelections } from './HubSelections';
 import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
-  readonly terminal = new Terminal({ cursorBlink: true, scrollback: 10000 });
+  readonly terminal = new Terminal({ cursorBlink: false, scrollback: 10000 });
+  hubSelections?: HubSelections;
+  private submittedAttempt?: { attempt: WorkAttempt; draft: string };
   searchQuery = '';
   readonly fit = new FitAddon();
   readonly search = new SearchAddon();
@@ -55,7 +59,9 @@ export class RunnerSession {
     this.view = { id: this.tabRecord?.id ?? '', createdOrder: this.tabRecord?.createdOrder ?? 0,
       name: this.tabRecord?.name ?? '', status: this.tabRecord?.launchOnOpen === false ? 'exited' : 'starting',
       canSubmit: false, draft: '', submitting: false };
-    this.control = new RunnerControl(() => { if (!this.disposed) { this.captureVerified(); this.changed(); } });
+    this.control = new RunnerControl(() => {
+      if (!this.disposed) { this.captureVerified(); this.observeSubmission(); this.syncTerminalInput(); this.changed(); }
+    });
     this.references = new RunnerReferenceSelection(this.control, () => { if (!this.disposed) this.changed(); });
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
@@ -85,6 +91,7 @@ export class RunnerSession {
   }
   private error(reason: unknown) { if (!this.disposed) this.update({ detail: errorText(reason) }); }
   private manualInput() {
+    if (!this.foregroundInteraction) return false;
     if (this.view.closing) return false;
     if (this.assignmentWriting) return false;
     if (this.reservation && this.control.assignmentLocked
@@ -94,6 +101,19 @@ export class RunnerSession {
     if (this.references.locked && !this.references.results.some(result => result.state === 'pending-interaction')) return false;
     this.inputUnsettled = true;
     return true;
+  }
+  get foregroundInteraction() {
+    return this.control.observationFresh && (!!this.control.snapshot.observation?.attention.foreground_interaction_active
+      || this.control.config.progress?.state === 'pending-interaction'
+      || this.control.work.progress?.state === 'pending-interaction'
+      || this.control.snapshot.results.some(r => r.state === 'pending-interaction')
+      || this.references.results.some(r => r.state === 'pending-interaction'));
+  }
+  private syncTerminalInput() {
+    const enabled = this.foregroundInteraction && !this.assignmentWriting && !this.view.closing;
+    // disableStdin also suppresses xterm's protocol replies; gate only user editing.
+    if (this.terminal.textarea) this.terminal.textarea.readOnly = !enabled;
+    this.terminal.options.cursorBlink = enabled;
   }
   get assignmentAvailable() {
     return !this.disposed && !this.view.closing && !this.reservation && !this.control.config.busy && !this.control.config.uncertain
@@ -176,12 +196,6 @@ export class RunnerSession {
       && !this.view.submitting && !this.references.prepared && this.view.status === 'running'
       && this.input.canSubmit && !this.control.config.uncertain && !this.control.work.blocked;
   }
-  async submitWork(token: symbol, instruction: string) {
-    if (!this.ownsAssignment(token)) throw new HubError(msg('runtime.session.ownershipChanged'));
-    this.update({ submitting: true });
-    try { return await this.control.work.submit(instruction); }
-    finally { this.update({ submitting: false }); }
-  }
   private queue(bytes: Uint8Array) {
     if (this.disposed || this.view.closing || this.view.status === 'exited' || this.view.status === 'failed') return;
     if (!this.pty) { this.pending.push(bytes); return; }
@@ -229,24 +243,81 @@ export class RunnerSession {
   }
   rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting) this.update({ draft }); }
+  private observeSubmission() {
+    const submitted = this.submittedAttempt;
+    if (!submitted || !this.deliveryUnknown) return;
+    const attempt = submitted.attempt;
+    if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id)) {
+      this.deliveryUnknown = false;
+      this.references.finishSubmission(false);
+      this.submittedAttempt = undefined;
+    } else if (attempt.work?.started_event_id) {
+      this.deliveryUnknown = false;
+      if (this.view.draft === submitted.draft) this.view = { ...this.view, draft: '' };
+      this.references.finishSubmission(true);
+      this.submittedAttempt = undefined;
+    }
+  }
+  private retainSubmission(attempt: WorkAttempt, draft: string) {
+    if (attempt.work?.started_event_id) {
+      this.update({ draft: '' });
+      this.references.finishSubmission(true);
+    } else if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected')) {
+      this.references.finishSubmission(false);
+      throw new HubError(msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' }));
+    } else {
+      this.submittedAttempt = { attempt, draft };
+      this.deliveryUnknown = true;
+      throw new HubError(msg('runtime.session.deliveryUnknown'));
+    }
+  }
+  private async submitInstruction(draft: string, defaults: EntryDefaults) {
+    if (this.hubSelections?.loadingOptions) throw new HubError(msg('config.notReady'));
+    const ready = () => {
+      if (this.disposed || this.view.closing || this.view.status !== 'running' || this.reservation)
+        throw new HubError(msg('runtime.session.ownershipChanged'));
+      const reason = idleReason(this, true);
+      if (reason) throw new HubError(msg('runtime.entry.unsent', { reason }));
+    };
+    ready();
+    const previous = this.control.work.current;
+    this.control.assignmentLocked = true;
+    try {
+      await submitConfiguredWork(this.control.config, this.control.work, defaults, draft, async () => {
+        this.control.assignmentLocked = false;
+        await this.control.fresh(); ready();
+        await this.references.preflight();
+        await this.control.fresh(); ready();
+        this.references.assertReadyForDelivery();
+        return this.references.deliveryLease;
+      });
+    } finally {
+      this.control.assignmentLocked = false;
+      const attempt = this.control.work.current;
+      if (attempt && attempt !== previous) this.retainSubmission(attempt, draft);
+    }
+  }
   async submit() {
     if (this.view.closing) throw new HubError(msg('tabs.closing'));
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
     if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
-    if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
+    if (this.reservation && !this.foregroundInteraction) throw new HubError(msg('runtime.session.entryReserved'));
     if (this.deliveryUnknown) throw new HubError(msg('runtime.session.previousUnknown'));
     const draft = this.view.draft ?? '';
     const ordinary = !draft.trimStart().startsWith('/');
-    const answering = this.control.observationFresh && this.control.snapshot.observation?.attention.foreground_interaction_active;
-    if (ordinary && this.control.work.blocked && !answering) throw new HubError(msg('work.retained',
-      { state: this.control.work.current?.work?.state || 'unknown' }));
+    if (!draft.trim()) return;
+    const defaults = copy(this.hubSelections?.defaults ?? {});
     let attempted = false, delivered = false;
     this.update({ submitting: true });
     try {
-      if (ordinary) await this.references.preflight();
+      if (ordinary) await this.control.fresh();
+      if (this.reservation && !this.foregroundInteraction) throw new HubError(msg('runtime.session.entryReserved'));
+      if (ordinary && !this.foregroundInteraction) {
+        await this.submitInstruction(draft, defaults);
+        return;
+      }
       if (this.disposed || this.view.status !== 'running' || !this.input.canSubmit)
         throw new HubError(msg('runtime.session.inputUnavailable'));
-      if (ordinary) this.references.assertReadyForDelivery();
       this.assignmentWriting = true;
       this.inputUnsettled = true;
       attempted = true;
@@ -263,7 +334,7 @@ export class RunnerSession {
       throw reason;
     } finally {
       this.assignmentWriting = false;
-      if (ordinary) this.references.finishSubmission(delivered);
+      if (ordinary && !this.deliveryUnknown) this.references.finishSubmission(delivered);
       this.update({ submitting: false });
     }
   }
@@ -301,6 +372,7 @@ export class RunnerSession {
   attach(container: HTMLElement, theme: 'light' | 'black') {
     if (this.terminal.element) container.appendChild(this.terminal.element);
     else this.terminal.open(container);
+    this.syncTerminalInput();
     this.setTheme(theme);
     const fit = () => {
       if (container.clientWidth > 0 && container.clientHeight > 0) this.fit.fit();
@@ -366,8 +438,10 @@ export class RunnerSessions {
     this.changed, defaults, value => {
       session.control.config.setDraft({});
       this.saveSelections(id, value);
-    }, () => session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing);
+    }, () => session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing
+      && !session.view.submitting && !session.submissionUncertain);
     this.selections.set(id, selections);
+    session.hubSelections = selections;
     if (!saved && selections.initialized) this.saveSelections(id, selections.defaults);
   }
   readonly getSnapshot = () => this.snapshot;

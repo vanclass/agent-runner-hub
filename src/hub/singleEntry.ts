@@ -2,8 +2,8 @@ import { msg, errorText, HubError, type HubText } from './i18n';
 import { HubSelections } from './HubSelections';
 import type { RunnerSession } from './RunnerSessions';
 import { commandNamed, type RunnerObservation } from './runnerControl';
-import { entryDefaultsToDesired } from './runnerConfigDefaults';
-import { copy, same, type ConfigAccount } from './runnerConfigContract';
+import { submitConfiguredWork } from './runnerSubmission';
+import { copy, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
 
 type Target = RunnerObservation['target'];
@@ -15,10 +15,10 @@ export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'd
 
 // /target availability is Runner-owned proof that retained Task/Issue authority
 // has been released. /files additionally excludes recovery and auto-resume.
-export function idleReason(session: RunnerSession) {
+export function idleReason(session: RunnerSession, allowReferences = false) {
   const control = session.control, snapshot = control.snapshot, observation = snapshot.observation;
   if (!control.observationFresh || !observation) return msg('runtime.entry.freshUnavailable');
-  if (session.references.prepared) return msg('runtime.entry.referencesPrepared');
+  if (!allowReferences && session.references.prepared) return msg('runtime.entry.referencesPrepared');
   const { execution, attention } = observation;
   if (execution.lifecycle_state !== 'INTERACTIVE_READY' || execution.owned_execution_alive !== false
     || execution.workflow_kind !== '') return msg('runtime.entry.authorityActive');
@@ -63,26 +63,6 @@ export class SingleEntry {
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) { this.selections.setDefault(key, value); }
   inspectOptions() { return this.selections.inspectOptions(); }
-  private async configure(session: RunnerSession, defaults: EntryDefaults) {
-    const config = session.control.config;
-    config.resetDraft();
-    await config.inspect(defaults.accountIdentity);
-    if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
-    const mapped = entryDefaultsToDesired(defaults, config.catalog);
-    if (mapped.unresolved.length) throw new HubError(msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') }));
-    config.setDraft(mapped.desired);
-    await config.createPlan();
-    if (!config.canApply || config.plan?.plan_status !== 'ready')
-      throw new HubError(config.error || msg('config.confirmation'));
-    await config.apply();
-    const application = config.latestApplication;
-    if (config.uncertain || config.error || application?.result?.apply_status !== 'applied'
-      || application.verification !== 'verified' || !application.inspection)
-      throw new HubError(config.error || msg('config.partial'));
-    const current = application.inspection.current;
-    if (application.inspection.setup_required || !Object.entries(mapped.desired).every(([key, value]) =>
-      same(current[key as keyof typeof current], value))) throw new HubError(msg('config.stalePlan'));
-  }
   async submit(location?: string, focus: (id: string) => void = () => {}) {
     if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
@@ -143,19 +123,25 @@ export class SingleEntry {
         return;
       }
       if (!session.control.work.supported) throw new HubError(msg('work.unavailable'));
-      await this.configure(session, defaults);
-      await session.control.fresh();
-      await session.references.verifyAssignment();
-      const finalReason = idleReason(session);
-      if (finalReason || !session.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
-        { reason: finalReason || msg('runtime.entry.inputUnsettled') }));
-      this.phase = 'writing';
-      this.detail = msg('work.observing', { name: session.view.name });
-      this.changed();
-      attempted = true;
-      const submission = session.submitWork(token, text);
-      this.active!.attempt = session.control.work.current;
-      const attempt = await submission;
+      const destination = session;
+      const previous = session.control.work.current;
+      const submission = submitConfiguredWork(session.control.config, session.control.work, defaults, text, async () => {
+        await destination.control.fresh();
+        await destination.references.verifyAssignment();
+        const finalReason = idleReason(destination);
+        if (finalReason || !destination.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
+          { reason: finalReason || msg('runtime.entry.inputUnsettled') }));
+        this.phase = 'writing';
+        this.detail = msg('work.observing', { name: destination.view.name });
+        attempted = true;
+        this.changed();
+      });
+      let attempt: WorkAttempt;
+      try { attempt = await submission; }
+      finally {
+        attempted = attempted && session.control.work.current !== previous;
+        if (attempted && this.active) this.active.attempt = session.control.work.current;
+      }
       if (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id) {
         attempted = false;
         this.phase = 'incomplete';
