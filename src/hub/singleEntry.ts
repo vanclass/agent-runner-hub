@@ -1,7 +1,7 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { HubSelections } from './HubSelections';
 import type { RunnerSession } from './RunnerSessions';
-import { commandNamed, type RunnerObservation, type CommandAttempt } from './runnerControl';
+import { commandNamed, isRunnerCommand, type RunnerObservation, type CommandAttempt } from './runnerControl';
 import { submitConfiguredWork } from './runnerSubmission';
 import { copy, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
@@ -123,7 +123,7 @@ export class SingleEntry {
       const inventoryReason = idleReason(session);
       if (inventoryReason || !session.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
         { reason: inventoryReason || msg('runtime.entry.inputUnsettled') }));
-      if (!briefRun && text.trimStart().startsWith('/')) {
+      if (!briefRun && isRunnerCommand(text)) {
         if (this.attachments.candidates.some(item => !item.submitted && !['cancelled', 'removed'].includes(this.attachments.state(item))))
           throw new HubError(msg('attachments.instructionOnly'));
         attempted = true;

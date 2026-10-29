@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { openPty, type Pty } from '../../.runner/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
-import { RunnerControl, commandNamed, type ControlSnapshot, type CommandAttempt } from './runnerControl';
+import { RunnerControl, commandNamed, isRunnerCommand, type ControlSnapshot, type CommandAttempt } from './runnerControl';
 import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
 import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
@@ -360,7 +360,7 @@ export class RunnerSession {
     if (this.submissionUncertain) throw new HubError(msg('runtime.session.previousUnknown'));
     if (briefRun && (this.hubSelections?.defaults.runMode !== 'issue-run' || this.foregroundInteraction)) return;
     const draft = this.view.draft ?? '';
-    const ordinary = briefRun || !draft.trimStart().startsWith('/');
+    const ordinary = briefRun || !isRunnerCommand(draft);
     if (!draft.trim()) return;
     if ((!ordinary || this.foregroundInteraction) && this.references.candidates.some(item =>
       !item.submitted && !['cancelled', 'removed'].includes(this.references.state(item))))

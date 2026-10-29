@@ -6,11 +6,15 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
       ['/recover --issue-run-id ir-42', 'completed'], ['/b alias arguments', 'completed'], ['/r --issue-run-id ir-42', 'completed'],
       ['  /status  ', 'completed'], ['\t/brief\t  indented\t body  ', 'completed'],
       ['/brief\targ', 'completed'], ['/project configure', 'completed'],
+      ...['\x1c', '\x1d', '\x1e', '\x1f', '\x85', '\v', '\f', '\xa0', '\u2028', '\u2029']
+        .map(w => [w + '/brief' + w + 'body', 'completed']),
+      ...['\x01', '\x1b', '\x7f', '\x84', '\x86', '\x9f'].map(c => ['/brief' + c + 'body', 'invalid']),
       ['/pc --help', 'completed'], ['/project configure-more', 'invalid'],
       ['/project blocked', 'invalid'], ['prefix /status', 'invalid'], ['/unknown', 'invalid'],
       ['/briefly x', 'invalid'], ['/disabled x', 'invalid'], ['/d x', 'invalid'], ['/brief=x', 'invalid'],
       ['/brief\nsecond', 'invalid'], ['/brief\rsecond', 'invalid'], ['/brief\0arg', 'invalid'],
-      ...['not-sent', 'outcome-unknown', 'queued', 'disconnect', 'rejected'].map(f => ['/brief  retained  ', f]),
+      ['\ufeff/status', 'invalid'],
+      ...['not-sent', 'outcome-unknown', 'transport-error', 'queued', 'disconnect', 'rejected'].map(f => ['/brief  retained  ', f]),
     ]) {
       test(`slash ${path} ${fault} ${JSON.stringify(text)}`, async ({ page }) => {
         await transport(page); await configure(page); await create(page);
@@ -30,6 +34,7 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
           native.invoke = async (command, args) => {
             if (command !== 'runner_command') return invoke(command, args);
             f.commands.push(args);
+            if (fault === 'transport-error') throw new Error('Unclassified transport failure');
             if (fault === 'not-sent' || fault === 'outcome-unknown') return { state: fault, detail: 'Fixture ' + fault };
             const control = f.sessions.get(args.id).control;
             control.results = [{ id: 731, command: args.command, state: fault === 'rejected' ? 'rejected'
@@ -63,7 +68,7 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
         }
         await expect(input).toHaveValue(fault === 'completed' ? '' : text);
         if (fault === 'not-sent') await expect(page.getByRole('status').filter({ hasText: /unsent/i })).toBeVisible();
-        if (['outcome-unknown', 'queued', 'disconnect'].includes(fault)) {
+        if (['outcome-unknown', 'transport-error', 'queued', 'disconnect'].includes(fault)) {
           await expect(input).toBeDisabled(); await expect(button).toBeDisabled();
           await input.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true });
           await button.dispatchEvent('click');

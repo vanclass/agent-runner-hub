@@ -44,6 +44,7 @@ initiating=None
 staged=0
 buffer=b''
 previous=0
+seen_commands=[]
 while True:
     buffer+=os.read(reader,4096)
     if b'\n' not in buffer: continue
@@ -100,6 +101,11 @@ while True:
         send(request_id=request_id,status='accepted',phase='completed',**image,offset=offset,data_base64=base64.b64encode(png[offset:end]).decode(),next_offset=end if end<len(png) else None)
         continue
     if packet['operation']=='command':
+        if packet['command'] in json.loads(os.environ['HUB_SLASH_COMMANDS']):
+            assert packet['command'] not in seen_commands, 'duplicate command request'
+            seen_commands.append(packet['command'])
+            send(request_id=request_id,status='accepted',phase='completed')
+            continue
         send(request_id=request_id,status='pending-interaction',phase='awaiting_interaction')
         if packet['command']=='/target':
             initiating=request_id
@@ -107,11 +113,12 @@ while True:
                 choices=[dict(choice_id='visible-choice',label='Visible choice',description='Canonical description',enabled=True,disabled_reason='')])
             continue
         time.sleep(.2)
+        assert seen_commands==json.loads(os.environ['HUB_SLASH_COMMANDS'])
         break
     observation=dict(run_mode='issue-run',target=dict(binding_state='unbound',owner='',project=''),
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
-        attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[])
+        attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[dict(id=c,text=c,aliases=['/d'] if c=='/disabled' else [],parent_id=None,visible=True,enabled=c!='/disabled',disabled_reason='',description='',children=[]) for c in ['/status','/brief','/target','/disabled']])
     send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap))
 "#;
 
@@ -142,6 +149,9 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     let job = job::Job::new().unwrap();
     let mut command = CommandBuilder::new(python);
     command.args(["-I", "-c", CHILD]);
+    let slash_commands = ["  /status", "/brief\targ", "\t/brief\tbody", "\u{1c}/brief\u{85}body",
+        "\u{1d}/brief\u{1e}body", "\u{1f}/brief\u{b}body", "\u{c}/brief\u{a0}body", "\u{2028}/brief\u{2029}body"];
+    command.env("HUB_SLASH_COMMANDS", serde_json::to_string(&slash_commands).unwrap());
     command.env("HUB_CONTROL_SENTINEL", format!("{}", sentinel.as_raw_handle() as usize));
     command.env("HUB_CONTROL_EVENT", event);
     job.configure(&mut command);
@@ -162,6 +172,24 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(!public.contains(&private_key), "Private launch key reached public snapshot");
     for private in ["key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
     assert!(ready.generated_images_supported);
+    for text in ["/brief\rbody", "/brief\nbody", "/brief\0body", "/brief\u{1b}body", "/brief\u{7f}body",
+        "/brief\u{84}body", "\u{feff}/status", "prefix /status", "/unknown", "/briefly", "/disabled", "/d arg"] {
+        let before = serde_json::to_string(&client.snapshot().results).unwrap();
+        assert!(matches!(client.command(text.into()).unwrap(), control::features::Admission::NotSent { .. }));
+        assert_eq!(serde_json::to_string(&client.snapshot().results).unwrap(), before);
+    }
+    assert!(matches!(client.command(format!("/brief {}", "x".repeat(4096))).unwrap(), control::features::Admission::NotSent { .. }));
+    for text in slash_commands {
+        let admission = client.command(text.into()).unwrap();
+        let control::features::Admission::Submitted { id, .. } = admission else { panic!("{admission:?}") };
+        loop {
+            let snapshot = client.snapshot();
+            if let Some(result) = snapshot.results.iter().find(|r| r.id == id && r.phase.as_deref() == Some("completed")) {
+                assert_eq!(result.command, text); assert_eq!(result.state, "accepted"); break;
+            }
+            assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+        }
+    }
     client.command("/target".into()).unwrap();
     while client.snapshot().results.last().unwrap().state != "pending-interaction" {
         assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
@@ -233,6 +261,7 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     client.command("/status".into()).unwrap();
     while client.snapshot().state != "disconnected" && Instant::now() < deadline { thread::sleep(Duration::from_millis(10)); }
     assert_eq!(client.snapshot().results.last().unwrap().state, "outcome-unknown");
+    assert!(matches!(client.command("/status".into()).unwrap(), control::features::Admission::NotSent { .. }));
     assert!(matches!(client.feature(stage()), control::features::Admission::NotSent { .. }));
     client.close(); job.terminate().unwrap(); child.wait().unwrap(); drop(pair.master);
     let terminal = String::from_utf8_lossy(&output.join().unwrap()).into_owned();

@@ -81,6 +81,24 @@ pub struct Client {
     images: Images,
 }
 impl Client {
+    fn runner_whitespace(c: char) -> bool { c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}') }
+    fn available(commands: &[super::CommandView], candidate: &str) -> bool {
+        fn matches<'a>(commands: &'a [super::CommandView], candidate: &str, best: &mut Option<(usize, &'a super::CommandView)>) {
+            for command in commands {
+                for name in std::iter::once(&command.text).chain(command.aliases.iter()) {
+                    if name.starts_with('/') && candidate.strip_prefix(name.as_str()).is_some_and(|rest|
+                        rest.is_empty() || rest.chars().next().is_some_and(Client::runner_whitespace))
+                        && best.as_ref().is_none_or(|(length, _)| name.len() > *length) {
+                        *best = Some((name.len(), command));
+                    }
+                }
+                matches(&command.children, candidate, best);
+            }
+        }
+        let mut best = None;
+        matches(commands, candidate, &mut best);
+        best.is_some_and(|(_, command)| command.visible && command.enabled)
+    }
     pub fn snapshot(&self) -> Snapshot { self.state.lock().unwrap().clone() }
     fn image_alive(&self) -> bool { !self.stopped.load(Ordering::Acquire) && self.snapshot().state == "ready" }
     fn image_reply(&self, request: generated_images::Request) -> Result<generated_images::Reply, generated_images::Failure> {
@@ -96,8 +114,12 @@ impl Client {
         self.images.read(id, |request| self.image_reply(request), || self.image_alive())
     }
     pub fn command(&self, command: String) -> Result<super::features::Admission, String> {
-        if command.len() > 4096 || !command.starts_with('/') || command.chars().any(char::is_control) {
-            return Err("Choose a Runner slash command".into());
+        let snapshot = self.snapshot();
+        let candidate = command.trim_start_matches(Self::runner_whitespace);
+        if command.len() > 4096 || !candidate.starts_with('/')
+            || command.chars().any(|c| matches!(c, '\r' | '\n' | '\0') || c.is_control() && !Self::runner_whitespace(c))
+            || !snapshot.observation.as_ref().is_some_and(|o| Self::available(&o.commands, candidate)) {
+            return Ok(super::features::Admission::NotSent { detail: "Choose an available Runner slash command".into() });
         }
         let generation = self.snapshot().features.generation;
         Ok(match self.submit(Request::Command(command)) {

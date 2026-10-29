@@ -9,6 +9,15 @@ import { RunnerInteraction } from './RunnerInteraction';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
+// Python str.isspace(), including its extra information separators and excluding BOM.
+const runnerWhitespace = /[\t-\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+function runnerCommandCandidate(text: string) {
+  let start = 0;
+  while (start < text.length && runnerWhitespace.test(text[start])) start++;
+  return text.slice(start);
+}
+export function isRunnerCommand(text: string) { return runnerCommandCandidate(text).startsWith('/'); }
+
 export const controlTiming = Object.freeze({ pollMs: 500, freshnessMs: 2500,
   connectMs: 35000, refreshMs: 5000, completionMs: 65000, settleMs: 50 });
 // Matches the native clipboard staging security ceiling, not image discovery capacity.
@@ -181,16 +190,13 @@ export class RunnerControl {
   async command(text: string) {
     if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new HubError(msg('runtime.control.unavailable'));
     if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
-    if (/[\x00-\x08\n\r\x0e-\x1b\x7f]/.test(text)) throw new HubError(msg('runtime.control.unavailable'));
+    if (/[\x00-\x08\n\r\x0e-\x1b\x7f-\x84\x86-\x9f]/.test(text)) throw new HubError(msg('runtime.control.unavailable'));
     // Python str.isspace() boundaries used by Runner; match identity only, never arguments.
-    const whitespace = /[\t-\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
-    let start = 0;
-    while (start < text.length && whitespace.test(text[start])) start++;
-    const candidate = text.slice(start);
+    const candidate = runnerCommandCandidate(text);
     const commands = flattenCommands(this.snapshot.observation?.commands ?? []);
     const matches = commands.flatMap(command => [command.text, ...command.aliases]
       .filter(name => name.startsWith('/') && candidate.startsWith(name)
-        && (candidate.length === name.length || whitespace.test(candidate[name.length])))
+        && (candidate.length === name.length || runnerWhitespace.test(candidate[name.length])))
       .map(name => ({ command, name })));
     const command = matches.sort((a, b) => b.name.length - a.name.length)[0]?.command;
     if (!command?.visible || !command.enabled) throw new HubError(msg('runtime.control.unavailable'));
