@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useHubTranslation } from './i18n';
 import type { RunnerControl } from './runnerControl';
 import type { SingleEntry } from './singleEntry';
-import { SingleEntrySettings } from './SingleEntryComposer';
+import { SingleEntrySettings, HubSelectionSettings } from './SingleEntryComposer';
+import type { HubSelections } from './HubSelections';
 import { RunnerConfigPanel } from './RunnerConfigPanel';
 import { RunnerControls } from './RunnerControls';
 import './taskPanel.css';
 
 /** Presentation only: preferences and each Runner retain their own settings state. */
-export function TaskPanel({ entry, control, scope }: { entry: SingleEntry; control?: RunnerControl; scope: string }) {
+export function TaskPanel({ entry, control, scope, selections }: {
+  entry: SingleEntry; control?: RunnerControl; scope: string; selections?: HubSelections;
+}) {
   const { t } = useHubTranslation();
   const [collapsed, setCollapsed] = useState(() => matchMedia('(max-width: 1100px)').matches);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -29,7 +32,9 @@ export function TaskPanel({ entry, control, scope }: { entry: SingleEntry; contr
     </button>
     <div id="task-panel-body" className="task-panel-body" hidden={collapsed}>
       <div key={scope}>
-        {control ? <><RunnerConfigPanel control={control} defaults={entry.defaults} /><RunnerControls control={control} /></>
+        {control ? <>{selections && <><HubSelectionSettings entry={selections} />
+          <RunnerConfigPanel control={control} hubSelections={selections} /></>}
+          <RunnerControls control={control} /></>
           : scope === 'single-entry' ? <SingleEntrySettings entry={entry} /> : <p>{t('common.notConnected')}</p>}
       </div>
     </div>

@@ -1,9 +1,8 @@
-import { t, tr, useHubTranslation, type MessageKey } from './i18n';
+import { t, tr, msg, useHubTranslation, type MessageKey } from './i18n';
 import type { RunnerControl } from './runnerControl';
-import type { EntryDefaults } from './singleEntry';
-import { same, type ConfigDesired, type ConfigSettings } from './runnerConfigContract';
+import type { ConfigSettings } from './runnerConfigContract';
 import { entryDefaultsToDesired } from './runnerConfigDefaults';
-import { DirectoryInput } from './DirectoryInput';
+import type { HubSelections } from './HubSelections';
 import './runnerConfig.css';
 
 const fields: Record<keyof ConfigSettings, MessageKey> = { target: 'fields.target', account: 'fields.account',
@@ -29,41 +28,45 @@ const codes: Record<string, MessageKey> = {
 };
 const display = (value: unknown) => value === undefined || value === null || value === '' ? '—'
   : typeof value === 'string' ? value : JSON.stringify(value);
-const accountKey = (a: { agent_id: string; profile_name: string }) => JSON.stringify([a.agent_id, a.profile_name]);
 function Diagnostic({ code }: { code: string }) { return <span>{codes[code] && `${t(codes[code])} `}<code>{code}</code></span>; }
 
-export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<RunnerControl, 'config' | 'snapshot'> & { assignmentLocked?: boolean }; defaults?: EntryDefaults }) {
+export function RunnerConfigPanel({ control, hubSelections }: {
+  control: Pick<RunnerControl, 'config' | 'snapshot'> & { assignmentLocked?: boolean };
+  hubSelections: HubSelections;
+}) {
   useHubTranslation();
   const service = control.config, actual = service.actual, catalog = service.catalog;
   const current = actual?.current;
-  const draftScope = service.draft;
-  const draft = current ? { ...current, ...service.draft } : undefined;
-  const options = catalog?.options;
-  const model = options?.models.find(m => m.id === draft?.model.id);
   const connected = control.snapshot.state === 'ready';
-  const blocked = service.busy || !connected || !options || control.assignmentLocked;
   const plan = service.plan;
-  const mapped = catalog ? entryDefaultsToDesired(defaults, catalog) : undefined;
-  const selected = (field: keyof ConfigSettings) => display(draft?.[field]);
-  function choose(field: keyof ConfigSettings, value: string) { service.setDraft({ [field]: value } as ConfigDesired); }
-  const selector = (field: 'target' | 'run_mode' | 'service_tier', values: string[], enabled: boolean) =>
-    <label>{t(fields[field])}<select aria-label={t('config.choose', { field: t(fields[field]) })}
-      disabled={blocked || !enabled} value={draft?.[field] ?? ''} onChange={e => choose(field, e.target.value)}>
-      {!values.includes(draft?.[field] ?? '') && <option value={draft?.[field] ?? ''} disabled>{selected(field)} · {t('config.unlisted')}</option>}
-      {values.map(value => <option key={value} value={value}>{value}</option>)}
-    </select></label>;
+  const mapped = catalog ? entryDefaultsToDesired(hubSelections.defaults, catalog) : undefined;
+  async function planRequested() {
+    const requested = hubSelections.defaults;
+    service.resetDraft();
+    await hubSelections.inspectOptions();
+    if (requested !== hubSelections.defaults || !hubSelections.catalog) return;
+    const mapped = entryDefaultsToDesired(requested, hubSelections.catalog);
+    if (mapped.unresolved.length) {
+      service.error = msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') });
+      return;
+    }
+    service.setDraft(mapped.desired);
+    await service.createPlan();
+  }
   return <details className="runner-config" open>
     <summary>{t('config.title')}</summary>
     {!service.supports('inspect') && <p role="status">{connected ? t('config.unsupported') : t('config.notReady')} {t('config.terminalHelp')}</p>}
     <div className="config-actions">
       <button type="button" disabled={!service.supports('inspect') || service.busy || control.assignmentLocked}
-        onClick={() => void service.inspect(service.draft.account)}>{t('config.inspect')}</button>
+        onClick={() => void hubSelections.inspectOptions()}>{t('config.inspect')}</button>
       <button type="button" disabled={!current || service.busy || !connected || control.assignmentLocked} onClick={() => service.resetDraft()}>{t('config.reset')}</button>
     </div>
     <p className="config-progress" role="status" aria-live="polite" aria-busy={service.busy}>
       {t(activity[service.activity])}{service.busy && service.progress && <> · {t(states[service.progress.state])}</>}
     </p>
     {service.error && <p role="alert" className="runner-error">{tr(service.error)}</p>}
+    {hubSelections && !!mapped?.unresolved.length &&
+      <p role="status">{t('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') })}</p>}
     {current && <>
       <details className="config-verified"><summary>{t('config.actual')}</summary>
       <dl className="config-current">{Object.entries(fields).map(([field, key]) => <div key={field}>
@@ -76,58 +79,9 @@ export function RunnerConfigPanel({ control, defaults = {} }: { control: Pick<Ru
       {!!actual.constraints.length && <ul>{actual.constraints.map(code => <li key={code}><Diagnostic code={code} /></li>)}</ul>}
       </details>
       {!catalog && <p>{t('config.incomplete')} {t('config.terminalHelp')}</p>}
-      <h3>{t('config.draft')}</h3>
-      <div className="config-fields">
-        <fieldset><legend>{t('panel.execution')}</legend>
-        {selector('target', options?.targets.map(v => v.id) ?? [], actual.availability.target === true)}
-        {selector('run_mode', options?.run_modes ?? [], actual.availability.run_mode === true)}
-        <DirectoryInput label={t('config.choose', { field: t('config.root') })} value={draft?.root ?? ''} scope={draftScope}
-          isCurrent={() => service.draft === draftScope && !service.busy && !control.assignmentLocked && control.snapshot.state === 'ready'}
-          disabled={blocked || !actual.availability.run_mode || !['direct-run', 'pure-direct-run'].includes(draft?.run_mode ?? '')}
-          onChange={value => choose('root', value)} />
-        <p>{t('config.rootHelp')}</p>
-        </fieldset>
-        <fieldset><legend>{t('panel.model')}</legend>
-        <label>{t('fields.account')}<select aria-label={t('config.choose', { field: t('fields.account') })}
-          disabled={blocked || !actual.availability.account} value={draft ? accountKey(draft.account) : ''}
-          onChange={e => { const account = options?.accounts.find(a => accountKey(a) === e.target.value);
-            if (account) void service.selectAccount(account); }}>
-          {!options?.accounts.some(a => same(a, draft?.account)) && <option value={draft ? accountKey(draft.account) : ''} disabled>{selected('account')} · {t('config.unlisted')}</option>}
-          {options?.accounts.map(a => <option key={accountKey(a)} value={accountKey(a)}>{a.agent_id} / {a.profile_name}</option>)}
-        </select></label>
-        <label>{t('fields.model')}<select aria-label={t('config.choose', { field: t('fields.model') })}
-          disabled={blocked || !actual.availability.model} value={draft?.model.id ?? ''} onChange={e => {
-            if (draft) service.setDraft({ model: { id: e.target.value, reasoning_effort: draft.model.reasoning_effort } }); }}>
-          {!model && <option value={draft?.model.id ?? ''} disabled>{draft?.model.id || '—'} · {t('config.unlisted')}</option>}
-          {options?.models.map(m => <option key={m.id} value={m.id}>{m.id}</option>)}
-        </select></label>
-        <label>{t('config.reasoning')}<select aria-label={t('config.choose', { field: t('config.reasoning') })}
-          disabled={blocked || !model || !actual.availability.model} value={draft?.model.reasoning_effort ?? ''}
-          onChange={e => { if (draft) service.setDraft({ model: { ...draft.model, reasoning_effort: e.target.value } }); }}>
-          {!model?.reasoning_efforts.includes(draft?.model.reasoning_effort ?? '') && <option value={draft?.model.reasoning_effort ?? ''} disabled>{draft?.model.reasoning_effort || '—'} · {t('config.unlisted')}</option>}
-          {model?.reasoning_efforts.map(e => <option key={e} value={e}>{e}</option>)}
-        </select></label>
-        <label className="fast-option"><input type="checkbox" aria-label={t('panel.fast')}
-          checked={draft?.service_tier === 'fast'}
-          disabled={blocked || !actual.availability.service_tier || !model?.service_tiers.includes('fast')
-            || !model.service_tiers.includes('default')}
-          onChange={e => choose('service_tier', e.target.checked ? 'fast' : 'default')} />{t('panel.fast')}</label>
-        {draft && (!model?.service_tiers.includes(draft.service_tier) || !['default', 'fast'].includes(draft.service_tier))
-          && <p role="status">{t('panel.retained', { value: draft.service_tier })}</p>}
-        {draft && draft.service_tier !== 'default' && model?.service_tiers.includes('default') &&
-          <button type="button" disabled={blocked || !actual.availability.service_tier}
-            onClick={() => choose('service_tier', 'default')}>{t('panel.useDefaultTier')}</button>}
-        </fieldset>
-      </div>
-      {Object.keys(defaults).length > 0 && <div className="config-defaults"><h3>{t('config.defaults')}</h3>
-        <pre>{JSON.stringify(defaults, null, 2)}</pre>
-        {!!mapped?.unresolved.length && <p>{t('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') })}</p>}
-        <button type="button" disabled={blocked || !mapped || mapped.unresolved.length > 0}
-          onClick={() => mapped && service.setDraft(mapped.desired)}>{t('config.useDefaults')}</button>
-      </div>}
-      <div className="config-actions"><button type="button" disabled={blocked || !service.supports('plan')}
-        onClick={() => void service.createPlan()}>{t('config.plan')}</button></div>
     </>}
+    <div className="config-actions"><button type="button" disabled={service.busy || !connected || control.assignmentLocked || !service.supports('plan')}
+      onClick={() => void planRequested()}>{t('config.plan')}</button></div>
     {plan && <section className="config-plan" aria-label={t('config.planResult')}>
       <h3>{t(plan.plan_status === 'ready' ? 'config.ready' : plan.plan_status === 'invalid' ? 'config.invalid' : 'config.confirmation')}</h3>
       <p>{t('config.planHelp')}</p>

@@ -38,6 +38,8 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
     if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? catalog.inspection.current.run_mode)) desired.root = defaults.root;
     else unresolved.push('root');
   }
+  if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? catalog.inspection.current.run_mode)
+    && !defaults.root) unresolved.push('root');
   return { desired, unresolved };
 }
 

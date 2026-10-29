@@ -167,11 +167,11 @@ test('saved defaults map exact candidate IDs and refuse to infer account identit
     const saved = configToEntryDefaults(service.actual.current, service.catalog, observation);
     return { unproven, matchingLabel, explicitIds, saved };
   });
-  expect(result.unproven.unresolved).toEqual(['account', 'model']);
+  expect(result.unproven.unresolved).toEqual(['account', 'model', 'root']);
   expect(result.unproven.desired).toEqual({ target: 'project:Exact', run_mode: 'direct-run' });
-  expect(result.matchingLabel.unresolved).toEqual(['account', 'model']);
+  expect(result.matchingLabel.unresolved).toEqual(['account', 'model', 'root']);
   expect(result.matchingLabel.desired).not.toHaveProperty('account');
-  expect(result.explicitIds.unresolved).toEqual([]);
+  expect(result.explicitIds.unresolved).toEqual(['root']);
   expect(result.explicitIds.desired.model).toEqual({ id: 'm0', reasoning_effort: 'high' });
   expect(result.explicitIds.desired.service_tier).toBe('fast');
   expect(result.saved).toEqual({ target: { binding_state: 'bound', owner: 'Workspace', project: '' }, accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',

@@ -18,7 +18,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   });
   const { t, tr } = useHubTranslation();
   const [sessions] = useState(() => new RunnerSessions(preferences.value.singleEntry,
-    singleEntry => preferences.update({ singleEntry })));
+    singleEntry => preferences.update({ singleEntry }), preferences.value.runnerSelections,
+    (id, value) => preferences.saveRunner(id, value)));
   const liveRunners = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot);
   const runners = [...fixtures, ...liveRunners];
   const spare = sessions.spareSnapshot;
@@ -75,7 +76,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
         theme={theme} installation={installation}
         entry={sessions.entry} onSelectRunner={setSelectedId} onCloseRunner={id => closeRunner(id, 'explicit')} />
-      <TaskPanel entry={sessions.entry} control={sessions.get(selectedId ?? undefined)?.control}
+      <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
+        control={sessions.get(selectedId ?? undefined)?.control}
         scope={selectedId ?? 'single-entry'} />
     </div>
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}

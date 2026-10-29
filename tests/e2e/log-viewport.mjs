@@ -16,6 +16,8 @@ export function registerLogViewport({ test, expect, transport, configure }) {
   }
   test('completed log viewport retains searchable scrollback after exit and tab switching', async ({ page }, info) => {
     await transport(page, undefined, { work: true, auto: true, workMode: 'succeeded' }); await configure(page);
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+    await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('representative DirectRun');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');

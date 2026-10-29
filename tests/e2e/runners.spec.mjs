@@ -10,10 +10,12 @@ import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
 import { registerInstallationSetup } from './installation-setup.mjs';
 import { registerTaskPanel } from './task-panel.mjs';
 import { registerLogViewport } from './log-viewport.mjs';
+import { registerHubSelectionUI } from './hub-selection-ui.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
 registerLogViewport({ test, expect, transport, configure, create });
+registerHubSelectionUI({ test, expect, transport, configure, create });
 
 async function transport(page, freshTarget, referenceOptions) {
   await page.addInitScript(({ freshTarget, referenceOptions }) => {
@@ -591,14 +593,15 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
 test('Single Entry preferences restore all safe selections and revalidate them before delivery', async ({ page }) => {
   await transport(page, undefined, { work: true, auto: true });
   await configure(page); await create(page); await entry(page, 'private instruction never saved');
-  await page.getByRole('button', { name: 'Load authenticated Runner options' }).click();
-  await page.getByRole('combobox', { name: 'Single Entry Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
-  await expect(page.getByRole('combobox', { name: 'Single Entry Model', exact: true })).toBeEnabled();
-  await page.getByRole('combobox', { name: 'Single Entry Model', exact: true }).selectOption({ label: 'm2' });
-  await page.getByRole('combobox', { name: 'Single Entry Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
-  await page.getByRole('combobox', { name: 'Single Entry Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
+  await page.getByRole('button', { name: 'Refresh available choices', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true }).getByRole('option', { name: 'codex / first', exact: true })).toBeAttached();
+  await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
+  await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
+  await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
+  await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+  await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')));
-  expect(Object.keys(saved.singleEntry).sort()).toEqual(['accountIdentity', 'allocationPolicy', 'model', 'runMode', 'target']);
+  expect(Object.keys(saved.singleEntry).sort()).toEqual(['accountIdentity', 'allocationPolicy', 'initialized', 'model', 'runMode', 'target']);
   expect(JSON.stringify(saved)).not.toContain('private instruction');
   await page.reload();
   await expect(page.getByText('Restored defaults are requests only.', { exact: false })).toBeVisible();
@@ -617,12 +620,12 @@ test('Single Entry preferences restore all safe selections and revalidate them b
 
 test('Single Entry explicitly recovers retained Fast while preserving model and other defaults', async ({ page }) => {
   await transport(page, undefined, { auto: true, work: true }); await configure(page);
-  await page.getByRole('button', { name: 'Load authenticated Runner options' }).click();
-  const model = page.getByRole('combobox', { name: 'Single Entry Model', exact: true });
+  await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+  const model = page.getByRole('combobox', { name: 'Requested Model', exact: true });
   await expect(model).toBeEnabled();
   await model.selectOption({ label: 'm0' });
-  await page.getByRole('combobox', { name: 'Single Entry Reasoning effort', exact: true }).selectOption('high');
-  await page.getByRole('combobox', { name: 'Single Entry Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+  await page.getByRole('combobox', { name: 'Requested Reasoning effort', exact: true }).selectOption('high');
+  await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
   await model.selectOption({ label: 'm1' });
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeChecked();

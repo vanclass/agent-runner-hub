@@ -3,7 +3,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     test(`task panel desktop geometry, scrolling, keyboard collapse and overlay ${language} ${theme}`, async ({ page }, info) => {
       await page.setViewportSize({ width: 1440, height: 800 });
       await transport(page, undefined, { auto: true, work: true }); await configure(page);
-      await page.getByRole('button', { name: 'Load authenticated Runner options' }).click();
+      await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
       const body = page.locator('.task-panel-body'), toggle = page.locator('.task-panel-toggle');
       const nav = await page.locator('.sidebar').boundingBox(), center = await page.locator('.workspace').boundingBox();
       const right = await page.locator('.task-panel').boundingBox();
@@ -13,7 +13,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await expect(page.locator('.workspace .context-settings')).toHaveCount(0);
       const original = await page.locator('.composer').boundingBox();
       await body.evaluate(node => { node.scrollTop = node.scrollHeight; });
-      expect(await body.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+      expect(await body.evaluate(node => node.scrollTop)).toBe(await body.evaluate(node => Math.max(0, node.scrollHeight - node.clientHeight)));
       expect(await page.locator('.composer').boundingBox()).toEqual(original);
       await create(page);
       expect((await page.locator('.task-panel').boundingBox()).x).toBe(right.x);
@@ -42,27 +42,27 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
   }
   test('task panel preserves defaults, Fast capability and each Runner draft through tab switches', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
-    await page.getByRole('button', { name: 'Load authenticated Runner options' }).click();
-    const model = page.getByRole('combobox', { name: 'Single Entry Model', exact: true });
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+    const model = page.getByRole('combobox', { name: 'Requested Model', exact: true });
     const fast = page.getByRole('checkbox', { name: 'Fast', exact: true });
     await model.selectOption({ label: 'm0' }); await fast.check();
     await model.selectOption({ label: 'm1' });
     await expect(fast).toBeChecked(); await expect(fast).toBeDisabled();
     await expect(page.getByRole('status').filter({ hasText: 'Saved value retained: fast' })).toBeVisible();
-    await page.getByRole('combobox', { name: 'Single Entry Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'second' }));
+    await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'second' }));
     await expect(model).toBeEnabled(); await expect(fast).toBeChecked(); await expect(fast).toBeDisabled();
     expect(await model.inputValue()).toContain('m1');
     await model.selectOption({ label: 's0' }); await expect(fast).toBeEnabled();
     await create(page); await create(page);
     await page.evaluate(async () => (await import('/tests/fixtures/sessionConfig.ts')).attachConfigToHub());
     const inspect = page.getByRole('button', { name: 'Inspect settings and options', exact: true });
-    const draft = page.getByRole('combobox', { name: 'Draft Model', exact: true });
-    await inspect.click(); await draft.selectOption('m2'); await fast.check();
+    const draft = page.getByRole('combobox', { name: 'Requested Model', exact: true });
+    await inspect.click(); await draft.selectOption({ label: 's2' }); await fast.check();
     await page.locator('.runner-row').first().locator('.nav-row').click();
-    await inspect.click(); await expect(draft).toHaveValue('m0'); await expect(fast).not.toBeChecked();
-    await draft.selectOption('m1'); await expect(fast).toBeDisabled();
+    await inspect.click(); await expect(draft).toHaveValue(/s0/); await expect(fast).toBeChecked();
+    await draft.selectOption({ label: 's1' }); await expect(fast).toBeDisabled();
     await page.locator('.runner-row').nth(1).locator('.nav-row').click();
-    await expect(draft).toHaveValue('m2'); await expect(fast).toBeChecked();
+    await expect(draft).toHaveValue(/s2/); await expect(fast).toBeChecked();
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     expect(await model.inputValue()).toContain('s0'); await expect(fast).toBeChecked();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.model)).toEqual({ model: 's0', reasoning_effort: 'medium', service_tier: 'fast' });
@@ -79,7 +79,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await expect(composer).toBeInViewport();
       await page.getByRole('button', { name: 'Send instruction', exact: true }).scrollIntoViewIfNeeded();
       await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeInViewport();
-      await expect(page.locator('.workspace')).toHaveCSS('overflow-y', 'auto');
+      await expect(page.locator('.workspace .composer-area')).toHaveCSS('overflow-y', 'auto');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
@@ -92,7 +92,8 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
         window.__configFixtures.get('pty-1').planStatus = status;
       }, status);
       await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Draft Model', exact: true }).selectOption('m2');
+      await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
       await page.getByRole('button', { name: 'Plan changes', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toBeDisabled();
       await expect(page.locator('.config-plan')).toContainText(status === 'invalid' ? 'CONFIG_MODEL_INVALID' : 'release_context_in_runner_terminal');

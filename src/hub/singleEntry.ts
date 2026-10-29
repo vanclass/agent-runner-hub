@@ -1,15 +1,15 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
-import { projectEntryDefaults } from './preferences';
+import { HubSelections } from './HubSelections';
 import type { RunnerSession } from './RunnerSessions';
 import { commandNamed, type RunnerObservation } from './runnerControl';
 import { entryDefaultsToDesired } from './runnerConfigDefaults';
-import { copy, same, type ConfigAccount, type ConfigCatalog } from './runnerConfigContract';
+import { copy, same, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
 
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier'>;
 export type EntryDefaults = { target?: Target; model?: Model; account?: string; accountIdentity?: ConfigAccount;
-  runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle' };
+  runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle'; initialized?: true };
 
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';
 
@@ -35,23 +35,23 @@ export function idleReason(session: RunnerSession) {
 
 export class SingleEntry {
   draft = '';
-  defaults: EntryDefaults = {};
+  readonly selections: HubSelections;
+  get defaults() { return this.selections.defaults; }
+  get catalog() { return this.selections.catalog; }
+  get loadingOptions() { return this.selections.loadingOptions; }
+  get restoredDefaults() { return this.selections.restoredDefaults; }
   phase: EntryPhase = 'editing';
   detail: HubText = '';
   runnerId?: string;
   evidence: HubText[] = [];
   private active?: { session: RunnerSession; token: symbol; attempt?: WorkAttempt };
-  catalog?: ConfigCatalog;
-  loadingOptions = false;
   constructor(private readonly list: () => readonly RunnerSession[],
     private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
-    private readonly saveDefaults: (value: EntryDefaults) => void = () => {},
-    private readonly optionsSource: () => RunnerSession | undefined = () => this.list()[0]) {
-    this.defaults = projectEntryDefaults(defaults) ?? {};
-    this.restoredDefaults = Object.keys(this.defaults).length > 0;
+    saveDefaults: (value: EntryDefaults) => void = () => {},
+    optionsSource: () => RunnerSession | undefined = () => this.list()[0]) {
+    this.selections = new HubSelections(() => optionsSource()?.control.config, changed, defaults, saveDefaults, () => this.editable);
   }
-  readonly restoredDefaults: boolean;
   get allocationPolicy() { return this.defaults.allocationPolicy ?? 'always-new'; }
   get pending() { return this.phase === 'preparing' || this.phase === 'writing'; }
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
@@ -61,45 +61,8 @@ export class SingleEntry {
     this.phase = 'editing';
     this.changed();
   }
-  setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
-    if (!this.editable || this.loadingOptions) return;
-    const projected = projectEntryDefaults({ ...this.defaults, [key]: value });
-    if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
-    if (key === 'accountIdentity') delete projected.account;
-    if (key === 'runMode' && !['direct-run', 'pure-direct-run'].includes(String(value))) delete projected.root;
-    this.defaults = projected;
-    this.saveDefaults(projected);
-    this.changed();
-    if (key === 'accountIdentity') void this.inspectOptions();
-  }
-  private choiceAllowed(key: keyof EntryDefaults, value: unknown) {
-    if (key === 'allocationPolicy' || key === 'root') return true;
-    const options = this.catalog?.options;
-    if (!options) return false;
-    if (key === 'accountIdentity') return options.accounts.some(a => same(a, value));
-    if (key === 'target') return options.targets.some(t => same({ binding_state: 'bound', owner: t.owner, project: t.project }, value));
-    if (key === 'runMode') return options.run_modes.includes(String(value));
-    if (key === 'model') {
-      const model = value as Model;
-      return options.models.some(m => m.id === model.model
-        && (m.reasoning_efforts.includes(model.reasoning_effort) || model.reasoning_effort === this.defaults.model?.reasoning_effort)
-        && (m.service_tiers.includes(model.service_tier) || model.service_tier === this.defaults.model?.service_tier));
-    }
-    return false;
-  }
-  async inspectOptions() {
-    if (!this.editable || this.loadingOptions) return;
-    this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
-    try {
-      const source = this.optionsSource();
-      if (!source?.assignmentAvailable) throw new HubError(msg('config.notReady'));
-      await source.control.config.inspect(this.defaults.accountIdentity);
-      if (!source.control.config.catalog) throw new HubError(source.control.config.error || msg('config.incomplete'));
-      this.catalog = copy(source.control.config.catalog);
-      this.detail = '';
-    } catch (reason) { this.detail = errorText(reason); }
-    finally { this.loadingOptions = false; this.changed(); }
-  }
+  setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) { this.selections.setDefault(key, value); }
+  inspectOptions() { return this.selections.inspectOptions(); }
   private async configure(session: RunnerSession, defaults: EntryDefaults) {
     const config = session.control.config;
     config.resetDraft();

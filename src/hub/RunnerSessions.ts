@@ -12,6 +12,7 @@ import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
 import { RunnerSpare } from './RunnerSpare';
 import type { RunnerInstallation } from './runnerInstallation';
 import { same } from './runnerConfigContract';
+import { HubSelections } from './HubSelections';
 import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
@@ -348,16 +349,36 @@ export class RunnerSessions {
     this.spare.setInstallation(installation);
   }
   readonly entry: SingleEntry;
-  constructor(defaults: EntryDefaults = {}, saveDefaults: (value: EntryDefaults) => void = () => {}) {
+  private readonly selections = new Map<string, HubSelections>();
+  constructor(defaults: EntryDefaults = {}, saveDefaults: (value: EntryDefaults) => void = () => {},
+    private readonly savedSelections: Record<string, EntryDefaults> = {},
+    private readonly saveSelections: (id: string, value: EntryDefaults) => void = () => {}) {
     this.entry = new SingleEntry(() => [...this.sessions.values()],
       (location, token) => this.allocate(location, token), () => this.changed(), defaults, saveDefaults,
       () => this.spare.optionsSource ?? [...this.sessions.values()].find(s => s.assignmentAvailable));
+  }
+  getSelections(id?: string) { return id ? this.selections.get(id) : undefined; }
+  private bindSelections(session: RunnerSession) {
+    const id = session.view.id, saved = this.savedSelections[id];
+    const defaults = saved ?? this.entry.defaults;
+    const selections = new HubSelections(() => session.control.snapshot.state === 'ready'
+      && !session.control.assignmentLocked ? session.control.config : undefined,
+    this.changed, defaults, value => {
+      session.control.config.setDraft({});
+      this.saveSelections(id, value);
+    }, () => session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing);
+    this.selections.set(id, selections);
+    if (!saved && selections.initialized) this.saveSelections(id, selections.defaults);
   }
   readonly getSnapshot = () => this.snapshot;
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private readonly changed = () => {
     if (this.disposed) return;
     this.entry?.observe();
+    if (this.spare.snapshot.installation) {
+      this.entry?.selections.initialize();
+      this.selections.forEach(selections => selections.initialize());
+    }
     if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab));
     this.snapshot = [...this.sessions.values()].map(session => session.tabView);
     this.listeners.forEach(listener => listener());
@@ -380,6 +401,7 @@ export class RunnerSessions {
       if (this.disposed || this.sessions.get(id) !== session) return false;
       const cleanup = session.dispose();
       this.sessions.delete(id);
+      this.selections.delete(id);
       this.changed();
       await cleanup;
       return true;
@@ -402,6 +424,7 @@ export class RunnerSessions {
     for (const tab of tabs) {
       const session = new RunnerSession(tab, this.changed, true);
       this.sessions.set(tab.id, session);
+      this.bindSelections(session);
       this.order = Math.max(this.order, tab.createdOrder);
     }
     this.changed();
@@ -416,6 +439,7 @@ export class RunnerSessions {
     const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot: location, launchOnOpen: true }, this.changed);
     this.sessions.set(session.view.id, session);
+    this.bindSelections(session);
     if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
     this.changed();
     return { session, launched: session.open(location) };
@@ -438,6 +462,7 @@ export class RunnerSessions {
       installationRoot, launchOnOpen: true };
     session.promote(tab, this.changed);
     this.sessions.set(tab.id, session);
+    this.bindSelections(session);
     this.changed();
     this.spare.replenish();
     return session;

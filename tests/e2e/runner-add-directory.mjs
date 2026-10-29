@@ -1,10 +1,11 @@
 export function registerRunnerAddDirectory({ test, expect, transport, configure, create }) {
   const add = page => page.locator('.add-runner');
-  const root = page => page.locator('.context-settings .directory-field, .config-fields .directory-field');
+  const root = page => page.locator('.task-panel .directory-field');
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   async function ready(page) {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page);
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
   }
   async function picker(page) {
     await page.evaluate(() => {
@@ -44,6 +45,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await home(page);
     await expect(page.locator('.spare-status')).toHaveCount(0);
     await page.getByLabel('Single Entry instructions', { exact: true }).fill('same append order');
+    await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
@@ -81,8 +83,8 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await page.getByLabel('AgentRunner location', { exact: true }).fill('/fixture/install');
       await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
       await expect(page.locator('.spare-status')).toHaveCount(0);
-      await page.getByRole('button', { name: 'Load authenticated Runner options', exact: true }).click();
-      await page.getByLabel('Single Entry Run Mode', { exact: true }).selectOption('direct-run');
+      await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+      await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
       await picker(page);
       await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
@@ -115,10 +117,11 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await expect(page.locator('.runner-row')).toHaveCount(1);
       await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
       await page.locator('.config-actions button').first().click();
-      await expect(page.locator('.config-fields fieldset').first().locator('select').last()).toBeEnabled();
-      await page.locator('.config-fields fieldset').first().locator('select').last().selectOption('pure-direct-run');
-      await page.locator('.config-fields .directory-input button').click();
-      await expect(page.locator('.config-fields .directory-input input')).toHaveValue('/fixture/chosen folder');
+      const runMode = page.getByRole('combobox', { name: language === 'en' ? 'Requested Run Mode' : '요청 실행 모드', exact: true });
+      await expect(runMode).toBeEnabled();
+      await runMode.selectOption({ label: 'pure-direct-run' });
+      await root(page).locator('button').click();
+      await expect(root(page).locator('input')).toHaveValue('/fixture/chosen folder');
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => /session_config\.(plan|apply)$/.test(r.operation)).length)).toBe(0);
       await info.attach(`directory-fields-${language}-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
     });
@@ -145,17 +148,17 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
   });
   test('add directory: Single Entry and configuration pickers discard newer drafts tab switches and process exit', async ({ page }) => {
     await ready(page); await picker(page);
-    await page.getByRole('button', { name: 'Load authenticated Runner options', exact: true }).click();
-    await page.getByLabel('Single Entry Run Mode', { exact: true }).selectOption('direct-run');
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+    await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
     await root(page).locator('input').fill('/entry original');
     await delayed(page, root(page));
-    await page.getByLabel('Single Entry Run Mode', { exact: true }).selectOption('pure-direct-run');
+    await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'pure-direct-run' });
     await page.evaluate(() => window.__directoryPicker.finish('/stale mode'));
     await expect(root(page).locator('input')).toHaveValue('/entry original');
     await create(page);
     await expect(page.locator('.runner-config')).toHaveAttribute('open', '');
     await page.getByRole('button', { name: 'Inspect settings and options', exact: true }).click();
-    await page.getByLabel('Draft Run Mode', { exact: true }).selectOption('direct-run');
+    await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
     await root(page).locator('input').fill('/config original');
     await delayed(page, root(page));
     await root(page).locator('input').fill('/config newer');
