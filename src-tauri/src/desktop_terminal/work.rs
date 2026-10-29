@@ -33,7 +33,7 @@ impl Request {
         };
         if valid { Ok(()) } else { Err("INVALID_WORK_REQUEST") }
     }
-    pub fn wait_limit(&self) -> Duration { Duration::from_secs(60) }
+    pub fn wait_limit(&self) -> Duration { super::COMPLETION_TIMEOUT }
     pub fn response(&self, packet: &Value, id: u64) -> Result<Response, &'static str> {
         let reply: Response = serde_json::from_value(packet.clone()).map_err(|_| "Malformed work completion")?;
         if let Some(work) = &reply.work {

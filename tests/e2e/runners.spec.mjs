@@ -156,7 +156,7 @@ async function transport(page, freshTarget, referenceOptions) {
         if (command === 'runner_images_list') {
           const session = sessions.get(args.id);
           if (session.imageFailure) throw session.imageFailure;
-          return session.images;
+          return structuredClone({ images: session.images, incomplete: session.imageWarning ?? null });
         }
         if (command === 'runner_image_read') {
           const session = sessions.get(args.id);
@@ -580,7 +580,7 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('draft /status 그대로');
   await page.getByRole('button', { name: 'Attach file', exact: true }).click();
   await expect(page.locator('.attachment-chip')).toContainText('Staged');
-  await page.locator('.generated-images summary').click();
+  await expect(page.locator('.generated-images summary')).toHaveCount(0);
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
@@ -673,17 +673,72 @@ test('Runner observations do not become Hub defaults and raw native errors retai
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
 });
 
+test('generated image partial collection keeps an automatic preview and independent warning', async ({ page }, info) => {
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
+  const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
+  await expect(image).toBeVisible();
+  await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).focus();
+  const original = await image.getAttribute('src');
+  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').imageWarning = {
+    state: 'incomplete', detail: 'GENERATED_IMAGE_RESOLVER_UNAVAILABLE: Request native inline PNG output.' }; });
+  await page.getByRole('button', { name: 'Refresh images', exact: true }).click();
+  await expect(image).toBeVisible();
+  await expect(image).not.toHaveAttribute('src', original);
+  await expect(page.locator('.generated-images')).toHaveAttribute('data-incomplete', 'true');
+  await expect(page.locator('.generated-image-warning')).toContainText('GENERATED_IMAGE_RESOLVER_UNAVAILABLE');
+  await expect(page.locator('.generated-images')).toContainText('Verified PNG');
+  await page.getByRole('button', { name: 'Enlarge generated image', exact: true }).click();
+  await expect(page.locator('.generated-image-dialog')).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(page.locator('.generated-image-dialog')).not.toBeVisible();
+  await info.attach('partial-image-collection', { body: await page.screenshot(), contentType: 'image/png' });
+});
+
+test('generated image discovery reveals new output without moving input focus or terminal scrollback', async ({ page }) => {
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
+  const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
+  await expect(image).toBeVisible(); const original = await image.getAttribute('src');
+  const input = page.getByRole('textbox', { name: 'Runner instructions', exact: true });
+  await input.fill('keep this draft'); await input.focus();
+  await page.evaluate(() => {
+    const fixture = window.__nativeFixture, session = fixture.sessions.get('pty-1');
+    fixture.emit('pty-1', Array.from({ length: 90 }, (_, n) => `history ${n}\r\n`).join(''));
+    session.images.push({ ...session.images[0], imageId: 'f'.repeat(32), sourceSequence: 90 });
+  });
+  await expect(page.getByRole('combobox', { name: 'Select generated image' })).toHaveValue('f'.repeat(32), { timeout: 20000 });
+  await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', original);
+  await expect(input).toBeFocused(); await expect(input).toHaveValue('keep this draft');
+  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+  expect(await page.locator('.xterm-screen').innerText()).toContain('history 89');
+});
+
+test('generated image incomplete empty collection and failed verification remain distinct', async ({ page }) => {
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
+  await expect(page.locator('.generated-image-preview img')).toBeVisible();
+  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1');
+    session.images = []; session.imageWarning = { state: 'incomplete', detail: 'GENERATED_IMAGE_CONTRACT_INVALID: Regenerate inline PNG.' }; });
+  await page.getByRole('button', { name: 'Refresh images', exact: true }).click();
+  await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
+  await expect(page.locator('.generated-image-warning')).toContainText('GENERATED_IMAGE_CONTRACT_INVALID');
+  await expect(page.locator('.generated-image-preview')).toHaveCount(0);
+  await page.evaluate(() => { const session = window.__nativeFixture.sessions.get('pty-1');
+    session.imageFailure = { state: 'failed', detail: 'Image length or SHA-256 verification failed' }; });
+  await page.getByRole('button', { name: 'Refresh images', exact: true }).click();
+  await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'failed');
+  await expect(page.locator('.generated-images')).toContainText('SHA-256 verification failed');
+  await expect(page.locator('.generated-image-preview')).toHaveCount(0);
+});
+
 test('generated image reads retain their original owner across asynchronous tab switches', async ({ page }) => {
-  await transport(page, undefined, { ...generatedFixture(), pauseFirstImage: true }); await configure(page); await create(page); await page.locator('.generated-images summary').click();
+  await transport(page, undefined, { ...generatedFixture(), pauseFirstImage: true }); await configure(page); await create(page);
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'loading');
   const firstId = await page.getByRole('combobox', { name: 'Select generated image' }).inputValue();
-  await create(page); await page.locator('.generated-images summary').click(); const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
+  await create(page); const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
   await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
   await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').releaseImage());
   await expect(image).toHaveAttribute('src', secondUrl);
   expect(await page.getByRole('combobox', { name: 'Select generated image' }).inputValue()).not.toBe(firstId);
   await page.locator('.runner-row').first().locator('.nav-row').click();
-  await page.locator('.generated-images summary').click();
+  await expect(page.locator('.generated-images summary')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Select generated image' })).toHaveValue(firstId);
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', secondUrl);
 });
@@ -691,12 +746,12 @@ test('generated image reads retain their original owner across asynchronous tab 
 test('generated image resources revoke on selection and owned exit without affecting another live Runner', async ({ page }) => {
   await page.addInitScript(() => { const original = URL.revokeObjectURL.bind(URL); window.__revokedImages = [];
     URL.revokeObjectURL = url => { window.__revokedImages.push(url); original(url); }; });
-  await transport(page, undefined, generatedFixture()); await configure(page); await create(page); await page.locator('.generated-images summary').click();
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
   const image = page.getByRole('img', { name: 'Verified generated image', exact: true }); await expect(image).toBeVisible();
   const original = await image.getAttribute('src');
   await page.getByRole('combobox', { name: 'Select generated image' }).selectOption({ index: 1 }); await expect(image).toBeVisible();
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), original)).toBe(true);
-  const first = await image.getAttribute('src'); await create(page); await page.locator('.generated-images summary').click(); await expect(image).toBeVisible();
+  const first = await image.getAttribute('src'); await create(page); await expect(image).toBeVisible();
   const second = await image.getAttribute('src'); await page.evaluate(() => window.__nativeFixture.exit('pty-1'));
   await expect.poll(() => page.evaluate(url => window.__revokedImages.includes(url), first)).toBe(true);
   expect(await page.evaluate(url => window.__revokedImages.includes(url), second)).toBe(false);
@@ -707,7 +762,7 @@ test('generated image resources revoke on selection and owned exit without affec
 });
 
 test('generated image states reject unavailable sources and discard late reads after Runner exit', async ({ page }) => {
-  await transport(page, undefined, generatedFixture()); await configure(page); await create(page); await page.locator('.generated-images summary').click();
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-1');
     a.imageFailure = { state: 'unavailable', detail: 'Fixture image expired' }; });
@@ -717,7 +772,7 @@ test('generated image states reject unavailable sources and discard late reads a
   await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-1'); a.imageFailure = undefined; a.images = []; });
   await page.getByRole('button', { name: 'Refresh images' }).click();
   await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'empty');
-  await create(page); await page.locator('.generated-images summary').click(); await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
+  await create(page); await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await page.evaluate(() => { const a = window.__nativeFixture.sessions.get('pty-2');
     a.imageReadGate = new Promise(resolve => { a.releaseImage = resolve; }); });
   await page.getByRole('button', { name: 'Refresh images' }).click();
@@ -730,7 +785,7 @@ test('generated image states reject unavailable sources and discard late reads a
 });
 
 test('generated image previews render verified delivery, select, enlarge, refresh and isolate tabs', async ({ page }, testInfo) => {
-  await transport(page, undefined, generatedFixture()); await configure(page); await create(page); await page.locator('.generated-images summary').click();
+  await transport(page, undefined, generatedFixture()); await configure(page); await create(page);
   const image = page.getByRole('img', { name: 'Verified generated image', exact: true });
   await expect(image).toBeVisible();
   expect(await image.evaluate(element => element.naturalWidth)).toBe(2);
@@ -740,9 +795,9 @@ test('generated image previews render verified delivery, select, enlarge, refres
   await page.getByRole('button', { name: 'Close preview' }).click();
   await page.getByRole('combobox', { name: 'Select generated image' }).selectOption({ index: 1 });
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', firstUrl);
-  await create(page); await page.locator('.generated-images summary').click(); await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
+  await create(page); await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');
   await page.locator('.runner-row').first().locator('.nav-row').click();
-  await page.locator('.generated-images summary').click();
+  await expect(page.locator('.generated-images summary')).toHaveCount(0);
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', secondUrl);
   await page.getByRole('button', { name: 'Refresh images' }).click(); await expect(image).toBeVisible();
   expect(await page.locator('.terminal-host').evaluate(element => !!element.querySelector('.xterm'))).toBe(true);

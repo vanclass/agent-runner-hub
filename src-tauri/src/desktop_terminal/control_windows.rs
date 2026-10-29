@@ -86,9 +86,10 @@ impl Client {
     fn image_reply(&self, request: generated_images::Request) -> Result<generated_images::Reply, generated_images::Failure> {
         let (send, receive) = mpsc::channel();
         self.submit(Request::Image(request, send)).map_err(|_| generated_images::Failure::unavailable())?;
-        receive.recv_timeout(Duration::from_secs(65)).unwrap_or_else(|_| Err(generated_images::Failure::unavailable()))
+        receive.recv_timeout(super::COMPLETION_TIMEOUT + super::DELIVERY_GRACE)
+            .unwrap_or_else(|_| Err(generated_images::Failure::unavailable()))
     }
-    pub fn images_list(&self) -> Result<Vec<generated_images::Metadata>, generated_images::Failure> {
+    pub fn images_list(&self) -> Result<generated_images::Inventory, generated_images::Failure> {
         self.images.list(|request| self.image_reply(request), || self.image_alive())
     }
     pub fn image_read(&self, id: &str) -> Result<generated_images::Verified, generated_images::Failure> {
@@ -161,7 +162,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 &mut count, std::ptr::null_mut()) } == 0 || count == 0 { return Err("Runner control read failed"); }
             incoming.extend_from_slice(&bytes[..count as usize]);
             while let Some(end) = incoming.iter().position(|b| *b == b'\n') {
-                if end > 65536 { return Err("Runner control frame exceeded v1 limit"); }
+                if end > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
                 let packet = serde_json::from_slice(&incoming[..end]).map_err(|_| "Malformed Runner control response")?;
                 incoming.drain(..=end);
                 if protocol.connection.is_none() {
@@ -170,7 +171,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                     observed = Instant::now();
                 } else { protocol.response(packet)?; }
             }
-            if incoming.len() > 65536 { return Err("Runner control frame exceeded v1 limit"); }
+            if incoming.len() > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
         }
         if protocol.snapshot.state == "ready" {
             for (request, admitted) in receive.try_iter() {

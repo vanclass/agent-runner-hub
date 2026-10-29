@@ -30,7 +30,7 @@ fn chunk(image: &Metadata, bytes: &[u8], offset: u64, length: u64) -> Value {
     packet
 }
 fn catalog(images: &Images, image: &Metadata) {
-    images.list(|_| Ok(Reply::Page { images: vec![image.clone()], total: 1, next: None }), || true).unwrap();
+    images.list(|_| Ok(Reply::Page { images: vec![image.clone()], total: 1, next: None, incomplete: None }), || true).unwrap();
 }
 #[test]
 fn complete_ordered_chunks_produce_verified_png_only_after_sha_and_decode() {
@@ -73,13 +73,14 @@ fn discovery_preserves_source_order_and_rejects_invalid_pagination() {
             "next_offset":if offset == 0 {Some(2)} else {None}});
         response(&Request::List { offset }, &cap(), &packet, "accepted")
     }, || true).unwrap();
-    assert_eq!(actual, expected);
+    assert_eq!(actual.images, expected);
+    assert!(actual.incomplete.is_none());
     for field in ["offset", "next_offset", "total_count"] {
         let mut packet = json!({"phase":"completed","offset":0,"total_count":3,"images":[wire(&expected[0]),wire(&expected[1])],"next_offset":2});
         packet[field] = json!(999);
         assert!(response(&Request::List { offset: 0 }, &cap(), &packet, "accepted").is_err());
     }
-    assert!(images.list(|_| Ok(Reply::Page { images: vec![expected[0].clone(), expected[0].clone()], total: 2, next: None }), || true).is_err());
+    assert!(images.list(|_| Ok(Reply::Page { images: vec![expected[0].clone(), expected[0].clone()], total: 2, next: None, incomplete: None }), || true).is_err());
 }
 #[test]
 fn final_length_hash_png_and_session_lifetime_gate_publication() {
@@ -96,4 +97,42 @@ fn final_length_hash_png_and_session_lifetime_gate_publication() {
     assert!(a.read(&image.image_id, |_| Ok(Reply::Chunk { bytes: bytes[..17].to_vec(), next: None }), || true).is_err());
     a.clear(); assert!(a.read(&image.image_id, |_| panic!(), || true).is_err());
     catalog(&b, &image); a.clear(); assert_eq!(b.catalog.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn rejected_partial_inventories_retain_verified_images_and_safe_actionable_failures() {
+    let (image, bytes) = fixture();
+    for code in ["GENERATED_IMAGE_RESOLVER_UNAVAILABLE", "GENERATED_IMAGE_CONTRACT_INVALID",
+        "GENERATED_IMAGE_CAPACITY_EXCEEDED", "GENERATED_IMAGE_SOURCE_UNVERIFIED", "GENERATED_IMAGE_UNAVAILABLE"] {
+        let images = Images::default();
+        let inventory = images.list(|request| response(&request, &cap(), &json!({"phase":"completed",
+            "code":code,"remedy":"PRIVATE PAYLOAD", "offset":0,"next_offset":null,"total_count":1,"images":[wire(&image)]}), "rejected"), || true).unwrap();
+        assert_eq!(inventory.images, [image.clone()]);
+        let warning = inventory.incomplete.unwrap();
+        assert_eq!(warning.state, "incomplete");
+        assert!(warning.detail.contains(code));
+        assert!(!warning.detail.contains("PRIVATE"));
+        assert_eq!(images.read(&image.image_id, |_| Ok(Reply::Chunk { bytes: bytes.clone(), next: None }), || true).unwrap().png, bytes);
+    }
+}
+
+#[test]
+fn malformed_independent_metadata_does_not_hide_valid_images_but_pagination_stays_strict() {
+    let (image, _) = fixture(); let images = Images::default();
+    let mut packet = json!({"phase":"completed","offset":0,"next_offset":null,"total_count":2,
+        "images":[wire(&image),{"fileId":"opaque-private"}]});
+    let inventory = images.list(|request| response(&request, &cap(), &packet, "accepted"), || true).unwrap();
+    assert_eq!(inventory.images, [image.clone()]); assert!(inventory.incomplete.is_some());
+    packet["next_offset"] = json!(1);
+    assert!(response(&Request::List { offset:0 }, &cap(), &packet, "rejected").is_err());
+    assert!(images.list(|_| panic!("expired session must not send"), || false).is_err());
+    assert!(images.catalog.lock().unwrap().is_empty());
+}
+
+#[test]
+fn corrupt_png_is_rejected_even_when_transport_digest_matches() {
+    let (mut image, mut bytes) = fixture();
+    bytes[29] ^= 1; // IHDR checksum, independently of transport SHA-256.
+    image.sha256 = format!("{:x}", Sha256::digest(&bytes));
+    assert!(verify(&image, &bytes).is_err());
 }

@@ -54,7 +54,7 @@ async fn runner_stage_clipboard<R: Runtime>(window: Window<R>, state: State<'_, 
 #[cfg(windows)]
 #[tauri::command]
 async fn runner_images_list<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String)
-    -> Result<Vec<control::generated_images::Metadata>, control::generated_images::Failure> {
+    -> Result<control::generated_images::Inventory, control::generated_images::Failure> {
     let session = state.owned(&id, window.label()).map_err(|_| control::generated_images::Failure::unavailable())?;
     tauri::async_runtime::spawn_blocking(move || session.images_list()).await
         .map_err(|_| control::generated_images::Failure::failed("Image discovery failed"))?

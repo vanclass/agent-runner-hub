@@ -113,7 +113,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     await page.getByRole('combobox', { name: 'Requested Account', exact: true }).focus();
     await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-    await page.locator('.generated-images summary').click();
+    await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await page.getByRole('button', { name: 'Refresh images', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Refresh images', exact: true })).toBeEnabled();
     await expect(page.getByRole('list', { name: 'Pending attachments', exact: true })).toContainText('/fixture/image.png');

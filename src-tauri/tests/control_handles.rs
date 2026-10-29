@@ -49,7 +49,7 @@ while True:
     send(request_id=request_id,status='accepted',phase='queued')
     if packet['operation']=='generated_images.list':
         offset=packet['offset']
-        send(request_id=request_id,status='accepted',phase='completed',images=images[offset:offset+1],total_count=2,offset=offset,next_offset=offset+1 if offset+1<2 else None)
+        send(request_id=request_id,status='rejected',phase='completed',code='GENERATED_IMAGE_RESOLVER_UNAVAILABLE',images=images[offset:offset+1],total_count=2,offset=offset,next_offset=offset+1 if offset+1<2 else None)
         continue
     if packet['operation']=='generated_images.read':
         image=next((image for image in images if image['image_id']==packet['image_id']),None)
@@ -115,7 +115,9 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(!public.contains(&private_key), "Private launch key reached public snapshot");
     for private in ["key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
     assert!(ready.generated_images_supported);
-    let images = client.images_list().unwrap();
+    let inventory = client.images_list().unwrap();
+    assert!(inventory.incomplete.unwrap().detail.contains("GENERATED_IMAGE_RESOLVER_UNAVAILABLE"));
+    let images = inventory.images;
     assert_eq!(images.iter().map(|image| image.source_sequence).collect::<Vec<_>>(), [31, 17]);
     let image = client.image_read(&images[0].image_id).unwrap();
     assert_eq!((image.image.width, image.image.height), (2, 1));

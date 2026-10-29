@@ -5,7 +5,7 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'issue-run' });
     await create(page);
-    await page.locator('.generated-images summary').click();
+    await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await expect(page.locator('.generated-image-preview img')).toBeVisible();
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('old tab work');
     await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
@@ -23,7 +23,7 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     expect(next.id).not.toBe(old.id); expect(next.createdOrder).toBeGreaterThan(old.createdOrder);
     await expect(page.locator('.runner-work-status, .config-receipt, .unread-completion, .status-dot.completed')).toHaveCount(0);
     await expect(page.locator('.runner-instruction')).toHaveCount(0);
-    await page.locator('.generated-images summary').click();
+    await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
     await expect(page.locator('.generated-images')).toContainText('ownership by this new tab could not be verified');
     await expect(page.locator('.generated-image-preview')).toHaveCount(0);

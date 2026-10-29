@@ -273,7 +273,8 @@
       "verified": "Verified PNG",
       "renderFailed": "The verified PNG could not be displayed",
       "ownerEnded": "The owning Runner has ended",
-      "failedWithDiagnostic": "Image retrieval failed. Refresh to try again. {{diagnostic}}"
+      "failedWithDiagnostic": "Image retrieval failed. Refresh to try again. {{diagnostic}}",
+      "incomplete": "Image collection is incomplete. {{diagnostic}}"
     }
   },
   "preferences": {

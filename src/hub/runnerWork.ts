@@ -2,6 +2,8 @@ import { HubError, msg } from './i18n';
 import { copy, record, same, type ConfigIdentity, type FeatureAdmission, type FeatureResult, type FeatureSnapshot } from './runnerConfigContract';
 
 export const runModes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'] as const;
+// Hub delivery/start grace beyond the native FIFO deadline; all work waits share it.
+const deliveryTimeoutMs = 90000;
 export type WorkRequest = { operation: 'work.submit'; api_version: 1; instruction: string }
   | { operation: 'work.status'; api_version: 1; submission_request_id: number }
   | { operation: 'work.list'; api_version: 1; after_event_id: number; limit: number }
@@ -278,7 +280,7 @@ export class RunnerWork {
         this.scheduleStatus();
         resolve(result);
       };
-      this.waiting = { request, finish, timer: setTimeout(() => finish(unknown()), 90000) };
+      this.waiting = { request, finish, timer: setTimeout(() => finish(unknown()), deliveryTimeoutMs) };
       this.progress = { ...unknown(), state: 'sending' };
       this.changed();
       void this.transport.submit(identity.session, request).then(admission => {
@@ -315,7 +317,7 @@ export class RunnerWork {
       if (result.state === 'not-sent' || result.admission === 'rejected') { attempt.notSent = true; return attempt; }
       attempt.notSent = false;
       if (!attempt.submissionId || !attempt.work) { attempt.uncertain = true; return attempt; }
-      const deadline = performance.now() + 90000;
+      const deadline = performance.now() + deliveryTimeoutMs;
       while (!this.closed && !attempt.uncertain && !attempt.work.started_event_id && !attempt.work.terminal
         && !['suspended', 'incomplete', 'failed', 'unknown'].includes(attempt.work.state) && performance.now() < deadline) {
         await this.refresh(attempt);

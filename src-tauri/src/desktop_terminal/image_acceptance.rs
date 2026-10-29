@@ -16,7 +16,7 @@ fn installed_images_and_reference_requests_share_the_authenticated_owner() {
         harness.pump_for(Duration::from_millis(50));
     }
     assert!(session.control_snapshot().unwrap().generated_images_supported);
-    assert!(session.images_list().unwrap().is_empty());
+    assert!(session.images_list().unwrap().images.is_empty());
     let ReferenceAdmission::Admitted { id: request } = session.control_reference(ReferenceRequest::Register { path }).unwrap() else {
         panic!("Native reference was not admitted");
     };
@@ -32,6 +32,6 @@ fn installed_images_and_reference_requests_share_the_authenticated_owner() {
         assert!(std::time::Instant::now() < deadline, "Native registration completion missing");
         harness.pump_for(Duration::from_millis(50));
     }
-    assert!(session.images_list().unwrap().is_empty());
+    assert!(session.images_list().unwrap().images.is_empty());
     session.close().unwrap(); harness.exited(&id);
 }

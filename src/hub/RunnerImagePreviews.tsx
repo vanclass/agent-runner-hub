@@ -14,8 +14,8 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
     else dialog.current?.close();
   }, [enlarged, preview]);
   useEffect(() => { if (!preview) setEnlarged(false); }, [preview]);
-  return <details className="generated-images" aria-label={t('images.label')} data-state={images.state}>
-    <summary>{t('images.label')}</summary>
+  return <section className="generated-images" aria-label={t('images.label')} data-state={images.state}
+    data-incomplete={!!images.warning}>
     <div className="generated-images-toolbar">
       <strong>{t('images.label')}</strong>
       <span role="status" className="generated-image-status">{images.state === 'loading' ? t('images.loading') : ''}{tr(images.detail)}</span>
@@ -26,6 +26,7 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
       <button type="button" disabled={!images.attributionAvailable || images.state === 'loading' || images.state === 'unsupported'}
         onClick={() => void images.refresh(true)}>{t('images.refresh')}</button>
     </div>
+    {images.warning && <p role="status" className="generated-image-warning">{tr(images.warning)}</p>}
     {preview && <button className="generated-image-preview" type="button" aria-label={t('images.enlarge')}
       onClick={() => setEnlarged(true)}><img src={preview.url} alt={t('images.verified')}
         onError={() => { images.rejectRendering(); }} /><span>{preview.image.width} × {preview.image.height} · {t('images.enlargeAction')}</span></button>}
@@ -34,5 +35,5 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
       <div><strong>{t('images.image')}</strong><button type="button" onClick={() => setEnlarged(false)}>{t('images.close')}</button></div>
       {preview && <img src={preview.url} alt={t('images.verifiedEnlarged')} />}
     </dialog>
-  </details>;
+  </section>;
 }

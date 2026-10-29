@@ -6,6 +6,12 @@ import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
+// Hub observation and delivery policy; native FIFO deadlines remain native-owned.
+export const controlTiming = Object.freeze({ pollMs: 500, freshnessMs: 2500,
+  connectMs: 35000, refreshMs: 5000, completionMs: 65000, settleMs: 50 });
+// Matches the native clipboard staging security ceiling, not image discovery capacity.
+export const clipboardMaxBytes = 64 * 1024 * 1024;
+
 export type RunnerCommand = {
   id: string; text: string; aliases: string[]; parent_id: string | null;
   visible: boolean; enabled: boolean; disabled_reason: string; description: string; children: RunnerCommand[];
@@ -82,18 +88,18 @@ export class RunnerControl {
   start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
   async fresh() {
     const after = this.snapshot.observationSerial ?? 0;
-    const deadline = performance.now() + (this.snapshot.state === 'connecting' ? 35000 : 5000);
+    const deadline = performance.now() + (this.snapshot.state === 'connecting' ? controlTiming.connectMs : controlTiming.refreshMs);
     while (!this.stopped && performance.now() < deadline) {
       if (this.snapshot.state === 'disconnected') break;
       if (this.snapshot.state === 'ready' && (this.snapshot.observationSerial ?? 0) > after
         && this.observationFresh) return this.snapshot;
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
     }
     throw new HubError(this.snapshot.detail || msg('runtime.control.freshUnavailable'));
   }
   get observationFresh() {
     return this.snapshot.state === 'ready' && typeof this.snapshot.observationAgeMs === 'number'
-      && this.snapshot.observationAgeMs + performance.now() - this.receivedAt < 2500;
+      && this.snapshot.observationAgeMs + performance.now() - this.receivedAt < controlTiming.freshnessMs;
   }
   private async refresh() {
     if (this.stopped || !this.id) return;
@@ -109,7 +115,7 @@ export class RunnerControl {
       if (snapshot.results.some(result => result.id > this.admissionAfter)) this.sending = false;
       this.changed();
       if (snapshot.state === 'disconnected') return;
-      this.timer = setTimeout(() => void this.refresh(), 500);
+      this.timer = setTimeout(() => void this.refresh(), controlTiming.pollMs);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
   get pending() { return this.controlBusy || this.config.busy || this.work.writing; }
@@ -155,7 +161,7 @@ export class RunnerControl {
     if (this.stopped || !id || this.otherControlBusyExceptAttachments || this.assignmentLocked
       || this.attachmentLease !== lease || !this.snapshot.clipboardStaging || !this.snapshot.references?.capability)
       throw new HubError(msg('runtime.control.clipboardRequires'));
-    if (blob.type !== 'image/png' || !blob.size || blob.size > 64 * 1024 * 1024)
+    if (blob.type !== 'image/png' || !blob.size || blob.size > clipboardMaxBytes)
       throw new HubError(msg('runtime.control.clipboardUnsupported'));
     const png = new Uint8Array(await blob.arrayBuffer());
     if (![137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => png[index] === byte))

@@ -3,6 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, time::{Duration, Instant}};
 
+// Local-control v1 frame ceiling and Hub-owned transport deadlines.
+const FRAME_BYTES: usize = 65536;
+const COMPLETION_TIMEOUT: Duration = Duration::from_secs(60);
+#[cfg(windows)]
+const DELIVERY_GRACE: Duration = Duration::from_secs(5);
+
 #[path = "references.rs"]
 pub mod references;
 use references::{ReferenceRequest, References};
@@ -151,7 +157,7 @@ impl Protocol {
         if let Some(text) = &command { packet["command"] = json!(text); }
         if let Some(fields) = fields { packet.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone()); }
         let mut bytes = serde_json::to_vec(&packet).map_err(|_| "Control encoding failed")?;
-        if bytes.len() > 65536 { return Err("Runner control request exceeded v1 limit"); }
+        if bytes.len() > FRAME_BYTES { return Err("Runner control request exceeded v1 limit"); }
         self.next = next;
         if let Some(text) = &command {
             self.snapshot.results.retain(|r| !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
@@ -273,7 +279,7 @@ impl Protocol {
         // Runner owns the FIFO and emits no processing-start event. A queued
         // follower cannot time out while an earlier owner is legitimately busy.
         self.pending.first_key_value().is_some_and(|(_, pending)| !pending.awaiting_interaction
-            && pending.started.elapsed() > pending.feature.as_ref().map_or(Duration::from_secs(60), |r| r.wait_limit()))
+            && pending.started.elapsed() > pending.feature.as_ref().map_or(COMPLETION_TIMEOUT, |r| r.wait_limit()))
     }
     fn disconnect(&mut self, detail: &str) {
         let unverified = self.snapshot.observation.is_none();

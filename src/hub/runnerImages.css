@@ -1,6 +1,7 @@
 .generated-images { flex: 0 0 auto; margin: 0 28px 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .generated-images-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
 .generated-image-status { flex: 1; min-width: 140px; color: var(--muted); }
+.generated-image-warning { font-size: 12px; margin: 8px 0 0; color: var(--text); }
 .generated-images button, .generated-images select { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; }
 .generated-images button:disabled { opacity: .55; }
 .generated-image-preview { display: flex; align-items: center; gap: 12px; margin-top: 8px; cursor: zoom-in; max-width: 100%; }

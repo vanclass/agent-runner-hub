@@ -273,7 +273,8 @@
       "verified": "검증된 PNG",
       "renderFailed": "검증된 PNG를 표시할 수 없습니다",
       "ownerEnded": "해당 Runner가 종료되었습니다",
-      "failedWithDiagnostic": "이미지를 가져오지 못했습니다. 새로 고침하여 다시 시도하세요. {{diagnostic}}"
+      "failedWithDiagnostic": "이미지를 가져오지 못했습니다. 새로 고침하여 다시 시도하세요. {{diagnostic}}",
+      "incomplete": "이미지 수집이 완료되지 않았습니다. {{diagnostic}}"
     }
   },
   "preferences": {

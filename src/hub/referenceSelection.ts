@@ -1,6 +1,6 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { selectFiles, selectFolder } from '../../.runner/web-app-desktop/io/nativeIO';
-import { commandNamed, type RunnerControl } from './runnerControl';
+import { commandNamed, controlTiming, clipboardMaxBytes, type RunnerControl } from './runnerControl';
 
 export type ReferenceRequest = { operation: 'references.register'; path: string }
   | { operation: 'references.list'; offset: number }
@@ -126,7 +126,7 @@ export class RunnerReferenceSelection {
     this.candidates.push(candidate);
     this.staging = true; this.error = ''; this.changed();
     try {
-      if (image.type !== 'image/png' || !image.size || image.size > 64 * 1024 * 1024)
+      if (image.type !== 'image/png' || !image.size || image.size > clipboardMaxBytes)
         throw new HubError(msg('runtime.control.clipboardUnsupported'));
       candidate.image = image.slice(0, image.size, image.type);
       candidate.thumbnail = URL.createObjectURL(candidate.image);
@@ -138,14 +138,14 @@ export class RunnerReferenceSelection {
     } finally { this.staging = false; this.changed(); }
   }
   private async settled(id: number) {
-    let deadline = performance.now() + 65000;
+    let deadline = performance.now() + controlTiming.completionMs;
     for (;;) {
       const result = this.results.find(item => item.id === id);
       if (result && !pending(result.state)) return result;
-      if (result?.state === 'pending-interaction') deadline = performance.now() + 65000;
+      if (result?.state === 'pending-interaction') deadline = performance.now() + controlTiming.completionMs;
       if (this.disposed || this.control.snapshot.state === 'disconnected' || performance.now() > deadline)
         throw new HubError(msg('runtime.references.receiptUnknown'));
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
     }
   }
   private async register(candidate: Candidate, lease?: symbol) {

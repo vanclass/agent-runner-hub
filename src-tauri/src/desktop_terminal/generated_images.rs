@@ -14,6 +14,17 @@ pub struct Failure { pub state: &'static str, pub detail: &'static str }
 impl Failure {
     pub fn failed(detail: &'static str) -> Self { Self { state: "failed", detail } }
     pub fn unavailable() -> Self { Self { state: "unavailable", detail: "Image unavailable from the owning Runner. Refresh to discover current images." } }
+    fn collection(packet: &Value) -> Self {
+        let detail = match packet["code"].as_str() {
+            Some("GENERATED_IMAGE_RESOLVER_UNAVAILABLE") => "GENERATED_IMAGE_RESOLVER_UNAVAILABLE: Opaque file IDs require an authenticated App Server resolver. Request native inline PNG output.",
+            Some("GENERATED_IMAGE_CONTRACT_INVALID") => "GENERATED_IMAGE_CONTRACT_INVALID: An output failed the image contract. Regenerate as native inline PNG.",
+            Some("GENERATED_IMAGE_CAPACITY_EXCEEDED") => "GENERATED_IMAGE_CAPACITY_EXCEEDED: Collection safety bounds were exhausted. Use a new owning Runner session.",
+            Some("GENERATED_IMAGE_SOURCE_UNVERIFIED") => "GENERATED_IMAGE_SOURCE_UNVERIFIED: Verify the installed App Server runtime before regenerating.",
+            Some("GENERATED_IMAGE_UNAVAILABLE") => "GENERATED_IMAGE_UNAVAILABLE: A source expired or changed. Regenerate in the owning Runner.",
+            _ => "Runner rejected image collection. Refresh or regenerate in the owning Runner.",
+        };
+        Self { state: "incomplete", detail }
+    }
 }
 type Result<T> = std::result::Result<T, Failure>;
 
@@ -72,14 +83,18 @@ impl Request {
     }
 }
 pub enum Reply {
-    Page { images: Vec<Metadata>, total: u64, next: Option<u64> },
+    Page { images: Vec<Metadata>, total: u64, next: Option<u64>, incomplete: Option<Failure> },
     Chunk { bytes: Vec<u8>, next: Option<u64> },
 }
 fn nullable_offset(value: &Value) -> Result<Option<u64>> {
     if value.is_null() { Ok(None) } else { value.as_u64().map(Some).ok_or_else(|| Failure::failed("Malformed image continuation")) }
 }
 pub fn response(request: &Request, cap: &Capability, packet: &Value, state: &str) -> Result<Reply> {
-    if state != "accepted" {
+    let partial = state == "rejected" && matches!(request, Request::List { .. })
+        && packet["code"].as_str().is_some_and(|code| matches!(code,
+            "GENERATED_IMAGE_RESOLVER_UNAVAILABLE" | "GENERATED_IMAGE_CONTRACT_INVALID"
+            | "GENERATED_IMAGE_CAPACITY_EXCEEDED" | "GENERATED_IMAGE_SOURCE_UNVERIFIED" | "GENERATED_IMAGE_UNAVAILABLE"));
+    if state != "accepted" && !partial {
         return Err(if packet["code"] == "GENERATED_IMAGE_UNAVAILABLE" { Failure::unavailable() }
             else { Failure::failed("Runner rejected image retrieval") });
     }
@@ -98,8 +113,12 @@ pub fn response(request: &Request, cap: &Capability, packet: &Value, state: &str
                 || next != ((*offset + count < total).then_some(*offset + count)) {
                 return Err(Failure::failed("Invalid image pagination"));
             }
-            let images = values.iter().map(|value| Metadata::read(value, cap)).collect::<Result<Vec<_>>>()?;
-            Ok(Reply::Page { images, total, next })
+            let mut incomplete = partial.then(|| Failure::collection(packet));
+            let images = values.iter().filter_map(|value| match Metadata::read(value, cap) {
+                Ok(image) => Some(image),
+                Err(error) => { if incomplete.is_none() { incomplete = Some(error); } None }
+            }).collect();
+            Ok(Reply::Page { images, total, next, incomplete })
         }
         Request::Read { image, offset, length } => {
             if Metadata::read(packet, cap)? != *image || packet["offset"].as_u64() != Some(*offset) {
@@ -122,24 +141,28 @@ pub fn response(request: &Request, cap: &Capability, packet: &Value, state: &str
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Verified { pub image: Metadata, pub png: Vec<u8> }
+#[derive(Serialize)]
+pub struct Inventory { pub images: Vec<Metadata>, pub incomplete: Option<Failure> }
 #[derive(Default)]
 pub struct Images { catalog: Mutex<Vec<Metadata>>, operation: Mutex<()> }
 impl Images {
     pub fn clear(&self) { self.catalog.lock().unwrap().clear(); }
-    pub fn list(&self, mut send: impl FnMut(Request) -> Result<Reply>, alive: impl Fn() -> bool) -> Result<Vec<Metadata>> {
+    pub fn list(&self, mut send: impl FnMut(Request) -> Result<Reply>, alive: impl Fn() -> bool) -> Result<Inventory> {
         let _operation = self.operation.try_lock().map_err(|_| Failure::failed("Image retrieval is already loading"))?;
         let result = (|| {
             let mut images = Vec::new();
             let mut ids = HashSet::new();
             let mut offset = 0;
             let mut total_count = None;
+            let mut incomplete = None;
             loop {
                 if !alive() { return Err(Failure::unavailable()); }
-                let Reply::Page { images: page, total, next } = send(Request::List { offset })? else {
+                let Reply::Page { images: page, total, next, incomplete: warning } = send(Request::List { offset })? else {
                     return Err(Failure::failed("Unexpected image discovery result"));
                 };
                 if total_count.is_some_and(|count| count != total) { return Err(Failure::failed("Image inventory changed; refresh again")); }
                 total_count = Some(total);
+                if incomplete.is_none() { incomplete = warning; }
                 for image in page {
                     if !ids.insert(image.image_id.clone()) { return Err(Failure::failed("Duplicate image identity in inventory")); }
                     images.push(image);
@@ -148,9 +171,9 @@ impl Images {
                     Some(_) => return Err(Failure::failed("Invalid image continuation")), None => break }
             }
             if !alive() { return Err(Failure::unavailable()); }
-            Ok(images)
+            Ok(Inventory { images, incomplete })
         })();
-        *self.catalog.lock().unwrap() = result.as_ref().cloned().unwrap_or_default();
+        *self.catalog.lock().unwrap() = result.as_ref().map(|result| result.images.clone()).unwrap_or_default();
         result
     }
     pub fn read(&self, id: &str, mut send: impl FnMut(Request) -> Result<Reply>, alive: impl Fn() -> bool) -> Result<Verified> {
@@ -160,7 +183,7 @@ impl Images {
         let mut offset = 0;
         loop {
             if !alive() { return Err(Failure::unavailable()); }
-            let Reply::Chunk { bytes: chunk, next } = send(Request::Read { image: image.clone(), offset, length: 32768 })? else {
+            let Reply::Chunk { bytes: chunk, next } = send(Request::Read { image: image.clone(), offset, length: image.byte_length - offset })? else {
                 return Err(Failure::failed("Unexpected image read result"));
             };
             bytes.extend(chunk);

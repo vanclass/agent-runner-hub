@@ -104,7 +104,7 @@ fn installed_session_config_two_sessions_and_authoritative_receipts() {
     first.control_command("/status".into()).unwrap(); harness.pump_for(Duration::from_secs(2));
     assert_eq!(first.control_snapshot().unwrap().results.last().unwrap().state, "accepted");
     assert!(first.control_snapshot().unwrap().references.capability.is_some());
-    assert!(first.images_list().unwrap().is_empty());
+    assert!(first.images_list().unwrap().images.is_empty());
     first.resize(90, 30).unwrap(); second.resize(95, 30).unwrap();
     first.close().unwrap(); harness.exited(&first_id);
     assert_eq!(first.control_snapshot().unwrap().state, "disconnected");

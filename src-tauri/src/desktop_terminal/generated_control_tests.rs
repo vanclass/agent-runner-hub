@@ -48,3 +48,21 @@ fn image_results_are_correlated_and_never_mistaken_for_observations() {
     let public = serde_json::to_string(&a.public_snapshot()).unwrap();
     for private in ["secret", "image_id", "data_base64", "max_chunk_bytes", "connection_id"] { assert!(!public.contains(private)); }
 }
+
+#[test]
+fn rejected_collection_keeps_its_warning_and_only_negotiated_read_lengths_reach_wire() {
+    let mut protocol = capable(); let (send, receive) = mpsc::channel();
+    protocol.image_request(Request::List { offset:0 }, send, "secret").unwrap();
+    let mut rejected = packet(3, "rejected", "completed");
+    rejected.as_object_mut().unwrap().extend(json!({"code":"GENERATED_IMAGE_RESOLVER_UNAVAILABLE",
+        "images":[],"offset":0,"total_count":0,"next_offset":null}).as_object().unwrap().clone());
+    protocol.response(rejected).unwrap();
+    let generated_images::Reply::Page { incomplete, .. } = receive.recv().unwrap().unwrap() else { panic!() };
+    assert!(incomplete.unwrap().detail.contains("GENERATED_IMAGE_RESOLVER_UNAVAILABLE"));
+    let image = serde_json::from_value(json!({"image_id":"a".repeat(32),"source_sequence":1,"output_index":0,
+        "source":"codex.imageGeneration","mime_type":"image/png","byte_length":100000,
+        "sha256":"0".repeat(64),"width":2,"height":1})).unwrap();
+    let (send, _) = mpsc::channel();
+    let bytes = protocol.image_request(Request::Read { image, offset:0, length:100000 }, send, "secret").unwrap();
+    let wire: Value = serde_json::from_slice(&bytes).unwrap(); assert_eq!(wire["length"], 32768);
+}

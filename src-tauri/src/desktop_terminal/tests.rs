@@ -73,8 +73,8 @@ fn installed_runners_independent_and_owned_shutdown() {
     assert!(second_pty.control_snapshot().unwrap().generated_images_supported);
     #[cfg(windows)]
     {
-        assert!(first_pty.images_list().unwrap().is_empty());
-        assert!(second_pty.images_list().unwrap().is_empty());
+        assert!(first_pty.images_list().unwrap().images.is_empty());
+        assert!(second_pty.images_list().unwrap().images.is_empty());
         assert_eq!(first_pty.image_read(&"f".repeat(32)).err().unwrap().state, "unavailable");
     }
     assert!(first_pty.control_snapshot().unwrap().observation.is_some());
