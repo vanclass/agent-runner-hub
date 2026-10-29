@@ -628,7 +628,7 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual(saved.singleEntry);
 });
 
-test('Single Entry explicitly recovers retained Fast while preserving model and other defaults', async ({ page }) => {
+test('Single Entry toggles Fast without a default-tier button and preserves retained defaults', async ({ page }) => {
   await transport(page, undefined, { auto: true, work: true }); await configure(page);
   await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
   const model = page.getByRole('combobox', { name: 'Requested Model', exact: true });
@@ -637,6 +637,10 @@ test('Single Entry explicitly recovers retained Fast while preserving model and 
   await page.getByRole('combobox', { name: 'Requested Reasoning effort', exact: true }).selectOption('high');
   await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
+  await expect(page.getByRole('button', { name: 'Use default tier', exact: true })).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'Fast', exact: true }).uncheck();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.model)).toEqual({ model: 'm0', reasoning_effort: 'high', service_tier: 'default' });
+  await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
   await model.selectOption({ label: 'm1' });
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
@@ -644,10 +648,9 @@ test('Single Entry explicitly recovers retained Fast while preserving model and 
   await page.locator('.app-settings-trigger').click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: '기본 서비스 등급 사용', exact: true }).focus();
-  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: '기본 서비스 등급 사용', exact: true })).toHaveCount(0);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry);
-  expect(saved.model).toEqual({ model: 'm1', reasoning_effort: 'high', service_tier: 'default' });
+  expect(saved.model).toEqual({ model: 'm1', reasoning_effort: 'high', service_tier: 'fast' });
   expect(saved.runMode).toBe('issue-run');
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);

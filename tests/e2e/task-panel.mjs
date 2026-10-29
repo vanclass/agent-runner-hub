@@ -56,6 +56,11 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     await create(page); await create(page);
     const draft = page.getByRole('combobox', { name: 'Requested Model', exact: true });
     await draft.focus(); await draft.selectOption({ label: 's2' }); await fast.check();
+    await expect(page.getByRole('button', { name: 'Use default tier', exact: true })).toHaveCount(0);
+    await fast.uncheck();
+    await expect(fast).not.toBeChecked();
+    await expect(draft).toHaveValue(/s2/);
+    await fast.check();
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await draft.focus(); await expect(draft).toHaveValue(/s0/); await expect(fast).toBeChecked();
     await draft.selectOption({ label: 's1' }); await expect(fast).toBeDisabled();

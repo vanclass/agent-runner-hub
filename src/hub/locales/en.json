@@ -12,7 +12,6 @@
     "execution": "Execution Target",
     "model": "Model Settings",
     "fast": "Fast",
-    "useDefaultTier": "Use default tier",
     "retained": "Saved value retained: {{value}} · unavailable for this model. Select a supported value before applying."
   },
   "setup": {
