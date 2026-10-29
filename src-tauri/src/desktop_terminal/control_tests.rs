@@ -3,6 +3,8 @@ use super::*;
 mod session_config_tests;
 #[path = "work_tests.rs"]
 mod work_tests;
+#[path = "brief_tests.rs"]
+mod brief_tests;
 #[path = "reference_tests.rs"]
 mod references;
 #[cfg(windows)]

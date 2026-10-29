@@ -28,11 +28,12 @@ export type ConfigApply = { api_version: 1; apply_status: 'applied' | 'partial' 
 export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 1; account?: ConfigAccount; offset: number; options_revision?: string }
   | { operation: 'session_config.plan'; api_version: 1; desired: ConfigDesired }
   | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string };
-export type FeatureResult = { id: number; feature: 'session_config' | 'work'; operation: ConfigRequest['operation'] | WorkRequest['operation'];
+export type FeatureResult = { id: number; feature: 'session_config' | 'work' | 'brief'; operation: ConfigRequest['operation'] | WorkRequest['operation'] | 'brief.stage';
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown' | 'not-sent';
   admission: 'unconfirmed' | 'queued' | 'rejected' | 'not-sent'; phase?: string | null; code?: string | null;
   reply?: unknown };
-export type FeatureSnapshot = { generation: number; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null; results: FeatureResult[] };
+export type FeatureSnapshot = { generation: number; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null;
+  brief?: { version: 1; operations: string[] } | null; results: FeatureResult[] };
 export type FeatureAdmission = { state: 'submitted'; id: number; generation: number }
   | { state: 'not-sent' | 'outcome-unknown'; detail: string };
 export type ConfigIdentity = { session: string; generation: number };

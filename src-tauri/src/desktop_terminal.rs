@@ -25,7 +25,7 @@ fn runner_observe<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>
 }
 
 #[tauri::command]
-async fn runner_command<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String, command: String) -> Result<(), String> {
+async fn runner_command<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String, command: String) -> Result<control::features::Admission, String> {
     let session = state.owned(&id, window.label())?;
     tauri::async_runtime::spawn_blocking(move || session.control_command(command)).await.map_err(|e| e.to_string())?
 }

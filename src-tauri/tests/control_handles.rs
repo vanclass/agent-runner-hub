@@ -35,6 +35,8 @@ def png_chunk(kind,data):
 png=b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('>IIBBBBB',2,1,8,2,0,0,0))+png_chunk(b'IDAT',zlib.compress(b'\0\xff\0\0\0\xff\0'))+png_chunk(b'IEND',b'')
 images=[dict(image_id=letter*32,source_sequence=sequence,output_index=0,source='codex.imageGeneration',mime_type='image/png',byte_length=len(png),sha256=hashlib.sha256(png).hexdigest() if letter=='a' else '0'*64,width=2,height=1) for letter,sequence in [('a',31),('b',17)]]
 image_cap=dict(version=1,operations=['generated_images.list','generated_images.read'],mime_types=['image/png'],max_image_bytes=16777216,max_chunk_bytes=17,page_size=1,lifetime='owning_control_connection',read_only=True)
+brief_cap=dict(version=1,operations=['brief.stage'],run_modes=['issue-run'],lifetime='process_session',automatic_retry=False)
+staged=0
 buffer=b''
 previous=0
 while True:
@@ -47,6 +49,22 @@ while True:
     assert request_id>previous
     previous=request_id
     send(request_id=request_id,status='accepted',phase='queued')
+    if packet['operation']=='brief.stage':
+        assert packet['api_version']==1
+        if packet['body']=='reject':
+            send(request_id=request_id,status='rejected',phase='completed',staging_status='not_staged',outcome_unknown=False)
+        elif packet['body']=='unknown':
+            send(request_id=request_id,status='failure',phase='completed',staging_status='unknown',outcome_unknown=True)
+            brief_cap['operations']=[]
+        else:
+            assert packet['body']=='  한글 🌍\n    second\t \n\n'
+            staged+=1
+            send(request_id=request_id,status='accepted',phase='completed',staging_status='staged',owner='brief_staging',count=staged,outcome_unknown=False)
+        continue
+    if packet['operation']=='command' and packet['command']=='/run':
+        assert staged==1
+        send(request_id=request_id,status='accepted',phase='completed',owner_status='SUCCESS')
+        continue
     if packet['operation']=='generated_images.list':
         offset=packet['offset']
         send(request_id=request_id,status='rejected',phase='completed',code='GENERATED_IMAGE_RESOLVER_UNAVAILABLE',images=images[offset:offset+1],total_count=2,offset=offset,next_offset=offset+1 if offset+1<2 else None)
@@ -61,11 +79,11 @@ while True:
         send(request_id=request_id,status='pending-interaction',phase='awaiting_interaction')
         time.sleep(.2)
         break
-    observation=dict(run_mode='task-run',target=dict(binding_state='unbound',owner='',project=''),
+    observation=dict(run_mode='issue-run',target=dict(binding_state='unbound',owner='',project=''),
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
         attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[])
-    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap))
+    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap))
 "#;
 
 #[test]
@@ -124,9 +142,38 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(image.png.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(client.image_read(&images[1].image_id).err().unwrap().state, "failed");
     assert_eq!(client.image_read(&"c".repeat(32)).err().unwrap().state, "unavailable");
+    for (body, expected) in [("  한글 🌍\n    second\t \n\n", "accepted"), ("reject", "rejected"), ("unknown", "outcome-unknown")] {
+        let admission = client.feature(control::features::Request::Brief(control::brief::Request::Stage { api_version:1, body:body.into() }));
+        let (id, generation) = match admission { control::features::Admission::Submitted { id, generation } => (id, generation), other => panic!("{other:?}") };
+        assert_eq!(generation, ready.features.generation);
+        loop {
+            let snapshot = client.snapshot();
+            let receipt = snapshot.features.results.iter().find(|r| r.id == id).unwrap();
+            if receipt.phase.as_deref() == Some("completed") { assert_eq!(receipt.state, expected); break; }
+            assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+        }
+        if expected == "accepted" {
+            let run = client.command("/run".into()).unwrap();
+            let id = match run { control::features::Admission::Submitted { id, .. } => id, other => panic!("{other:?}") };
+            loop {
+                let snapshot = client.snapshot();
+                if let Some(r) = snapshot.results.iter().find(|r| r.id == id && r.phase.as_deref() == Some("completed")) {
+                    assert_eq!(r.command, "/run"); assert_eq!(r.owner_status.as_deref(), Some("SUCCESS")); break;
+                }
+                assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+    assert_eq!(client.snapshot().results.iter().filter(|r| r.command == "/run").count(), 1);
+    while client.snapshot().features.brief.is_some() {
+        assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+    }
+    let stage = || control::features::Request::Brief(control::brief::Request::Stage { api_version:1, body:"unsupported".into() });
+    assert!(matches!(client.feature(stage()), control::features::Admission::NotSent { .. }));
     client.command("/status".into()).unwrap();
     while client.snapshot().state != "disconnected" && Instant::now() < deadline { thread::sleep(Duration::from_millis(10)); }
     assert_eq!(client.snapshot().results.last().unwrap().state, "outcome-unknown");
+    assert!(matches!(client.feature(stage()), control::features::Admission::NotSent { .. }));
     client.close(); job.terminate().unwrap(); child.wait().unwrap(); drop(pair.master);
     let terminal = String::from_utf8_lossy(&output.join().unwrap()).into_owned();
     assert!(!terminal.contains(&private_key), "Private launch key reached terminal output");

@@ -4,10 +4,12 @@ import type { RunnerConfigService } from './RunnerConfigService';
 import type { RunnerWork } from './runnerWork';
 import { entryDefaultsToDesired } from './runnerConfigDefaults';
 import { same } from './runnerConfigContract';
+import type { WorkAttempt } from './runnerWork';
 
 /** Both entry points use the destination's authenticated configuration and work owners. */
-export async function submitConfiguredWork(config: RunnerConfigService, work: RunnerWork,
-  defaults: EntryDefaults, instruction: string, admit: () => Promise<symbol | void>) {
+export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfigService, work: RunnerWork,
+  defaults: EntryDefaults, instruction: string, admit: () => Promise<symbol | void>,
+  deliver?: (lease?: symbol) => Promise<T>): Promise<T> {
   if (!work.supported || work.blocked || work.busy) throw new HubError(msg('work.unavailable'));
   if (config.busy || config.uncertain) throw new HubError(msg('config.partial'));
   config.resetDraft();
@@ -35,5 +37,8 @@ export async function submitConfiguredWork(config: RunnerConfigService, work: Ru
   if (!inspection || inspection.setup_required || !Object.entries(mapped.desired).every(([key, value]) =>
     same(inspection.current[key as keyof typeof inspection.current], value))) throw new HubError(msg('config.stalePlan'));
   const attachmentLease = await admit();
-  return work.submit(instruction, attachmentLease || undefined);
+  if (deliver && (defaults.runMode !== 'issue-run' || inspection.current.run_mode !== 'issue-run'))
+    throw new HubError(msg('brief.unavailable'));
+  return deliver ? deliver(attachmentLease || undefined)
+    : work.submit(instruction, attachmentLease || undefined) as Promise<T>;
 }

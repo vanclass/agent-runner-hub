@@ -5,6 +5,7 @@ import { commandNamed, type RunnerObservation } from './runnerControl';
 import { submitConfiguredWork } from './runnerSubmission';
 import { copy, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
+import type { BriefResult } from './RunnerBrief';
 import { RunnerReferenceSelection } from './referenceSelection';
 
 type Target = RunnerObservation['target'];
@@ -18,6 +19,7 @@ export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'd
 // has been released. /files additionally excludes recovery and auto-resume.
 export function idleReason(session: RunnerSession, allowReferences = false) {
   const control = session.control, snapshot = control.snapshot, observation = snapshot.observation;
+  if (control.brief.blocked || control.brief.busy) return msg('runtime.entry.controlUnsettled');
   if (!control.observationFresh || !observation) return msg('runtime.entry.freshUnavailable');
   if (!allowReferences && session.references.prepared) return msg('runtime.entry.referencesPrepared');
   const { execution, attention } = observation;
@@ -66,8 +68,9 @@ export class SingleEntry {
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) { this.selections.setDefault(key, value); }
   inspectOptions() { return this.selections.inspectOptions(); }
-  async submit(location?: string, focus: (id: string) => void = () => {}) {
+  async submit(location?: string, focus: (id: string) => void = () => {}, briefRun = false) {
     if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
+    if (briefRun && this.defaults.runMode !== 'issue-run') return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.phase = 'preparing';
@@ -118,7 +121,7 @@ export class SingleEntry {
       const inventoryReason = idleReason(session);
       if (inventoryReason || !session.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
         { reason: inventoryReason || msg('runtime.entry.inputUnsettled') }));
-      if (text.trimStart().startsWith('/')) {
+      if (!briefRun && text.trimStart().startsWith('/')) {
         if (this.attachments.candidates.some(item => !item.submitted && !['cancelled', 'removed'].includes(this.attachments.state(item))))
           throw new HubError(msg('attachments.instructionOnly'));
         attempted = true;
@@ -135,7 +138,7 @@ export class SingleEntry {
       const destination = session;
       this.attachments.bind(destination.control);
       const previous = session.control.work.current;
-      const submission = submitConfiguredWork(session.control.config, session.control.work, defaults, text, async () => {
+      const submission = submitConfiguredWork<WorkAttempt | BriefResult>(session.control.config, session.control.work, defaults, text, async () => {
         await destination.control.fresh();
         await destination.references.verifyAssignment();
         const finalReason = idleReason(destination);
@@ -153,9 +156,22 @@ export class SingleEntry {
         attempted = true;
         this.changed();
         return this.attachments.deliveryLease;
-      });
+      }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined);
+      if (briefRun) {
+        const result = await submission as BriefResult;
+        attempted = result.staged || result.status === 'unknown';
+        this.detail = destination.control.brief.detail;
+        this.evidence.push(this.detail);
+        this.phase = result.status === 'completed' ? 'delivered' : attempted ? 'unknown' : 'incomplete';
+        if (result.status === 'completed') {
+          this.draft = ''; this.attachments.finishSubmission(true);
+          this.attachments = new RunnerReferenceSelection(undefined, this.changed);
+          session.release(token); this.active = undefined;
+        }
+        return;
+      }
       let attempt: WorkAttempt;
-      try { attempt = await submission; }
+      try { attempt = await submission as WorkAttempt; }
       finally {
         attempted = attempted && session.control.work.current !== previous;
         if (attempted && this.active) this.active.attempt = session.control.work.current;

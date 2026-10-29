@@ -15,6 +15,7 @@ import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './Runne
 import type { RunnerInstallation } from './runnerInstallation';
 import { copy, same } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
+import type { BriefResult } from './RunnerBrief';
 import { HubSelections } from './HubSelections';
 import '@xterm/xterm/css/xterm.css';
 
@@ -45,7 +46,7 @@ export class RunnerSession {
   private get nativeSettled() { return this.nativeState === 'settled'; }
   get terminationSettled() { return this.nativeSettled; }
   private get exitObserved() { return this.nativeState === 'settled' || this.nativeState === 'failed'; }
-  get submissionUncertain() { return this.deliveryUnknown; }
+  get submissionUncertain() { return this.deliveryUnknown || this.control.brief.blocked; }
   view: RunnerView;
   private tabRecord?: RunnerTabRecord;
   private presentationRetired = false;
@@ -326,7 +327,7 @@ export class RunnerSession {
       throw new HubError(msg('runtime.session.deliveryUnknown'));
     }
   }
-  private async submitInstruction(draft: string, defaults: EntryDefaults) {
+  private async submitInstruction(draft: string, defaults: EntryDefaults, briefRun = false) {
     if (this.hubSelections?.loadingOptions) throw new HubError(msg('config.notReady'));
     const ready = () => {
       if (this.disposed || this.view.closing || this.view.status !== 'running' || this.reservation)
@@ -338,28 +339,34 @@ export class RunnerSession {
     const previous = this.control.work.current;
     this.control.assignmentLocked = true;
     try {
-      await submitConfiguredWork(this.control.config, this.control.work, defaults, draft, async () => {
+      const result = await submitConfiguredWork<WorkAttempt | BriefResult>(this.control.config, this.control.work, defaults, draft, async () => {
         this.control.assignmentLocked = false;
         await this.control.fresh(); ready();
         await this.references.preflight();
         await this.control.fresh(); ready();
         this.references.assertReadyForDelivery();
         return this.references.deliveryLease;
-      });
+      }, briefRun ? lease => this.control.brief.submit(draft, lease) : undefined);
+      if ('brief' in result) {
+        if (result.status === 'completed') { this.update({ draft: '' }); this.references.finishSubmission(true); }
+        else if (result.staged || result.status === 'unknown') this.deliveryUnknown = true;
+        else this.references.finishSubmission(false);
+      }
     } finally {
       this.control.assignmentLocked = false;
       const attempt = this.control.work.current;
       if (attempt && attempt !== previous) this.retainSubmission(attempt, draft);
     }
   }
-  async submit() {
+  async submit(briefRun = false) {
     if (this.view.closing) throw new HubError(msg('tabs.closing'));
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
     if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
     if (this.reservation && !this.foregroundInteraction) throw new HubError(msg('runtime.session.entryReserved'));
-    if (this.deliveryUnknown) throw new HubError(msg('runtime.session.previousUnknown'));
+    if (this.submissionUncertain) throw new HubError(msg('runtime.session.previousUnknown'));
+    if (briefRun && (this.hubSelections?.defaults.runMode !== 'issue-run' || this.foregroundInteraction)) return;
     const draft = this.view.draft ?? '';
-    const ordinary = !draft.trimStart().startsWith('/');
+    const ordinary = briefRun || !draft.trimStart().startsWith('/');
     if (!draft.trim()) return;
     if ((!ordinary || this.foregroundInteraction) && this.references.candidates.some(item =>
       !item.submitted && !['cancelled', 'removed'].includes(this.references.state(item))))
@@ -370,9 +377,10 @@ export class RunnerSession {
     this.update({ submitting: true });
     try {
       if (ordinary) await this.control.fresh();
+      if (briefRun && this.foregroundInteraction) throw new HubError(msg('brief.unavailable'));
       if (this.reservation && !this.foregroundInteraction) throw new HubError(msg('runtime.session.entryReserved'));
       if (ordinary && !this.foregroundInteraction) {
-        await this.submitInstruction(draft, defaults);
+        await this.submitInstruction(draft, defaults, briefRun);
         return;
       }
       if (this.disposed || this.view.status !== 'running' || !this.input.canSubmit)

@@ -85,7 +85,7 @@ impl Session {
         { Err("Runner control is supported only on Windows".into()) }
     }
 
-    pub fn control_command(&self, command: String) -> Result<(), String> {
+    pub fn control_command(&self, command: String) -> Result<control::features::Admission, String> {
         #[cfg(windows)]
         { return self.control.lock().unwrap().as_ref().ok_or("Runner control is unavailable")?.command(command); }
         #[cfg(not(windows))]

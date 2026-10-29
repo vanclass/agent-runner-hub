@@ -36,6 +36,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   useEffect(() => sessions.retain(), [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useHubShortcuts(shortcuts, runners.map(runner => runner.id), selectedId === null && !!installation, {
+    selectedId,
     select: id => { setSelectedId(id); requestAnimationFrame(() => {
       document.querySelector<HTMLElement>(id === null ? '.composer textarea' : '.runner-row.active .nav-row')?.focus();
     }); },

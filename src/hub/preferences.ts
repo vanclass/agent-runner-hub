@@ -1,6 +1,6 @@
 import type { EntryDefaults } from './singleEntry';
 import { msg, errorText, type HubText } from './i18n';
-import { projectShortcuts, type ShortcutMap } from './shortcuts';
+import { projectShortcuts, restoreShortcuts, type ShortcutMap } from './shortcuts';
 
 export type HubLanguage = 'en' | 'ko';
 export type HubTheme = 'light' | 'black';
@@ -84,7 +84,7 @@ export class HubPreferences {
       if (!singleEntry) { this.retainOriginal(); return; }
       const runnerSelections = value.runnerSelections === undefined ? undefined : projectRunnerSelections(value.runnerSelections);
       if (value.runnerSelections !== undefined && !runnerSelections) { this.retainOriginal(); return; }
-      const shortcuts = value.shortcuts === undefined ? undefined : projectShortcuts(value.shortcuts);
+      const shortcuts = value.shortcuts === undefined ? undefined : restoreShortcuts(value.shortcuts);
       if (value.shortcuts !== undefined && !shortcuts) { this.retainOriginal(); return; }
       this.value = { version: 1, language: value.language as HubLanguage, theme: value.theme as HubTheme, singleEntry,
         confirmRunnerRemoval: value.confirmRunnerRemoval !== false,

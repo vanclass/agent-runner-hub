@@ -1,24 +1,25 @@
 //! Implemented native feature contracts share the v1 transport and identity.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use super::{session_config, work};
+use super::{session_config, work, brief};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "feature", content = "request", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Request { SessionConfig(session_config::Request), Work(work::Request) }
+pub enum Request { SessionConfig(session_config::Request), Work(work::Request), Brief(brief::Request) }
 impl Request {
-    pub fn name(&self) -> &'static str { match self { Self::SessionConfig(_) => "session_config", Self::Work(_) => "work" } }
+    pub fn name(&self) -> &'static str { match self { Self::SessionConfig(_) => "session_config", Self::Work(_) => "work", Self::Brief(_) => "brief" } }
     pub fn operation(&self) -> &'static str { match self {
-        Self::SessionConfig(r) => r.operation(), Self::Work(r) => r.operation() } }
+        Self::SessionConfig(r) => r.operation(), Self::Work(r) => r.operation(), Self::Brief(_) => "brief.stage" } }
     pub fn validate(&self) -> Result<(), &'static str> { match self {
-        Self::SessionConfig(r) => r.validate(), Self::Work(r) => r.validate() } }
+        Self::SessionConfig(r) => r.validate(), Self::Work(r) => r.validate(), Self::Brief(r) => r.validate() } }
     pub fn fields(&self) -> Value { match self {
-        Self::SessionConfig(r) => serde_json::to_value(r).unwrap(), Self::Work(r) => serde_json::to_value(r).unwrap() } }
+        Self::SessionConfig(r) => serde_json::to_value(r).unwrap(), Self::Work(r) => serde_json::to_value(r).unwrap(),
+        Self::Brief(r) => serde_json::to_value(r).unwrap() } }
     pub fn wait_limit(&self) -> std::time::Duration { match self {
-        Self::SessionConfig(r) => r.wait_limit(), Self::Work(r) => r.wait_limit() } }
+        Self::SessionConfig(r) => r.wait_limit(), Self::Work(r) => r.wait_limit(), Self::Brief(_) => super::COMPLETION_TIMEOUT } }
     pub fn response(&self, packet: &Value, id: u64) -> Result<Response, &'static str> {
         match self { Self::SessionConfig(r) => r.response(packet).map(Response::SessionConfig),
-            Self::Work(r) => r.response(packet, id).map(Response::Work) }
+            Self::Work(r) => r.response(packet, id).map(Response::Work), Self::Brief(r) => r.response(packet).map(Response::Brief) }
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -44,7 +45,7 @@ impl Capability {
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
-pub enum Response { SessionConfig(session_config::Response), Work(work::Response) }
+pub enum Response { SessionConfig(session_config::Response), Work(work::Response), Brief(brief::Response) }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultView {
@@ -55,20 +56,23 @@ pub struct ResultView {
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Features {
+    pub brief: Option<brief::Capability>,
     pub generation: u64, pub session_config: Option<Capability>, pub work: Option<work::Capability>, pub results: Vec<ResultView>,
 }
 impl Features {
     pub fn discover(&mut self, packet: &Value) {
+        self.brief = brief::Capability::read(&packet["brief"]);
         self.session_config = Capability::read(&packet["session_config"]);
         self.work = work::Capability::read(&packet["work"]);
     }
     pub fn supports(&self, request: &Request) -> bool { match request {
         Request::SessionConfig(_) => self.session_config.as_ref().is_some_and(|cap| cap.supports(request)),
         Request::Work(r) => self.work.as_ref().is_some_and(|cap| cap.operations.iter().any(|op| op == r.operation())),
+        Request::Brief(_) => self.brief.is_some(),
     } }
     pub fn begin(&mut self, id: u64, request: &Request) {
         // Completed reads/plans can retire; apply receipts and uncertain results survive.
-        self.results.retain(|r| r.operation == "session_config.apply" || r.operation == "work.submit"
+        self.results.retain(|r| r.operation == "session_config.apply" || r.operation == "work.submit" || r.operation == "brief.stage"
             || !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
         self.results.push(ResultView { id, feature: request.name().into(), operation: request.operation().into(),
             state: "sending".into(), admission: "unconfirmed".into(), phase: None, code: None, reply: None });
@@ -85,6 +89,7 @@ impl Features {
         Ok(())
     }
     pub fn disconnect(&mut self, pending: impl Iterator<Item = (u64, bool)>) {
+        self.brief = None;
         self.session_config = None;
         self.work = None;
         for (id, untouched) in pending {

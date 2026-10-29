@@ -18,6 +18,8 @@ pub mod session_config;
 pub mod features;
 #[path = "work.rs"]
 pub mod work;
+#[path = "brief.rs"]
+pub mod brief;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;
@@ -70,6 +72,7 @@ pub struct Observation {
 pub struct CommandResult {
     pub id: u64, pub command: String, pub state: String, pub code: Option<String>,
     pub owner_status: Option<String>, pub changed: Option<Value>, pub settings_change_count: Option<Value>,
+    pub phase: Option<String>,
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -161,7 +164,7 @@ impl Protocol {
         self.next = next;
         if let Some(text) = &command {
             self.snapshot.results.retain(|r| !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
-            self.snapshot.results.push(CommandResult { id: self.next, command: text.clone(), state: "sending".into(), code: None,
+            self.snapshot.results.push(CommandResult { id: self.next, command: text.clone(), state: "sending".into(), code: None, phase: None,
                 owner_status: None, changed: None, settings_change_count: None });
         }
         if let Some(request) = &reference { self.snapshot.references.begin(self.next, request); }
@@ -249,6 +252,7 @@ impl Protocol {
         self.snapshot.references.response(id, state, finished, &packet)?;
         if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
             result.state = state.into();
+            result.phase = phase.map(str::to_owned);
             if finished {
                 result.owner_status = packet["owner_status"].as_str().filter(|status|
                     !status.is_empty() && status.len() <= 100 && status.bytes().all(|b|

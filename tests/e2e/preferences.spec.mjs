@@ -149,6 +149,21 @@ for (const failure of ['write', 'concurrent', 'read']) {
     if (failure !== 'read') expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   });
 }
+test('historical shortcut defaults migrate without losing unrelated or custom preferences', async ({ page }) => {
+  await seed(page, JSON.stringify({ ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
+    shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Alt+Digit' } }));
+  await page.goto('/tests/fixtures/hub.html');
+  await page.locator('.shortcut-settings-trigger').click();
+  const buttons = page.locator('.shortcut-row button');
+  await expect(buttons.nth(0)).toHaveText('Enter');
+  await expect(buttons.nth(1)).toHaveText('Ctrl+Home');
+  await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
+  await page.getByRole('button', { name: 'Apply and save' }).click();
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual({
+    ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
+    shortcuts: { assign: 'Enter', entry: 'Ctrl+Home', runner: 'Alt+Digit' } });
+});
+
 const invalid = [
   JSON.stringify({ ...defaults, shortcuts: { assign: 'Home', entry: 'Home', runner: 'Ctrl+Digit' } }),
   JSON.stringify({ ...defaults, shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Ctrl+Digit', draft: 'rejected' } }),

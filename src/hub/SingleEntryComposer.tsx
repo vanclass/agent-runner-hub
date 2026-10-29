@@ -4,6 +4,7 @@ import type { HubSelections } from './HubSelections';
 import { same } from './runnerConfigContract';
 import { DirectoryInput } from './DirectoryInput';
 import { ComposerAttachments } from './ComposerAttachments';
+import { instructionKey } from './instructionKey';
 
 export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
@@ -84,7 +85,10 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
 }) {
   return <section className="composer-area" aria-label={t('composer.label')}>
     <ComposerAttachments selection={entry.attachments} disabled={entry.pending || entry.phase === 'unknown'}>
-      <textarea aria-label={t('entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
+      <textarea data-instruction="true" aria-label={t('entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
+        onKeyDown={event => instructionKey(event, briefRun => {
+          if (!briefRun || entry.defaults.runMode === 'issue-run') void entry.submit(location, onSelectRunner, briefRun);
+        })}
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
       <div className="composer-actions">
         <button className="send-button" type="button" disabled={!entry.editable || !entry.draft.trim()}

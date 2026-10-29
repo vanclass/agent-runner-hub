@@ -5,6 +5,19 @@ test.setTimeout(90_000);
 
 const longName = 'A very long Runner name that must remain intact when truncated in the sidebar';
 
+test('reserved navigation reaches beyond nine tabs and stops at visible endpoints', async ({ page }) => {
+  await page.goto('/tests/fixtures/hub.html');
+  const rows = page.locator('.runner-row .nav-row');
+  await expect(rows).toHaveCount(23);
+  await page.keyboard.press('Control+9'); await expect(rows.nth(8)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+PageDown'); await expect(rows.nth(9)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+End'); await expect(rows.nth(22)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+PageDown'); await expect(rows.nth(22)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+Home'); await page.keyboard.press('Control+PageUp');
+  await expect(page.getByRole('button', { name: 'Single Entry', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(rows).toHaveCount(23);
+});
+
 test('Runner order, truncation, selection and inline rename preserve navigation identity', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1000, height: 700 });
   await page.goto('/tests/fixtures/hub.html');

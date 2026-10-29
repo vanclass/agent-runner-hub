@@ -1,5 +1,5 @@
 export function registerHubShortcuts({ test, expect, transport, configure, create, foreground }) {
-  const home = page => page.keyboard.press('Home');
+  const home = page => page.keyboard.press('Control+Home');
   const rows = page => page.locator('.runner-row .nav-row');
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options });
@@ -20,8 +20,8 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.keyboard.press('Control+Enter');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
     await page.locator('.composer textarea').fill('default shortcut once');
-    await page.keyboard.down('Control'); await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
-    await page.keyboard.up('Enter'); await page.keyboard.up('Control');
+    await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
+    await page.keyboard.up('Enter');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page); await remap(page); await page.reload();
@@ -64,7 +64,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     const terminal = page.locator('.xterm-helper-textarea');
     await terminal.focus();
     await page.evaluate(() => { window.__nativeFixture.writes.length = 0; });
-    await page.keyboard.press('Home'); await expect(page.locator('.composer textarea')).toBeFocused();
+    await page.keyboard.press('Control+Home'); await expect(page.locator('.composer textarea')).toBeFocused();
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     await page.keyboard.press('Control+1'); await expect(rows(page).nth(0)).toBeFocused(); await terminal.focus();
     await foreground(page, 'pty-1', true);
@@ -90,14 +90,15 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await expect(dialog.getByRole('alert')).toContainText('reserved');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
     await expect(page.locator('.shortcut-settings-trigger')).toBeFocused();
-    await terminal.focus(); await page.keyboard.press('Home');
+    await terminal.focus(); await page.keyboard.press('Control+Home');
     await expect(page.locator('.composer textarea')).toBeFocused();
   });
   test('shortcuts never replay pending assignments', async ({ page }) => {
     await ready(page, { workMode: 'admitted' });
-    await page.locator('.composer textarea').fill('pending shortcut'); await page.keyboard.press('Control+Enter');
+    await page.locator('.composer textarea').fill('pending shortcut'); await page.keyboard.press('Enter');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('start unconfirmed', { timeout: 35000 });
-    await home(page); await page.keyboard.press('Control+Enter');
+    await home(page);
+    await page.locator('.composer textarea').evaluate(node => node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await expect(page.locator('.composer textarea')).toHaveValue('pending shortcut');
   });
@@ -105,7 +106,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await ready(page);
     await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push({
       reference_id: 'a'.repeat(32), display_index: 1, display_name: 'unconfirmed', kind: 'file' }));
-    await page.locator('.composer textarea').fill('preflight shortcut'); await page.keyboard.press('Control+Enter');
+    await page.locator('.composer textarea').fill('preflight shortcut'); await page.keyboard.press('Enter');
     await home(page);
     await expect(page.getByRole('button', { name: 'Release unsent assignment' })).toBeVisible();
     await expect(page.locator('.composer textarea')).toHaveValue('preflight shortcut');

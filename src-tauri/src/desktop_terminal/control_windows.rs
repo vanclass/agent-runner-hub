@@ -95,11 +95,16 @@ impl Client {
     pub fn image_read(&self, id: &str) -> Result<generated_images::Verified, generated_images::Failure> {
         self.images.read(id, |request| self.image_reply(request), || self.image_alive())
     }
-    pub fn command(&self, command: String) -> Result<(), String> {
+    pub fn command(&self, command: String) -> Result<super::features::Admission, String> {
         if command.len() > 4096 || !command.starts_with('/') || command.chars().any(char::is_control) {
             return Err("Choose a Runner slash command".into());
         }
-        self.submit(Request::Command(command)).map(|_| ()).map_err(|error| error.detail)
+        let generation = self.snapshot().features.generation;
+        Ok(match self.submit(Request::Command(command)) {
+            Ok(id) => super::features::Admission::Submitted { id, generation },
+            Err(error) if error.unknown => super::features::Admission::OutcomeUnknown { detail: error.detail },
+            Err(error) => super::features::Admission::NotSent { detail: error.detail },
+        })
     }
     pub fn reference(&self, request: ReferenceRequest) -> ReferenceAdmission {
         if let Err(detail) = request.validate() { return ReferenceAdmission::Failure { detail: detail.into() }; }

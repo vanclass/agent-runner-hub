@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 
 export type ShortcutMap = { assign: string; entry: string; runner: string };
-export const defaultShortcuts: ShortcutMap = { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Ctrl+Digit' };
+export const defaultShortcuts: ShortcutMap = { assign: 'Enter', entry: 'Ctrl+Home', runner: 'Ctrl+Digit' };
+const reserved = ['Enter', 'Shift+Enter', 'Ctrl+Enter', 'Home', 'Ctrl+Home', 'Ctrl+End', 'Ctrl+PageUp', 'Ctrl+PageDown'];
 const modifiers = ['Ctrl', 'Alt', 'Shift', 'Meta'];
 const specialKeys = /^(Enter|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|F([1-9]|1[0-9]|2[0-4]))$/;
 function parts(value: string) {
@@ -20,8 +21,20 @@ export function projectShortcuts(value: unknown): ShortcutMap | undefined {
   const result = { assign: record.assign as string, entry: record.entry as string, runner: record.runner as string };
   const assign = parts(result.assign), entry = parts(result.entry), runner = parts(result.runner);
   if (!assign || !entry || !runner || assign.key === 'Digit' || entry.key === 'Digit' || runner.key !== 'Digit') return;
+  if ((result.assign !== 'Enter' && reserved.includes(result.assign))
+    || (result.entry !== 'Ctrl+Home' && reserved.includes(result.entry))) return;
   if (result.assign === result.entry || [assign, entry].some(chord => chord.prefix === runner.prefix && /^[1-9]$/.test(chord.key))) return;
   return result;
+}
+export function restoreShortcuts(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  const old = value as Record<string, unknown>;
+  if (old.assign === old.entry) return;
+  const assign = old.assign === 'Ctrl+Enter' ? 'Enter' : old.assign;
+  const entry = old.entry === 'Home' ? 'Ctrl+Home' : old.entry;
+  return projectShortcuts({ ...old,
+    assign: typeof assign === 'string' && assign !== 'Enter' && reserved.includes(assign) ? 'Enter' : assign,
+    entry: typeof entry === 'string' && entry !== 'Ctrl+Home' && reserved.includes(entry) ? 'Ctrl+Home' : entry });
 }
 function prefix(event: KeyboardEvent) {
   return [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta'].filter(Boolean).join('+');
@@ -41,7 +54,7 @@ export function shortcutAction(event: KeyboardEvent, shortcuts: ShortcutMap): ke
 }
 export function shortcutLabel(value: string) { return value.replace('Digit', '1, 2, 3…'); }
 
-type ShortcutActions = { assign: () => void; select: (id: string | null) => void };
+type ShortcutActions = { assign: () => void; select: (id: string | null) => void; selectedId: string | null };
 export function useHubShortcuts(shortcuts: ShortcutMap, runnerIds: readonly string[], canAssign: boolean, actions: ShortcutActions) {
   const current = useRef({ shortcuts, runnerIds, canAssign, actions });
   current.current = { shortcuts, runnerIds, canAssign, actions };
@@ -57,8 +70,21 @@ export function useHubShortcuts(shortcuts: ShortcutMap, runnerIds: readonly stri
         return;
       }
       if (event.type !== 'keydown' || composing || event.isComposing || document.querySelector('dialog[open]')) return;
-      const state = current.current, action = shortcutAction(event, state.shortcuts);
+      const state = current.current, chord = captureShortcut(event);
+      const navigation = ['Ctrl+Home', 'Ctrl+End', 'Ctrl+PageUp', 'Ctrl+PageDown'].includes(chord ?? '');
+      if (navigation) {
+        stop(event); held.add(identity);
+        if (event.repeat) return;
+        const order = [null, ...state.runnerIds], index = Math.max(0, order.indexOf(state.actions.selectedId));
+        const next = chord === 'Ctrl+Home' ? 0 : chord === 'Ctrl+End' ? order.length - 1
+          : Math.max(0, Math.min(order.length - 1, index + (chord === 'Ctrl+PageUp' ? -1 : 1)));
+        state.actions.select(order[next]); return;
+      }
+      const action = shortcutAction(event, state.shortcuts);
       if (!action) return;
+      if (action === 'assign' && (!(event.target instanceof HTMLTextAreaElement)
+        || event.target !== document.activeElement || !event.target.dataset.instruction || event.target.disabled)) return;
+      if (action === 'assign' && state.shortcuts.assign === 'Enter') return;
       const target = action === 'runner' ? state.runnerIds[Number(event.key) - 1] : undefined;
       if (action === 'assign' && !state.canAssign || action === 'runner' && !target) return;
       stop(event); held.add(identity);

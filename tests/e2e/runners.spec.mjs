@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { registerSessionConfigUI } from './session-config-ui.mjs';
 import { registerSingleEntryWork } from './single-entry-work.mjs';
 import { registerHubShortcuts } from './hub-shortcuts.mjs';
+import { registerBriefSubmission } from './brief-submission.mjs';
 import { registerRunnerTabs } from './runner-tabs.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerPromotion } from './runner-promotion.mjs';
@@ -112,6 +113,8 @@ async function transport(page, freshTarget, referenceOptions) {
             fixture.mode = referenceOptions.workMode ?? 'started';
             sessions.get(id).feature = fixture;
             sessions.get(id).control.features = fixture.features;
+            if (referenceOptions.brief !== undefined && referenceOptions.brief !== 'unsupported')
+              fixture.features.brief = { version: 1, operations: ['brief.stage'] };
           }
           if (referenceOptions?.generatedImages) {
             sessions.get(id).control.generatedImagesSupported = true;
@@ -168,11 +171,28 @@ async function transport(page, freshTarget, referenceOptions) {
         if (command === 'runner_command') {
           commands.push(args);
           const control = sessions.get(args.id).control;
+          if (referenceOptions?.brief !== undefined) {
+            const id = 8000 + commands.length, mode = referenceOptions.runResult ?? 'accepted';
+            control.results.push({ id, command: args.command, state: mode, phase: mode === 'queued' ? 'queued' : 'completed',
+              ownerStatus: mode === 'accepted' ? 'SUCCESS' : null });
+            return { state: 'submitted', id, generation: control.features.generation };
+          }
           control.results = [{ id: commands.length, command: args.command, state: 'queued', changed: true }];
           return;
         }
         if (command === 'runner_feature') {
           const fixture = sessions.get(args.id).feature;
+          if (args.request.feature === 'brief') {
+            const session = sessions.get(args.id), id = 7000;
+            (session.briefRequests ??= []).push(structuredClone(args.request.request));
+            const mode = referenceOptions.brief;
+            fixture.features.results.push({ id, feature: 'brief', operation: 'brief.stage', admission: 'queued',
+              state: mode === 'unknown' ? 'outcome-unknown' : mode === 'rejected' ? 'rejected' : 'accepted', phase: 'completed',
+              reply: { staging_status: mode === 'rejected' ? 'not_staged' : 'staged', owner: 'brief_staging',
+                count: mode === 'malformed' ? 0 : 1, outcome_unknown: mode === 'unknown' } });
+            if (mode === 'disconnected') session.control.state = 'disconnected';
+            return { state: 'submitted', id, generation: fixture.features.generation + (mode === 'crossed' ? 1 : 0) };
+          }
           if (args.request.feature === 'session_config') return fixture.config.submit(args.id, args.request.request);
           if (args.request.request.operation === 'work.submit') deliveredSets.push({ id: args.id,
             instruction: args.request.request.instruction, ids: sessions.get(args.id).items.map(item => item.reference_id) });
@@ -236,6 +256,7 @@ registerSessionConfigUI({ test, expect, transport, configure });
 registerTaskPanel({ test, expect, transport, configure, create, generatedFixture });
 registerSingleEntryWork({ test, expect, transport, configure, create });
 registerHubShortcuts({ test, expect, transport, configure, create, foreground });
+registerBriefSubmission({ test, expect, transport, configure, create });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create: createPrepared, records });
 registerRunnerPromotion({ test, expect, transport, configure, create: createPrepared, generatedFixture });

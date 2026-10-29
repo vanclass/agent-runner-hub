@@ -1,13 +1,13 @@
 {
   "shortcuts": {
     "title": "Keyboard shortcuts",
-    "help": "Choose an action, then press a key combination. Runner navigation uses the same modifiers with each number key (1, 2, 3…). Escape cancels capture. Tab moves between controls.",
+    "help": "Enter sends in instruction fields; Shift+Enter adds a line. Ctrl+Enter stages Brief → Run only in IssueRun. Ctrl+Home selects Single Entry; Ctrl+End selects the last Runner; Ctrl+PageUp/PageDown selects the adjacent tab without wrapping. Ctrl+1–9 selects by position. Custom assignment keys work in Single Entry instruction fields. Escape cancels capture.",
     "assign": "Assign instruction",
     "entry": "Go to Single Entry",
     "runner": "Go to Runner by position",
     "capture": "Press keys…",
     "invalid": "Use a navigation/function key or a modified key. For Runner navigation, press modifiers with a number from 1 to 9. Clipboard and text-editing shortcuts are reserved.",
-    "conflict": "Shortcuts overlap. Choose a different combination before applying.",
+    "conflict": "Shortcuts overlap or use a reserved Hub action. Choose a different combination before applying.",
     "reset": "Restore defaults",
     "save": "Apply and save"
   },
@@ -306,6 +306,17 @@
     "hint": "Drop files or folders · Ctrl+V for PNG images · Pickers available as fallback",
     "fallback": "Native drop is unavailable here. Use file/folder buttons in the desktop app. Image paste requires PNG data in the paste event.",
     "instructionOnly": "Attachments require a new work instruction. Remove them before sending commands or terminal replies."
+  },
+  "brief": {
+    "unavailable": "Brief → Run unavailable. Select IssueRun and use a Runner advertising Brief staging.",
+    "staging": "Staging Brief…",
+    "staged": "Brief staged.",
+    "requesting": "Brief staged · requesting Run…",
+    "requested": "Brief staged · Run requested and confirmed by Runner.",
+    "stageRejected": "Brief rejected. Run was not requested; draft retained.",
+    "stageUnknown": "Brief staging uncertain. Run was not requested. Original assignment retained; do not replay.",
+    "runRejected": "Brief staged · Run rejected. Staged Brief and original assignment retained.",
+    "runUnknown": "Brief staged · Run outcome uncertain. Original assignment retained; do not replay."
   },
   "composer": {
     "label": "Instruction composer",

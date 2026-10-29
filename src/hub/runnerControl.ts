@@ -4,6 +4,7 @@ import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './
 import { RunnerImages } from './runnerImages';
 import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
+import { RunnerBrief } from './RunnerBrief';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
@@ -28,6 +29,7 @@ export type RunnerObservation = {
   commands: RunnerCommand[];
 };
 export type ControlResult = { id: number; command: string;
+  phase?: string | null;
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown'; code?: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
@@ -39,6 +41,7 @@ export class RunnerControl {
   readonly images: RunnerImages;
   readonly config: RunnerConfigService;
   readonly work: RunnerWork;
+  readonly brief: RunnerBrief;
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
   assignmentLocked = false;
@@ -66,17 +69,30 @@ export class RunnerControl {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
   constructor(private readonly changed: () => void) {
+    this.brief = new RunnerBrief({
+      identity: () => this.id && this.snapshot.features
+        ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
+      available: lease => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
+        && !this.otherControlBusyExceptAttachments && !this.assignmentLocked
+        && (!this.attachmentLease || this.attachmentLease === lease),
+      stage: (id, body) => invoke<FeatureAdmission>('runner_feature', { id,
+        request: { feature: 'brief', request: { operation: 'brief.stage', api_version: 1, body } } }),
+      run: id => invoke<FeatureAdmission>('runner_command', { id, command: '/run' }),
+      completionMs: controlTiming.completionMs,
+    }, changed);
     this.images = new RunnerImages(changed);
     this.config = new RunnerConfigService({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
-      available: () => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready' && !this.otherControlBusy,
+      available: () => !this.stopped && !this.tabClosing && !this.brief.busy && !this.brief.blocked
+        && this.snapshot.state === 'ready' && !this.otherControlBusy,
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'session_config', request } }),
     }, changed);
     this.work = new RunnerWork({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
       available: (operation, lease) => !this.stopped && (!this.tabClosing || operation === 'work.list') && this.snapshot.state === 'ready'
+        && !this.brief.busy
         && !(['work.status', 'work.observe'].includes(operation) || operation === 'work.submit' && lease && lease === this.attachmentLease
           ? this.otherControlBusyExceptAttachments : this.otherControlBusy)
         && (operation !== 'work.list' || !this.assignmentLocked)
@@ -107,6 +123,7 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
       this.work.observe(this.id, snapshot.state, snapshot.features);
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
@@ -118,7 +135,7 @@ export class RunnerControl {
       this.timer = setTimeout(() => void this.refresh(), controlTiming.pollMs);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
-  get pending() { return this.controlBusy || this.config.busy || this.work.writing; }
+  get pending() { return this.controlBusy || this.config.busy || this.work.writing || this.brief.busy; }
   get busy() { return this.tabClosing || this.pending; }
   private get controlBusy() {
     return this.assignmentLocked || this.otherControlBusy;
@@ -153,7 +170,11 @@ export class RunnerControl {
     if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
     this.sending = true; this.changed();
     this.admissionAfter = Math.max(0, ...this.snapshot.results.map(result => result.id));
-    try { await invoke<void>('runner_command', { id: this.id, command: text }); }
+    try {
+      const admission = await invoke<FeatureAdmission>('runner_command', { id: this.id, command: text });
+      if (admission?.state === 'not-sent' || admission?.state === 'outcome-unknown')
+        throw new HubError(admission.detail);
+    }
     catch (reason) { this.sending = false; this.changed(); throw reason; }
   }
   async stageImage(blob: Blob, lease?: symbol) {
@@ -205,6 +226,7 @@ export class RunnerControl {
           ? { ...result, state: 'outcome-unknown' } : result) },
       results: final.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
         ? { ...result, state: 'outcome-unknown' } : result) };
+    this.brief.observe(this.snapshot);
     if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
     this.config.close();
     if (this.id) this.work.observe(this.id, 'disconnected', this.snapshot.features);
