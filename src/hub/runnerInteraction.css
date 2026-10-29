@@ -1,0 +1,13 @@
+/* Foreground controls remain independently scrollable above the work composer. */
+.runner-interaction { border-top: 1px solid var(--border, #8886); padding: .75rem 1rem; max-height: 35vh; overflow: auto; }
+.runner-interaction h3, .runner-interaction h4 { margin: 0 0 .5rem; }
+.runner-interaction.compact { padding: .2rem 1rem; font-size: .8rem; max-height: 3rem; flex-shrink: 0; }
+.runner-interaction.compact h3 { display: none; }
+.runner-interaction.compact p { margin: 0; }
+.runner-interaction p { margin: .3rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.runner-interaction ul { list-style: none; padding: 0; margin: .5rem 0; }
+.runner-interaction li { margin: .6rem 0; }
+.runner-interaction button { padding: .35rem .7rem; }
+.runner-interaction form, .interaction-navigation { display: flex; gap: .5rem; align-items: end; margin-top: .75rem; }
+.runner-interaction label { display: flex; flex-direction: column; flex: 1; gap: .25rem; }
+.interaction-consequence { border-left: 3px solid #c98c28; padding: .5rem; margin: .5rem 0; }

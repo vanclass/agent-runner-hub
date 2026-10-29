@@ -5,6 +5,7 @@ import { RunnerImages } from './runnerImages';
 import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
 import { RunnerBrief } from './RunnerBrief';
+import { RunnerInteraction } from './RunnerInteraction';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
@@ -38,6 +39,7 @@ export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   generatedImagesSupported?: boolean; features?: FeatureSnapshot };
 
 export class RunnerControl {
+  readonly interaction: RunnerInteraction;
   readonly images: RunnerImages;
   readonly config: RunnerConfigService;
   readonly work: RunnerWork;
@@ -69,6 +71,9 @@ export class RunnerControl {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
   constructor(private readonly changed: () => void) {
+    this.interaction = new RunnerInteraction((id, request) => invoke<FeatureAdmission>('runner_feature', {
+      id, request: { feature: 'interaction', request },
+    }), changed, controlTiming.completionMs);
     this.brief = new RunnerBrief({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
@@ -124,6 +129,7 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      if (!this.tabClosing) this.interaction.observe(this.id, snapshot.state, snapshot.features);
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
       this.work.observe(this.id, snapshot.state, snapshot.features);
@@ -145,7 +151,8 @@ export class RunnerControl {
     return this.attachmentLocked || this.otherControlBusyExceptAttachments;
   }
   private get otherControlBusyExceptAttachments() {
-    return this.sending || this.referenceAdmissions > 0
+    return this.interaction.writing || this.interaction.view?.state === 'active'
+      || this.sending || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }
@@ -169,6 +176,9 @@ export class RunnerControl {
   async command(text: string) {
     if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new HubError(msg('runtime.control.unavailable'));
     if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
+    const command = flattenCommands(this.snapshot.observation?.commands ?? []).find(command =>
+      command.visible && (command.text === text || command.aliases.includes(text)));
+    if (!command?.enabled) throw new HubError(msg('runtime.control.unavailable'));
     this.sending = true; this.changed();
     this.admissionAfter = Math.max(0, ...this.snapshot.results.map(result => result.id));
     try {
@@ -214,6 +224,7 @@ export class RunnerControl {
     finally { this.referenceAdmissions--; this.changed(); }
   }
   stop(detail: HubText = msg('runtime.control.processExited'), finalSnapshot?: ControlSnapshot) {
+    this.interaction.close();
     this.stopped = true;
     this.images.stop();
     this.sending = false;

@@ -38,6 +38,9 @@ image_cap=dict(version=1,operations=['generated_images.list','generated_images.r
 brief_cap=dict(version=1,operations=['brief.stage'],run_modes=['issue-run'],lifetime='process_session',automatic_retry=False)
 run_cap=dict(version=1,operations=['run.invoke','run.status'],run_modes=['issue-run'],observation_lifetime='process_session',automatic_retry=False,receipt='request_accepted')
 run=None
+interaction_cap=dict(version=1,operations=['interaction.observe','interaction.respond'],dispatch_boundary='foreground_input',automatic_replay=False,lifetime='current_owner')
+foreground=None
+initiating=None
 staged=0
 buffer=b''
 previous=0
@@ -51,6 +54,16 @@ while True:
     assert request_id>previous
     previous=request_id
     send(request_id=request_id,status='accepted',phase='queued')
+    if packet['operation']=='interaction.observe':
+        send(request_id=request_id,status='accepted',phase='completed',interaction=foreground or dict(state='none'))
+        continue
+    if packet['operation']=='interaction.respond':
+        assert foreground and packet['interaction_id']==foreground['interaction_id']
+        assert packet['action']=='select' and packet['choice_id']=='visible-choice'
+        foreground=None
+        send(request_id=request_id,status='accepted',phase='completed',input_status='accepted',outcome_unknown=False,interaction_status='completed',effect_status='awaiting_command_owner',interaction=dict(state='none'))
+        send(request_id=initiating,status='rejected',phase='completed',owner_status='CANCELLED')
+        continue
     if packet['operation']=='brief.stage':
         assert packet['api_version']==1
         if packet['body']=='reject':
@@ -88,13 +101,18 @@ while True:
         continue
     if packet['operation']=='command':
         send(request_id=request_id,status='pending-interaction',phase='awaiting_interaction')
+        if packet['command']=='/target':
+            initiating=request_id
+            foreground=dict(state='active',interaction_id='exact-revision',kind='selection',prompt='Canonical target',context='Pipe fixture',actions=['select','cancel'],text_input=None,
+                choices=[dict(choice_id='visible-choice',label='Visible choice',description='Canonical description',enabled=True,disabled_reason='')])
+            continue
         time.sleep(.2)
         break
     observation=dict(run_mode='issue-run',target=dict(binding_state='unbound',owner='',project=''),
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
         attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[])
-    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap))
+    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap))
 "#;
 
 #[test]
@@ -144,6 +162,27 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(!public.contains(&private_key), "Private launch key reached public snapshot");
     for private in ["key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
     assert!(ready.generated_images_supported);
+    client.command("/target".into()).unwrap();
+    while client.snapshot().results.last().unwrap().state != "pending-interaction" {
+        assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+    }
+    for request in [control::interaction::Request::Observe { api_version:1 },
+        control::interaction::Request::Respond { api_version:1, interaction_id:"exact-revision".into(),
+            action:control::interaction::Action::Select { choice_id:"visible-choice".into() } }] {
+        let admission=client.feature(control::features::Request::Interaction(request));
+        let control::features::Admission::Submitted { id, .. }=admission else { panic!("{admission:?}") };
+        loop {
+            let snapshot=client.snapshot();
+            if let Some(result)=snapshot.features.results.iter().find(|r| r.id==id && r.phase.as_deref()==Some("completed")) {
+                assert_eq!(result.state,"accepted"); break;
+            }
+            assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+        }
+    }
+    while client.snapshot().results[0].state == "pending-interaction" {
+        assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(client.snapshot().results[0].state,"rejected");
     let inventory = client.images_list().unwrap();
     assert!(inventory.incomplete.unwrap().detail.contains("GENERATED_IMAGE_RESOLVER_UNAVAILABLE"));
     let images = inventory.images;
@@ -184,7 +223,8 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
             }
         }
     }
-    assert!(client.snapshot().results.is_empty());
+    assert_eq!(client.snapshot().results.len(), 1);
+    assert_eq!(client.snapshot().results[0].state, "rejected");
     while client.snapshot().features.brief.is_some() {
         assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
     }

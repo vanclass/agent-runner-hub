@@ -22,6 +22,8 @@ pub mod work;
 pub mod brief;
 #[path = "run.rs"]
 pub mod run;
+#[path = "interaction.rs"]
+pub mod interaction;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;

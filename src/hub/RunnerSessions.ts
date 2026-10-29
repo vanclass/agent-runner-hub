@@ -34,12 +34,9 @@ export class RunnerSession {
   private cleanup?: Promise<void>;
   private closing?: Promise<boolean>;
   private pending: Uint8Array[] = [];
-  private lastInput: Promise<void> = Promise.resolve();
   private resizeTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
   private reservation?: symbol;
-  private inputUnsettled = false;
-  private assignmentWriting = false;
   private deliveryUnknown = false;
   private nativeState: 'unverified' | 'open' | 'closing' | 'settled' | 'failed' = 'unverified';
   private nativeFailure?: string;
@@ -68,6 +65,7 @@ export class RunnerSession {
       snapshot.state, snapshot.observation, this.control.work.activity, this.references.prepared]), observedAt: receivedAt };
   }
   retireTab() {
+    this.control.interaction.retire();
     this.control.tabClosing = true;
     this.control.work.suspendDiscovery();
     this.hubSelections = undefined;
@@ -114,9 +112,8 @@ export class RunnerSession {
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
     this.input = new RunnerInput(this.terminal, text => this.queue(new TextEncoder().encode(text)),
-      () => this.protocolChanged(), () => this.manualInput());
+      () => this.protocolChanged());
     this.terminal.onWriteParsed(() => this.protocolChanged());
-    this.terminal.onBinary(data => { if (this.manualInput()) this.queue(Uint8Array.from(data, char => char.charCodeAt(0))); });
     this.terminal.onResize(({ cols, rows }) => {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = setTimeout(() => {
@@ -138,35 +135,23 @@ export class RunnerSession {
     if (this.input && this.view.canSubmit !== this.input.canSubmit) this.update({ canSubmit: this.input.canSubmit });
   }
   private error(reason: unknown) { if (!this.disposed) this.update({ detail: errorText(reason) }); }
-  private manualInput() {
-    if (!this.foregroundInteraction) return false;
-    if (this.view.closing) return false;
-    if (this.assignmentWriting) return false;
-    if (this.reservation && this.control.assignmentLocked
-      && !this.control.snapshot.observation?.attention.foreground_interaction_active
-      && this.control.config.progress?.state !== 'pending-interaction'
-      && this.control.work.progress?.state !== 'pending-interaction') return false;
-    if (this.references.locked && !this.references.results.some(result => result.state === 'pending-interaction')) return false;
-    this.inputUnsettled = true;
-    return true;
-  }
   get foregroundInteraction() {
-    return this.control.observationFresh && (!!this.control.snapshot.observation?.attention.foreground_interaction_active
+    return this.control.interaction.view?.state === 'active' || this.control.interaction.writing
+      || this.control.observationFresh && (!!this.control.snapshot.observation?.attention.foreground_interaction_active
       || this.control.config.progress?.state === 'pending-interaction'
       || this.control.work.progress?.state === 'pending-interaction'
       || this.control.snapshot.results.some(r => r.state === 'pending-interaction')
       || this.references.results.some(r => r.state === 'pending-interaction'));
   }
   private syncTerminalInput() {
-    const enabled = this.foregroundInteraction && !this.assignmentWriting && !this.view.closing;
     // disableStdin also suppresses xterm's protocol replies; gate only user editing.
-    if (this.terminal.textarea) this.terminal.textarea.readOnly = !enabled;
-    this.terminal.options.cursorBlink = enabled;
+    if (this.terminal.textarea) this.terminal.textarea.readOnly = true;
+    this.terminal.options.cursorBlink = false;
   }
   get assignmentAvailable() {
     return !this.disposed && !this.view.closing && !this.reservation && !this.control.config.busy && !this.control.config.uncertain
       && !this.control.work.blocked && !this.control.work.busy
-      && !this.inputUnsettled && !this.view.submitting && !this.references.prepared
+      && !this.view.submitting && !this.references.prepared
       && !this.view.draft && this.view.status === 'running' && this.input.canSubmit;
   }
   get assignmentReserved() { return !!this.reservation; }
@@ -174,7 +159,7 @@ export class RunnerSession {
   private safeIdle(preserveDraft = false) {
     const control = this.control, snapshot = control.snapshot, observation = snapshot.observation;
     if (this.disposed || this.nativeState !== 'open' || !this.pty || !this.input.canSubmit || this.view.status !== 'running' || !control.observationFresh || !observation
-      || this.reservation || this.inputUnsettled || this.deliveryUnknown || this.view.submitting || !preserveDraft && this.view.draft
+      || this.reservation || this.deliveryUnknown || this.view.submitting || !preserveDraft && this.view.draft
       || control.pending || control.config.busy || control.config.uncertain || control.work.busy || control.work.blocked
       || !this.references.capable || this.references.prepared) return false;
     if (control.config.plan || Object.entries(control.config.draft).some(([key, value]) =>
@@ -209,7 +194,7 @@ export class RunnerSession {
   reserve(token: symbol) {
     if (this.disposed || this.view.closing || this.reservation || this.control.config.busy || this.control.config.uncertain
       || this.control.work.blocked || this.control.work.busy
-      || this.inputUnsettled || this.view.submitting || this.view.draft || this.references.prepared) return false;
+      || this.view.submitting || this.view.draft || this.references.prepared) return false;
     this.reservation = token;
     this.control.assignmentLocked = true;
     this.changed();
@@ -222,34 +207,31 @@ export class RunnerSession {
     this.changed();
   }
   async deliver(token: symbol, text: string) {
-    if (this.reservation !== token || this.inputUnsettled || this.disposed || this.view.closing
+    if (this.reservation !== token || this.disposed || this.view.closing
       || this.view.status !== 'running' || !this.pty || !this.input.canSubmit) {
       throw new HubError(msg('runtime.session.ownershipChanged'));
     }
-    this.assignmentWriting = true;
-    this.inputUnsettled = true;
     this.update({ submitting: true });
     try {
-      this.input.submit(text);
-      await this.lastInput;
-      return { delivered: true, detail: msg('runtime.session.delivered') };
+      this.control.assignmentLocked = false;
+      await this.control.command(text.trim());
+      return { delivered: true, detail: msg('interaction.commandSubmitted') };
     } catch (reason) {
       return { delivered: false, detail: msg('runtime.session.deliveryFailure', { diagnostic: errorText(reason) }) };
     } finally {
-      this.assignmentWriting = false;
+      this.control.assignmentLocked = !!this.reservation;
       this.update({ submitting: false });
     }
   }
   ownsAssignment(token: symbol, attachmentLease?: symbol) {
-    return this.reservation === token && !this.disposed && !this.view.closing && !this.inputUnsettled && !this.view.draft
+    return this.reservation === token && !this.disposed && !this.view.closing && !this.view.draft
       && !this.view.submitting && (!this.references.prepared || this.control.ownsAttachments(attachmentLease)) && this.view.status === 'running'
       && this.input.canSubmit && !this.control.config.uncertain && !this.control.work.blocked;
   }
   private queue(bytes: Uint8Array) {
     if (this.disposed || this.view.closing || this.view.status === 'exited' || this.view.status === 'failed') return;
     if (!this.pty) { this.pending.push(bytes); return; }
-    this.lastInput = this.pty.write(bytes);
-    void this.lastInput.catch(reason => this.error(reason));
+    void this.pty.write(bytes).catch(reason => this.error(reason));
   }
   open(location: string) {
     if (this.disposed) return Promise.resolve();
@@ -362,7 +344,8 @@ export class RunnerSession {
     if (this.view.closing) throw new HubError(msg('tabs.closing'));
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
     if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
-    if (this.reservation && !this.foregroundInteraction) throw new HubError(msg('runtime.session.entryReserved'));
+    if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
+    if (this.foregroundInteraction) throw new HubError(msg('interaction.usePanel'));
     if (this.submissionUncertain) throw new HubError(msg('runtime.session.previousUnknown'));
     if (briefRun && (this.hubSelections?.defaults.runMode !== 'issue-run' || this.foregroundInteraction)) return;
     const draft = this.view.draft ?? '';
@@ -373,34 +356,24 @@ export class RunnerSession {
       throw new HubError(msg('attachments.instructionOnly'));
     const defaults = copy(this.hubSelections?.defaults ?? {});
     if (ordinary && !this.foregroundInteraction) this.references.freeze();
-    let attempted = false, delivered = false;
+    let delivered = false;
     this.update({ submitting: true });
     try {
       if (ordinary) await this.control.fresh();
-      if (briefRun && this.foregroundInteraction) throw new HubError(msg('brief.unavailable'));
-      if (this.reservation && !this.foregroundInteraction) throw new HubError(msg('runtime.session.entryReserved'));
+      if (this.foregroundInteraction) throw new HubError(msg('interaction.usePanel'));
+      if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
       if (ordinary && !this.foregroundInteraction) {
         await this.submitInstruction(draft, defaults, briefRun);
         return;
       }
-      if (this.disposed || this.view.status !== 'running' || !this.input.canSubmit)
+      if (this.disposed || this.view.status !== 'running')
         throw new HubError(msg('runtime.session.inputUnavailable'));
-      this.assignmentWriting = true;
-      this.inputUnsettled = true;
-      attempted = true;
-      this.input.submit(draft);
-      const delivery = this.lastInput;
-      await delivery;
+      await this.control.command(draft.trim());
       delivered = true;
       this.update({ draft: '' });
     } catch (reason) {
-      if (attempted) {
-        this.deliveryUnknown = true;
-        throw new HubError(msg('runtime.session.deliveryUnknown'));
-      }
       throw reason;
     } finally {
-      this.assignmentWriting = false;
       if (ordinary && !this.deliveryUnknown) this.references.finishSubmission(delivered);
       this.update({ submitting: false });
     }
@@ -408,6 +381,7 @@ export class RunnerSession {
   closeTab() { return this.closing ??= this.settleClose(); }
   private async settleClose() {
     if (this.disposed) return this.nativeSettled;
+    this.control.interaction.close();
     this.control.tabClosing = true;
     this.update({ closing: true });
     try {

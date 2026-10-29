@@ -70,7 +70,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await foreground(page, 'pty-1', true);
     await page.evaluate(() => { window.__nativeFixture.writes.length = 0; });
     await page.keyboard.press('x');
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     await terminal.evaluate(node => {
       node.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
       node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', code: 'Home', isComposing: true, bubbles: true }));

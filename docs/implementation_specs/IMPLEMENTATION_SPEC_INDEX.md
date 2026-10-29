@@ -32,6 +32,8 @@
 
 - Independent IssueRun Brief staging and verified Run initiation: [Brief staging and Run](runner_terminals.md#independent-brief-staging-and-run); owners `../../src/hub/RunnerBrief.ts`, `../../src/hub/runnerRunContract.ts`, `../../src/hub/runnerSubmission.ts`, `../../src/hub/instructionKey.ts`, `../../src-tauri/src/desktop_terminal/brief.rs`, `../../src-tauri/src/desktop_terminal/run.rs` and native feature transport; focused checks `../../tests/e2e/brief-submission.mjs`, `../../tests/e2e/brief-initiation.spec.mjs`, `../../src-tauri/src/desktop_terminal/brief_tests.rs`, `../../src-tauri/src/desktop_terminal/run_tests.rs` and `../../src-tauri/tests/control_handles.rs`.
 
+- Read-only Runner logs, explicit authenticated commands and foreground confirmation/selection/text/Back/cancel: [Structured foreground interactions](runner_terminals.md#structured-foreground-interactions) and [Input and process observations](runner_terminals.md#input-and-process-observations); owners `../../src/hub/RunnerInteraction.ts`, `../../src/hub/RunnerInteractionPanel.tsx`, `../../src/hub/runnerInput.ts`, `../../src/hub/runnerControl.ts`, `../../src-tauri/src/desktop_terminal/interaction.rs` and existing session/transport owners; focused checks `../../tests/e2e/runner-interactions.mjs`, `../../src-tauri/src/desktop_terminal/interaction_tests.rs` and `../../src-tauri/tests/control_handles.rs`.
+
 ## 신규 domain 등록 조건
 
 - 반복 작업에서 책임 경계나 현재 동작을 다시 추론해야 하는 안정된 기능 영역이어야 한다.

@@ -11,7 +11,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   const pending = !!session.view.submitting;
   const [error, setError] = useState<HubText>('');
   const available = !session.view.closing && session.view.status === 'running' && session.view.canSubmit
-    && (!session.assignmentReserved || session.foregroundInteraction) && !session.submissionUncertain;
+    && !session.assignmentReserved && !session.foregroundInteraction && !session.submissionUncertain;
   async function submit(briefRun = false) {
     if (session.view.submitting) return;
     setError('');
@@ -34,7 +34,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
     <p className="composer-note">{pending ? t('composer.verifying')
       : session.submissionUncertain ? t('composer.uncertain')
       : session.assignmentReserved ? t('composer.reserved') : session.view.status === 'running'
-      ? available ? t(session.foregroundInteraction ? 'composer.reply' : 'composer.appends')
+      ? available ? t('composer.appends')
         : t('runtime.input.waiting')
       : t('runtime.session.notRunning')}</p>
   </section>;
