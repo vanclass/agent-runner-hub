@@ -10,6 +10,7 @@ type SpareSnapshot = Readonly<{
   installation: Readonly<RunnerInstallation> | null;
 }>;
 type Slot = { session: RunnerSession; generation: number; launched: boolean; restarting?: boolean;
+  settleRestart?: () => void;
   retained?: boolean; timer?: ReturnType<typeof setTimeout> };
 
 // Owns only speculative session lifetime. RunnerSession and the native registry still own all PTY resources.
@@ -71,7 +72,7 @@ export class RunnerSpare {
     if (!this.owns(slot)) return;
     slot.launched = true;
     if (restarting && (session.view.detail || session.view.status !== 'running')) return;
-    slot.restarting = false;
+    if (!restarting) slot.restarting = false;
     this.observe(slot);
   }
   private readinessReason(session: RunnerSession): HubText {
@@ -84,6 +85,7 @@ export class RunnerSpare {
       || !observation.selection.source || !observation.run_mode ? msg('runtime.entry.settingsIncomplete') : '');
   }
   private observe(slot: Slot) {
+    slot.settleRestart?.();
     if (!this.owns(slot)) return;
     if (slot.restarting) { this.changed(); return; }
     const session = slot.session;
@@ -110,6 +112,7 @@ export class RunnerSpare {
   private retire() {
     const slot = this.slot;
     this.slot = undefined;
+    slot?.settleRestart?.();
     clearTimeout(slot?.timer);
     const cleanup = slot?.retained ? (async () => {
       if (!slot.session.terminationSettled && !await slot.session.closeTab())
@@ -149,7 +152,9 @@ export class RunnerSpare {
   restartTarget(): RestartTarget | undefined {
     const slot = this.slot, root = this.current.installation?.root;
     if (!slot || !root) return;
-    return { name: 'Runner', ready: () => !this.owns(slot) || slot.session.reusableIdle,
+    return { name: 'Runner', ready: () => !this.owns(slot) || slot.session.restartReady && slot.session.reusableIdle,
+      revalidation: () => ({ ...slot.session.restartObservation,
+        key: JSON.stringify([this.owns(slot), slot.session.restartObservation.key]) }),
       restart: async () => {
         if (!this.owns(slot)) return 'removed';
         try { if (!await slot.session.verifyReusable() || !slot.session.reusableIdle) return 'pending'; }
@@ -174,8 +179,11 @@ export class RunnerSpare {
       await this.launch(root, slot.generation, true);
       if (!this.active(slot.generation)) { await slot.session.dispose(); return 'removed' as const; }
       const replacement = this.slot as Slot | undefined;
-      if (!replacement || replacement.session.view.status !== 'running' || replacement.session.view.detail)
-        throw new HubError(msg('restart.launchFailed'));
+      if (!replacement) throw new HubError(msg('restart.launchFailed'));
+      await this.waitForReplacement(replacement);
+      if (!this.owns(replacement)) { await slot.session.dispose(); return 'removed' as const; }
+      replacement.restarting = false;
+      this.observe(replacement);
       await slot.session.dispose();
       return 'restarted' as const;
     } catch (reason) {
@@ -190,6 +198,23 @@ export class RunnerSpare {
       this.retainFailure(slot.session, root);
       throw reason;
     }
+  }
+  private waitForReplacement(slot: Slot) {
+    return new Promise<void>((resolve, reject) => {
+      const finish = (reason?: HubText) => {
+        slot.settleRestart = undefined;
+        if (reason) reject(new HubError(reason)); else resolve();
+      };
+      slot.settleRestart = () => {
+        if (!this.owns(slot)) { finish(); return; }
+        const session = slot.session;
+        if (session.view.detail || ['failed', 'exited'].includes(session.view.status)
+          || session.control.snapshot.state === 'disconnected')
+          finish(session.view.detail || session.control.snapshot.detail || msg('restart.launchFailed'));
+        else if (slot.launched && session.restartReady && !this.readinessReason(session)) finish();
+      };
+      slot.settleRestart();
+    });
   }
   dispose() {
     if (this.current.state === 'disposed') return this.work;

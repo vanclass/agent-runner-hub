@@ -4,9 +4,11 @@ export type RestartOutcome = 'pending' | 'restarted' | 'removed';
 export type RestartTarget = Readonly<{
   name: string;
   ready: () => boolean;
+  revalidation?: () => Readonly<{ key: string; observedAt: number }>;
   restart: () => Promise<RestartOutcome>;
 }>;
-type RestartItem = { target: RestartTarget; state: RestartOutcome | 'running' | 'failed'; detail?: HubText };
+type RestartItem = { target: RestartTarget; state: RestartOutcome | 'running' | 'failed'; detail?: HubText;
+  waiting?: { key: string; retryAfter: number }; wasReady?: boolean };
 
 // One explicit, process-local capture. Session owners alone decide safe release and replacement.
 export class RunnerRestarts {
@@ -41,7 +43,13 @@ export class RunnerRestarts {
     let capacity = 2 - this.items.filter(item => item.state === 'running').length;
     for (const item of this.items) {
       if (!capacity) break;
-      if (item.state !== 'pending' || !item.target.ready()) continue;
+      if (item.state !== 'pending') continue;
+      const ready = item.target.ready(), observation = item.target.revalidation?.();
+      const becameReady = !observation && item.wasReady === false && ready;
+      item.wasReady = ready;
+      if (!ready || item.waiting && !becameReady && observation?.key === item.waiting.key
+        && observation.observedAt < item.waiting.retryAfter) continue;
+      if (item.waiting && !becameReady && !observation) continue;
       --capacity;
       item.state = 'running';
       void this.run(item);
@@ -51,6 +59,12 @@ export class RunnerRestarts {
     this.changed();
     try { item.state = await item.target.restart(); }
     catch (reason) { item.state = 'failed'; item.detail = errorText(reason); }
+    if (item.state === 'pending') {
+      // Ignore verification's own busy/receipt notifications. Existing authenticated observations
+      // can retry an unchanged transient failure at most once per five seconds, without a new timer.
+      item.waiting = { key: item.target.revalidation?.().key ?? '', retryAfter: performance.now() + 5000 };
+      item.wasReady = item.target.ready();
+    }
     if (!this.disposed) this.changed();
   }
   dispose() { this.disposed = true; }

@@ -16,6 +16,223 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   }
   const snapshot = page => page.evaluate(() => window.__restartOwner.restarts.snapshot);
   const cleanup = page => page.evaluate(() => window.__restartOwner.dispose());
+  async function replacement(page, path, mode = 'connecting') {
+    await owner(page, path === 'speculative' ? 0 : 1);
+    if (path === 'speculative') {
+      await page.evaluate(() => window.__restartOwner.setInstallation({ root: '/fixture/install', python: '/fixture/python' }));
+      await expect.poll(() => page.evaluate(() => window.__restartOwner.spareSnapshot.state)).toBe('ready');
+    } else if (path === 'hidden') {
+      await page.evaluate(() => window.__restartOwner.close(window.__originals[0].view.id));
+      await expect.poll(() => page.evaluate(() => window.__originals[0].reusableIdle)).toBe(true);
+    }
+    await page.evaluate(mode => {
+      window.__replacementMode = mode;
+      window.__replacementObservations = 0;
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        if (args.id === 'pty-2' && command === 'runner_observe') {
+          window.__replacementObservations++;
+          if (window.__replacementMode !== 'ready') return { state: window.__replacementMode, results: [] };
+        }
+        if (args.id === 'pty-2' && command === 'pty_resize' && window.__replacementMode === 'post-open')
+          throw new Error('replacement initialization failed');
+        return invoke(command, args);
+      };
+      window.__restartOwner.restartAll();
+    }, mode);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(2);
+  }
+
+  test('global restart unchanged eligible pending target cannot feed its own microtask loop', async ({ page }) => {
+    await owner(page, 0);
+    const result = await page.evaluate(async () => {
+      const { RunnerRestarts } = await import('/src/hub/RunnerRestarts.ts');
+      let calls = 0, ready = true;
+      const r = new RunnerRestarts(() => r.observe());
+      r.request([{ name: 'eligible', ready: () => ready, restart: async () => {
+        if (++calls === 8) r.dispose(); // Bound the regression probe even on the broken scheduler.
+        return 'pending';
+      } }]);
+      const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+      await flush();
+      for (let i = 0; i < 20; i++) r.observe();
+      await flush(); const unchanged = calls;
+      ready = false; r.observe(); await flush();
+      ready = true; r.observe(); await flush();
+      r.dispose(); return { unchanged, transitioned: calls };
+    });
+    expect(result).toEqual({ unchanged: 1, transitioned: 2 });
+    await cleanup(page);
+  });
+
+  for (const path of ['visible', 'hidden', 'speculative']) {
+    test(`global restart ${path} replacement awaits authenticated readiness after PTY open`, async ({ page }) => {
+      await replacement(page, path);
+      await expect.poll(() => page.evaluate(() => window.__replacementObservations)).toBeGreaterThan(1);
+      expect((await snapshot(page)).restarted).toBe(0);
+      expect((await snapshot(page)).running).toBe(1);
+      expect(await page.evaluate(() => window.__restartOwner.restartAll())).toBe(false);
+      expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
+      await page.evaluate(() => { window.__replacementMode = 'ready'; });
+      await expect.poll(async () => (await snapshot(page)).restarted).toBe(1);
+      expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
+      await cleanup(page);
+    });
+  }
+
+  test('global restart stale authenticated observations await recovery without losing the batch', async ({ page }) => {
+    await owner(page);
+    await page.evaluate(async () => {
+      const s = window.__originals[0], f = window.__nativeFixture.sessions.get('pty-1');
+      f.control.age = 3000; await s.control.fresh().catch(() => {});
+      window.__restartOwner.restartAll();
+    });
+    expect((await snapshot(page)).pending).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 0; });
+    await expect.poll(async () => (await snapshot(page)).restarted).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
+    await cleanup(page);
+  });
+
+  for (const fault of ['work.list', 'references.list', 'transient']) {
+    test(`global restart bounds ${fault} revalidation and recovers the original batch`, async ({ page }) => {
+      await owner(page);
+      await page.evaluate(fault => {
+        const s = window.__originals[0], verify = s.verifyRestart.bind(s);
+        s.control.work.suspendDiscovery();
+        window.__verificationCount = 0; window.__inspectionFailed = true;
+        s.verifyRestart = async () => {
+          window.__verificationCount++;
+          if (fault === 'transient' && window.__inspectionFailed) throw new Error('transient verification');
+          return verify();
+        };
+        const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+        native.invoke = async (command, args) => {
+          const op = command === 'runner_feature' ? args.request.request.operation : args.request?.operation;
+          if (window.__inspectionFailed && args.id === 'pty-1' && op === fault) {
+            if (fault !== 'work.list') throw new Error('inspection unavailable');
+            const admission = await invoke(command, args);
+            const fixture = window.__nativeFixture.sessions.get(args.id).feature;
+            Object.assign(fixture.features.results.find(r => r.id === admission.id),
+              { state: 'failure', phase: 'completed', reply: null, code: 'INSPECTION_UNAVAILABLE' });
+            return admission;
+          }
+          return invoke(command, args);
+        };
+        window.__restartOwner.restartAll();
+      }, fault);
+      await expect.poll(async () => (await snapshot(page)).pending === 1
+        && await page.evaluate(() => window.__verificationCount === 1)).toBe(true);
+      await page.waitForTimeout(1800);
+      expect(await page.evaluate(() => window.__verificationCount)).toBe(1);
+      expect((await snapshot(page)).pending).toBe(1);
+      expect(await page.evaluate(() => window.__originals[0].restartReady)).toBe(true);
+      expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+      await page.evaluate(() => { window.__inspectionFailed = false; });
+      await expect.poll(async () => (await snapshot(page)).restarted).toBe(1);
+      expect(await page.evaluate(() => window.__verificationCount)).toBe(2);
+      expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
+      await cleanup(page);
+    });
+  }
+
+  for (const path of ['visible', 'hidden', 'speculative']) {
+    for (const failure of ['disconnected', 'post-open']) {
+      test(`global restart ${path} replacement retains ${failure} failure without success`, async ({ page }) => {
+        await replacement(page, path, failure);
+        await expect.poll(async () => (await snapshot(page)).failed).toBe(1);
+        expect((await snapshot(page)).restarted).toBe(0);
+        expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
+        expect(await page.evaluate(() => window.__restartOwner.failures.length)).toBeGreaterThan(0);
+        if (path !== 'speculative') expect(await page.evaluate(() => {
+          const o = window.__restartOwner;
+          return o.failures.some(f => o.getFailure(f.id) === window.__originals[0]);
+        })).toBe(true);
+        if (path === 'speculative') {
+          const detail = await page.evaluate(() => window.__restartOwner.dispose().then(() => '', reason => reason.message));
+          expect(detail).toContain('cleanup');
+        } else await cleanup(page);
+      });
+    }
+  }
+
+  test('global restart unresolved native inventory stays single flight and the UI stays responsive', async ({ page }) => {
+    await owner(page);
+    await page.evaluate(() => {
+      window.__inventoryRequests = 0;
+      window.__originals[0].control.work.suspendDiscovery();
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        if (command === 'runner_feature' && args.request.request.operation === 'work.list') {
+          window.__inventoryRequests++;
+          await new Promise(resolve => { window.__releaseInventory = resolve; });
+        }
+        return invoke(command, args);
+      };
+      window.__restartOwner.restartAll();
+    });
+    await expect.poll(() => page.evaluate(() => window.__inventoryRequests)).toBe(1);
+    await page.waitForTimeout(1800);
+    expect(await page.evaluate(() => [window.__inventoryRequests, window.__restartOwner.restartAll()])).toEqual([1, false]);
+    expect((await snapshot(page)).running).toBe(1);
+    await page.evaluate(() => window.__releaseInventory());
+    await expect.poll(async () => (await snapshot(page)).restarted).toBe(1);
+    await cleanup(page);
+  });
+
+  test('global restart unknown inventory admission waits for authenticated inspection recovery', async ({ page }) => {
+    await owner(page);
+    await page.evaluate(() => {
+      window.__inventoryRequests = 0; window.__inspectionFailed = true;
+      window.__originals[0].control.work.suspendDiscovery();
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        if (command === 'runner_feature' && args.request.request.operation === 'work.list') {
+          window.__inventoryRequests++;
+          if (window.__inspectionFailed) throw new Error('unknown native admission');
+        }
+        return invoke(command, args);
+      };
+      window.__restartOwner.restartAll();
+    });
+    await expect.poll(async () => (await snapshot(page)).pending === 1
+      && await page.evaluate(() => window.__inventoryRequests === 1)).toBe(true);
+    await page.waitForTimeout(6000);
+    expect(await page.evaluate(() => window.__inventoryRequests)).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+    await page.evaluate(async () => { window.__inspectionFailed = false; await window.__originals[0].control.work.refreshInventory(); });
+    await expect.poll(async () => (await snapshot(page)).restarted).toBe(1);
+    await cleanup(page);
+  });
+
+  for (const path of ['visible', 'hidden', 'speculative']) {
+    test(`global restart ${path} pending replacement is revoked by shutdown`, async ({ page }) => {
+      await replacement(page, path);
+      await expect.poll(() => page.evaluate(() => window.__replacementObservations)).toBeGreaterThan(0);
+      await cleanup(page);
+      expect((await snapshot(page)).restarted).toBe(0);
+      expect((await snapshot(page)).removed).toBe(1);
+      expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
+    });
+  }
+
+  for (const path of ['visible', 'speculative']) {
+    test(`global restart ${path} replacement revocation cannot report delayed success`, async ({ page }) => {
+      await replacement(page, path);
+      await expect.poll(() => page.evaluate(() => window.__replacementObservations)).toBeGreaterThan(0);
+      await page.evaluate(path => {
+        const o = window.__restartOwner;
+        if (path === 'visible') o.close(window.__originals[0].view.id);
+        else o.setInstallation(null);
+        window.__replacementMode = 'ready';
+      }, path);
+      await expect.poll(async () => (await snapshot(page)).removed).toBe(1);
+      expect((await snapshot(page)).restarted).toBe(0);
+      expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
+      await cleanup(page);
+    });
+  }
 
   test('global restart captures visible hidden and speculative owners once and preserves identity and settings', async ({ page }) => {
     await owner(page, 3);

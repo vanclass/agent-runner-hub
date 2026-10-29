@@ -57,7 +57,14 @@ export class RunnerSession {
   get reusableIdle() { return !this.view.closing && this.idleForClose; }
   get restartReady() {
     const activity = this.control.work.activity;
-    return !this.view.closing && activity !== 'attention' && activity !== 'unknown' && this.safeIdle(true);
+    const inventory = this.control.work.progress;
+    return !this.view.closing && activity !== 'attention' && activity !== 'unknown'
+      && !(inventory?.operation === 'work.list' && inventory.state === 'outcome-unknown') && this.safeIdle(true);
+  }
+  get restartObservation() {
+    const { snapshot, receivedAt } = this.control;
+    return { key: JSON.stringify([this.view.status, this.view.closing,
+      snapshot.state, snapshot.observation, this.control.work.activity, this.references.prepared]), observedAt: receivedAt };
   }
   retireTab() {
     this.control.tabClosing = true;
@@ -71,7 +78,11 @@ export class RunnerSession {
     if (!this.safeIdle(preserveDraft)) return false;
     await this.control.fresh();
     if (!this.safeIdle(preserveDraft)) return false;
+    const discovery = this.control.work.discoverySupported;
     await this.control.work.refreshInventory();
+    const inventory = this.control.work.progress;
+    if (discovery && (inventory?.operation !== 'work.list' || inventory.state !== 'accepted'
+      || inventory.phase !== 'completed')) return false;
     if (!this.safeIdle(preserveDraft)) return false;
     await this.references.verifyAssignment();
     await this.control.fresh();
@@ -490,7 +501,6 @@ export class RunnerSessions {
   private readonly changed = () => {
     if (this.disposed) return;
     for (const [id, item] of this.retired) {
-      if (item.state === 'restarting' && item.session.reusableIdle) item.state = 'idle';
       if (item.state === 'idle' && !item.session.reusableIdle) void this.terminateRemoved(id);
       if (item.state === 'failed' && item.session.terminationSettled) {
         this.retired.delete(id);
@@ -529,6 +539,8 @@ export class RunnerSessions {
     const owns = () => !this.disposed && (hidden ? this.retired.get(id)?.session : this.sessions.get(id)) === session;
     return { name: session.view.name || 'Runner',
       ready: () => !owns() || session.restartReady || ['failed', 'exited'].includes(session.view.status),
+      revalidation: () => ({ ...session.restartObservation,
+        key: JSON.stringify([owns(), session.restartObservation.key]) }),
       restart: async () => {
         if (!owns()) return 'removed';
         if (['failed', 'exited'].includes(session.view.status)) throw new HubError(msg('restart.unavailable'));
@@ -543,6 +555,19 @@ export class RunnerSessions {
     .map(([id, item]) => ({ ...item.session.view, id, name: item.session.view.name || 'Runner' })); }
   view(id: string | null) {
     for (const session of this.sessions.values()) session.control.work.setViewed(session.view.id === id);
+  }
+  private waitForReplacement(session: RunnerSession, owns: () => boolean) {
+    return new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (!owns()) { unsubscribe(); resolve(); return; }
+        if (session.view.detail || ['failed', 'exited'].includes(session.view.status)
+          || session.control.snapshot.state === 'disconnected') {
+          unsubscribe(); reject(new HubError(session.view.detail || session.control.snapshot.detail || msg('restart.launchFailed')));
+        } else if (session.restartReady) { unsubscribe(); resolve(); }
+      };
+      const unsubscribe = this.subscribe(check);
+      check();
+    });
   }
   private async replaceForRestart(id: string, session: RunnerSession, hidden: boolean): Promise<RestartOutcome> {
     const root = hidden ? this.retired.get(id)!.root : session.tab.installationRoot;
@@ -563,16 +588,22 @@ export class RunnerSessions {
     }
     else { this.sessions.set(id, replacement); this.bindSelections(replacement, defaults); }
     this.changed();
-    await replacement.open(root);
-    if (this.disposed || (hidden ? this.retired.get(id)?.session : this.sessions.get(id)) !== replacement) {
+    const replacementOwned = () => !this.disposed
+      && (hidden ? this.retired.get(id)?.session : this.sessions.get(id)) === replacement;
+    try {
+      await replacement.open(root);
+      await this.waitForReplacement(replacement, replacementOwned);
+    } catch (reason) {
+      this.retainRestartFailure(session, root);
+      replacement.closeFailure(reason);
+      if (hidden && replacementOwned()) this.retired.get(id)!.state = 'restart-failed';
+      throw reason;
+    }
+    if (!replacementOwned()) {
       await session.dispose();
       return 'removed';
     }
-    if (replacement.view.status !== 'running' || replacement.view.detail) {
-      this.retainRestartFailure(session, root);
-      if (hidden) this.retired.get(id)!.state = 'restart-failed';
-      throw new HubError(msg('restart.launchFailed'));
-    }
+    if (hidden) this.retired.get(id)!.state = 'idle';
     await session.dispose();
     return 'restarted';
   }
@@ -692,6 +723,7 @@ export class RunnerSessions {
   }
   dispose() {
     this.disposed = true;
+    this.listeners.forEach(listener => listener());
     this.restarts.dispose();
     this.entry.attachments.dispose();
     return Promise.all([this.spare.dispose(), ...[...this.sessions.values(),
