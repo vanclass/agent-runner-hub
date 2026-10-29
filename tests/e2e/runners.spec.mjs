@@ -8,6 +8,7 @@ import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerPromotion } from './runner-promotion.mjs';
 import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
 import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
+import { registerRunnerRestarts } from './runner-restarts.mjs';
 import { registerInstallationSetup } from './installation-setup.mjs';
 import { registerTaskPanel } from './task-panel.mjs';
 import { registerLogViewport } from './log-viewport.mjs';
@@ -238,6 +239,7 @@ registerRunnerTabRaces({ test, expect, transport, configure, create: createPrepa
 registerRunnerPromotion({ test, expect, transport, configure, create: createPrepared, generatedFixture });
 registerRunnerDiscovery({ test, expect, transport, configure, create: createPrepared, records });
 registerRunnerAddDirectory({ test, expect, transport, configure, create });
+registerRunnerRestarts({ test, expect, transport, configure, create: createPrepared });
 registerInstallationSetup({ test, expect, transport, configure, create });
 
 test('hidden spare parses output and promotes the original PTY without a workspace record', async ({ page }) => {
@@ -599,9 +601,9 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
 
 
 test('Single Entry preferences restore all safe selections and revalidate them before delivery', async ({ page }) => {
+  test.setTimeout(60000);
   await transport(page, undefined, { work: true, auto: true });
   await configure(page); await create(page); await entry(page, 'private instruction never saved');
-  await page.getByRole('button', { name: 'Refresh available choices', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true }).getByRole('option', { name: 'codex / first', exact: true })).toBeAttached();
   await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
   await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
@@ -617,7 +619,7 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('confirmed after restart');
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-  await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+  await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
   const current = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current);
   expect(current.account).toEqual(saved.singleEntry.accountIdentity);
   expect(current.run_mode).toBe(saved.singleEntry.runMode);

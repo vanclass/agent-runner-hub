@@ -1,4 +1,12 @@
 {
+  "restart": {
+    "action": "Restart all Runners",
+    "progress": "Restarted {{restarted}} · restarting {{running}} · pending {{pending}} · failed {{failed}} · removed {{removed}}",
+    "pending": "Pending Runners wait for whole-work completion, safe idle and resolved input or confirmations.",
+    "unavailable": "Restart could not verify a running process. Review the retained Runner logs.",
+    "cleanupFailed": "Restart stopped: the old process has not confirmed cleanup. Its logs remain available under termination failures.",
+    "launchFailed": "The old process settled, but replacement launch failed. Original logs remain under termination failures; no work was replayed."
+  },
   "panel": {
     "title": "Task settings",
     "execution": "Execution Target",

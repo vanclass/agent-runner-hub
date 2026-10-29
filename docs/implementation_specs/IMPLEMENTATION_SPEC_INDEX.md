@@ -26,6 +26,8 @@
 
 - Sidebar add action and manual/Single Entry allocation order: [Hidden spare and promotion](runner_terminals.md#hidden-spare-and-promotion). Native browsing for installation and Direct Root drafts: [Directory input integration](runner_terminals.md#single-entry-assignment), with configuration draft behavior under [Runner session configuration](runner_session_config.md#draft-plan-and-apply). Source owners `../../src/hub/DirectoryInput.tsx`, `../../src/hub/RunnerLocation.tsx`, `../../src/hub/SingleEntryComposer.tsx` and the shell/allocation owners above; focused checks `../../tests/e2e/runner-add-directory.mjs`, registered by `../../tests/e2e/runners.spec.mjs`.
 
+- Explicit global restart, captured pending batches, safe whole-work release, replacement failure/log retention and stable tab/settings/draft identity: [Global Runner restart](runner_terminals.md#global-runner-restart); source owners `../../src/hub/RunnerRestarts.ts`, `../../src/hub/RunnerSessions.ts`, `../../src/hub/RunnerSpare.ts`, `../../src/hub/TaskPanel.tsx` and `../../src/hub/Hub.tsx`; focused simulations `../../tests/e2e/runner-restarts.mjs`, registered by `../../tests/e2e/runners.spec.mjs`. Native process ownership remains under the existing terminal route above.
+
 ## 신규 domain 등록 조건
 
 - 반복 작업에서 책임 경계나 현재 동작을 다시 추론해야 하는 안정된 기능 영역이어야 한다.

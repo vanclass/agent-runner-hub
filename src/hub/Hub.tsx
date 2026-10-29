@@ -82,6 +82,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
         control={sessions.get(selectedId ?? undefined)?.control}
+        restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
         scope={selectedId ?? 'single-entry'} />
     </div>
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
