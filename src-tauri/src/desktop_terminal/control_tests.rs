@@ -121,7 +121,7 @@ fn rejection_failure_and_uncertainty_remain_distinct_without_replay() {
 }
 #[test]
 fn slash_arguments_retain_exact_wire_text_and_original_request() {
-    for command in ["/brief  a brief with   spaces  ", "/recover IssueRun-42"] {
+    for command in ["/brief  a brief with   spaces  ", "\t/brief\t  body  ", "/recover --issue-run-id ir-42"] {
         let mut protocol = ready();
         let wire = protocol.request(Some(command.into()), "private").unwrap();
         let packet_value: Value = serde_json::from_slice(&wire).unwrap();

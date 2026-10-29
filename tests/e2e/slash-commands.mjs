@@ -3,9 +3,13 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
   for (const path of ['Runner', 'Single Entry']) {
     for (const [text, fault] of [
       ['/status', 'completed'], ['/brief  a brief with   spaces  ', 'completed'],
-      ['/recover IssueRun-42', 'completed'], ['/b alias arguments', 'completed'], ['/r IssueRun-42', 'completed'],
+      ['/recover --issue-run-id ir-42', 'completed'], ['/b alias arguments', 'completed'], ['/r --issue-run-id ir-42', 'completed'],
+      ['  /status  ', 'completed'], ['\t/brief\t  indented\t body  ', 'completed'],
+      ['/brief\targ', 'completed'], ['/project configure', 'completed'],
+      ['/pc --help', 'completed'], ['/project configure-more', 'invalid'],
+      ['/project blocked', 'invalid'], ['prefix /status', 'invalid'], ['/unknown', 'invalid'],
       ['/briefly x', 'invalid'], ['/disabled x', 'invalid'], ['/d x', 'invalid'], ['/brief=x', 'invalid'],
-      ['/brief\nsecond', 'invalid'], ['/brief\targ', 'invalid'],
+      ['/brief\nsecond', 'invalid'], ['/brief\rsecond', 'invalid'], ['/brief\0arg', 'invalid'],
       ...['not-sent', 'outcome-unknown', 'queued', 'disconnect', 'rejected'].map(f => ['/brief  retained  ', f]),
     ]) {
       test(`slash ${path} ${fault} ${JSON.stringify(text)}`, async ({ page }) => {
@@ -18,6 +22,8 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
               { text: '/brief', aliases: ['/b'], enabled: true },
               { text: '/recover', aliases: ['/r'], enabled: true },
               { text: '/disabled', aliases: ['/d'], enabled: false },
+              { text: '/project configure', aliases: ['/pc'], enabled: true },
+              { text: '/project blocked', aliases: [], enabled: false },
             ].map(c => ({ id: c.text, visible: true, parent_id: null, children: [], description: '', disabled_reason: '', ...c })));
           }
           const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
@@ -41,7 +47,8 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
           await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
         }
         if (fault === 'invalid') {
-          await expect(input).toHaveValue(text);
+          // Single Entry restores its draft through textarea.value, which normalizes CR to LF.
+          await expect(input).toHaveValue(path === 'Single Entry' ? text.replace(/\r\n?/g, '\n') : text);
           expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]); return;
         }
         await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.map(c => c.command))).toEqual([text]);

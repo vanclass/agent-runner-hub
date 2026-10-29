@@ -181,11 +181,18 @@ export class RunnerControl {
   async command(text: string) {
     if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new HubError(msg('runtime.control.unavailable'));
     if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
-    const name = /^(\/[^\s]+)(?: |$)/.exec(text)?.[1];
+    if (/[\x00-\x08\n\r\x0e-\x1b\x7f]/.test(text)) throw new HubError(msg('runtime.control.unavailable'));
+    // Python str.isspace() boundaries used by Runner; match identity only, never arguments.
+    const whitespace = /[\t-\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+    let start = 0;
+    while (start < text.length && whitespace.test(text[start])) start++;
+    const candidate = text.slice(start);
     const commands = flattenCommands(this.snapshot.observation?.commands ?? []);
-    const command = commands.find(command => command.text === name)
-      ?? commands.find(command => command.aliases.includes(name ?? ''));
-    if (/[\x00-\x1f\x7f]/.test(text)) throw new HubError(msg('runtime.control.unavailable'));
+    const matches = commands.flatMap(command => [command.text, ...command.aliases]
+      .filter(name => name.startsWith('/') && candidate.startsWith(name)
+        && (candidate.length === name.length || whitespace.test(candidate[name.length])))
+      .map(name => ({ command, name })));
+    const command = matches.sort((a, b) => b.name.length - a.name.length)[0]?.command;
     if (!command?.visible || !command.enabled) throw new HubError(msg('runtime.control.unavailable'));
     this.sending = true; this.changed();
     try {
