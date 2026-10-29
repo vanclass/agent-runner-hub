@@ -5,7 +5,7 @@
 - This document owns application responsibility boundaries between the UI shell, native terminal sessions and authenticated Runner control.
 
 ## Systems
-- Bootstrap: `src/main.ts` keeps the existing framework entry; `src/frameworks/react.tsx` mounts the Hub.
+- Bootstrap: `index.html` loads project-owned `src/hub/entry.tsx`, which mounts the Hub with StrictMode and HMR unmount cleanup. `src/main.ts` and `src/frameworks/react.tsx` retain Runner-managed framework integration independently of the Hub entry.
 - Hub composition: `src/hub/Hub.tsx` composes installation configuration and the session registry, owns context selection, and routes display-name updates. Stable identities remain separate from editable names.
 - Navigation: `src/hub/Sidebar.tsx` owns sidebar layout, row rendering, keyboard navigation, and temporary inline-edit drafts. Single Entry remains above the independently scrolling Runner list.
 - Workspace: `src/hub/Workspace.tsx` composes the selected context header, scoped settings, terminal view and instruction composer. `RunnerSessions.ts` owns terminal resources independently of workspace mounting; details belong to the [terminal specification](implementation_specs/runner_terminals.md).

@@ -8,7 +8,7 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.getByRole('button', { name: language === 'en' ? (theme === 'light' ? 'Light' : 'Black') : (theme === 'light' ? '라이트' : '블랙'), exact: true }).click();
       await expect(dialog(page)).toBeVisible();
-      await expect(dialog(page).locator('input')).toHaveValue('');
+      await expect(dialog(page).getByRole('textbox')).toHaveValue('');
       await expect(dialog(page).locator('button[type=submit]')).toBeDisabled();
       await page.keyboard.press('Escape');
       await expect(dialog(page)).toBeVisible();
@@ -21,19 +21,19 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
         expect(box.width).toBeLessThanOrEqual(500);
         expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThan(2);
         await expect(dialog(page).locator('button[type=submit]')).toBeInViewport();
-        await dialog(page).locator('input').focus();
+        await dialog(page).getByRole('textbox').focus();
         for (let i = 0; i < 8; ++i) {
           await page.keyboard.press('Tab');
           expect(await page.evaluate(() => !!document.activeElement.closest('dialog'))).toBe(true);
         }
         await info.attach(`setup-${language}-${theme}-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
       }
-      await dialog(page).locator('input').fill('/missing');
+      await dialog(page).getByRole('textbox').fill('/missing');
       await dialog(page).locator('button[type=submit]').click();
       await expect(dialog(page).getByRole('alert')).toContainText('managed Python');
       expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
-      await dialog(page).locator('input').fill('/fixture/workspace/agent_runner');
-      await dialog(page).locator('input').press('Enter');
+      await dialog(page).getByRole('textbox').fill('/fixture/workspace/agent_runner');
+      await dialog(page).getByRole('textbox').press('Enter');
       await expect(dialog(page)).toHaveCount(0);
       await expect(page.locator('.single-entry')).toHaveAttribute('aria-current', 'page');
       expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.installation'))).toBe('/fixture/install');
@@ -49,10 +49,10 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
       catch (reason) { return String(reason); }
     });
     expect(originalFailure).toContain("Cannot read properties of undefined (reading 'invoke')");
-    await dialog(page).locator('input').fill('C:\\manual paste');
+    await dialog(page).getByRole('textbox').fill('C:\\manual paste');
     await dialog(page).getByRole('button', { name: 'Browse for AgentRunner location', exact: true }).click();
     await expect(dialog(page).getByRole('alert')).toContainText('Tauri desktop Hub');
-    await expect(dialog(page).locator('input')).toHaveValue('C:\\manual paste');
+    await expect(dialog(page).getByRole('textbox')).toHaveValue('C:\\manual paste');
     await dialog(page).locator('button[type=submit]').click();
     await expect(dialog(page).getByRole('alert').last()).toContainText('run.cmd');
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
@@ -75,7 +75,7 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
     });
     await page.goto('/');
     await expect(dialog(page).getByRole('status')).toContainText('Verifying');
-    await expect(dialog(page).locator('input')).toBeDisabled();
+    await expect(dialog(page).getByRole('textbox')).toBeDisabled();
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0].name)).toBe('Retained Runner');
     await page.evaluate(() => window.__finishInstallation());
@@ -89,11 +89,11 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
   test('installation setup: later changes preserve tabs and failed drafts, valid restart bypasses setup', async ({ page }) => {
     await transport(page); await configure(page); await create(page);
     await settings(page);
-    await dialog(page).locator('input').fill('/missing');
+    await dialog(page).getByRole('textbox').fill('/missing');
     await dialog(page).locator('button[type=submit]').click();
     await expect(dialog(page).getByRole('alert')).toContainText('managed Python');
     expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.installation'))).toBe('/fixture/install');
-    await dialog(page).locator('input').fill('/fixture/other');
+    await dialog(page).getByRole('textbox').fill('/fixture/other');
     await dialog(page).locator('button[type=submit]').click();
     await expect(dialog(page).getByRole('status')).toContainText('Verified');
     await page.keyboard.press('Escape');
