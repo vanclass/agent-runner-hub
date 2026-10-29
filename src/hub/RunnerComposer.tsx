@@ -8,7 +8,7 @@ import { instructionKey } from './instructionKey';
 export function RunnerComposer({ session }: { session: RunnerSession }) {
   useHubTranslation();
   const text = session.view.draft ?? '';
-  const pending = !!session.view.submitting;
+  const pending = !!session.view.submitting || session.control.commandPending;
   const [error, setError] = useState<HubText>('');
   const available = !session.view.closing && session.view.status === 'running' && session.view.canSubmit
     && !session.assignmentReserved && !session.foregroundInteraction && !session.submissionUncertain;
@@ -30,6 +30,7 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
         onClick={() => void submit()}>{pending ? t('composer.sending') : t('composer.send')} <span aria-hidden="true">↗</span></button></div>
     </ComposerAttachments>
     {error && <p role="alert">{tr(error)}</p>}
+    {session.view.detail && <p role="status">{tr(session.view.detail)}</p>}
     {session.control.brief.detail && <p role="status">{tr(session.control.brief.detail)}</p>}
     <p className="composer-note">{pending ? t('composer.verifying')
       : session.submissionUncertain ? t('composer.uncertain')

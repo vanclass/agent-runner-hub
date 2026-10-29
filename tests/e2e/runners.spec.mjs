@@ -17,6 +17,7 @@ import { registerLogViewport } from './log-viewport.mjs';
 import { registerHubSelectionUI } from './hub-selection-ui.mjs';
 import { registerComposerAttachments } from './composer-attachments.mjs';
 import { registerRunnerInteractions } from './runner-interactions.mjs';
+import { registerSlashCommands } from './slash-commands.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
@@ -24,6 +25,7 @@ registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
 registerComposerAttachments({ test, expect, transport, configure, create: createWork });
 registerRunnerInteractions({ test, expect, transport, configure, create: createWork });
+registerSlashCommands({ test, expect, transport, configure, create, entry });
 
 async function transport(page, freshTarget, referenceOptions) {
   await page.addInitScript(({ freshTarget, referenceOptions }) => {

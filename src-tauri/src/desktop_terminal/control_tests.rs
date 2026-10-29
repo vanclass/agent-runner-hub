@@ -120,6 +120,24 @@ fn rejection_failure_and_uncertainty_remain_distinct_without_replay() {
     assert_eq!(protocol.next, 2);
 }
 #[test]
+fn slash_arguments_retain_exact_wire_text_and_original_request() {
+    for command in ["/brief  a brief with   spaces  ", "/recover IssueRun-42"] {
+        let mut protocol = ready();
+        let wire = protocol.request(Some(command.into()), "private").unwrap();
+        let packet_value: Value = serde_json::from_slice(&wire).unwrap();
+        assert_eq!(packet_value["command"], command);
+        let request_id = packet_value["request_id"].as_u64().unwrap();
+        protocol.response(packet(request_id, "accepted", "queued")).unwrap();
+        assert_eq!(protocol.snapshot.results[0].state, "queued");
+        protocol.disconnect("fixture disconnect");
+        let result = &protocol.snapshot.results[0];
+        assert_eq!(result.id, request_id);
+        assert_eq!(result.command, command);
+        assert_eq!(result.state, "outcome-unknown");
+        assert_eq!(protocol.next, request_id);
+    }
+}
+#[test]
 fn malformed_or_cross_session_responses_do_not_change_canonical_state() {
     for mutation in ["session_id", "process_id", "connection_id", "phase", "observation"] {
         let mut protocol = ready();

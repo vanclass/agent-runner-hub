@@ -135,7 +135,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await page.evaluate(() => {
       window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true;
     });
-    await expect(page.getByRole('alert').filter({ hasText: 'Brief → Run unavailable' })).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: 'Use the Runner interaction controls for foreground replies.' })).toBeVisible();
     await expect(input(page)).toHaveValue('Brief must stay out of PTY');
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);

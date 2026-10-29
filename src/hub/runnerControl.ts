@@ -38,6 +38,9 @@ export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean;
   generatedImagesSupported?: boolean; features?: FeatureSnapshot };
 
+export type CommandAttempt = { admission: FeatureAdmission; result?: ControlResult;
+  state: 'pending' | 'completed' | 'not-sent' | 'unknown' };
+
 export class RunnerControl {
   readonly interaction: RunnerInteraction;
   readonly images: RunnerImages;
@@ -49,7 +52,9 @@ export class RunnerControl {
   assignmentLocked = false;
   tabClosing = false;
   receivedAt = 0;
-  private admissionAfter = 0;
+  private commandAttempt?: CommandAttempt;
+  get commandPending() { return this.commandAttempt?.state === 'pending'; }
+  get commandUnresolved() { return !!this.commandAttempt && ['pending', 'unknown'].includes(this.commandAttempt.state); }
   hidden = new Set<string>();
   order: string[] = [];
   private id?: string;
@@ -129,6 +134,7 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      this.observeCommand();
       if (!this.tabClosing) this.interaction.observe(this.id, snapshot.state, snapshot.features);
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
@@ -136,7 +142,6 @@ export class RunnerControl {
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
-      if (snapshot.results.some(result => result.id > this.admissionAfter)) this.sending = false;
       this.changed();
       if (snapshot.state === 'disconnected') return;
       this.timer = setTimeout(() => void this.refresh(), controlTiming.pollMs);
@@ -152,7 +157,7 @@ export class RunnerControl {
   }
   private get otherControlBusyExceptAttachments() {
     return this.interaction.writing || this.interaction.view?.state === 'active'
-      || this.sending || this.referenceAdmissions > 0
+      || this.sending || this.commandUnresolved || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }
@@ -176,17 +181,37 @@ export class RunnerControl {
   async command(text: string) {
     if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new HubError(msg('runtime.control.unavailable'));
     if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
-    const command = flattenCommands(this.snapshot.observation?.commands ?? []).find(command =>
-      command.visible && (command.text === text || command.aliases.includes(text)));
-    if (!command?.enabled) throw new HubError(msg('runtime.control.unavailable'));
+    const name = /^(\/[^\s]+)(?: |$)/.exec(text)?.[1];
+    const commands = flattenCommands(this.snapshot.observation?.commands ?? []);
+    const command = commands.find(command => command.text === name)
+      ?? commands.find(command => command.aliases.includes(name ?? ''));
+    if (/[\x00-\x1f\x7f]/.test(text)) throw new HubError(msg('runtime.control.unavailable'));
+    if (!command?.visible || !command.enabled) throw new HubError(msg('runtime.control.unavailable'));
     this.sending = true; this.changed();
-    this.admissionAfter = Math.max(0, ...this.snapshot.results.map(result => result.id));
     try {
       const admission = await invoke<FeatureAdmission>('runner_command', { id: this.id, command: text });
-      if (admission?.state === 'not-sent' || admission?.state === 'outcome-unknown')
-        throw new HubError(admission.detail);
+      const attempt: CommandAttempt = { admission, state: admission.state === 'submitted' ? 'pending'
+        : admission.state === 'not-sent' ? 'not-sent' : 'unknown' };
+      this.commandAttempt = attempt;
+      this.sending = false;
+      this.observeCommand(); this.changed();
+      return attempt;
     }
-    catch (reason) { this.sending = false; this.changed(); throw reason; }
+    catch (reason) {
+      const attempt: CommandAttempt = { admission: { state: 'outcome-unknown', detail: String(reason) }, state: 'unknown' };
+      this.commandAttempt = attempt;
+      this.sending = false; this.changed(); return attempt;
+    }
+  }
+  private observeCommand() {
+    const attempt = this.commandAttempt;
+    if (!attempt || attempt.admission.state !== 'submitted') return;
+    const id = attempt.admission.id;
+    const result = this.snapshot.results.find(result => result.id === id);
+    if (result) attempt.result = result;
+    if (result?.phase === 'completed' && ['accepted', 'rejected', 'failure'].includes(result.state))
+      attempt.state = 'completed';
+    else if (result?.state === 'outcome-unknown' || this.snapshot.state === 'disconnected') attempt.state = 'unknown';
   }
   async stageImage(blob: Blob, lease?: symbol) {
     const id = this.id;
@@ -238,6 +263,7 @@ export class RunnerControl {
           ? { ...result, state: 'outcome-unknown' } : result) },
       results: final.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
         ? { ...result, state: 'outcome-unknown' } : result) };
+    this.observeCommand();
     this.brief.observe(this.snapshot);
     if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
     this.config.close();

@@ -1,7 +1,7 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { HubSelections } from './HubSelections';
 import type { RunnerSession } from './RunnerSessions';
-import { commandNamed, type RunnerObservation } from './runnerControl';
+import { commandNamed, type RunnerObservation, type CommandAttempt } from './runnerControl';
 import { submitConfiguredWork } from './runnerSubmission';
 import { copy, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
@@ -48,7 +48,7 @@ export class SingleEntry {
   detail: HubText = '';
   runnerId?: string;
   evidence: HubText[] = [];
-  private active?: { session: RunnerSession; token: symbol; attempt?: WorkAttempt };
+  private active?: { session: RunnerSession; token: symbol; attempt?: WorkAttempt; command?: CommandAttempt };
   constructor(private readonly list: () => readonly RunnerSession[],
     private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
@@ -128,12 +128,12 @@ export class SingleEntry {
           throw new HubError(msg('attachments.instructionOnly'));
         attempted = true;
         const result = await session.deliver(token, text);
-        this.phase = result.delivered ? 'delivered' : 'unknown';
+        const command = result.attempt;
+        attempted = !!command && command.state !== 'not-sent';
+        this.active.command = command;
+        this.phase = !attempted ? 'incomplete' : command?.state === 'pending' ? 'writing' : 'unknown';
         this.detail = result.detail;
-        if (result.delivered) {
-          this.draft = ''; session.release(token); this.active = undefined;
-          this.attachments.finishSubmission(false);
-        }
+        this.observe();
         return;
       }
       if (!session.control.work.supported) throw new HubError(msg('work.unavailable'));
@@ -225,6 +225,20 @@ export class SingleEntry {
   }
   observe() {
     const active = this.active, attempt = active?.attempt;
+    const command = active?.command;
+    if (active && command && ['writing', 'unknown'].includes(this.phase)) {
+      if (command.state === 'unknown') this.phase = 'unknown';
+      if (command.state !== 'completed') return;
+      this.attachments.finishSubmission(false);
+      if (command.result?.state === 'accepted') {
+        this.phase = 'delivered'; this.draft = '';
+        active.session.release(active.token); this.active = undefined;
+      } else {
+        this.phase = 'incomplete';
+        this.detail = msg('work.rejected', { code: command.result?.code || '' });
+      }
+      this.changed(); return;
+    }
     if (this.phase !== 'unknown' || !active || !attempt) return;
     if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id)) {
       this.attachments.finishSubmission(false);

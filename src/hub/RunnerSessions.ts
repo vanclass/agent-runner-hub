@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { openPty, type Pty } from '../../.runner/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
-import { RunnerControl, commandNamed, type ControlSnapshot } from './runnerControl';
+import { RunnerControl, commandNamed, type ControlSnapshot, type CommandAttempt } from './runnerControl';
 import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
 import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
@@ -23,6 +23,7 @@ export class RunnerSession {
   readonly terminal = new Terminal({ cursorBlink: false, scrollback: 10000 });
   hubSelections?: HubSelections;
   private submittedAttempt?: { attempt: WorkAttempt; draft: string };
+  private submittedCommand?: { attempt: CommandAttempt; draft: string };
   searchQuery = '';
   readonly fit = new FitAddon();
   readonly search = new SearchAddon();
@@ -43,7 +44,7 @@ export class RunnerSession {
   private get nativeSettled() { return this.nativeState === 'settled'; }
   get terminationSettled() { return this.nativeSettled; }
   private get exitObserved() { return this.nativeState === 'settled' || this.nativeState === 'failed'; }
-  get submissionUncertain() { return this.deliveryUnknown || this.control.brief.blocked; }
+  get submissionUncertain() { return this.deliveryUnknown || this.control.commandUnresolved || this.control.brief.blocked; }
   view: RunnerView;
   private tabRecord?: RunnerTabRecord;
   private presentationRetired = false;
@@ -214,10 +215,12 @@ export class RunnerSession {
     this.update({ submitting: true });
     try {
       this.control.assignmentLocked = false;
-      await this.control.command(text.trim());
-      return { delivered: true, detail: msg('interaction.commandSubmitted') };
+      const attempt = await this.control.command(text);
+      return { attempt, detail: attempt.admission.state === 'submitted' ? msg('interaction.commandSubmitted')
+        : attempt.admission.state === 'not-sent' ? msg('runtime.entry.unsent', { reason: attempt.admission.detail })
+        : msg('runtime.session.deliveryFailure', { diagnostic: attempt.admission.detail }) };
     } catch (reason) {
-      return { delivered: false, detail: msg('runtime.session.deliveryFailure', { diagnostic: errorText(reason) }) };
+      return { detail: msg('runtime.entry.unsent', { reason: errorText(reason) }) };
     } finally {
       this.control.assignmentLocked = !!this.reservation;
       this.update({ submitting: false });
@@ -282,6 +285,14 @@ export class RunnerSession {
   rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting && !this.view.closing) this.update({ draft }); }
   private observeSubmission() {
+    const command = this.submittedCommand;
+    if (command && command.attempt.state === 'completed') {
+      if (command.attempt.result?.state === 'accepted' && this.view.draft === command.draft)
+        this.view = { ...this.view, draft: '' };
+      if (command.attempt.result?.state !== 'accepted') this.view = { ...this.view,
+        detail: msg('work.rejected', { code: command.attempt.result?.code || '' }) };
+      this.submittedCommand = undefined;
+    }
     const submitted = this.submittedAttempt;
     if (!submitted || !this.deliveryUnknown) return;
     const attempt = submitted.attempt;
@@ -368,9 +379,12 @@ export class RunnerSession {
       }
       if (this.disposed || this.view.status !== 'running')
         throw new HubError(msg('runtime.session.inputUnavailable'));
-      await this.control.command(draft.trim());
-      delivered = true;
-      this.update({ draft: '' });
+      const attempt = await this.control.command(draft);
+      this.submittedCommand = { attempt, draft };
+      this.update({ detail: attempt.admission.state === 'submitted' ? msg('interaction.commandSubmitted')
+        : attempt.admission.state === 'not-sent' ? msg('runtime.entry.unsent', { reason: attempt.admission.detail })
+        : msg('runtime.session.deliveryFailure', { diagnostic: attempt.admission.detail }) });
+      this.observeSubmission();
     } catch (reason) {
       throw reason;
     } finally {
