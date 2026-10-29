@@ -1,6 +1,7 @@
 import { useHubTranslation, t } from './i18n';
 import { useEffect, useRef, useState } from 'react';
 import type { RunnerSession } from './RunnerSessions';
+import { RunnerInstructions } from './RunnerWorkStatus';
 
 export function RunnerTerminal({ session, theme }: { session: RunnerSession; theme: 'light' | 'black' }) {
   useHubTranslation();
@@ -19,6 +20,7 @@ export function RunnerTerminal({ session, theme }: { session: RunnerSession; the
       <button type="button" onClick={() => session.search.findPrevious(query)}>{t('terminal.previous')}</button>
       <button type="button" onClick={() => session.search.findNext(query)}>{t('terminal.next')}</button>
     </div>
+    <RunnerInstructions work={session.control.work} />
     <div className="terminal-host" ref={host} />
   </section>;
 }

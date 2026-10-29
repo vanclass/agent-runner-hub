@@ -35,6 +35,11 @@
 .terminal-tools input { padding: 3px; }
 .terminal-host { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .terminal-host .xterm { height: 100%; }
+/* 지시문 표시 영역의 최대 높이다. 늘리면 지시문이 넓어지고, 줄이면 터미널 공간이 넓어진다. */
+.runner-instructions { flex: 0 1 auto; max-height: 35%; overflow-y: auto; }
+.runner-instruction { border-bottom: 1px solid var(--border); }
+.runner-instruction pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.runner-instruction p { color: var(--muted); font-size: smaller; }
 .status-dot.starting { background: var(--attention); }
 .status-dot.failed { background: var(--attention); border: 1px solid var(--text); }
 .hub button:focus-visible, .hub input:focus-visible, .hub select:focus-visible, .hub textarea:focus-visible {

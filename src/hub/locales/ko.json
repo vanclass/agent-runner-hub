@@ -76,6 +76,7 @@
     "unavailable": "인증된 work v1을 사용할 수 없거나 처리 중 또는 미완료 작업을 소유하고 있습니다. 지시문을 재제출하지 않았습니다.",
     "refresh": "작업 상태 새로 고침",
     "status": "Runner 작업",
+    "instructions": "제출한 지시문",
     "startEvidence": "확인된 시작 이벤트: {{event}}",
     "noStart": "시작 미확인",
     "queued": "대기 중 · 접수 및 시작 미확인",

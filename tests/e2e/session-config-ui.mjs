@@ -156,7 +156,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
           operation: 'references.register', state: 'outcome-unknown' });
       }, fault);
       await composer(page).fill('references unsent'); await send(page);
-      await expect(page.locator('.composer-area [role=alert]')).toBeVisible({ timeout: 30000 });
+      await expect(page.locator('.composer-area > [role=alert]')).toBeVisible({ timeout: 30000 });
       await expect(composer(page)).toHaveValue('references unsent');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
     });
@@ -164,9 +164,17 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
   test('session reference preflight still verifies selected inventory before API work', async ({ page }) => {
     await open(page, { clipboard: true });
     await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.length)).toBe(1);
+    await expect(page.locator('.attachment-chip')).toContainText('Staged · unregistered');
+    expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.register'))).toEqual([]);
     await composer(page).fill('with reference'); await send(page);
     await expect(composer(page)).toHaveValue('', { timeout: 30000 });
+    const registration = await page.evaluate(() => {
+      const s = window.__nativeFixture.sessions.get('pty-1');
+      return { receipts: s.control.references.results.filter(r => r.state === 'registered'), inventory: s.items };
+    });
+    expect(registration.receipts).toHaveLength(1); expect(registration.inventory).toHaveLength(1);
+    expect(registration.receipts[0].registrationStatus).toBe('registered');
+    expect(registration.inventory[0].reference_id).toBe(registration.receipts[0].reference.reference_id);
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit'))).toHaveLength(1);
     expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.list').length)).toBeGreaterThan(1);
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);

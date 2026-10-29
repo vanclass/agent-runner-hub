@@ -1,4 +1,7 @@
+import { registerInstructionPresentation } from './instruction-presentation.mjs';
+
 export function registerSingleEntryWork({ test, expect, transport, configure, create }) {
+  registerInstructionPresentation({ test, expect, transport, configure, create });
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   const assign = page => page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   async function ready(page, options = {}) {
@@ -116,8 +119,10 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await ready(page);
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.holdSubmit = true; });
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('uncertain once'); await assign(page);
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length), { timeout: 35000 }).toBe(1);
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
+    await expect(page.locator('.runner-instruction pre')).toHaveText('uncertain once');
+    await expect(page.locator('.runner-instruction')).toContainText('Outcome unknown');
     await home(page);
     await expect(page.getByRole('alert').filter({ hasText: 'automatic retry and reassignment are blocked' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('uncertain once');

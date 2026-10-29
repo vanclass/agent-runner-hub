@@ -10,6 +10,7 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('old tab work');
     await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
     await expect(page.locator('.runner-work-status')).toContainText('Verified start event', { timeout: 35000 });
+    await expect(page.locator('.runner-instruction pre')).toHaveText('old tab work');
     await expect(page.locator('.config-receipt')).not.toHaveCount(0);
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.mode = 'succeeded'; });
@@ -21,6 +22,7 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     const next = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0]);
     expect(next.id).not.toBe(old.id); expect(next.createdOrder).toBeGreaterThan(old.createdOrder);
     await expect(page.locator('.runner-work-status, .config-receipt, .unread-completion, .status-dot.completed')).toHaveCount(0);
+    await expect(page.locator('.runner-instruction')).toHaveCount(0);
     await page.locator('.generated-images summary').click();
     await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
     await expect(page.locator('.generated-images')).toContainText('ownership by this new tab could not be verified');
@@ -39,6 +41,8 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     await expect(page.locator('.runner-work-status')).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.locator('.config-receipt')).not.toHaveCount(0);
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(2);
+    await expect(page.locator('.runner-instruction')).toHaveCount(1);
+    await expect(page.locator('.runner-instruction pre')).toHaveText('new tab work');
   });
   for (const delayed of ['list', 'read', 'failure', 'unavailable']) {
     test(`promotion retains authority and fences old image ${delayed}`, async ({ page }) => {

@@ -76,6 +76,7 @@
     "unavailable": "Authenticated work v1 is unavailable, busy or already owns unfinished work. Instruction was not resubmitted.",
     "refresh": "Refresh work status",
     "status": "Runner work",
+    "instructions": "Submitted instructions",
     "startEvidence": "Verified start event: {{event}}",
     "noStart": "Start unconfirmed",
     "queued": "Queued · admission and start unconfirmed",

@@ -17,7 +17,7 @@ export type WorkObservation = {
   outcome: 'pending' | 'succeeded' | 'failed' | 'interrupted' | 'incomplete' | 'unknown' | 'rejected';
   code: string; owner: string; owner_revision: number;
 };
-export type WorkAttempt = { identity: ConfigIdentity; submissionId?: number; submission?: FeatureResult; observationId?: string;
+export type WorkAttempt = { identity: ConfigIdentity; readonly instruction?: string; submissionId?: number; submission?: FeatureResult; observationId?: string;
   status?: FeatureResult; work?: WorkObservation; uncertain: boolean; notSent: boolean; notified?: boolean };
 export type WorkActivity = 'idle' | 'running' | 'attention' | 'completed' | 'failed' | 'interrupted' | 'unknown';
 export interface WorkTransport {
@@ -87,7 +87,7 @@ export class RunnerWork {
   private readonly seen = new Map<number, FeatureResult>();
   constructor(private readonly transport: WorkTransport, private readonly changed: () => void) {}
   get current() { return this.attempts.at(-1); }
-  private get presentedAttempts() {
+  get presentedAttempts() {
     return this.attempts.filter(a => !this.previousAttempts.has(a)
       && (!a.work || a.work.event_id > this.presentationAfter));
   }
@@ -307,7 +307,7 @@ export class RunnerWork {
       throw new HubError(msg('work.unavailable'));
     const identity = this.transport.identity();
     if (!identity || !this.supported) throw new HubError(msg('work.unavailable'));
-    const attempt: WorkAttempt = { identity: copy(identity), uncertain: false, notSent: true };
+    const attempt: WorkAttempt = { identity: copy(identity), instruction, uncertain: false, notSent: true };
     this.attempts.push(attempt);
     try {
       const result = await this.request({ operation: 'work.submit', api_version: 1, instruction }, attempt, attachmentLease);

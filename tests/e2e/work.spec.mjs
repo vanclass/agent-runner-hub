@@ -35,12 +35,14 @@ test('work v1 keeps dispatch admission and canonical start distinct with origina
     return { queued, final, requests: fixture.requests };
   });
   expect(result.queued.submissionId).toBe(1001);
+  expect(result.queued.instruction).toBe('exact instruction\n안녕 🌍');
   expect(result.queued.work).toBeUndefined();
   expect(result.final.submission.reply.receipt).toBe('dispatch_received');
   expect(result.final.submission.reply.work.admission).toBe('pending');
   expect(result.final.submission.reply.work.started_event_id).toBe(0);
   expect(result.final.work.started_event_id).toBe(3);
   expect(result.final.work.terminal).toBe(false);
+  expect(result.final.instruction).toBe(result.queued.instruction);
   expect(result.requests).toEqual([{ operation: 'work.submit', api_version: 1, instruction: 'exact instruction\n안녕 🌍' },
     { operation: 'work.status', api_version: 1, submission_request_id: 1001 }]);
 });
