@@ -72,9 +72,12 @@ export class RunnerWork {
   private identity?: ConfigIdentity;
   private closed = false;
   private poll?: ReturnType<typeof setTimeout>;
+  private discoveryPaused = false;
   private viewed = false;
   unread = false;
   private afterEventId = 0;
+  private presentationAfter = -1;
+  private previousAttempts = new Set<WorkAttempt>();
   private more = false;
   private discoveryFailed = false;
   private discoveryDisabled = false;
@@ -84,10 +87,41 @@ export class RunnerWork {
   private readonly seen = new Map<number, FeatureResult>();
   constructor(private readonly transport: WorkTransport, private readonly changed: () => void) {}
   get current() { return this.attempts.at(-1); }
+  private get presentedAttempts() {
+    return this.attempts.filter(a => !this.previousAttempts.has(a)
+      && (!a.work || a.work.event_id > this.presentationAfter));
+  }
+  get presentedCurrent() { return this.presentedAttempts.at(-1); }
+  beginPresentation() {
+    this.previousAttempts = new Set(this.attempts);
+    this.presentationAfter = this.afterEventId;
+    this.unread = false;
+    this.discoveryPaused = false;
+    this.scheduleStatus();
+  }
+  suspendDiscovery() {
+    this.discoveryPaused = true;
+    clearTimeout(this.poll); this.poll = undefined;
+  }
+  async refreshInventory() {
+    if (!this.discoverySupported) return;
+    do {
+      await this.request({ operation: 'work.list', api_version: 1,
+        after_event_id: this.afterEventId, limit: this.capability!.max_page_size! });
+      if (this.discoveryFailed) throw new HubError(msg('work.unavailable'));
+    } while (this.more);
+  }
   get busy() { return !!this.waiting; }
   get writing() { return this.waiting?.request.operation === 'work.submit'; }
   get activity(): WorkActivity {
     const attempt = this.attempts.filter(a => !a.notSent && (a.uncertain || !a.work?.terminal)).at(-1) ?? this.current;
+    return this.activityFor(attempt);
+  }
+  get presentedActivity(): WorkActivity {
+    const attempts = this.presentedAttempts;
+    return this.activityFor(attempts.filter(a => !a.notSent && (a.uncertain || !a.work?.terminal)).at(-1) ?? attempts.at(-1));
+  }
+  private activityFor(attempt?: WorkAttempt): WorkActivity {
     const work = attempt?.work;
     if (!attempt || attempt.notSent) return 'idle';
     if (attempt.uncertain || !work || work.state === 'unknown') return 'unknown';
@@ -132,7 +166,7 @@ export class RunnerWork {
     else this.scheduleStatus();
   }
   private scheduleStatus() {
-    if (this.closed || this.poll || !this.discoverySupported
+    if (this.closed || this.discoveryPaused || this.poll || !this.discoverySupported
       && !this.attempts.some(a => a.submissionId && !a.notSent && !a.work?.terminal)) return;
     this.poll = setTimeout(() => {
       this.poll = undefined;
@@ -222,7 +256,7 @@ export class RunnerWork {
     attempt.uncertain = work.outcome === 'unknown' || work.admission === 'unknown';
     if (work.terminal && !attempt.notified && ['succeeded', 'failed', 'interrupted', 'incomplete', 'rejected'].includes(work.outcome)) {
       attempt.notified = true;
-      this.unread ||= !this.viewed;
+      this.unread ||= !this.viewed && this.presentedAttempts.includes(attempt);
     }
     this.changed();
   }

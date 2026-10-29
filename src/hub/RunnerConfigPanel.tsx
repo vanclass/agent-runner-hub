@@ -35,13 +35,13 @@ export function RunnerConfigPanel({ control }: {
   const service = control.config, actual = service.actual;
   const current = actual?.current;
   const plan = service.plan;
-  if (!service.busy && !service.error && !plan && !service.applications.length) return null;
+  if (!service.busy && !service.presentedError && !plan && !service.presentedApplications.length) return null;
   return <details className="config-evidence" open>
     <summary>{t('config.title')}</summary>
     <p className="config-progress" role="status" aria-live="polite" aria-busy={service.busy}>
       {t(activity[service.activity])}{service.busy && service.progress && <> · {t(states[service.progress.state])}</>}
     </p>
-    {service.error && <p role="alert" className="runner-error">{tr(service.error)}</p>}
+    {service.presentedError && <p role="alert" className="runner-error">{tr(service.presentedError)}</p>}
     {current && <>
       <details className="config-verified"><summary>{t('config.actual')}</summary>
       <dl className="config-current">{Object.entries(fields).map(([field, key]) => <div key={field}>
@@ -62,7 +62,7 @@ export function RunnerConfigPanel({ control }: {
       {[...plan.errors, ...plan.required_confirmations].map((code, i) => <p key={`${i}/${code}`}><Diagnostic code={code} /></p>)}
       <details><summary>{t('config.impact')}</summary><pre>{JSON.stringify(plan.impact, null, 2)}</pre></details>
     </section>}
-    {service.applications.map((application, index) => <section className="config-receipt" key={index} aria-label={t('config.receipts')}>
+    {service.presentedApplications.map((application, index) => <section className="config-receipt" key={index} aria-label={t('config.receipts')}>
       <h3>{t('config.receipts')} · {t(application.result ? applyStatuses[application.result.apply_status] : states[application.receipt.state])}</h3>
       {application.result && <>
         <p>{t(application.result.apply_status === 'applied' ? 'config.applied' : application.result.apply_status === 'partial'

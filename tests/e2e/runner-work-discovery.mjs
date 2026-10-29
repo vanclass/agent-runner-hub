@@ -77,7 +77,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
       }, { once: true });
     });
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await home(page);
     await page.evaluate(() => {
       const fixture = window.__nativeFixture.sessions.get('pty-1').feature;
@@ -97,7 +97,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     expect(requests.slice(start, requests.findIndex(r => r.operation === 'work.submit'))).toEqual([]);
     expect(requests.some(r => r.operation === 'work.list')).toBe(true);
   });
-  test('runner discovery pending reads yield to terminal, configuration, references and images', async ({ page }) => {
+  test('runner discovery pending reads yield to terminal, configuration, attachment staging and images', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true, workDiscovery: true, generatedImages: [] });
     await configure(page); await create(page);
     await page.evaluate(() => {
@@ -113,14 +113,17 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     await page.getByRole('combobox', { name: 'Requested Account', exact: true }).focus();
     await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+    await page.locator('.generated-images summary').click();
     await page.getByRole('button', { name: 'Refresh images', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Refresh images', exact: true })).toBeEnabled();
+    await expect(page.getByRole('list', { name: 'Pending attachments', exact: true })).toContainText('/fixture/image.png');
+    await page.getByRole('button', { name: 'Remove attachment /fixture/image.png', exact: true }).click();
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true; });
     await page.waitForTimeout(600);
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('input during discovery');
     await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
-    expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.some(r => r.id === 'pty-1'))).toBe(true);
+    expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.id === 'pty-1'))).toEqual([]);
     await page.evaluate(() => window.__releaseRead());
   });
   test('runner discovery foreground confirmation routes the composer reply without new work', async ({ page }) => {

@@ -10,7 +10,7 @@ const states: Record<WorkObservation['state'], MessageKey> = {
 };
 export function RunnerWorkStatus({ work }: { work: RunnerWork }) {
   const [error, setError] = useState<HubText>('');
-  const attempt = work.current;
+  const attempt = work.presentedCurrent;
   if (!attempt) return null;
   const current = attempt.work;
   return <section className="runner-work-status" aria-label={t('work.status')}>

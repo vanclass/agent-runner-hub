@@ -23,7 +23,7 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
         onChange={event => images.select(event.target.value)}>
         {images.items.map((image, index) => <option key={image.imageId} value={image.imageId}>{t('images.number', { index: index + 1 })} · {image.width} × {image.height}</option>)}
       </select>}
-      <button type="button" disabled={images.state === 'loading' || images.state === 'unsupported'}
+      <button type="button" disabled={!images.attributionAvailable || images.state === 'loading' || images.state === 'unsupported'}
         onClick={() => void images.refresh(true)}>{t('images.refresh')}</button>
     </div>
     {preview && <button className="generated-image-preview" type="button" aria-label={t('images.enlarge')}

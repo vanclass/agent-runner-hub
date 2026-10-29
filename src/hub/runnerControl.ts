@@ -70,11 +70,12 @@ export class RunnerControl {
     this.work = new RunnerWork({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
-      available: (operation, lease) => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
+      available: (operation, lease) => !this.stopped && (!this.tabClosing || operation === 'work.list') && this.snapshot.state === 'ready'
         && !(['work.status', 'work.observe'].includes(operation) || operation === 'work.submit' && lease && lease === this.attachmentLease
           ? this.otherControlBusyExceptAttachments : this.otherControlBusy)
         && (operation !== 'work.list' || !this.assignmentLocked)
-        && !this.config.busy && !this.images.busy && (operation !== 'work.submit' || !this.config.uncertain),
+        && !this.config.busy && (!this.images.busy || this.tabClosing && operation === 'work.list')
+        && (operation !== 'work.submit' || !this.config.uncertain),
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'work', request } }),
     }, changed);
   }

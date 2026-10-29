@@ -5,6 +5,7 @@ import { registerSessionConfigUI } from './session-config-ui.mjs';
 import { registerSingleEntryWork } from './single-entry-work.mjs';
 import { registerRunnerTabs } from './runner-tabs.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
+import { registerRunnerPromotion } from './runner-promotion.mjs';
 import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
 import { registerRunnerAddDirectory } from './runner-add-directory.mjs';
 import { registerInstallationSetup } from './installation-setup.mjs';
@@ -234,6 +235,7 @@ registerTaskPanel({ test, expect, transport, configure, create, generatedFixture
 registerSingleEntryWork({ test, expect, transport, configure, create });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create: createPrepared, records });
+registerRunnerPromotion({ test, expect, transport, configure, create: createPrepared, generatedFixture });
 registerRunnerDiscovery({ test, expect, transport, configure, create: createPrepared, records });
 registerRunnerAddDirectory({ test, expect, transport, configure, create });
 registerInstallationSetup({ test, expect, transport, configure, create });

@@ -247,6 +247,7 @@
       "discovering": "Discovering generated images",
       "previews": "Verified image previews",
       "empty": "No supported completed images are available",
+      "scopeUnavailable": "Images are hidden because their ownership by this new tab could not be verified. Use a fresh Runner tab to view new images.",
       "retrieving": "Retrieving and verifying complete PNG",
       "mismatch": "Verified image delivery did not match the selected image",
       "verified": "Verified PNG",

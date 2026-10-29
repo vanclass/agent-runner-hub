@@ -26,6 +26,14 @@ export class RunnerConfigService {
   plan?: ConfigPlan;
   error: HubText = '';
   readonly applications: ConfigApplication[] = [];
+  private presentationOffset = 0;
+  private previousProgress: FeatureResult | undefined | null = null;
+  get presentedApplications() { return this.applications.slice(this.presentationOffset); }
+  get presentedError() { return this.progress === this.previousProgress ? '' : this.error; }
+  beginPresentation() {
+    this.presentationOffset = this.applications.length;
+    this.previousProgress = this.progress;
+  }
   private identity?: ConfigIdentity;
   private draftVersion = 0;
   private planned?: { identity: ConfigIdentity; draftVersion: number };
@@ -155,6 +163,7 @@ export class RunnerConfigService {
     return copy(reply);
   }
   async inspect(account?: ConfigAccount) {
+    this.previousProgress = null;
     if (this.busy || this.closed) return;
     this.activity = account ? 'catalog' : 'inspecting';
     this.error = '';
@@ -225,6 +234,7 @@ export class RunnerConfigService {
     this.changed();
   }
   async createPlan() {
+    this.previousProgress = null;
     if (this.busy || this.closed) return;
     this.error = '';
     this.plan = undefined;

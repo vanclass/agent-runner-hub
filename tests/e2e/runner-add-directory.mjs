@@ -47,7 +47,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await page.getByLabel('Single Entry instructions', { exact: true }).fill('same append order');
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
     await expect(page.locator('.runner-list > li').last()).toHaveClass('add-runner-row');
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs);

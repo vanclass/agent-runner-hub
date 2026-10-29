@@ -46,6 +46,7 @@ export class RunnerSession {
   get submissionUncertain() { return this.deliveryUnknown; }
   view: RunnerView;
   private tabRecord?: RunnerTabRecord;
+  private presentationRetired = false;
   get tab() {
     if (!this.tabRecord) throw new Error('Hidden Runner has no workspace tab');
     return this.tabRecord;
@@ -54,6 +55,7 @@ export class RunnerSession {
   get reusableIdle() { return !this.view.closing && this.idleForClose; }
   retireTab() {
     this.control.tabClosing = true;
+    this.control.work.suspendDiscovery();
     this.hubSelections = undefined;
     this.update({ closing: true });
   }
@@ -61,11 +63,14 @@ export class RunnerSession {
     if (!this.idleForClose) return false;
     await this.control.fresh();
     if (!this.idleForClose) return false;
+    await this.control.work.refreshInventory();
+    if (!this.idleForClose) return false;
     await this.references.verifyAssignment();
     await this.control.fresh();
     return this.idleForClose;
   }
   hide() {
+    this.presentationRetired = true;
     this.tabRecord = undefined;
     this.previousContext = undefined;
     this.searchQuery = '';
@@ -163,7 +168,7 @@ export class RunnerSession {
       && commandNamed(snapshot, '/target')?.enabled === true && commandNamed(snapshot, '/files')?.enabled === true;
   }
   get tabView(): RunnerView {
-    let activity = this.control.work.activity;
+    let activity = this.control.work.presentedActivity;
     const observation = this.control.snapshot.observation;
     if (activity === 'running' && this.control.observationFresh && observation
       && (observation.attention.foreground_interaction_active || observation.attention.suspension_status !== 'inactive'
@@ -260,11 +265,16 @@ export class RunnerSession {
   }
   promote(tab: RunnerTabRecord, changed: () => void) {
     if (this.disposed || this.tabRecord) throw new HubError(msg('spare.unavailable', { reason: msg('spare.changed') }));
+    if (this.presentationRetired) {
+      this.control.work.beginPresentation();
+      this.control.config.beginPresentation();
+      this.control.images.beginPresentation();
+    }
     this.tabRecord = tab;
     this.changed = changed;
     this.restored = false;
     this.captureVerified();
-    this.update({ id: tab.id, name: tab.name, createdOrder: tab.createdOrder });
+    this.update({ id: tab.id, name: tab.name, createdOrder: tab.createdOrder, detail: undefined });
   }
   rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting) this.update({ draft }); }

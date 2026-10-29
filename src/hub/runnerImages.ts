@@ -42,6 +42,17 @@ export class RunnerImages {
   private blocked = false;
   private working = false;
   private discoveredAt = -Infinity;
+  private scope = 0;
+  private attributionUnavailable = false;
+  get attributionAvailable() { return !this.attributionUnavailable; }
+  beginPresentation() {
+    this.scope++;
+    // The connection-owned image protocol has no tab/work identity or promotion watermark.
+    this.attributionUnavailable = true;
+    this.items = []; this.selectedId = undefined; release(this.owner);
+    this.discoveredAt = -Infinity;
+    this.state = 'unavailable'; this.detail = msg('runtime.images.scopeUnavailable');
+  }
   constructor(private readonly changed: () => void) {}
   start(id: string) { this.id = id; }
   get busy() { return this.working; }
@@ -56,10 +67,13 @@ export class RunnerImages {
       this.detail = !ready ? msg('runtime.images.connectionUnavailable') : msg('runtime.images.unsupported');
       return;
     }
+    if (this.attributionUnavailable) {
+      this.state = 'unavailable'; this.detail = msg('runtime.images.scopeUnavailable'); return;
+    }
     this.tick();
   }
   private tick() {
-    if (this.stopped || !this.active || !this.id || !this.ready || !this.supported || this.blocked || this.working) return;
+    if (this.stopped || this.attributionUnavailable || !this.active || !this.id || !this.ready || !this.supported || this.blocked || this.working) return;
     // Discovery shares the existing observation cadence; inactive tabs issue no image polling.
     if (performance.now() - this.discoveredAt >= 15000) void this.refresh();
     else if (this.selected && !this.preview && this.state !== 'failed' && this.state !== 'unavailable') void this.load();
@@ -72,13 +86,17 @@ export class RunnerImages {
   }
   async refresh(manual = false) {
     const id = this.id;
+    const scope = this.scope;
+    if (this.attributionUnavailable) {
+      this.state = 'unavailable'; this.detail = msg('runtime.images.scopeUnavailable'); this.changed(); return;
+    }
     if (this.stopped || !id || !this.ready || !this.supported || this.working) return;
     this.working = true; this.state = 'loading'; this.detail = msg('runtime.images.discovering');
     if (manual) release(this.owner);
     this.changed();
     try {
       const items = await invoke<GeneratedImage[]>('runner_images_list', { id });
-      if (this.stopped || this.id !== id || !this.ready || !this.supported) return;
+      if (this.stopped || this.id !== id || scope !== this.scope || !this.ready || !this.supported) return;
       const previous = this.selected;
       this.items = items;
       if (!this.selected) this.selectedId = items[0]?.imageId;
@@ -86,27 +104,29 @@ export class RunnerImages {
       this.discoveredAt = performance.now();
       this.state = items.length ? 'available' : 'empty';
       this.detail = items.length ? msg('runtime.images.previews') : msg('runtime.images.empty');
-    } catch (reason) { this.failure(reason); }
-    finally { this.working = false; this.changed(); }
+    } catch (reason) { if (scope === this.scope) this.failure(reason); }
+    finally { this.working = false; this.changed(); if (scope !== this.scope) this.tick(); }
     if (!this.stopped && this.active && this.selected && !this.preview && this.state === 'available') void this.load();
   }
   private async load() {
     const id = this.id, selected = this.selected;
+    const scope = this.scope;
     if (this.stopped || !id || !selected || !this.ready || !this.supported || this.working || reads >= 2) return;
     this.working = true; reads++;
     this.state = 'loading'; this.detail = msg('runtime.images.retrieving'); this.changed();
     try {
       const verified = await invoke<Verified>('runner_image_read', { id, imageId: selected.imageId });
-      if (this.stopped || this.id !== id || !this.ready || !this.supported || !this.selected || !same(selected, this.selected)) return;
+      if (this.stopped || this.id !== id || scope !== this.scope || !this.ready || !this.supported || !this.selected || !same(selected, this.selected)) return;
       if (!same(verified.image, selected) || verified.png.length !== selected.byteLength)
         throw { state: 'failed', detail: msg('runtime.images.mismatch') };
       const url = URL.createObjectURL(new Blob([new Uint8Array(verified.png)], { type: 'image/png' }));
       retain(this.owner, { url, bytes: selected.byteLength, image: selected, changed: this.changed });
       this.state = 'available'; this.detail = msg('runtime.images.verified');
     } catch (reason) {
-      if (this.selectedId === selected.imageId) this.failure(reason);
+      if (scope === this.scope && this.selectedId === selected.imageId) this.failure(reason);
     } finally {
       this.working = false; reads--; this.changed();
+      if (scope !== this.scope) this.tick();
       if (!this.stopped && this.active && this.selectedId !== selected.imageId) void this.load();
     }
   }

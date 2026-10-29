@@ -44,6 +44,8 @@ Completed per-setting outcomes retain success, rejection, cancellation, failure,
 
 The existing preferences.v1, workspace and installation contracts remain owned by their existing stores. Configuration drafts, revisions, plans, option tokens, private wire identity and uncertain results are process-local. Single Entry reserves its allocated Runner; a tab submission binds only its existing session and HubSelections. Both use the same verified configuration/work pipeline. Requested selections stay independent across tabs and Single Entry, and freeze during their submission. Terminal confirmation remains user-owned. Active or uncertain configuration excludes automatic assignment. Configuration success never means work admission or start; see [instruction submission](runner_terminals.md#single-entry-assignment).
 
+On hidden-idle promotion, the service retains all applications, receipts, actual settings and uncertainty for admission and reconciliation. Its presentation boundary excludes prior applications and diagnostics from the new tab; later configuration operations display normally. The lifetime and work/image counterparts are described under [tab status and closing](runner_terminals.md#tab-status-and-closing).
+
 ## UI and evidence destinations
 
 `TaskPanel.tsx` composes shared Hub selection controls for Single Entry or the selected tab and read-only `RunnerConfigPanel` evidence. It owns only panel collapse and responsive presentation. Selection initialization, persistence and independent tab restoration belong to [Hub preferences](hub_preferences.md#single-entry-boundary-and-reuse); Runner services retain actual/effective/next settings and plans/receipts. The panel scrolls independently and uses a collapsible narrow-window overlay.

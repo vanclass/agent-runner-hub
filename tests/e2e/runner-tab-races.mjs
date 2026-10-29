@@ -6,7 +6,8 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
   };
   const reasons = ['execution', 'retained-task', 'suspension', 'foreground', 'native-unknown', 'stale',
     'reservation', 'draft', 'staged-attachment', 'restart-confirmation', 'termination-confirmation', 'account-setup', 'pending-prompt',
-    'config-pending', 'config-draft', 'config-unknown', 'reference-unknown', 'reference-unverified', 'reference-inventory', 'input-unknown', 'native-exit-error'];
+    'config-pending', 'config-draft', 'config-unknown', 'work-active', 'work-uncertain',
+    'reference-unknown', 'reference-unverified', 'reference-inventory', 'input-unknown', 'native-exit-error'];
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`runner removal settings and hover focus ${language} ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
@@ -118,6 +119,10 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
         if (reason === 'config-pending') session.control.config.activity = 'planning';
         if (reason === 'config-draft') session.control.config.setDraft({ root: 'unapplied' });
         if (reason === 'config-unknown') session.control.config.applications.push({ verification: 'unknown' });
+        if (reason === 'work-active' || reason === 'work-uncertain') {
+          native.feature.mode = reason === 'work-active' ? 'started' : 'unknown';
+          await session.control.work.submit('must retain this authority');
+        }
         if (reason === 'reference-unknown') native.control.references.results.push({ id: 100, operation: 'references.register', state: 'outcome-unknown' });
         if (reason === 'reference-unverified') native.control.references.capability = null;
         if (reason === 'reference-inventory') native.items.push({ reference_id: 'a'.repeat(32), display_name: 'pending', kind: 'file' });

@@ -1,5 +1,29 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 
+test('promotion projection retains old discovery evidence, admits new events and cannot hide unsafe authority', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(async () => {
+    const { work, fixture, terminalWork } = window.__discovery;
+    fixture.observations.set('terminal:1', terminalWork(1, 2, { state: 'succeeded', outcome: 'succeeded', terminal: true }));
+    fixture.changed(); await work.refreshInventory(); work.suspendDiscovery(); work.beginPresentation();
+    const old = work.current;
+    if (work.presentedCurrent || work.unread || work.presentedActivity !== 'idle') throw new Error('old presentation');
+    fixture.observations.set('terminal:1', { ...old.work, event_id: 3, owner_revision: 1 });
+    await work.refreshInventory();
+    if (work.presentedCurrent || work.unread || work.current !== old) throw new Error('late old result');
+    fixture.observations.set('terminal:2', terminalWork(2, 4, { state: 'succeeded', outcome: 'succeeded', terminal: true }));
+    await work.refreshInventory();
+    if (work.presentedCurrent?.work?.observation_id !== 'terminal:2' || !work.unread) throw new Error('lost new event');
+    fixture.observations.set('terminal:3', terminalWork(3, 5)); await work.refreshInventory();
+    work.beginPresentation();
+    if (!work.blocked) throw new Error('active work became safe');
+    fixture.observations.set('terminal:3', terminalWork(3, 6, { state: 'unknown', outcome: 'unknown', terminal: true }));
+    await work.refreshInventory(); work.beginPresentation();
+    if (!work.blocked || work.attempts.length !== 3) throw new Error('uncertain authority lost');
+    work.close();
+  });
+});
+
 async function setup(page, changes = {}) {
   await page.goto('/');
   await page.clock.install();
