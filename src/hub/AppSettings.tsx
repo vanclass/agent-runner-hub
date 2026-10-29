@@ -6,10 +6,11 @@ import { ThemePicker } from './ThemePicker';
 import { useHubTranslation } from './i18n';
 import type { HubLanguage } from './preferences';
 
-export function AppSettings({ required, installation, theme, onTheme, onLanguage, onVerified, onClose }: {
+export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, onTheme, onLanguage, onVerified, onClose }: {
   required: boolean; installation: RunnerInstallation | null; theme: 'light' | 'black';
   onTheme: (theme: 'light' | 'black') => void; onLanguage: (language: HubLanguage) => void;
   onVerified: (installation: RunnerInstallation) => void; onClose: () => void;
+  confirmRemoval: boolean; onConfirmRemoval: (value: boolean) => void;
 }) {
   const { t } = useHubTranslation();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -38,5 +39,7 @@ export function AppSettings({ required, installation, theme, onTheme, onLanguage
       <LanguagePicker onChange={onLanguage} />
       <ThemePicker theme={theme} onChange={onTheme} />
     </div>
+    <label className="removal-preference"><input type="checkbox" checked={confirmRemoval}
+      onChange={event => onConfirmRemoval(event.target.checked)} />{t('tabs.confirmPreference')}</label>
   </dialog>;
 }

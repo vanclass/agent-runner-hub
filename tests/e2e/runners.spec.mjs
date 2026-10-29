@@ -827,7 +827,7 @@ test('workspace restores five stable tabs without replaying input or commands', 
     expect(await page.locator('.runner-row').evaluateAll(rows => rows.map(row => row.dataset.runnerId)))
       .toEqual(saved.tabs.map(tab => tab.id));
     await page.locator('.runner-row').nth(1).locator('.nav-row').click();
-    await expect(page.getByRole('heading', { name: 'Durable 이름', exact: true })).toBeVisible();
+    await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Durable 이름');
     await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical work recovery is unconfirmed');
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
     expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
@@ -1342,9 +1342,10 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
   expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
   await testInfo.attach('persistent-black-terminal', { body: await page.screenshot(), contentType: 'image/png' });
-  await page.getByRole('button', { name: 'Terminate Runner', exact: true }).click();
-  await expect(page.getByText('Process exited (1)', { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
+  await page.locator(`[data-runner-id="${firstId}"] .remove-action`).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Terminate and close tab', exact: true }).click();
+  await expect(page.locator(`[data-runner-id="${firstId}"]`)).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
   await page.locator(`[data-runner-id="${secondId}"] .nav-row`).click();
   await expect(composer).toBeEnabled();
   await composer.fill('/status'); await page.getByRole('button', { name: 'Send instruction', exact: true }).click();

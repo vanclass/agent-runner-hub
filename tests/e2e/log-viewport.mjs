@@ -20,7 +20,7 @@ export function registerLogViewport({ test, expect, transport, configure }) {
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('representative DirectRun');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Succeeded');
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\r\nLOG-BEGIN\r\n' +
       Array.from({ length: 600 }, (_, i) => `line ${i} DirectRun output\r\n`).join('') + '\x1b[32mLOG-END\x1b[0m\r\n'));

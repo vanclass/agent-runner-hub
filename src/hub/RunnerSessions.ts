@@ -39,7 +39,9 @@ export class RunnerSession {
   private assignmentWriting = false;
   private deliveryUnknown = false;
   private nativeState: 'unverified' | 'open' | 'closing' | 'settled' | 'failed' = 'unverified';
+  private nativeFailure?: string;
   private get nativeSettled() { return this.nativeState === 'settled'; }
+  get terminationSettled() { return this.nativeSettled; }
   private get exitObserved() { return this.nativeState === 'settled' || this.nativeState === 'failed'; }
   get submissionUncertain() { return this.deliveryUnknown; }
   view: RunnerView;
@@ -48,10 +50,31 @@ export class RunnerSession {
     if (!this.tabRecord) throw new Error('Hidden Runner has no workspace tab');
     return this.tabRecord;
   }
-  readonly previousContext: RunnerTabRecord['recoveryHint'];
+  previousContext: RunnerTabRecord['recoveryHint'];
+  get reusableIdle() { return !this.view.closing && this.idleForClose; }
+  retireTab() {
+    this.control.tabClosing = true;
+    this.hubSelections = undefined;
+    this.update({ closing: true });
+  }
+  async verifyReusable() {
+    if (!this.idleForClose) return false;
+    await this.control.fresh();
+    if (!this.idleForClose) return false;
+    await this.references.verifyAssignment();
+    await this.control.fresh();
+    return this.idleForClose;
+  }
+  hide() {
+    this.tabRecord = undefined;
+    this.previousContext = undefined;
+    this.searchQuery = '';
+    this.control.tabClosing = false;
+    this.update({ closing: false });
+  }
 
   constructor(tab: RunnerTabRecord | Pick<RunnerTabRecord, 'installationRoot'>,
-    private changed: () => void, readonly restored = false) {
+    private changed: () => void, public restored = false) {
     this.tabRecord = 'id' in tab ? tab : undefined;
     if (this.tabRecord?.launchOnOpen === false) this.nativeState = 'settled';
     this.previousContext = this.tabRecord?.recoveryHint;
@@ -124,9 +147,10 @@ export class RunnerSession {
   get assignmentReserved() { return !!this.reservation; }
   private get idleForClose() {
     const control = this.control, snapshot = control.snapshot, observation = snapshot.observation;
-    if (this.disposed || this.nativeState !== 'open' || !this.pty || this.view.status !== 'running' || !control.observationFresh || !observation
+    if (this.disposed || this.nativeState !== 'open' || !this.pty || !this.input.canSubmit || this.view.status !== 'running' || !control.observationFresh || !observation
       || this.reservation || this.inputUnsettled || this.deliveryUnknown || this.view.submitting || this.view.draft
-      || control.pending || control.config.uncertain || control.work.blocked || !this.references.capable || this.references.prepared) return false;
+      || control.pending || control.config.busy || control.config.uncertain || control.work.busy || control.work.blocked
+      || !this.references.capable || this.references.prepared) return false;
     if (control.config.plan || Object.entries(control.config.draft).some(([key, value]) =>
       !same(value, control.config.actual?.current[key as keyof typeof control.config.actual.current]))) return false;
     const { execution, attention } = observation;
@@ -138,7 +162,6 @@ export class RunnerSession {
       && !snapshot.results.some(result => ['sending', 'queued', 'pending-interaction', 'outcome-unknown'].includes(result.state))
       && commandNamed(snapshot, '/target')?.enabled === true && commandNamed(snapshot, '/files')?.enabled === true;
   }
-  get middleCloseEligible() { return !this.view.closing && (this.nativeSettled || this.idleForClose); }
   get tabView(): RunnerView {
     let activity = this.control.work.activity;
     const observation = this.control.snapshot.observation;
@@ -214,6 +237,7 @@ export class RunnerSession {
       }, event => {
         if (this.disposed || this.pty && event.id !== this.pty.id) return;
         this.nativeState = event.error ? 'failed' : 'settled';
+        this.nativeFailure = event.error ?? undefined;
         if (this.tabRecord) this.tabRecord = { ...this.tabRecord, launchOnOpen: false };
         const final = (event as typeof event & { control?: ControlSnapshot }).control;
         this.control.stop(msg('runtime.control.processExited'), final);
@@ -238,6 +262,7 @@ export class RunnerSession {
     if (this.disposed || this.tabRecord) throw new HubError(msg('spare.unavailable', { reason: msg('spare.changed') }));
     this.tabRecord = tab;
     this.changed = changed;
+    this.restored = false;
     this.captureVerified();
     this.update({ id: tab.id, name: tab.name, createdOrder: tab.createdOrder });
   }
@@ -342,35 +367,23 @@ export class RunnerSession {
       this.update({ submitting: false });
     }
   }
-  async terminate() {
-    if (this.view.closing || this.view.status !== 'running') return;
-    this.nativeState = 'closing';
-    try { await this.pty?.close(); } catch (reason) { this.error(reason); }
-  }
-  async closeTab(method: 'middle' | 'explicit') {
-    if (this.view.closing || method === 'middle' && !this.middleCloseEligible) return false;
+  async closeTab() {
     if (this.disposed) return this.nativeSettled;
     this.control.tabClosing = true;
     this.update({ closing: true });
     try {
-      if (method === 'middle' && !this.nativeSettled) {
-        await this.control.fresh();
-        if (!this.idleForClose) throw new HubError(msg('tabs.idleRequired'));
-        await this.references.verifyAssignment();
-        if (!this.idleForClose) throw new HubError(msg('tabs.idleRequired'));
-      }
       await this.opening;
       if (!this.nativeSettled) {
-        if (!this.pty || this.exitObserved) throw new HubError(msg('tabs.unconfirmed'));
+        if (!this.pty || this.exitObserved) throw new HubError(this.nativeFailure || msg('tabs.unconfirmed'));
         this.nativeState = 'closing';
         await this.pty.close();
         const deadline = performance.now() + 10000;
         while (!this.exitObserved && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-        if (!this.nativeSettled) throw new HubError(msg('tabs.unconfirmed'));
+        if (!this.nativeSettled) throw new HubError(this.nativeFailure || msg('tabs.unconfirmed'));
       }
       return true;
     } catch (reason) { this.error(reason); return false; }
-    finally { this.control.tabClosing = false; this.update({ closing: false }); }
+    finally { this.update({ closing: true }); }
   }
   closeFailure(reason: unknown) { this.update({ detail: errorText(reason) }); }
   attach(container: HTMLElement, theme: 'light' | 'black') {
@@ -408,7 +421,8 @@ export class RunnerSession {
 
 export class RunnerSessions {
   private readonly sessions = new Map<string, RunnerSession>();
-  private readonly closing = new Set<string>();
+  private readonly retired = new Map<string, { session: RunnerSession; root: string;
+    state: 'checking' | 'idle' | 'terminating' | 'failed' }>();
   private readonly listeners = new Set<() => void>();
   private snapshot: readonly RunnerView[] = [];
   private order = 0;
@@ -440,9 +454,10 @@ export class RunnerSessions {
     const selections = new HubSelections(() => session.control.snapshot.state === 'ready'
       && !session.control.assignmentLocked ? session.control.config : undefined,
     this.changed, defaults, value => {
+      if (this.sessions.get(id) !== session) return;
       session.control.config.setDraft({});
       this.saveSelections(id, value);
-    }, () => session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing
+    }, () => this.sessions.get(id) === session && session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing
       && !session.view.submitting && !session.submissionUncertain);
     this.selections.set(id, selections);
     session.hubSelections = selections;
@@ -452,6 +467,13 @@ export class RunnerSessions {
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private readonly changed = () => {
     if (this.disposed) return;
+    for (const [id, item] of this.retired) {
+      if (item.state === 'idle' && !item.session.reusableIdle) void this.terminateRemoved(id);
+      if (item.state === 'failed' && item.session.terminationSettled) {
+        this.retired.delete(id);
+        void item.session.dispose();
+      }
+    }
     this.entry?.observe();
     if (this.spare.snapshot.installation) {
       this.entry?.selections.initialize();
@@ -462,29 +484,49 @@ export class RunnerSessions {
     this.listeners.forEach(listener => listener());
   };
   get(id?: string) { return id ? this.sessions.get(id) : undefined; }
+  getFailure(id?: string) { return id && this.retired.get(id)?.state === 'failed' ? this.retired.get(id)?.session : undefined; }
+  get failures() { return [...this.retired.entries()].filter(([, item]) => item.state === 'failed')
+    .map(([id, item]) => ({ ...item.session.view, id })); }
   view(id: string | null) {
     for (const session of this.sessions.values()) session.control.work.setViewed(session.view.id === id);
   }
-  async close(id: string, method: 'middle' | 'explicit') {
-    if (this.closing.has(id)) return false;
+  close(id: string) {
     const session = this.sessions.get(id);
-    this.closing.add(id);
-    try {
-      if (!session || !await session.closeTab(method) || this.disposed || this.sessions.get(id) !== session) return false;
-      const remaining = [...this.sessions.values()].filter(candidate => candidate !== session);
-      if (!this.workspace.save(remaining.map(candidate => candidate.tab))) {
-        session.closeFailure(new HubError(this.workspace.issue));
-        return false;
-      }
-      if (this.disposed || this.sessions.get(id) !== session) return false;
-      const cleanup = session.dispose();
-      this.sessions.delete(id);
-      this.selections.delete(id);
-      this.changed();
-      await cleanup;
-      return true;
-    } catch (reason) { session?.closeFailure(reason); return false; }
-    finally { this.closing.delete(id); }
+    if (!session || this.disposed) return false;
+    const remaining = [...this.sessions.values()].filter(candidate => candidate !== session);
+    if (!this.workspace.save(remaining.map(candidate => candidate.tab))) {
+      session.closeFailure(new HubError(this.workspace.issue));
+      return false;
+    }
+    this.retired.set(id, { session, root: session.tab.installationRoot, state: 'checking' });
+    this.sessions.delete(id);
+    this.selections.delete(id);
+    session.retireTab();
+    this.changed();
+    void this.settleRemoved(id);
+    return true;
+  }
+  private async settleRemoved(id: string) {
+    const item = this.retired.get(id);
+    if (!item) return;
+    let reusable = false;
+    try { reusable = await item.session.verifyReusable(); } catch { /* Terminate uncertain sessions. */ }
+    if (this.disposed || this.retired.get(id) !== item) return;
+    if (reusable) {
+      item.state = 'idle';
+      item.session.hide();
+    } else await this.terminateRemoved(id);
+  }
+  private async terminateRemoved(id: string) {
+    const item = this.retired.get(id);
+    if (!item || item.state === 'terminating') return;
+    item.state = 'terminating';
+    item.session.retireTab();
+    if (await item.session.closeTab()) {
+      await item.session.dispose();
+      if (this.retired.get(id) === item) this.retired.delete(id);
+    } else item.state = 'failed';
+    this.changed();
   }
   retain() {
     this.consumers++;
@@ -523,6 +565,23 @@ export class RunnerSessions {
     return { session, launched: session.open(location) };
   }
   allocate(location: string, token?: symbol) {
+    if (this.disposed) throw new HubError(msg('spare.closed'));
+    for (const [id, item] of this.retired) {
+      if (item.state !== 'idle' || item.root !== location || !item.session.reusableIdle) continue;
+      const session = item.session;
+      item.state = 'checking';
+      if (token && !session.reserve(token)) { item.state = 'idle'; continue; }
+      this.retired.delete(id);
+      session.terminal.clear();
+      session.terminal.write('\x1b[2J\x1b[3J\x1b[H');
+      const order = ++this.order;
+      session.promote({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
+        installationRoot: location, launchOnOpen: true }, this.changed);
+      this.sessions.set(session.view.id, session);
+      this.bindSelections(session);
+      this.changed();
+      return { session, launched: Promise.resolve() };
+    }
     if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location) {
       const session = this.promoteSpare();
       if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
@@ -548,6 +607,7 @@ export class RunnerSessions {
   dispose() {
     this.disposed = true;
     this.entry.attachments.dispose();
-    return Promise.all([this.spare.dispose(), ...[...this.sessions.values()].map(session => session.dispose())]);
+    return Promise.all([this.spare.dispose(), ...[...this.sessions.values(),
+      ...[...this.retired.values()].map(item => item.session)].map(session => session.dispose())]);
   }
 }

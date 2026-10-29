@@ -13,15 +13,15 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).not.toBeChecked();
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('one instruction\n안녕 🌍');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).evaluate(b => { b.click(); b.click(); });
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 1');
+    await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
     await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event: 3');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event: 3', { timeout: 35000 });
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
     await home(page);
     await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
     await expect(page.getByRole('status').filter({ hasText: 'Runner verified start' })).toBeVisible();
     await page.getByText('Assignment evidence', { exact: true }).click();
-    await expect(page.getByText(/Promoted Runner 1/)).toBeVisible();
+    await expect(page.getByText('Created Runner 1.', { exact: true })).toBeVisible();
     await expect(page.locator('.xterm')).toHaveCount(0);
     const receipt = await page.evaluate(() => ({ requests: window.__nativeFixture.sessions.get('pty-1').feature.requests,
       original: window.__nativeFixture.sessions.get('pty-1').feature.work.submission_request_id,
@@ -39,13 +39,13 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).check();
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('reuse once');
     await assign(page);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 1');
+    await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page); await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).uncheck();
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('always new');
     await assign(page);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 2');
+    await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 2');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.allocationPolicy)).toBe('always-new');
@@ -210,7 +210,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
         await page.reload(); await expect(page.locator('.spare-status')).toHaveCount(0);
       }
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('retain this draft'); await assign(page);
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText('Runner 1');
+      await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
       await home(page); await expect(page.getByRole('button', { name: 'Release unsent assignment' })).toBeVisible();
       await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('retain this draft');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);

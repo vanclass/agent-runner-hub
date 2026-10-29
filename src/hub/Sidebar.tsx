@@ -1,6 +1,7 @@
 import { useHubTranslation, t } from './i18n';
 import { useRef, useState } from 'react';
 import type { RunnerView } from './model';
+import { RunnerTabRemoval } from './RunnerTabRemoval';
 
 const runnerStatus = (status: RunnerView['status']) => {
   const keys = { idle: 'status.idle', running: 'status.running', attention: 'status.attention',
@@ -19,14 +20,16 @@ type SidebarProps = {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
-  onMiddleClose: (id: string) => void;
+  onRemove: (id: string) => void;
+  confirmRemoval: boolean;
+  failures: readonly RunnerView[];
   onAdd: () => void;
   addDisabled: boolean;
   adding: boolean;
 };
 
-function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
-  runner: RunnerView; active: boolean; onSelect: () => void; onRename: (name: string) => void; onMiddleClose: () => void;
+function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
+  runner: RunnerView; active: boolean; onSelect: () => void; onRename: (name: string) => void; onRemove: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(runner.name);
@@ -49,7 +52,7 @@ function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
     onAuxClick={event => {
       if (event.button !== 1) return;
       event.preventDefault(); event.stopPropagation();
-      if (!editing) onMiddleClose();
+      if (!editing) onRemove();
     }}>
     <button ref={rowButton} className="nav-row" hidden={editing} type="button" autoFocus={active}
       aria-current={active ? 'page' : undefined} onClick={event => { if (event.button === 0) onSelect(); }}
@@ -71,11 +74,22 @@ function RunnerRow({ runner, active, onSelect, onRename, onMiddleClose }: {
     </div>}
     {!editing && <button type="button" className="rename-action" aria-label={t('sidebar.renameNamed', { name: runner.name })}
       title={t('sidebar.rename')} onClick={event => { if (event.button === 0) startRename(); }}>✎</button>}
+    {!editing && <button type="button" className="remove-action" aria-label={t('tabs.removeNamed', { name: runner.name })}
+      title={t('tabs.close')} onClick={onRemove}>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+        <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
+      </svg>
+    </button>}
   </li>;
 }
 
-export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose, onAdd, addDisabled, adding }: SidebarProps) {
+export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding }: SidebarProps) {
   useHubTranslation();
+  const [removing, setRemoving] = useState<RunnerView>();
+  function remove(runner: RunnerView) {
+    if (confirmRemoval) setRemoving(runner);
+    else onRemove(runner.id);
+  }
   return <aside className="sidebar">
     <nav aria-label={t('sidebar.navigation')} onKeyDown={event => {
       if (!(event.target instanceof HTMLButtonElement) || !event.target.matches('.nav-row')) return;
@@ -94,14 +108,23 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onMiddleClose
       <div className="runner-section-label"><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span></div>
       <ul className="runner-list">{runners.map(runner => <RunnerRow key={runner.id} runner={runner}
         active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
-        onMiddleClose={() => onMiddleClose(runner.id)} />)}
+        onRemove={() => remove(runner)} />)}
         <li className="add-runner-row"><button type="button" className="nav-row add-runner"
           aria-label={t('hub.newRunner')} title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
           disabled={addDisabled} aria-busy={adding} onClick={onAdd}>
           <span aria-hidden="true">+</span>
         </button></li>
       </ul>
+      {failures.length > 0 && <section className="termination-failures" aria-label={t('tabs.failures')}>
+        <p className="sidebar-label">{t('tabs.failures')}</p>
+        <ul>{failures.map(runner => <li key={runner.id}><button type="button" className="nav-row"
+          aria-current={selectedId === runner.id ? 'page' : undefined} onClick={() => onSelect(runner.id)}>
+          <span className="status-dot failed" aria-hidden="true">!</span><span className="runner-name">{runner.name}</span>
+        </button></li>)}</ul>
+      </section>}
     </nav>
+    {removing && <RunnerTabRemoval name={removing.name} onCancel={() => setRemoving(undefined)}
+      onRemove={() => { onRemove(removing.id); setRemoving(undefined); }} />}
     <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />
       {t('sidebar.processes', { count: runners.filter(runner => runner.status === 'running').length })}</div>
   </aside>;

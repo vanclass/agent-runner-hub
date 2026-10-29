@@ -4,9 +4,9 @@ import { msg, errorText, type HubText } from './i18n';
 export type HubLanguage = 'en' | 'ko';
 export type HubTheme = 'light' | 'black';
 export type HubPreferencesValue = { version: 1; language: HubLanguage; theme: HubTheme; singleEntry: EntryDefaults;
-  runnerSelections?: Record<string, EntryDefaults> };
+  runnerSelections?: Record<string, EntryDefaults>; confirmRunnerRemoval: boolean };
 export const hubPreferencesKey = 'agent-runner-hub.preferences.v1';
-export const defaultHubPreferences = (): HubPreferencesValue => ({ version: 1, language: 'en', theme: 'light', singleEntry: {} });
+export const defaultHubPreferences = (): HubPreferencesValue => ({ version: 1, language: 'en', theme: 'light', singleEntry: {}, confirmRunnerRemoval: true });
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string' && value.length <= 256
   && !!value.trim() && !/[\u0000-\u001f\u007f]/.test(value);
@@ -74,7 +74,8 @@ export class HubPreferences {
       this.committed = raw;
       if (raw === null) return;
       const value: unknown = JSON.parse(raw);
-      if (!object(value) || !keys(value, ['version', 'language', 'theme', 'singleEntry', 'runnerSelections']) || value.version !== 1
+      if (!object(value) || !keys(value, ['version', 'language', 'theme', 'singleEntry', 'runnerSelections', 'confirmRunnerRemoval']) || value.version !== 1
+        || (value.confirmRunnerRemoval !== undefined && typeof value.confirmRunnerRemoval !== 'boolean')
         || (value.language !== 'en' && value.language !== 'ko') || (value.theme !== 'light' && value.theme !== 'black')) {
         this.retainOriginal(); return;
       }
@@ -83,6 +84,7 @@ export class HubPreferences {
       const runnerSelections = value.runnerSelections === undefined ? undefined : projectRunnerSelections(value.runnerSelections);
       if (value.runnerSelections !== undefined && !runnerSelections) { this.retainOriginal(); return; }
       this.value = { version: 1, language: value.language as HubLanguage, theme: value.theme as HubTheme, singleEntry,
+        confirmRunnerRemoval: value.confirmRunnerRemoval !== false,
         ...(runnerSelections ? { runnerSelections } : {}) };
     } catch (reason) {
       this.writable = false;
@@ -93,7 +95,12 @@ export class HubPreferences {
   saveRunner(id: string, value: EntryDefaults) {
     this.update({ runnerSelections: { ...this.value.runnerSelections, [id]: value } });
   }
-  update(change: Partial<Pick<HubPreferencesValue, 'language' | 'theme' | 'singleEntry' | 'runnerSelections'>>) {
+  forgetRunner(id: string) {
+    const runnerSelections = { ...this.value.runnerSelections };
+    delete runnerSelections[id];
+    this.update({ runnerSelections });
+  }
+  update(change: Partial<Pick<HubPreferencesValue, 'language' | 'theme' | 'singleEntry' | 'runnerSelections' | 'confirmRunnerRemoval'>>) {
     const singleEntry = projectEntryDefaults(change.singleEntry ?? this.value.singleEntry);
     if (!singleEntry) return;
     const runnerSelections = change.runnerSelections === undefined ? undefined : projectRunnerSelections(change.runnerSelections);

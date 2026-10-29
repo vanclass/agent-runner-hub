@@ -3,7 +3,7 @@ import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 test.use({ locale: 'ko-KR', navigationTimeout: 60_000 });
 test.setTimeout(90_000);
 const key = 'agent-runner-hub.preferences.v1';
-const defaults = { version: 1, language: 'en', theme: 'light', singleEntry: {} };
+const defaults = { version: 1, language: 'en', theme: 'light', singleEntry: {}, confirmRunnerRemoval: true };
 async function seed(page, raw) {
   await page.addInitScript(({ key, raw }) => {
     if (!sessionStorage.getItem('hub-preferences-seeded')) {
@@ -76,12 +76,13 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await seed(page, JSON.stringify({ ...defaults, language, theme }));
     await page.goto('/tests/fixtures/hub.html');
     await page.locator('[data-runner-id="second"] .nav-row').click();
-    const title = await page.getByRole('heading', { level: 1 }).textContent();
+    const title = await page.locator('[data-runner-id="second"] .runner-name').textContent();
     await page.getByRole('button', { name: language === 'en' ? 'App settings' : '앱 설정', exact: true }).click();
     const languagePicker = page.locator('.language-picker select');
     await languagePicker.selectOption(language === 'en' ? 'ko' : 'en');
     await expect(page.locator('[data-runner-id="second"] .nav-row')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.workspace h1')).toHaveText(title);
+    await expect(page.locator('[data-runner-id="second"] .runner-name')).toHaveText(title);
+    await expect(page.locator('.workspace-header')).toHaveCount(0);
     await languagePicker.selectOption(language);
     await page.keyboard.press('Escape');
     const name = language === 'en' ? 'Runner instructions' : 'Runner 지시문';

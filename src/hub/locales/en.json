@@ -22,14 +22,16 @@
     "failed": "Could not choose a folder: {{reason}}"
   },
   "tabs": {
-    "close": "Close Tab",
+    "close": "Remove Runner tab",
+    "removeNamed": "Remove {{name}} tab",
+    "confirmPreference": "Confirm before removing Runner tab",
+    "failures": "Termination failures",
     "confirmTitle": "Close {{name}}?",
     "consequence": "This stops this Runner and its owned processes, including active, suspended or uncertain work. Unsaved input in this tab will be discarded. Other Runner tabs stay open.",
     "confirmClose": "Terminate and close tab",
     "cancel": "Keep tab open",
     "closing": "Closing Runner tab…",
-    "idleRequired": "Middle-click requires a verified idle Runner. Use Close Tab inside this Runner to review and confirm termination.",
-    "unconfirmed": "Native cleanup is unconfirmed. The tab was retained. Review the Runner error before closing again.",
+    "unconfirmed": "Runner termination is unconfirmed. Open its retained log to inspect the error details.",
     "unread": "Unread completion",
     "states": {
       "idle": "Verified idle",
@@ -46,7 +48,7 @@
     "allocationHelp": "Always create a new Runner by default. Reuse checks the exact visible Runner again before assignment.",
     "loadOptions": "Refresh available choices",
     "legacyAccount": "Saved account label “{{account}}” is unresolved. Select an exact agent / account identity.",
-    "promoted": "Promoted {{name}} ({{id}}, order {{order}}) with its original process and control connection.",
+    "promoted": "Created {{name}}.",
     "configuring": "Allocated {{name}} · verifying requested settings…",
     "observing": "{{name}} · submitted once; waiting for Runner admission and start evidence…",
     "started": "{{name}} · Runner verified start (event {{event}}). Full output is in its tab.",
@@ -322,9 +324,6 @@
   "workspace": {
     "singleLabel": "Single Entry workspace",
     "runnerLabel": "Runner workspace",
-    "runnerEyebrow": "RUNNER WORKSPACE",
-    "runnerOnly": "This Runner only",
-    "terminate": "Terminate Runner",
     "outputLabel": "Output viewport",
     "output": "OUTPUT",
     "starting": "Starting Runner process…",

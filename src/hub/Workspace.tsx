@@ -8,26 +8,15 @@ import { RunnerImagePreviews } from './RunnerImagePreviews';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer } from './SingleEntryComposer';
-import { RunnerTabClose } from './RunnerTabClose';
 
-export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, onCloseRunner }: {
+export function Workspace({ runner, session, theme, installation, entry, onSelectRunner }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
-  onCloseRunner: (id: string) => Promise<void>;
 }) {
   useHubTranslation();
   const singleEntry = !runner;
   return <main className="workspace" aria-label={singleEntry ? t('workspace.singleLabel') : t('workspace.runnerLabel')}>
-    {!singleEntry && <header className="workspace-header">
-      <div className="context-title"><span className="eyebrow">{t('workspace.runnerEyebrow')}</span>
-        <h1 title={runner?.name}>{runner?.name ?? t('common.singleEntry')}</h1></div>
-      <span className="context-badge">{t('workspace.runnerOnly')}</span>
-      {session && <button type="button" className="terminate-runner" disabled={!!runner?.closing || runner?.status !== 'running'}
-        onClick={() => void session.terminate()}>{t('workspace.terminate')}</button>}
-      {session && <RunnerTabClose name={session.view.name} closing={!!runner?.closing}
-        onClose={() => onCloseRunner(session.view.id)} />}
-    </header>}
     {session && <RunnerRecovery session={session} />}
     <section className="output" aria-label={t('workspace.outputLabel')}>
       <div className="output-label"><span>{t('workspace.output')}</span><span className="quiet-status" role="status">{session

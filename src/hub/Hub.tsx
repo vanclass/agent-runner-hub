@@ -33,7 +33,9 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => { sessions.view(selectedId); return () => sessions.view(null); }, [sessions, selectedId]);
   const [theme, setTheme] = useState<'light' | 'black'>(preferences.value.theme);
-  const selected = runners.find(runner => runner.id === selectedId);
+  const [confirmRemoval, setConfirmRemoval] = useState(preferences.value.confirmRunnerRemoval);
+  const selected = runners.find(runner => runner.id === selectedId) ?? sessions.failures.find(runner => runner.id === selectedId);
+  useEffect(() => { if (selectedId && !selected) setSelectedId(null); }, [selectedId, selected]);
   function rename(id: string, name: string) {
     const session = sessions.get(id);
     if (session) { session.rename(name); return; }
@@ -50,8 +52,9 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     } catch (reason) { setLaunchError(errorText(reason)); }
     finally { launchPending.current = false; setLaunching(false); }
   }
-  async function closeRunner(id: string, method: 'middle' | 'explicit') {
-    if (!await sessions.close(id, method)) return;
+  function closeRunner(id: string) {
+    if (!sessions.close(id)) return;
+    preferences.forgetRunner(id);
     const remaining = sessions.getSnapshot();
     const order = runners.find(runner => runner.id === id)?.createdOrder ?? 0;
     const next = remaining.find(runner => runner.createdOrder > order) ?? remaining.at(-1);
@@ -72,15 +75,19 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     <div className="shell-body">
       <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
         onAdd={() => void createRunner()} addDisabled={!installation || launching} adding={launching}
-        onMiddleClose={id => void closeRunner(id, 'middle')} />
-      <Workspace key={selectedId ?? 'single-entry'} runner={selected} session={sessions.get(selectedId ?? undefined)}
+        onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />
+      <Workspace key={selectedId ?? 'single-entry'} runner={selected}
+        session={sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined)}
         theme={theme} installation={installation}
-        entry={sessions.entry} onSelectRunner={setSelectedId} onCloseRunner={id => closeRunner(id, 'explicit')} />
+        entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
         control={sessions.get(selectedId ?? undefined)?.control}
         scope={selectedId ?? 'single-entry'} />
     </div>
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
+      confirmRemoval={confirmRemoval} onConfirmRemoval={value => {
+        preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value);
+      }}
       onLanguage={language => { preferences.update({ language }); initializeHubLanguage(language); }}
       onTheme={value => { preferences.update({ theme: value }); setTheme(value); }}
       onVerified={value => {

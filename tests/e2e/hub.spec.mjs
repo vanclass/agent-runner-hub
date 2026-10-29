@@ -21,9 +21,9 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
     rowHeight: node.closest('li').getBoundingClientRect().height,
   }))).toEqual({ truncated: true, overflow: 'ellipsis', whiteSpace: 'nowrap', rowHeight: 36 });
   await longRow.locator('.nav-row').click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(longName);
+  await expect(page.locator('.workspace-header')).toHaveCount(0);
   await expect(longRow.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByText('This Runner only', { exact: true })).toBeVisible();
+  await expect(longRow.locator('.remove-action')).toBeVisible();
   await expect(page.locator('.workspace .context-settings')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send instruction' })).toBeDisabled();
   await page.keyboard.press('F2');
@@ -34,7 +34,7 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
   await input.press('Enter');
   await expect(longRow.locator('.nav-row')).toBeFocused();
   await expect(longRow.locator('.runner-name')).toHaveText('Renamed locally');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Renamed locally');
+  await expect(longRow.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
   expect(await rows.evaluateAll(items => items.slice(0, 3).map(item => item.dataset.runnerId))).toEqual(['first', 'second', 'third']);
   await longRow.locator('.nav-row').dblclick();
   await input.fill('Discard this');
