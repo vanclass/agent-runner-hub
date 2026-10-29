@@ -74,8 +74,7 @@ test('keyboard navigation and scrolling keep Single Entry accessible', async ({ 
   await expect(entry).toBeInViewport();
   expect((await entry.boundingBox()).y).toBe(entryTop);
   await page.keyboard.press('Home');
-  await expect(entry).toBeFocused();
-  await page.keyboard.press('Enter');
+  await expect(page.locator('.composer textarea')).toBeFocused();
   await expect(entry).toHaveAttribute('aria-current', 'page');
   await testInfo.attach('resized-navigation', { body: await page.screenshot(), contentType: 'image/png' });
 });

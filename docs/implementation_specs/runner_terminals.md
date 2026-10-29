@@ -10,6 +10,16 @@ Composer drafts and pending submission belong to the session snapshot. Switching
 
 The connected workspace gives remaining central height to terminal output; xterm owns log scrolling, while the bottom composer has bounded independent overflow. Search text belongs to the process-local session and survives keyed view changes. Process exit retains the terminal buffer and displays the observed exit code independently of canonical work outcome. `tests/e2e/log-viewport.mjs`, registered by `runners.spec.mjs`, exercises completed output, search, wheel scrolling and tab return at short and normal desktop heights using the simulated native bridge.
 
+## Hub keyboard navigation
+
+`shortcuts.ts` owns Hub chord matching and capture-phase registration/cleanup. `Hub.tsx` supplies current visible Runner IDs and narrow selection/assignment actions. Defaults are Ctrl+Enter for Single Entry assignment, Home for actual Single Entry selection, and Ctrl with each positive number key for the corresponding current Runner position. The modifier family is configurable; number keys address the current array rather than names, UUID history or creation counters. Deletion closes the gap, and missing positions do nothing. Single Entry, Add and termination-failure entries are excluded. This does not limit the number of tabs or assign a special meaning to Ctrl+0.
+
+Assignment calls the same `SingleEntry.submit` as the button only in the Single Entry context with a verified installation. Its existing readiness, draft, pending-state, attachment and configuration guards remain authoritative. Selection reuses Hub selection and `sessions.view`, retaining drafts and process/session ownership. Home no longer competes with Sidebar's old focus-only Home path; arrow and End navigation remain Sidebar-owned.
+
+Handled keydown, repeats, keypress and matching keyup are consumed before xterm receives them. IME composition, Process/Dead keys and AltGraph do not trigger actions. Open dialogs suspend ordinary shortcuts; capture remains inside the settings dialog. Reserved clipboard/text-editing combinations cannot be configured, and unrelated terminal input remains with RunnerInput. Shortcut preferences and local-save failures belong to [Hub preferences](hub_preferences.md#independent-preference-storage).
+
+`tests/e2e/hub-shortcuts.mjs`, registered by `runners.spec.mjs`, exercises production Hub selection, Single Entry submission and actual xterm rendering with the simulated native transport; `preferences.spec.mjs` covers capture, languages/themes, restoration and protected storage. These browser checks do not establish native WebView key delivery, native focus or installed-Runner acceptance.
+
 ## Installation startup gate
 
 `Hub.tsx` initially composes the mandatory `AppSettings.tsx` dialog. `RunnerLocation.tsx` reads the saved installation and verifies it through `runnerInstallation.ts` and native `runner_resolve` before admitting the workspace. Empty, missing or invalid installations retain the dialog; Escape and backdrop interaction cannot dismiss required setup. Pending native verification disables path changes and exposes progress. Language and theme remain available in setup.

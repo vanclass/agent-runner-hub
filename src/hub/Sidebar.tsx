@@ -97,7 +97,7 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, con
       const index = buttons.indexOf(event.target);
       const next = event.key === 'ArrowDown' ? Math.min(index + 1, buttons.length - 1)
         : event.key === 'ArrowUp' ? Math.max(index - 1, 0)
-        : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : -1;
+        : event.key === 'End' ? buttons.length - 1 : -1;
       if (next >= 0) { event.preventDefault(); buttons[next]?.focus(); }
     }}>
       <p className="sidebar-label">{t('sidebar.workspace')}</p>

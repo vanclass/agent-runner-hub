@@ -6,6 +6,8 @@ import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { AppSettings } from './AppSettings';
+import { ShortcutSettings } from './ShortcutSettings';
+import { defaultShortcuts, useHubShortcuts } from './shortcuts';
 import type { RunnerView } from './model';
 import './hub.css';
 
@@ -26,11 +28,19 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const installation = spare.installation;
   const [setupRequired, setSetupRequired] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [shortcuts, setShortcuts] = useState(preferences.value.shortcuts ?? defaultShortcuts);
   const [launching, setLaunching] = useState(false);
   const launchPending = useRef(false);
   const [launchError, setLaunchError] = useState<HubText>('');
   useEffect(() => sessions.retain(), [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  useHubShortcuts(shortcuts, runners.map(runner => runner.id), selectedId === null && !!installation, {
+    select: id => { setSelectedId(id); requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(id === null ? '.composer textarea' : '.runner-row.active .nav-row')?.focus();
+    }); },
+    assign: () => { void sessions.entry.submit(installation!.root, setSelectedId); },
+  });
   useEffect(() => { sessions.view(selectedId); return () => sessions.view(null); }, [sessions, selectedId]);
   const [theme, setTheme] = useState<'light' | 'black'>(preferences.value.theme);
   const [confirmRemoval, setConfirmRemoval] = useState(preferences.value.confirmRunnerRemoval);
@@ -65,6 +75,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       <div className="brand"><span className="brand-mark" aria-hidden="true">A</span><strong>AgentRunnerHub</strong></div>
       <span className="toolbar-location">{t('hub.workspace')} <span aria-hidden="true">/</span> {selected ? 'Runner' : t('common.singleEntry')}</span>
       <div className="hub-preferences">
+        <button type="button" className="shortcut-settings-trigger" aria-haspopup="dialog"
+          onClick={() => setShortcutsOpen(true)}>{t('shortcuts.title')}</button>
         <button type="button" className="app-settings-trigger" aria-haspopup="dialog"
           onClick={() => setSettingsOpen(true)}>{t('setup.settings')}</button>
       </div>
@@ -85,6 +97,10 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
         scope={selectedId ?? 'single-entry'} />
     </div>
+    {shortcutsOpen && <ShortcutSettings value={shortcuts} onClose={() => setShortcutsOpen(false)} onSave={value => {
+      preferences.update({ shortcuts: value }); setShortcuts(preferences.value.shortcuts ?? defaultShortcuts);
+      return preferences.issue;
+    }} />}
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
       confirmRemoval={confirmRemoval} onConfirmRemoval={value => {
         preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value);

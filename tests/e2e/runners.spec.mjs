@@ -3,6 +3,7 @@ import { PNG } from 'pngjs';
 import { createHash } from 'node:crypto';
 import { registerSessionConfigUI } from './session-config-ui.mjs';
 import { registerSingleEntryWork } from './single-entry-work.mjs';
+import { registerHubShortcuts } from './hub-shortcuts.mjs';
 import { registerRunnerTabs } from './runner-tabs.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerPromotion } from './runner-promotion.mjs';
@@ -234,6 +235,7 @@ async function transport(page, freshTarget, referenceOptions) {
 registerSessionConfigUI({ test, expect, transport, configure });
 registerTaskPanel({ test, expect, transport, configure, create, generatedFixture });
 registerSingleEntryWork({ test, expect, transport, configure, create });
+registerHubShortcuts({ test, expect, transport, configure, create, foreground });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create: createPrepared, records });
 registerRunnerPromotion({ test, expect, transport, configure, create: createPrepared, generatedFixture });

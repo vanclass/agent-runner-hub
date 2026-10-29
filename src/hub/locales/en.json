@@ -1,4 +1,16 @@
 {
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "help": "Choose an action, then press a key combination. Runner navigation uses the same modifiers with each number key (1, 2, 3…). Escape cancels capture. Tab moves between controls.",
+    "assign": "Assign instruction",
+    "entry": "Go to Single Entry",
+    "runner": "Go to Runner by position",
+    "capture": "Press keys…",
+    "invalid": "Use a navigation/function key or a modified key. For Runner navigation, press modifiers with a number from 1 to 9. Clipboard and text-editing shortcuts are reserved.",
+    "conflict": "Shortcuts overlap. Choose a different combination before applying.",
+    "reset": "Restore defaults",
+    "save": "Apply and save"
+  },
   "restart": {
     "action": "Restart all Runners",
     "progress": "Restarted {{restarted}} · restarting {{running}} · pending {{pending}} · failed {{failed}} · removed {{removed}}",

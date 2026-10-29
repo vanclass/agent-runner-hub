@@ -1,4 +1,16 @@
 {
+  "shortcuts": {
+    "title": "단축키 설정",
+    "help": "동작을 선택하고 키 조합을 누르세요. Runner 이동은 같은 보조 키와 각 숫자 키(1, 2, 3…)를 사용합니다. Escape로 캡처를 취소하고 Tab으로 항목을 이동합니다.",
+    "assign": "지시문 배정",
+    "entry": "Single Entry로 이동",
+    "runner": "현재 순서의 Runner로 이동",
+    "capture": "키를 누르세요…",
+    "invalid": "이동·기능 키 또는 보조 키 조합을 사용하세요. Runner 이동은 보조 키와 1~9 숫자 키로 지정합니다. 클립보드·텍스트 편집 단축키는 예약되어 있습니다.",
+    "conflict": "단축키가 겹칩니다. 다른 조합을 지정한 후 적용하세요.",
+    "reset": "기본값 복원",
+    "save": "적용 및 저장"
+  },
   "restart": {
     "action": "전체 러너 재시작",
     "progress": "재시작 완료 {{restarted}} · 재시작 중 {{running}} · 대기 {{pending}} · 실패 {{failed}} · 제거됨 {{removed}}",

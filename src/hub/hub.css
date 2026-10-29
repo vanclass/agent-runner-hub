@@ -52,7 +52,7 @@
 .theme-dot { width: 9px; height: 9px; border: 1px solid var(--muted); border-radius: 50%; }
 .theme-dot.light { background: #fff; }.theme-dot.black { background: #141414; }
 .hub-preferences { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
-.app-settings-trigger { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); padding: 8px 12px; }
+.app-settings-trigger, .shortcut-settings-trigger { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); padding: 8px 12px; }
 .app-settings { width: min(500px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box;
   margin: auto; padding: 32px; overflow: auto; border: 1px solid var(--border); border-radius: 16px;
   background: var(--surface); color: var(--text); box-shadow: 0 20px 70px #0003; }
@@ -220,3 +220,15 @@
   .workspace:has(.runner-terminal) .composer-actions { padding: 0 8px 4px; }
   .workspace:has(.runner-terminal) .composer-note { margin-top: 4px; }
 }
+/* 단축키 행의 간격이다. 늘리면 더 넓고, 줄이면 더 조밀해진다. */
+.shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 0; }
+/* 키 조합 버튼의 최소 너비다. 늘리면 더 넓고, 줄이면 더 좁아진다. */
+.shortcut-row button { min-width: 140px; }
+/* 단축키 버튼의 테두리·모서리·여백이다. 늘리면 더 크고, 줄이면 더 조밀해진다. */
+.shortcut-settings .shortcut-row button, .shortcut-settings .composer-actions button {
+  border: 1px solid var(--border); border-radius: 5px; background: var(--inset); padding: 7px 10px;
+}
+.shortcut-settings .composer-actions button:last-child:not(:disabled) { background: var(--accent); color: var(--surface); }
+/* 키 캡처 강조선의 두께다. 늘리면 더 두껍고, 줄이면 더 얇아진다. */
+.shortcut-row button[aria-pressed="true"] { outline: 2px solid var(--accent, #80aaff); }
+.shortcut-settings-trigger { white-space: nowrap; }

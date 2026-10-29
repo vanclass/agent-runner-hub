@@ -108,7 +108,50 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     expect(await page.evaluate(() => document.activeElement?.closest('.app-appearance') !== null)).toBe(true);
   });
 }
+for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
+  test('shortcuts settings preserve preferences and accessible capture in ' + language + '/' + theme, async ({ page }, info) => {
+    await seed(page, JSON.stringify({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' } }));
+    await page.goto('/tests/fixtures/hub.html');
+    await page.locator('.shortcut-settings-trigger').click();
+    const dialog = page.getByRole('dialog'), buttons = dialog.locator('.shortcut-row button');
+    await buttons.nth(0).click(); await page.keyboard.press('Alt+Enter');
+    await buttons.nth(1).click(); await page.keyboard.press('Alt+Home');
+    await buttons.nth(2).click(); await page.keyboard.press('Alt+2');
+    await info.attach('shortcuts-' + language + '-' + theme, { body: await page.screenshot(), contentType: 'image/png' });
+    await dialog.locator('.composer-actions button').last().click();
+    await expect(page.locator('.shortcut-settings-trigger')).toBeFocused();
+    const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
+    expect(saved).toEqual({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' },
+      shortcuts: { assign: 'Alt+Enter', entry: 'Alt+Home', runner: 'Alt+Digit' } });
+    await page.reload(); await page.locator('.shortcut-settings-trigger').click();
+    await expect(buttons.nth(0)).toHaveText('Alt+Enter'); await expect(buttons.nth(1)).toHaveText('Alt+Home');
+    await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
+  });
+}
+for (const failure of ['write', 'concurrent', 'read']) {
+  test('shortcuts save reports ' + failure + ' failure and protects the original', async ({ page }) => {
+    await page.goto('/tests/fixtures/hub.html');
+    const raw = JSON.stringify({ ...defaults, theme: 'black' });
+    await page.evaluate(({ key, raw, failure }) => {
+      localStorage.setItem(key, raw);
+      if (failure === 'concurrent') return;
+      const method = failure === 'read' ? 'getItem' : 'setItem', original = Storage.prototype[method];
+      Storage.prototype[method] = function(name, ...args) {
+        if (name === key) throw new DOMException('shortcut fixture denied', 'SecurityError');
+        return original.call(this, name, ...args);
+      };
+    }, { key, raw, failure });
+    await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.shortcut-row button').first().click(); await page.keyboard.press('Alt+Enter');
+    await page.getByRole('button', { name: 'Apply and save' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible();
+    if (failure !== 'read') expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
+  });
+}
 const invalid = [
+  JSON.stringify({ ...defaults, shortcuts: { assign: 'Home', entry: 'Home', runner: 'Ctrl+Digit' } }),
+  JSON.stringify({ ...defaults, shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Ctrl+Digit', draft: 'rejected' } }),
   '{', JSON.stringify({ ...defaults, version: 99 }), JSON.stringify({ ...defaults, language: 'fr' }),
   JSON.stringify({ ...defaults, theme: 'dark' }), JSON.stringify({ ...defaults, language: ['ko'] }),
   JSON.stringify({ ...defaults, singleEntry: { account: 'bad\u0000name' } }),
