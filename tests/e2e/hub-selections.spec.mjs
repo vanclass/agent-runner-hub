@@ -104,7 +104,7 @@ for (const fault of ['token', 'unavailable', 'missing']) {
   });
 }
 
-test('Hub discards delayed initialization after a newer local edit', async ({ page }) => {
+test('Hub completes delayed initialization after a newer allocation edit', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
@@ -117,8 +117,13 @@ test('Hub discards delayed initialization after a newer local edit', async ({ pa
     fixture.hold = false; fixture.complete(); await pending;
     return { defaults: selections.defaults, commits, requests: fixture.requests };
   });
-  expect(result.defaults).toEqual({ allocationPolicy: 'reuse-idle', initialized: true });
-  expect(result.commits).toEqual([result.defaults]);
+  expect(result.defaults).toMatchObject({ allocationPolicy: 'reuse-idle', initialized: true,
+    accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'pure-direct-run',
+    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } });
+  expect(result.defaults.target.owner).toBe('Workspace');
+  expect(result.defaults).not.toHaveProperty('root');
+  expect(result.commits).toHaveLength(2);
+  expect(result.commits[1]).toEqual(result.defaults);
   expect(result.requests.every(r => r.operation === 'session_config.inspect')).toBe(true);
 });
 

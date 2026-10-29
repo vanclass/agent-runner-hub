@@ -1,6 +1,32 @@
 export function registerHubSelectionUI({ test, expect, transport, configure, create }) {
   const key = 'agent-runner-hub.preferences.v1';
   const requested = (page, field) => page.getByRole('combobox', { name: `Requested ${field}`, exact: true });
+  test('pending Hub initialization preserves the reuse-idle checkbox edit', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
+    await page.evaluate(() => {
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = (command, args) => {
+        if (command === 'runner_feature' && args.request.feature === 'session_config')
+          window.__nativeFixture.sessions.get(args.id).feature.config.hold = true;
+        return invoke(command, args);
+      };
+      window.__releaseInspection = () => { native.invoke = invoke; };
+    });
+    await page.getByRole('textbox', { name: 'AgentRunner location', exact: true }).fill('/fixture/install');
+    await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+      .some(s => s.feature?.config.requests.length > 0))).toBe(true);
+    await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true }).check();
+    await page.evaluate(() => {
+      window.__releaseInspection();
+      for (const s of window.__nativeFixture.sessions.values()) { s.feature.config.hold = false; s.feature.config.complete(); }
+    });
+    await expect(requested(page, 'Model')).toHaveValue(/m0/);
+    await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true })).toBeChecked();
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry.allocationPolicy, key)).toBe('reuse-idle');
+    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
+      s.feature.requests.length === 0 && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
+  });
   test('Hub selections initialize automatically then restore independent tab choices without startup inspection', async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
     await expect(requested(page, 'Model').getByRole('option', { name: 'm0', exact: true })).toBeAttached();

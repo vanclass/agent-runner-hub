@@ -12,15 +12,18 @@ export class HubSelections {
   detail: HubText = '';
   readonly restoredDefaults: boolean;
   private attempted = false;
+  private inspectionEdits?: Set<keyof EntryDefaults>;
   constructor(private readonly source: () => RunnerConfigService | undefined,
     private readonly changed: () => void, defaults: EntryDefaults = {},
     private readonly save: (value: EntryDefaults) => void = () => {},
     private readonly canEdit: () => boolean = () => true) {
     this.defaults = projectEntryDefaults(defaults) ?? {};
-    this.restoredDefaults = Object.keys(this.defaults).length > 0;
+    this.restoredDefaults = Object.keys(this.defaults).some(key => key !== 'allocationPolicy');
   }
   get editable() { return this.canEdit(); }
-  get initialized() { return Object.keys(this.defaults).length > 0; }
+  get initialized() {
+    return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key));
+  }
   initialize() {
     if (this.initialized || this.attempted || !this.editable) return;
     const service = this.source();
@@ -30,10 +33,12 @@ export class HubSelections {
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
     if (!this.editable) return;
-    const projected = projectEntryDefaults({ ...this.defaults, [key]: value, initialized: true });
+    const projected = projectEntryDefaults({ ...this.defaults, [key]: value,
+      ...(!['allocationPolicy', 'root'].includes(key) ? { initialized: true } : {}) });
     if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
     if (key === 'accountIdentity') delete projected.account;
     if (key === 'runMode' && !['direct-run', 'pure-direct-run'].includes(String(value))) delete projected.root;
+    this.inspectionEdits?.add(key);
     this.defaults = projected;
     this.save(copy(projected));
     this.changed();
@@ -58,6 +63,7 @@ export class HubSelections {
   async inspectOptions() {
     if (!this.editable || this.loadingOptions) return;
     const before = this.defaults, initialize = !this.initialized, service = this.source();
+    const edits = this.inspectionEdits = new Set<keyof EntryDefaults>();
     this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
     try {
       if (!service?.supports('inspect') || service.busy) throw new HubError(msg('config.notReady'));
@@ -78,7 +84,7 @@ export class HubSelections {
         if (!catalog || !same(catalog.inspection.model_options_account, account)
           || !same(catalog.options.accounts[0], account)) throw new HubError(service.error || msg('config.incomplete'));
       }
-      if (this.defaults !== before || !this.editable) {
+      if ((!initialize && this.defaults !== before) || !this.editable || this.source() !== service) {
         this.detail = msg('config.draftChanged');
         return;
       }
@@ -89,10 +95,14 @@ export class HubSelections {
         if (!targets[0] || !accounts[0] || !run_modes[0] || !model?.reasoning_efforts[0] || !model.service_tiers[0]
           || !['target', 'account', 'run_mode', 'model', 'service_tier'].every(key => available[key] === true))
           throw new HubError(msg('config.incomplete'));
-        const projected = projectEntryDefaults({ initialized: true,
+        const initial: EntryDefaults = { initialized: true,
           target: { binding_state: 'bound', owner: targets[0].owner, project: targets[0].project },
           accountIdentity: accounts[0], runMode: run_modes[0], model: { model: model.id,
-            reasoning_effort: model.reasoning_efforts[0], service_tier: model.service_tiers[0] } });
+            reasoning_effort: model.reasoning_efforts[0], service_tier: model.service_tiers[0] } };
+        // Account edits invalidate dependent model defaults, including explicit account clears.
+        for (const key of edits) delete initial[key];
+        if (edits.has('accountIdentity')) delete initial.model;
+        const projected = projectEntryDefaults({ ...initial, ...this.defaults, initialized: true });
         if (!projected) throw new HubError(msg('config.incomplete'));
         this.defaults = projected;
         this.save(copy(projected));
@@ -100,6 +110,6 @@ export class HubSelections {
       this.detail = before.accountIdentity && !same(before.accountIdentity, catalog.inspection.model_options_account)
         ? msg('config.defaultsUnresolved', { fields: 'accountIdentity' }) : '';
     } catch (reason) { this.catalog = undefined; this.detail = errorText(reason); }
-    finally { this.loadingOptions = false; this.changed(); }
+    finally { this.inspectionEdits = undefined; this.loadingOptions = false; this.changed(); }
   }
 }
