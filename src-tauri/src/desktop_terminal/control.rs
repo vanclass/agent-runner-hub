@@ -251,6 +251,11 @@ impl Protocol {
                 .map_err(|_| "Malformed canonical observation")?);
         }
         if let Some(request) = &pending.feature {
+            if finished && state == "accepted" && matches!(request,
+                features::Request::SessionConfig(session_config::Request::Inspect { execution_context: Some(_), .. })) {
+                let root = self.snapshot.features.runner_root.as_deref().ok_or("Unbound Runner installation")?;
+                session_config::verify_test_installation(&packet, root)?;
+            }
             self.snapshot.features.response(id, request, state, finished, &packet)?;
         }
         self.snapshot.references.response(id, state, finished, &packet)?;

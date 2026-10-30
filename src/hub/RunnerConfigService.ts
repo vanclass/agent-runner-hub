@@ -1,8 +1,8 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
-import { copy, same, isInspection, isPlan, isApply, isDigest, validatePage, uniqueOptions, validDesired,
+import { copy, same, record, isInspection, isTestSelection, sameInstallation, isPlan, isApply, isDigest, validatePage, uniqueOptions, validDesired,
   type ConfigAccount, type ConfigCapability, type ConfigCatalog, type ConfigDesired, type ConfigIdentity,
   type ConfigInspect, type ConfigPlan, type ConfigApply, type ConfigSettings, type ConfigRequest, type FeatureSnapshot,
-  type FeatureAdmission, type FeatureResult } from './runnerConfigContract';
+  type FeatureAdmission, type FeatureResult, type BoundTestSelection } from './runnerConfigContract';
 
 export interface ConfigTransport {
   identity(): ConfigIdentity | undefined;
@@ -161,6 +161,31 @@ export class RunnerConfigService {
     if (receipt.state !== 'accepted' || !isInspection(reply))
       throw new HubError(msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_INSPECTION_FAILED' }));
     return copy(reply);
+  }
+  /** Read-only admission evidence for explicit native acceptance, never a preference. */
+  async selectTestAccount(): Promise<BoundTestSelection | undefined> {
+    if (this.busy || this.closed || this.uncertain) return;
+    const identity = this.transport.identity(), root = this.snapshot?.runnerRoot;
+    this.activity = 'inspecting'; this.error = ''; this.changed();
+    try {
+      if (!identity || !root || !this.transport.available() || this.capability?.test_account_selection !== true)
+        throw new Error('TEST_ACCOUNT_SELECTION_UNSUPPORTED');
+      this.assertIdentity(identity);
+      const receipt = await this.request({ operation: 'session_config.inspect', api_version: 1, execution_context: 'test' });
+      this.assertIdentity(identity);
+      const reply = this.completion(receipt);
+      if (receipt.state !== 'accepted' || !isTestSelection(reply)) {
+        const details = record(reply) ? [reply.actual_result, reply.recommended_next_action]
+          .filter((s): s is string => typeof s === 'string' && !!s) : [];
+        throw new Error([receipt.code ?? 'TEST_ACCOUNT_EVIDENCE_UNVERIFIED', ...details].join('. '));
+      }
+      if (this.snapshot?.runnerRoot !== root || !sameInstallation(reply.runner_root, root))
+        throw new Error('TEST_ACCOUNT_INSTALLATION_MISMATCH');
+      return { identity: copy(identity), selection: copy(reply) };
+    } catch (reason) {
+      this.error = `${String(reason instanceof Error ? reason.message : reason)}. Configure /account → Test account settings in the opened Runner installation.`;
+      return undefined;
+    } finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
   async inspect(account?: ConfigAccount) {
     this.previousProgress = null;

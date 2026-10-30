@@ -20,6 +20,14 @@ Completion deadlines are request-specific and apply to the FIFO head. Followers 
 
 Native tracks frame byte positions: an untouched outgoing feature frame is provably not sent; partial/full transmission without a definitive response remains unknown. EOF, timeout and connection loss preserve that distinction and all already-completed receipts. No uncertain apply is automatically repeated, reassigned or inferred successful from coincidentally equal current values.
 
+## Explicit Test Runner acceptance
+
+`session_config.inspect` additionally accepts the exclusive `execution_context: "test"` request, without account or pagination fields. Authenticated capability `test_account_selection: true` is required. `session_config.rs` decodes a distinct test-selection response; incomplete identity, noncanonical/inaccessible home, unverified authentication or a root different from the native launch CWD cannot establish selection. Native wire session identity remains private and must match before decoding; public `runnerRoot` binds the installation to the opened process.
+
+`RunnerConfigService.selectTestAccount()` is a read-only consumer fenced by the exact PTY/session generation and opened installation. It returns account/home/root evidence without changing drafts, preferences, actual settings or submitting work. Failures retain the original code and direct the operator to `/account → Test account settings`. Unsupported, stale, foreign and unknown results never fall back to the startup account.
+
+The explicit native work-acceptance caller is `work_acceptance.rs::public_work_identity_receipts_status_and_exact_owned_shutdown`. Its owned first session uses `session_config_acceptance.rs::configure_test_session`: test selection, destination-account catalog, ordinary plan/apply, completed committed receipts, fresh effective identity and unchanged test home/root must precede its single submission. The second independent session remains untouched. These acceptance-only consumers introduce no ordinary-tab account mode or saved preference. Installed discovery exercises read-only test selection separately; a missing authenticated profile blocks model acceptance before submission. Fixture and transport success never establish genuine image delivery.
+
 ## Verified candidate catalogs
 
 `runnerConfigContract.ts` validates the typed projections and page invariants. Each collection starts at offset zero and captures native instance identity, requested account, returned catalog account, revision, options_revision and totals. Guarded continuation sends the first options token unchanged and requires the exact next offset, expected page lengths/progress, stable Run Modes, matching evidence/totals/account and unique stable candidate identities.
@@ -56,6 +64,8 @@ The English/Korean catalogs cover labels, submission progress, plans, partial re
 
 - `session_config_tests.rs`: capability/version/guard validation, request encoding, completion classification, correlation, bounded waits and transmission uncertainty; existing command/reference/image suites remain independent regression checks.
 - `session_config_acceptance.rs`: explicit Windows installed-public-Runner discovery and isolated two-session API/receipt/stale-evidence/cleanup checks through the production native client. The existing native acceptance prerequisites and explicit selectors apply.
+- `work_acceptance.rs`: installed Test Runner configuration before one submission, independent ordinary session and exact owned shutdown. Optional `HUB_TEST_RUNNER_INSTRUCTION` supplies the image acceptance prompt; completed work must yield a verified native PNG, separately from transport admission.
+- `tests/e2e/test-account-selection.spec.mjs`: read-only test selection, actionable prerequisite failures, identity/root fencing and selected-account configuration before one ordinary work submission, using synthetic responses.
 - `tests/e2e/session-config.spec.mjs` and `session-config-delivery.spec.mjs`: service contracts, guarded/legacy pagination, destination accounts, plans, failure outcomes, identity fencing, defaults and late delivery.
 - `tests/e2e/session-config-ui.mjs`, registered by `runners.spec.mjs`: exact tab submission, configuration-before-work, no-op verification, failure/draft retention, late start, foreground replies and reference preflight through simulated native APIs.
 - `tests/e2e/task-panel.mjs`, registered by `runners.spec.mjs`: geometry, scrolling, keyboard collapse, narrow overlays, retained unsupported defaults/Fast, per-tab selections and absence of exposed command/Apply controls.

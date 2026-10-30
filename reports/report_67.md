@@ -1,0 +1,39 @@
+# Session Report
+
+## 1. Task Info
+- Task Number: 67
+- Task Title: Connect explicit Hub acceptance to Runner test account selection
+- Task Title (KR): Hub 명시적 수락 테스트의 Runner 테스트 계정 연결
+- Summary: Extend authenticated session configuration adapters and the explicit native acceptance consumer while preserving ordinary account preferences and exact-once submission.
+- Summary (KR): 일반 계정 설정과 단일 제출을 유지하며 인증된 세션 구성 어댑터와 명시적 네이티브 수락 테스트를 연결한다.
+
+## 2. Work Plan
+- Inspect the existing native configuration, Hub service, and installed acceptance owners; preserve ordinary tabs, defaults, session identity and authentication boundaries.
+- Add an exclusive capability-gated test inspection request and strict typed success evidence; bind the selected account/home/root to the opened installation and exact session generation.
+- Reuse catalog inspection and ordinary plan/apply receipts before explicit test submission; fail visibly without fallback or replay and update the affected implementation specification.
+- Run focused TypeScript/browser, Rust and authenticated/native acceptance checks through existing infrastructure. Report simulated, installed-native and genuine image evidence separately; keep user-only test-account prerequisites explicit.
+
+## 3. Work Summary
+- Integrated the exclusive authenticated test inspection, capability negotiation, distinct strict response, actionable failure fields and native canonical installation/home checks. Opened installation identity is carried from native launch CWD; private wire session identity remains native-only.
+- Added RunnerConfigService.selectTestAccount(), a read-only consumer returning cloned account/home/root evidence with exact PTY session and generation. It does not set drafts/defaults, apply settings or submit work. Missing, unsupported, malformed, stale, foreign and unknown evidence stops admission with /account → Test account settings guidance.
+- Exact native Test Runner consumer: src-tauri/src/desktop_terminal/work_acceptance.rs::public_work_identity_receipts_status_and_exact_owned_shutdown, using session_config_acceptance.rs::configure_test_session. It uses the selected account's model catalog, ordinary plan/apply, matching committed receipts, fresh current/effective identity and repeated verified home/root before one submission. The Hub service continues using its existing transport and completion owner; no ordinary-tab test mode or second execution system was introduced.
+- Existing specification updated: docs/implementation_specs/runner_session_config.md now maps this contract and focused evidence. The project-policy index at the exact canonical AgentRunnerHub environment was absent. Runner-owned source, credentials, profiles and App Server state were not copied or edited.
+- Representation/coordination choice: Runner remains the authoritative account/profile owner. Native typed evidence is projected to one process-local bound frontend result; explicit acceptance uses a local ordered procedural flow with stop-on-failure and no replay. Ordinary selection, preference storage and work submission owners remain unchanged.
+
+## 4. Validation Evidence
+- TypeScript/Vite: npm run build passed. Focused browser command npm run test:e2e -- tests/e2e/test-account-selection.spec.mjs tests/e2e/session-config.spec.mjs tests/e2e/session-config-delivery.spec.mjs tests/e2e/work.spec.mjs passed 49 checks. Synthetic responses exercise selection without mutation/submission, independent ordinary/test accounts, missing profile, authentication-required, unsupported capability, malformed response, foreign/changed root, stale session/generation, unknown completion, receipts and one ordinary Hub work submission. These are simulated API results, not genuine model evidence.
+- Rust: focused session_config unit checks passed; the authenticated-transport test target also passed 59 unit checks. Windows exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty passed with a direct installed Python interpreter, real private pipes, native generation correlation and typed test selection. Its profile/authentication response and PNG media are fixtures, not provider authentication/image generation.
+- Native checks used existing inspectNative, stageBackend and prepareCargo infrastructure in task-owned temporary staging, preserving the source checkout/index. No Runner completion gates, report validators, task-end commands, commits or alternate Runner installation were used.
+- Installed Windows Runner read-only discovery passed at D:/Codex/codex_workspace. Returned account: agent_id=codex, profile_name=bailesx2; canonical CODEX_HOME=D:/Codex/codex_workspace/agent_runner/local/profiles/codex/accounts/bailesx2; runner_root=D:/Codex/codex_workspace; authentication=available. The read-only selection left account/revision unchanged and closed its owned session.
+- Installed native configuration: effective bailesx2 / gpt-6.1-sol / xhigh / default, source=runner_configuration. Completed SUCCESS receipts committed run_mode=direct-run with root=D:/Codex/codex_workspace, then target=workspace. Account/model/tier already matched and needed no setting change; no account receipt is fabricated. Fresh inspection and repeated test-account evidence matched before submission. The second owned ordinary session's account stayed unchanged; distinct first/second profile selection is additionally covered by the browser simulation.
+- The first native plan was rejected with DIRECT_POLICY_DETECTED for Pure Direct at the policy-bearing root. It performed no apply or work submission. The corrected policy-enabled Direct plan passed; this was new configuration admission after a definitive rejection, not uncertain work replay.
+- Genuine native-model acceptance passed through the production Windows Hub backend: exactly one work.submit, request_id=13, instruction='Generate an image of a frog.'. Work reached succeeded before image collection. Native verified PNG: source=codex.imageGeneration, source_sequence=1657, image_id=6c0a9115913e47dcafb3e221580167a3, dimensions=1536x1024, byte_length=2125046, SHA-256=468db4e610739f3f701268b4b0e85bc66aca3169e0861946861e01f4875fecd0. Visual inspection confirmed a frog. Artifact: temp/task67-native/test-runner-frog.png. Both fixture-owned Runner sessions closed; foreign-session status remained unknown without replay.
+- Evidence limits: actual Windows Hub desktop/WebView rendering was not observed. No repository caller named Test Runner or original frog prompt was supplied/found in the affected source; the existing explicit native work-acceptance caller above was integrated, and the exact new prompt is recorded rather than claimed to be the unavailable original. Native PNG retrieval is genuine delivery through Hub's backend, separate from GUI delivery and from fixture success.
+- Source hygiene: git diff --check passed; changed text retained LF/no-BOM and had no replacement-character corruption. No unrelated source/preferences changes were made.
+
+## 5. User Verification Message
+- The saved test account is configured and authenticated; no user-only account setup is currently required. Future prerequisite failures direct to /account → Test account settings in the opened Runner installation, without fallback. Implementation and focused simulated/native backend checks passed, including one genuine frog PNG. Original-prompt equivalence and actual desktop Hub image rendering remain unverified; the original request text and any external named Test Runner caller are still missing context. Do not replay the completed native submission.
+
+<!-- TASK_END_RUNTIME_METADATA_BEGIN -->
+artifact_ref_json: {"repository_namespace":"project-d095b183621fc82fa74029d3","task_number":"67","task_workload_id":"2d945ad66aee4dc2a32c5ececdec2169"}
+<!-- TASK_END_RUNTIME_METADATA_END -->

@@ -39,6 +39,7 @@ brief_cap=dict(version=1,operations=['brief.stage'],run_modes=['issue-run'],life
 run_cap=dict(version=1,operations=['run.invoke','run.status'],run_modes=['issue-run'],observation_lifetime='process_session',automatic_retry=False,receipt='request_accepted')
 run=None
 interaction_cap=dict(version=1,operations=['interaction.observe','interaction.respond'],dispatch_boundary='foreground_input',automatic_replay=False,lifetime='current_owner')
+config_cap=dict(version=1,operations=['session_config.inspect'],options_page_size=32,options_revision=True,test_account_selection=True,interaction_owner='runner_terminal',automatic_retry=False)
 foreground=None
 initiating=None
 staged=0
@@ -55,6 +56,14 @@ while True:
     assert request_id>previous
     previous=request_id
     send(request_id=request_id,status='accepted',phase='queued')
+    if packet['operation']=='session_config.inspect':
+        assert packet['api_version']==1 and packet['execution_context']=='test'
+        assert not any(key in packet for key in ['offset','account','options_revision'])
+        from pathlib import Path
+        root=Path.cwd().resolve().as_posix()
+        send(request_id=request_id,status='accepted',phase='completed',api_version=1,execution_context='test',
+            account=dict(agent_id='codex',profile_name='pipe-test'),codex_home=root,runner_root=root,authentication='available')
+        continue
     if packet['operation']=='interaction.observe':
         send(request_id=request_id,status='accepted',phase='completed',interaction=foreground or dict(state='none'))
         continue
@@ -119,7 +128,7 @@ while True:
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
         attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[dict(id=c,text=c,aliases=['/d'] if c=='/disabled' else [],parent_id=None,visible=True,enabled=c!='/disabled',disabled_reason='',description='',children=[]) for c in ['/status','/brief','/target','/disabled']])
-    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap))
+    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap,session_config=config_cap))
 "#;
 
 #[test]
@@ -148,6 +157,7 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     });
     let job = job::Job::new().unwrap();
     let mut command = CommandBuilder::new(python);
+    command.cwd(std::env::current_dir().unwrap().canonicalize().unwrap());
     command.args(["-I", "-c", CHILD]);
     let slash_commands = ["  /status", "/brief\targ", "\t/brief\tbody", "\u{1c}/brief\u{85}body",
         "\u{1d}/brief\u{1e}body", "\u{1f}/brief\u{b}body", "\u{c}/brief\u{a0}body", "\u{2028}/brief\u{2029}body"];
@@ -172,6 +182,20 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(!public.contains(&private_key), "Private launch key reached public snapshot");
     for private in ["key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
     assert!(ready.generated_images_supported);
+    let select = control::features::Request::SessionConfig(serde_json::from_value(serde_json::json!({
+        "operation":"session_config.inspect","api_version":1,"execution_context":"test"})).unwrap());
+    let control::features::Admission::Submitted { id, generation } = client.feature(select) else { panic!("Test selection not admitted") };
+    assert_eq!(generation, ready.features.generation);
+    loop {
+        let snapshot = client.snapshot();
+        if let Some(result) = snapshot.features.results.iter().find(|r| r.id == id && r.phase.as_deref() == Some("completed")) {
+            assert_eq!(result.state, "accepted");
+            let Some(control::features::Response::SessionConfig(control::session_config::Response::TestSelection(selected))) = &result.reply else { panic!("{result:?}") };
+            assert_eq!(selected.account.profile_name, "pipe-test"); assert_eq!(selected.authentication, "available");
+            assert_eq!(snapshot.observation_serial, ready.observation_serial); break;
+        }
+        assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
+    }
     for text in ["/brief\rbody", "/brief\nbody", "/brief\0body", "/brief\u{1b}body", "/brief\u{7f}body",
         "/brief\u{84}body", "\u{feff}/status", "prefix /status", "/unknown", "/briefly", "/disabled", "/d arg"] {
         let before = serde_json::to_string(&client.snapshot().results).unwrap();

@@ -42,6 +42,7 @@ fn pipe(parent_reads: bool) -> Result<(OwnedHandle, OwnedHandle), String> {
 
 pub struct Launch {
     read: OwnedHandle, write: OwnedHandle, children: Vec<OwnedHandle>, session: String, key: String,
+    runner_root: Option<String>,
 }
 impl Launch {
     pub fn new(command: &mut CommandBuilder) -> Result<Self, String> {
@@ -53,7 +54,8 @@ impl Launch {
             "--local-control-output", &format!("{}", output.as_raw_handle() as usize)]);
         command.env("AGENT_RUNNER_LOCAL_CONTROL_KEY", &key);
         unsafe { command.set_windows_inherited_handles(vec![input.as_raw_handle() as usize, output.as_raw_handle() as usize]); }
-        Ok(Self { read, write, children: vec![input, output], session, key })
+        let runner_root = command.get_cwd().map(|path| path.to_string_lossy().into_owned());
+        Ok(Self { read, write, children: vec![input, output], session, key, runner_root })
     }
     pub fn bind(mut self, pid: u32) -> Arc<Client> {
         // Release redundant child endpoints immediately after CreateProcessW, before any hello wait.
@@ -65,6 +67,7 @@ impl Launch {
         let worker_stop = stopped.clone();
         let worker = thread::spawn(move || {
             let mut protocol = Protocol::new(pid, self.session);
+            protocol.snapshot.features.runner_root = self.runner_root;
             let result = serve(&self.read, &self.write, &mut protocol, &self.key, receive, &worker_stop, &worker_state);
             protocol.disconnect(result.err().unwrap_or("Runner control closed"));
             *worker_state.lock().unwrap() = protocol.public_snapshot();

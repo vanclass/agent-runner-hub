@@ -10,7 +10,80 @@ fn configured() -> Protocol {
 }
 fn inspect() -> features::Request {
     features::Request::SessionConfig(session_config::Request::Inspect { api_version:1, account:None,
-        offset:0, options_revision:None })
+        offset:Some(0), options_revision:None, execution_context:None })
+}
+fn test_inspect() -> features::Request {
+    serde_json::from_value(json!({"feature":"session_config","request":{
+        "operation":"session_config.inspect","api_version":1,"execution_context":"test"}})).unwrap()
+}
+fn selected(id: u64) -> Value {
+    let mut value = packet(id, "accepted", "completed");
+    value.as_object_mut().unwrap().extend(json!({"api_version":1,"execution_context":"test",
+        "account":{"agent_id":"codex","profile_name":"test"},"codex_home":"D:/Runner/test",
+        "runner_root":"D:/Runner","authentication":"available"}).as_object().unwrap().clone());
+    value
+}
+#[test]
+fn test_selection_is_exclusive_and_capability_gated() {
+    let request = test_inspect(); let mut protocol = configured();
+    let mut unsupported = request.fields(); unsupported["execution_context"] = json!("ordinary");
+    assert!(serde_json::from_value::<session_config::Request>(unsupported).unwrap().validate().is_err());
+    assert!(protocol.feature_request(request.clone(), "private").is_err());
+    let mut cap = capability(); cap["test_account_selection"] = json!(true);
+    protocol.snapshot.features.discover(&json!({"session_config":cap}));
+    let wire: Value = serde_json::from_slice(&protocol.feature_request(request, "private").unwrap()).unwrap();
+    assert_eq!(wire["execution_context"], "test"); assert!(wire.get("offset").is_none());
+    for (key, value) in [("offset", json!(0)), ("account", json!(null)), ("options_revision", json!("a".repeat(64)))] {
+        let mut raw = test_inspect().fields(); raw[key] = value;
+        let parsed = serde_json::from_value::<session_config::Request>(raw);
+        assert!(parsed.is_err() || parsed.unwrap().validate().is_err(), "{key}");
+    }
+}
+#[test]
+fn test_selection_completion_rejects_incomplete_or_unverified_success_and_keeps_failures() {
+    let request = test_inspect();
+    let reply = selected(2);
+    assert!(matches!(request.response(&reply, 2).unwrap(), features::Response::SessionConfig(session_config::Response::TestSelection(_))));
+    for key in ["account", "codex_home", "runner_root", "authentication", "execution_context", "api_version"] {
+        let mut bad = reply.clone(); bad.as_object_mut().unwrap().remove(key);
+        assert!(request.response(&bad, 2).is_err(), "missing {key}");
+    }
+    for (key, value) in [("authentication", json!("authentication_required")), ("codex_home", json!("relative")),
+        ("execution_context", json!("ordinary")), ("api_version", json!(2))] {
+        let mut bad = reply.clone(); bad[key] = value; assert!(request.response(&bad, 2).is_err());
+    }
+    let mut rejected = packet(2, "rejected", "completed"); rejected["code"] = json!("TEST_ACCOUNT_PREREQUISITE");
+    rejected["actual_result"] = json!("Test profile missing");
+    rejected["recommended_next_action"] = json!("Configure /account → Test account settings");
+    let features::Response::SessionConfig(session_config::Response::Error(error)) = request.response(&rejected, 2).unwrap() else { panic!() };
+    assert_eq!(error.code.as_deref(), Some("TEST_ACCOUNT_PREREQUISITE"));
+    assert_eq!(error.actual_result.as_deref(), Some("Test profile missing"));
+    assert!(error.recommended_next_action.unwrap().contains("/account"));
+    let mut protocol = configured();
+    let mut cap = capability(); cap["test_account_selection"] = json!(true);
+    protocol.snapshot.features.discover(&json!({"session_config":cap}));
+    protocol.feature_request(request, "private").unwrap();
+    let mut foreign = reply; foreign["session_id"] = json!("foreign"); assert!(protocol.response(foreign).is_err());
+    protocol.response(rejected).unwrap(); assert_eq!(protocol.snapshot.state, "ready");
+}
+#[test]
+fn test_selection_binds_canonical_opened_installation_and_unknown_completion() {
+    let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let canonical = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/").trim_start_matches("//?/").to_owned();
+    let mut reply = selected(2);
+    reply["runner_root"] = json!(canonical(&root)); reply["codex_home"] = json!(canonical(&root));
+    assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_ok());
+    reply["runner_root"] = json!(canonical(root.parent().unwrap()));
+    assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_err());
+    reply["codex_home"] = json!(format!("{}/missing-test-home", canonical(&root)));
+    assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_err());
+    let mut protocol = configured(); let mut cap = capability(); cap["test_account_selection"] = json!(true);
+    protocol.snapshot.features.discover(&json!({"session_config":cap}));
+    protocol.feature_request(test_inspect(), "private").unwrap();
+    protocol.response(packet(2, "accepted", "queued")).unwrap(); protocol.disconnect("Unknown completion");
+    assert_eq!(protocol.snapshot.features.results.len(), 1);
+    assert_eq!(protocol.snapshot.features.results[0].state, "outcome-unknown");
+    assert!(protocol.pending.is_empty());
 }
 fn plan() -> features::Request {
     features::Request::SessionConfig(session_config::Request::Plan { api_version:1,
@@ -37,7 +110,7 @@ fn capabilities_require_implemented_version_operations_and_options_guard() {
     protocol.snapshot.features.discover(&json!({"session_config":cap}));
     assert!(protocol.feature_request(plan(), "private").is_err());
     let guarded = features::Request::SessionConfig(session_config::Request::Inspect { api_version:1, account:None,
-        offset:32, options_revision:Some("a".repeat(64)) });
+        offset:Some(32), options_revision:Some("a".repeat(64)), execution_context:None });
     assert!(protocol.feature_request(guarded, "private").is_err());
     assert!(protocol.feature_request(inspect(), "private").is_ok());
 }

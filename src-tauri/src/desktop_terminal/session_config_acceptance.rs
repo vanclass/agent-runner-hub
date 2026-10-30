@@ -4,12 +4,14 @@ use control::{features, session_config as config};
 use std::time::Instant;
 
 fn call(harness: &mut Harness, session: &Arc<Session>, request: config::Request) -> features::ResultView {
+    let generation = session.control_snapshot().unwrap().features.generation;
     let admission = session.control_feature(features::Request::SessionConfig(request)).unwrap();
     let id = match admission { features::Admission::Submitted { id, .. } => id,
         other => panic!("Request not submitted: {other:?}") };
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         let snapshot = session.control_snapshot().unwrap();
+        assert_eq!(snapshot.features.generation, generation, "Stale native configuration session");
         if let Some(result) = snapshot.features.results.iter().find(|r| r.id == id && r.phase.as_deref() == Some("completed")) {
             return result.clone();
         }
@@ -18,16 +20,79 @@ fn call(harness: &mut Harness, session: &Arc<Session>, request: config::Request)
     }
 }
 fn inspect(harness: &mut Harness, session: &Arc<Session>) -> config::Inspection {
-    let result = call(harness, session, config::Request::Inspect { api_version:1, account:None, offset:0, options_revision:None });
+    let result = call(harness, session, config::Request::Inspect { api_version:1, account:None, offset:Some(0), options_revision:None, execution_context:None });
     match result.reply.unwrap() { features::Response::SessionConfig(config::Response::Inspect(value)) => value, value => panic!("inspect: {value:?}") }
 }
 fn plan(harness: &mut Harness, session: &Arc<Session>, desired: config::Desired) -> config::Plan {
-    let result = call(harness, session, config::Request::Plan { api_version:1, desired });
-    match result.reply.unwrap() { features::Response::SessionConfig(config::Response::Plan(value)) => { assert_eq!(value.plan_status, "ready", "{value:?}"); value },
+    let result = call(harness, session, config::Request::Plan { api_version:1, desired:desired.clone() });
+    assert_eq!(result.state, "accepted", "{result:?}");
+    match result.reply.unwrap() { features::Response::SessionConfig(config::Response::Plan(value)) => {
+        assert_eq!(value.plan_status, "ready", "{value:?}"); assert_eq!(value.api_version, 1);
+        assert_eq!(value.desired, desired); assert!(!value.atomic);
+        assert!(value.errors.is_empty() && value.required_confirmations.is_empty());
+        assert!(config::digest(&value.revision) && value.plan_id.as_deref().is_some_and(config::digest)); value },
         value => panic!("plan: {value:?}") }
 }
 fn apply_request(plan: &config::Plan) -> config::Request {
     config::Request::Apply { api_version:1, desired:plan.desired.clone(), revision:plan.revision.clone(), plan_id:plan.plan_id.clone().unwrap() }
+}
+pub(super) fn test_selection(harness: &mut Harness, session: &Arc<Session>) -> config::TestSelection {
+    let result = call(harness, session, config::Request::Inspect { api_version:1, account:None,
+        offset:None, options_revision:None, execution_context:Some("test".into()) });
+    assert_eq!(result.state, "accepted", "{result:?}. Configure /account → Test account settings.");
+    match result.reply.unwrap() {
+        features::Response::SessionConfig(config::Response::TestSelection(value)) => value,
+        other => panic!("Unverified test selection: {other:?}. Configure /account → Test account settings."),
+    }
+}
+pub(super) fn configure_test_session(harness: &mut Harness, session: &Arc<Session>) -> config::TestSelection {
+    let selection = test_selection(harness, session);
+    let before = inspect(harness, session);
+    let mut models = Vec::new(); let mut offset = Some(0); let mut guard = None;
+    while let Some(next) = offset {
+        let result = call(harness, session, config::Request::Inspect { api_version:1, account:Some(selection.account.clone()),
+            offset:Some(next), options_revision:guard.clone(), execution_context:None });
+        let Some(features::Response::SessionConfig(config::Response::Inspect(page))) = result.reply else { panic!("Missing test model catalog") };
+        assert_eq!(result.state, "accepted"); assert_eq!(page.model_catalog_status, "available");
+        assert_eq!(page.model_options_account, selection.account); assert_eq!(page.revision, before.revision);
+        assert_eq!(page.options_page.offset, next);
+        if let Some(expected) = &guard { assert_eq!(page.options_revision.as_ref(), Some(expected)); }
+        guard = page.options_revision; models.extend(page.options.models);
+        offset = page.options_page.next_offset;
+        assert!(offset.is_none_or(|n| n > next) && (offset.is_none() || guard.is_some()));
+    }
+    let model = models.iter().find(|m| m.id == before.current.model.id).or_else(|| models.first()).expect("No test-account model");
+    let effort = model.reasoning_efforts.iter().find(|e| **e == before.current.model.reasoning_effort)
+        .or_else(|| model.reasoning_efforts.first()).expect("No reasoning effort");
+    let tier = model.service_tiers.iter().find(|t| t.as_str() == "default").expect("No default service tier");
+    let desired = config::Desired { account:Some(selection.account.clone()),
+        model:Some(config::Model { id:model.id.clone(), reasoning_effort:effort.clone() }), service_tier:Some(tier.clone()),
+        run_mode:Some("direct-run".into()), root:Some(selection.runner_root.clone()), target:Some("workspace".into()) };
+    let planned = plan(harness, session, desired);
+    let result = call(harness, session, apply_request(&planned));
+    assert_eq!(result.state, "accepted", "{result:?}");
+    let Some(features::Response::SessionConfig(config::Response::Apply(receipt))) = result.reply else { panic!("No setting receipts") };
+    assert_eq!(receipt.apply_status, "applied"); assert!(!receipt.outcome_unknown);
+    assert!(!receipt.inspection_unavailable.unwrap_or(false)); assert_eq!(receipt.results.len(), planned.steps.len());
+    for (step, receipt) in planned.steps.iter().zip(&receipt.results) {
+        assert_eq!(&receipt.setting, step); assert!(matches!(receipt.outcome, config::Outcome::Success));
+        assert!(matches!(receipt.owner_status.as_deref(), Some("SUCCESS" | "UNCHANGED")));
+        let actual = serde_json::to_value(receipt.committed.as_ref().expect("Missing committed settings")).unwrap();
+        let expected = serde_json::to_value(&planned.desired).unwrap();
+        for key in if step == "run_mode" { vec!["run_mode", "root"] } else { vec![step.as_str()] } {
+            assert_eq!(actual.get(key), expected.get(key));
+        }
+    }
+    let after = inspect(harness, session);
+    assert_eq!(after.current.account, selection.account); assert_eq!(after.effective.account, selection.account.profile_name);
+    assert_eq!(after.current.model.id, model.id); assert_eq!(after.current.model.reasoning_effort, *effort);
+    assert_eq!(after.current.service_tier, *tier); assert_eq!(after.current.run_mode, "direct-run");
+    assert_eq!(after.current.target, "workspace"); assert_eq!(after.current.root.replace('\\', "/"), selection.runner_root);
+    assert_eq!(after.effective.model, model.id); assert_eq!(after.effective.reasoning_effort, *effort);
+    assert_eq!(after.effective.service_tier, *tier);
+    assert!(!after.setup_required); assert_eq!(serde_json::to_value(test_selection(harness, session)).unwrap(), serde_json::to_value(&selection).unwrap());
+    println!("TEST_RUNNER_CONFIG account={:?}, CODEX_HOME={}, root={}, receipts={:?}, effective={:?}", selection.account, selection.codex_home, selection.runner_root, receipt.results, after.effective);
+    selection
 }
 
 #[test]
@@ -48,6 +113,12 @@ fn installed_session_config_read_only_discovery() {
     assert_eq!(capability.version, 1); assert!(capability.options_revision);
     let actual = inspect(&mut harness, &session);
     assert!(config::digest(&actual.revision));
+    assert!(capability.test_account_selection, "Configure /account → Test account settings; Runner must support test selection.");
+    let selected = test_selection(&mut harness, &session);
+    let unchanged = inspect(&mut harness, &session);
+    assert_eq!(actual.revision, unchanged.revision);
+    assert_eq!(actual.current.account, unchanged.current.account);
+    println!("READ_ONLY_TEST_SELECTION {:?}", selected);
     session.close().unwrap(); harness.exited(&id);
     assert!(harness.sessions.sessions.lock().unwrap().is_empty());
     println!("Installed Runner authenticated session_config v1/options_revision and read-only inspect verified; owned session closed.");
@@ -93,8 +164,8 @@ fn installed_session_config_two_sessions_and_authoritative_receipts() {
     assert_eq!(other.revision, unchanged.revision); assert_eq!(other.current.run_mode, unchanged.current.run_mode);
     let stale = call(&mut harness, &first, apply_request(&planned));
     assert_eq!(stale.code.as_deref(), Some("CONFIG_REVISION_STALE"));
-    let stale_options = call(&mut harness, &first, config::Request::Inspect { api_version:1, account:None, offset:0,
-        options_revision:original.options_revision.clone() });
+    let stale_options = call(&mut harness, &first, config::Request::Inspect { api_version:1, account:None, offset:Some(0),
+        options_revision:original.options_revision.clone(), execution_context:None });
     assert_eq!(stale_options.code.as_deref(), Some("CONFIG_OPTIONS_REVISION_STALE"));
     for (mode, direct_root) in [("direct-run", Some(root.clone())), ("task-run", None)] {
         let planned = plan(&mut harness, &first, config::Desired { run_mode:Some(mode.into()), root:direct_root, ..Default::default() });

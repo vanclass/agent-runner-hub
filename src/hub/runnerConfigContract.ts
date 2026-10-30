@@ -11,7 +11,10 @@ export type ConfigDesired = Partial<ConfigSettings>;
 export type ConfigTarget = { id: string; owner: string; project: string };
 export type ConfigModelOption = { id: string; reasoning_efforts: string[]; service_tiers: string[] };
 export type ConfigOptions = { targets: ConfigTarget[]; accounts: ConfigAccount[]; models: ConfigModelOption[]; run_modes: string[] };
-export type ConfigCapability = { version: 1; operations: string[]; options_page_size: number; options_revision: boolean };
+export type ConfigCapability = { version: 1; operations: string[]; options_page_size: number; options_revision: boolean; test_account_selection?: boolean };
+export type ConfigTestSelection = { api_version: 1; execution_context: 'test'; account: ConfigAccount;
+  codex_home: string; runner_root: string; authentication: 'available' };
+export type BoundTestSelection = { identity: ConfigIdentity; selection: ConfigTestSelection };
 export type ConfigInspect = { api_version: 1; revision: string; options_revision?: string | null;
   current: ConfigSettings; effective: RunnerObservation['selection']; runner_kind: string; setup_required: boolean;
   availability: Record<string, boolean>; constraints: string[]; root_requirements: Record<string, string>;
@@ -27,14 +30,15 @@ export type ConfigReceipt = { setting: ConfigStep; outcome: 'success' | 'rejecte
 export type ConfigApply = { api_version: 1; apply_status: 'applied' | 'partial' | 'rejected' | 'cancelled' | 'failed' | 'unknown';
   atomic: false; results: ConfigReceipt[]; outcome_unknown: boolean; inspection_unavailable?: boolean | null;
   current?: ConfigSettings | null; revision?: string | null; code?: string | null; plan?: ConfigPlan | null };
-export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 1; account?: ConfigAccount; offset: number; options_revision?: string }
+export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 1; execution_context?: never; account?: ConfigAccount; offset: number; options_revision?: string }
+  | { operation: 'session_config.inspect'; api_version: 1; execution_context: 'test'; account?: never; offset?: never; options_revision?: never }
   | { operation: 'session_config.plan'; api_version: 1; desired: ConfigDesired }
   | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string };
 export type FeatureResult = { id: number; feature: 'session_config' | 'work' | 'brief' | 'run' | 'interaction'; operation: ConfigRequest['operation'] | WorkRequest['operation'] | RunRequest['operation'] | InteractionRequest['operation'] | 'brief.stage';
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown' | 'not-sent';
   admission: 'unconfirmed' | 'queued' | 'rejected' | 'not-sent'; phase?: string | null; code?: string | null;
   reply?: unknown };
-export type FeatureSnapshot = { generation: number; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null;
+export type FeatureSnapshot = { generation: number; runnerRoot?: string | null; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null;
   interaction?: InteractionCapability | null;
   brief?: { version: 1; operations: string[] } | null; run?: RunCapability | null; results: FeatureResult[] };
 export type FeatureAdmission = { state: 'submitted'; id: number; generation: number }
@@ -55,6 +59,21 @@ const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(item 
 export const isDigest = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
 export function isAccount(v: unknown): v is ConfigAccount {
   return record(v) && typeof v.agent_id === 'string' && typeof v.profile_name === 'string';
+}
+export function isTestSelection(v: unknown): v is ConfigTestSelection {
+  const text = (s: unknown): s is string => typeof s === 'string' && !!s && s.trim() === s && !s.includes('\0');
+  const path = (s: unknown) => text(s) && /^(?:[A-Za-z]:\/|\/)/.test(s)
+    && !s.includes('\\') && !s.split('/').some(part => part === '.' || part === '..');
+  return record(v) && v.api_version === 1 && v.execution_context === 'test' && isAccount(v.account)
+    && text(v.account.agent_id) && text(v.account.profile_name) && v.authentication === 'available'
+    && path(v.codex_home) && path(v.runner_root);
+}
+export function sameInstallation(a: string, b: string) {
+  const normalize = (s: string) => {
+    const path = s.replace(/\\/g, '/').replace(/\/$/, '');
+    return /^(?:[A-Za-z]:|\/\/)/.test(path) ? path.toLowerCase() : path;
+  };
+  return normalize(a) === normalize(b);
 }
 function isSettings(v: unknown): v is ConfigSettings {
   return record(v) && ['target', 'service_tier', 'run_mode', 'root'].every(k => typeof v[k] === 'string')

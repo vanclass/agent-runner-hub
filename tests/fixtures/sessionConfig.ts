@@ -18,13 +18,17 @@ export class ConfigFixture {
   applyOutcome = '';
   planStatus = 'ready';
   postApplyFailure = false;
+  testSelection: unknown = { api_version: 1, execution_context: 'test',
+    account: this.accounts[1], codex_home: 'D:/Runner/agent_runner/local/profiles/codex/accounts/second',
+    runner_root: 'D:/Runner', authentication: 'available' };
+  testSelectionCode = '';
   private applied = false;
   private sequence = 1000;
   private pending: { request: ConfigRequest; result: FeatureResult }[] = [];
   changed: () => void = () => {};
   constructor(session = 'fixture-a', generation = 1, guarded = true) {
     this.session = session;
-    this.features = { generation, sessionConfig: { version: 1,
+    this.features = { generation, runnerRoot: 'D:/Runner', sessionConfig: { version: 1, test_account_selection: true,
       operations: ['session_config.inspect', 'session_config.plan', 'session_config.apply'],
       options_page_size: 2, options_revision: guarded }, results: [] };
   }
@@ -71,6 +75,11 @@ export class ConfigFixture {
     const { request, result } = item;
     result.phase = 'completed'; result.state = 'accepted';
     if (request.operation === 'session_config.inspect') {
+      if ('execution_context' in request) {
+        result.reply = copy(this.testSelection);
+        if (this.testSelectionCode) { result.state = 'rejected'; result.code = this.testSelectionCode; }
+        this.changed(); return;
+      }
       if (this.applied && this.postApplyFailure) { result.state = 'failure'; result.code = 'CONFIG_INSPECTION_FAILED'; result.reply = { api_version: 1 }; }
       else {
         const page = this.inspection(request.account, request.offset);

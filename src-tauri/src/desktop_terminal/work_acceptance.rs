@@ -1,4 +1,4 @@
-//! Public Runner transport evidence. No Provider execution is required or claimed.
+//! Explicit Test Runner acceptance through the existing native installation and work protocol.
 use super::*;
 use control::{features, work};
 use std::time::Instant;
@@ -21,10 +21,9 @@ fn observed(result: &features::ResultView) -> &work::Response {
     match result.reply.as_ref().unwrap() { features::Response::Work(r) => r, other => panic!("{other:?}") }
 }
 #[test]
-#[ignore = "Requires explicitly selected isolated public Runner at HUB_RUNNER_ACCEPTANCE_ROOT"]
+#[ignore = "Requires explicitly selected installed Runner and configured authenticated Test account"]
 fn public_work_identity_receipts_status_and_exact_owned_shutdown() {
     let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();
-    assert!(std::path::Path::new(&root).join("hub-acceptance-fixture.json").is_file(), "isolated fixture required");
     let mut harness = Harness::new();
     let first_id = harness.open_runner(&root); let second_id = harness.open_runner(&root);
     let first = harness.sessions.owned(&first_id, "test-window").unwrap();
@@ -39,10 +38,16 @@ fn public_work_identity_receipts_status_and_exact_owned_shutdown() {
     assert_eq!(b.state, "ready", "{b:?}");
     assert_ne!(a.features.generation, b.features.generation);
     assert_eq!(a.features.work.unwrap().version, 1); assert_eq!(b.features.work.unwrap().version, 1);
-    // A clean unauthenticated fixture may reject at setup/foreground admission.
-    // Such a result proves transport and Runner evidence, never genuine Agent start.
+    // This explicitly designated acceptance session consumes Runner's saved test account.
+    let other = second.control_snapshot().unwrap().observation.unwrap().selection.account;
+    super::session_config_acceptance::configure_test_session(&mut harness, &first);
+    assert_eq!(second.control_snapshot().unwrap().observation.unwrap().selection.account, other);
+    assert!(first.images_list().unwrap().images.is_empty(), "New owned acceptance session required");
+    // Missing test-account evidence stops before this single submission; there is no startup-account fallback.
+    let instruction = std::env::var("HUB_TEST_RUNNER_INSTRUCTION").unwrap_or_else(|_|
+        "Reply READY without modifying files. This is one isolated transport acceptance instruction.".into());
     let submit = call(&mut harness, &first, work::Request::Submit { api_version:1,
-        instruction:"Reply READY without modifying files. This is one isolated transport acceptance instruction.".into() });
+        instruction });
     let original = submit.id;
     assert_eq!(submit.phase.as_deref(), Some("completed"));
     let receipt = observed(&submit);
@@ -55,11 +60,31 @@ fn public_work_identity_receipts_status_and_exact_owned_shutdown() {
     assert_eq!(foreign.state, "outcome-unknown");
     assert_eq!(observed(&foreign).code.as_deref(), Some("SUBMISSION_NOT_OBSERVED"));
     assert_eq!(first.control_snapshot().unwrap().features.results.iter().filter(|r| r.operation == "work.submit").count(), 1);
+    if std::env::var_os("HUB_TEST_RUNNER_INSTRUCTION").is_some() {
+        let deadline = Instant::now() + Duration::from_secs(120);
+        loop {
+            let status = call(&mut harness, &first, work::Request::Status { api_version:1, submission_request_id:original });
+            let observation = observed(&status).work.as_ref().expect("Missing original work evidence");
+            assert_eq!(status.state, "accepted", "{status:?}");
+            assert_ne!(observation.outcome, "unknown");
+            if observation.terminal {
+                assert_eq!(observation.outcome, "succeeded", "{status:?}"); break;
+            }
+            assert!(Instant::now() < deadline, "Original submission remains unresolved; never replay");
+            harness.pump_for(Duration::from_millis(500));
+        }
+        let inventory = first.images_list().expect("Native generated-image inventory unavailable");
+        assert!(inventory.incomplete.is_none() && !inventory.images.is_empty(), "No genuine native image delivered");
+        let image = first.image_read(&inventory.images[0].image_id).expect("Native image verification failed");
+        let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("test-runner-frog.png");
+        std::fs::write(&output, &image.png).unwrap();
+        println!("GENUINE_NATIVE_IMAGE submission={original}, image={:?}, output={}", image.image, output.display());
+    }
     first.close().unwrap(); harness.exited(&first_id);
     assert_eq!(first.control_snapshot().unwrap().state, "disconnected");
     assert_eq!(second.control_snapshot().unwrap().state, "ready");
     second.close().unwrap(); harness.exited(&second_id);
     assert!(harness.sessions.sessions.lock().unwrap().is_empty());
-    println!("PUBLIC_WORK_TRANSPORT original={original}, state={}, admission={}, event={}, started={}, terminal={}, outcome={}; two independent instances, one submit, foreign lookup unknown, owned shutdown verified. Provider execution not claimed.",
+    println!("PUBLIC_WORK_TRANSPORT original={original}, state={}, admission={}, event={}, started={}, terminal={}, outcome={}; two independent instances, one submit, foreign lookup unknown, owned shutdown verified. Transport receipts are separate from model/image evidence.",
         work.state, work.admission, work.event_id, work.started_event_id, work.terminal, work.outcome);
 }

@@ -25,7 +25,8 @@ impl Request {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Capability { pub version: u32, pub operations: Vec<String>, pub options_page_size: u32,
-    #[serde(default)] pub options_revision: bool }
+    #[serde(default)] pub options_revision: bool,
+    #[serde(default)] pub test_account_selection: bool }
 impl Capability {
     fn read(value: &Value) -> Option<Self> {
         let mut cap: Self = serde_json::from_value(value.clone()).ok()?;
@@ -39,6 +40,7 @@ impl Capability {
     pub fn supports(&self, request: &Request) -> bool {
         self.operations.iter().any(|op| op == request.operation())
             && match request {
+                Request::SessionConfig(session_config::Request::Inspect { execution_context: Some(_), .. }) => self.test_account_selection,
                 Request::SessionConfig(session_config::Request::Inspect { options_revision: Some(_), .. }) => self.options_revision,
                 _ => true,
             }
@@ -57,6 +59,7 @@ pub struct ResultView {
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Features {
+    pub runner_root: Option<String>,
     pub interaction: Option<interaction::Capability>,
     pub brief: Option<brief::Capability>,
     pub run: Option<run::Capability>,
