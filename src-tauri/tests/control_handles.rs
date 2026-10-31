@@ -61,8 +61,10 @@ while True:
         assert not any(key in packet for key in ['offset','account','options_revision'])
         from pathlib import Path
         root=Path.cwd().resolve().as_posix()
+        home=Path(root)/'agent_runner/local/profiles/codex/accounts/pipe-test'
+        assert home.is_dir()
         send(request_id=request_id,status='accepted',phase='completed',api_version=1,execution_context='test',
-            account=dict(agent_id='codex',profile_name='pipe-test'),codex_home=root,runner_root=root,authentication='available')
+            account=dict(agent_id='codex',profile_name='pipe-test'),codex_home=home.as_posix(),runner_root=root,authentication='available')
         continue
     if packet['operation']=='interaction.observe':
         send(request_id=request_id,status='accepted',phase='completed',interaction=foreground or dict(state='none'))
@@ -157,7 +159,9 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     });
     let job = job::Job::new().unwrap();
     let mut command = CommandBuilder::new(python);
-    command.cwd(std::env::current_dir().unwrap().canonicalize().unwrap());
+    let fixture = std::env::current_dir().unwrap().join("temp").join(format!("control-account-{}", std::process::id()));
+    std::fs::create_dir_all(fixture.join("agent_runner/local/profiles/codex/accounts/pipe-test")).unwrap();
+    command.cwd(fixture.canonicalize().unwrap());
     command.args(["-I", "-c", CHILD]);
     let slash_commands = ["  /status", "/brief\targ", "\t/brief\tbody", "\u{1c}/brief\u{85}body",
         "\u{1d}/brief\u{1e}body", "\u{1f}/brief\u{b}body", "\u{c}/brief\u{a0}body", "\u{2028}/brief\u{2029}body"];
@@ -291,4 +295,5 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     let terminal = String::from_utf8_lossy(&output.join().unwrap()).into_owned();
     assert!(!terminal.contains(&private_key), "Private launch key reached terminal output");
     assert!(!terminal.contains("Traceback"), "{terminal}");
+    std::fs::remove_dir_all(&fixture).unwrap();
 }

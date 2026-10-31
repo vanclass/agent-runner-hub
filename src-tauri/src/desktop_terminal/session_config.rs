@@ -135,7 +135,9 @@ pub struct TestSelection { pub api_version: u32, pub execution_context: String,
     pub account: Account, pub codex_home: String, pub runner_root: String, pub authentication: String }
 impl TestSelection {
     fn valid(&self) -> bool {
-        self.api_version == 1 && self.execution_context == "test" && account(&self.account)
+        self.api_version == 1 && self.execution_context == "test" && self.account.agent_id == "codex"
+            && text(&self.account.profile_name) && self.account.profile_name != "." && self.account.profile_name != ".."
+            && !self.account.profile_name.contains(['/', '\\', ':'])
             && self.authentication == "available" && canonical_path(&self.codex_home) && canonical_path(&self.runner_root)
     }
 }
@@ -149,13 +151,16 @@ pub fn verify_test_installation(packet: &Value, opened_root: &str) -> Result<(),
     let canonical = |value: &str| std::path::Path::new(value).canonicalize().map_err(|_| "Test account path unavailable");
     let root = canonical(&selection.runner_root)?;
     let home = canonical(&selection.codex_home)?;
+    let registered_home = root.join("agent_runner/local/profiles/codex/accounts").join(&selection.account.profile_name);
+    let registered = canonical(&registered_home.to_string_lossy())?;
     let spelling = |path: &std::path::Path| {
         let value = path.to_string_lossy().replace('\\', "/");
         let value = value.strip_prefix("//?/UNC/").map(|v| format!("//{v}"))
             .unwrap_or_else(|| value.strip_prefix("//?/").unwrap_or(&value).to_owned());
         if cfg!(windows) { value.to_lowercase() } else { value }
     };
-    if root != canonical(opened_root)? || !root.is_dir() || !home.is_dir()
+    if root != canonical(opened_root)? || !root.is_dir() || !home.is_dir() || home != registered
+        || spelling(&registered) != spelling(&registered_home)
         || spelling(&home) != spelling(std::path::Path::new(&selection.codex_home))
         || spelling(&root) != spelling(std::path::Path::new(&selection.runner_root)) {
         return Err("Test account installation mismatch");

@@ -66,13 +66,41 @@ fn test_selection_completion_rejects_incomplete_or_unverified_success_and_keeps_
     let mut foreign = reply; foreign["session_id"] = json!("foreign"); assert!(protocol.response(foreign).is_err());
     protocol.response(rejected).unwrap(); assert_eq!(protocol.snapshot.state, "ready");
 }
+struct TestInstallation(std::path::PathBuf);
+impl TestInstallation {
+    fn new() -> Self {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let fixture = Self(std::env::temp_dir().join(format!("hub-test-selection-{}-{unique}", std::process::id())));
+        for profile in ["test", "other"] { std::fs::create_dir_all(fixture.home(profile)).unwrap(); }
+        fixture
+    }
+    fn home(&self, profile: &str) -> std::path::PathBuf {
+        self.0.join("agent_runner/local/profiles/codex/accounts").join(profile)
+    }
+}
+impl Drop for TestInstallation {
+    fn drop(&mut self) { std::fs::remove_dir_all(&self.0).unwrap(); }
+}
 #[test]
 fn test_selection_binds_canonical_opened_installation_and_unknown_completion() {
-    let root = std::env::current_dir().unwrap().canonicalize().unwrap();
+    let fixture = TestInstallation::new();
+    let root = fixture.0.canonicalize().unwrap();
     let canonical = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/").trim_start_matches("//?/").to_owned();
     let mut reply = selected(2);
-    reply["runner_root"] = json!(canonical(&root)); reply["codex_home"] = json!(canonical(&root));
+    reply["runner_root"] = json!(canonical(&root)); reply["codex_home"] = json!(canonical(&fixture.home("test")));
     assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_ok());
+    for path in [root.clone(), fixture.home("other")] {
+        let mut bad = reply.clone(); bad["codex_home"] = json!(canonical(&path));
+        assert!(session_config::verify_test_installation(&bad, &root.to_string_lossy()).is_err());
+    }
+    for profile in ["", " test", ".", "..", "../test", "other/../test", "other\\test", "C:test", "test/", "missing"] {
+        let mut bad = reply.clone(); bad["account"]["profile_name"] = json!(profile);
+        assert!(session_config::verify_test_installation(&bad, &root.to_string_lossy()).is_err(), "{profile}");
+    }
+    let mut bad = reply.clone(); bad["account"]["agent_id"] = json!("foreign");
+    assert!(session_config::verify_test_installation(&bad, &root.to_string_lossy()).is_err());
+    let other = TestInstallation::new();
+    assert!(session_config::verify_test_installation(&reply, &other.0.to_string_lossy()).is_err());
     reply["runner_root"] = json!(canonical(root.parent().unwrap()));
     assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_err());
     reply["codex_home"] = json!(format!("{}/missing-test-home", canonical(&root)));
@@ -84,6 +112,31 @@ fn test_selection_binds_canonical_opened_installation_and_unknown_completion() {
     assert_eq!(protocol.snapshot.features.results.len(), 1);
     assert_eq!(protocol.snapshot.features.results[0].state, "outcome-unknown");
     assert!(protocol.pending.is_empty());
+}
+#[test]
+fn test_selection_rejects_home_alias_and_registered_profile_escape() {
+    let fixture = TestInstallation::new(); let outside = TestInstallation::new();
+    let alias = fixture.home("alias"); let target = outside.home("test");
+    #[cfg(windows)]
+    {
+        let result = std::process::Command::new("cmd.exe").args(["/d", "/c", "mklink", "/J"])
+            .arg(alias.to_string_lossy().replace('/', "\\")).arg(target.to_string_lossy().replace('/', "\\"))
+            .output().unwrap();
+        assert!(result.status.success(), "{} {}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, &alias).unwrap();
+    let canonical = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/").trim_start_matches("//?/").to_owned();
+    let mut reply = selected(2); reply["runner_root"] = json!(canonical(&fixture.0));
+    reply["account"]["profile_name"] = json!("alias");
+    for path in [&alias, &target] {
+        reply["codex_home"] = json!(canonical(path));
+        assert!(session_config::verify_test_installation(&reply, &fixture.0.to_string_lossy()).is_err());
+    }
+    #[cfg(windows)]
+    std::fs::remove_dir(&alias).unwrap();
+    #[cfg(unix)]
+    std::fs::remove_file(&alias).unwrap();
 }
 fn plan() -> features::Request {
     features::Request::SessionConfig(session_config::Request::Plan { api_version:1,
