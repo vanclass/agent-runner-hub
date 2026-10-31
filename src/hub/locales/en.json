@@ -76,9 +76,7 @@
       "idle": "Verified idle",
       "running": "Running",
       "attention": "Suspended / needs attention",
-      "completed": "Completed",
       "failed": "Failed",
-      "interrupted": "Interrupted",
       "unknown": "Status unknown"
     }
   },
@@ -481,12 +479,6 @@
     "clipboardNumber": "Clipboard image {{index}}"
   },
   "status": {
-    "idle": "idle",
-    "running": "running",
-    "attention": "attention",
-    "disconnected": "disconnected",
-    "starting": "starting",
-    "exited": "exited",
-    "failed": "failed"
+    "starting": "Starting"
   }
 }

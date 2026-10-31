@@ -17,8 +17,8 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
   }
   for (const language of ['en', 'ko']) for (const [outcome, state, label] of [
-    ['succeeded', 'completed', ['Completed', '완료']], ['failed', 'failed', ['Failed', '실패']],
-    ['interrupted', 'interrupted', ['Interrupted', '중단됨']],
+    ['succeeded', 'idle', ['Verified idle', '검증된 유휴 상태']], ['failed', 'idle', ['Verified idle', '검증된 유휴 상태']],
+    ['interrupted', 'idle', ['Verified idle', '검증된 유휴 상태']],
   ]) {
     test(`runner tabs background ${outcome} unread and exact status stop ${language}`, async ({ page }, info) => {
       await ready(page); await assign(page); await create(page);
@@ -27,8 +27,14 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await page.keyboard.press('Escape');
       await page.evaluate(outcome => { window.__nativeFixture.sessions.get('pty-1').feature.mode = outcome; }, outcome);
       const own = row(page, 'Runner 1'), neighbor = row(page, 'Runner 2');
+      const positions = () => page.locator('.runner-row').evaluateAll(rows => rows.map(row => {
+        const marker = row.querySelector('.status-dot').getBoundingClientRect();
+        return [marker.x + marker.width / 2, row.querySelector('.runner-name').getBoundingClientRect().x];
+      }));
+      const beforeUnread = await positions();
       await expect(own.locator(`.status-dot.${state}`)).toHaveAttribute('aria-label', label[language === 'en' ? 0 : 1]);
       await expect(own.locator('.unread-completion')).toBeVisible();
+      expect(await positions()).toEqual(beforeUnread);
       await expect(neighbor.locator('.unread-completion')).toHaveCount(0);
       await expect(neighbor.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
       const before = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length);

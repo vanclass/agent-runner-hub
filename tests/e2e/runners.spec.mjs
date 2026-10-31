@@ -6,6 +6,7 @@ import { registerSingleEntryWork } from './single-entry-work.mjs';
 import { registerHubShortcuts } from './hub-shortcuts.mjs';
 import { registerBriefSubmission } from './brief-submission.mjs';
 import { registerRunnerTabs } from './runner-tabs.mjs';
+import { registerRunnerStatus } from './runner-status.mjs';
 import { registerRunnerTabRaces } from './runner-tab-races.mjs';
 import { registerRunnerPromotion } from './runner-promotion.mjs';
 import { registerRunnerDiscovery } from './runner-work-discovery.mjs';
@@ -21,6 +22,7 @@ import { registerSlashCommands } from './slash-commands.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
+registerRunnerStatus({ test, expect, transport, configure, create: createWork });
 registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
 registerComposerAttachments({ test, expect, transport, configure, create: createWork });
@@ -1464,6 +1466,7 @@ test('configuration failure, launch failure and unexpected exit stay local to th
   await page.waitForFunction(() => JSON.parse(window.__nativeFixture.observed.get('pty-2') ?? '{}').state === 'disconnected');
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
   await expect(page.getByText('Launch failed', { exact: true })).toBeVisible();
+  await expect(page.locator('.runner-row').last().locator('.status-dot.failed')).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('fixture process launch failed');
   await page.locator(`[data-runner-id="${firstId}"] .nav-row`).click();
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();

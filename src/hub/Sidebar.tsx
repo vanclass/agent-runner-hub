@@ -3,17 +3,25 @@ import { useRef, useState } from 'react';
 import type { RunnerView } from './model';
 import { RunnerTabRemoval } from './RunnerTabRemoval';
 
-const runnerStatus = (status: RunnerView['status']) => {
-  const keys = { idle: 'status.idle', running: 'status.running', attention: 'status.attention',
-    disconnected: 'status.disconnected', starting: 'status.starting', exited: 'status.exited', failed: 'status.failed' } as const;
-  return t(keys[status]);
-};
-const workStatus = (status: NonNullable<RunnerView['activity']>) => {
-  const keys = { idle: 'tabs.states.idle', running: 'tabs.states.running', attention: 'tabs.states.attention',
-    completed: 'tabs.states.completed', failed: 'tabs.states.failed', interrupted: 'tabs.states.interrupted',
-    unknown: 'tabs.states.unknown' } as const;
-  return t(keys[status]);
-};
+type MarkerState = 'idle' | 'running' | 'attention' | 'failed' | 'starting' | 'unknown';
+const statusLabel = (state: MarkerState) => t(({ idle: 'tabs.states.idle', running: 'tabs.states.running',
+  attention: 'tabs.states.attention', failed: 'tabs.states.failed', starting: 'status.starting',
+  unknown: 'tabs.states.unknown' } as const)[state]);
+function StatusMarker({ state }: { state: MarkerState }) {
+  const label = statusLabel(state);
+  return <span className={`status-dot ${state}`} role="img" aria-label={label} title={label}>
+    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {state === 'idle' ? <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" />
+        : state === 'starting' ? <path d="M12 3a9 9 0 1 1-9 9" /> : <>
+          <circle cx="12" cy="12" r="9" />
+          {state === 'running' ? <path d="m10 8 6 4-6 4Z" />
+            : state === 'attention' ? <path d="M12 7v6m0 4h.01" />
+              : state === 'failed' ? <path d="m9 9 6 6m0-6-6 6" />
+                : <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 4h.01" />}
+        </>}
+    </svg>
+  </span>;
+}
 
 type SidebarProps = {
   runners: readonly RunnerView[];
@@ -44,9 +52,9 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
     setEditing(false);
     if (restoreFocus) requestAnimationFrame(() => rowButton.current?.focus());
   }
-  const status = runner.activity ? workStatus(runner.activity) : runnerStatus(runner.status);
-  const symbol = runner.activity === 'completed' ? '✓' : runner.activity === 'failed' ? '×'
-    : runner.activity === 'interrupted' ? '■' : runner.activity === 'unknown' ? '?' : '';
+  const state: MarkerState = runner.activity && !['completed', 'interrupted'].includes(runner.activity)
+    ? runner.activity as MarkerState : runner.status === 'starting' ? 'starting' : runner.status === 'failed' ? 'failed' : 'unknown';
+  const status = statusLabel(state);
   return <li className={`runner-row ${active ? 'active' : ''}`} data-runner-id={runner.id}
     onMouseDown={event => { if (event.button === 1) event.preventDefault(); }}
     onAuxClick={event => {
@@ -59,12 +67,12 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
       onDoubleClick={event => { if (event.button === 0) startRename(); }}
       onKeyDown={event => { if (event.key === 'F2') { event.preventDefault(); startRename(); } }}
       title={t('sidebar.rowHint', { name: runner.name, status })}>
-      <span className={`status-dot ${runner.activity ?? runner.status}`} role="img" aria-label={status}>{symbol}</span>
+      <StatusMarker state={state} />
       <span className="runner-name">{runner.name}</span>
       {runner.unreadCompletion && <span className="unread-completion" role="img" aria-label={t('tabs.unread')}>●</span>}
     </button>
     {editing && <div className="rename-row">
-      <span className={`status-dot ${runner.status}`} aria-hidden="true" />
+      <StatusMarker state={state} />
       <input aria-label={t('sidebar.runnerName')} value={draft} autoFocus onFocus={event => event.currentTarget.select()}
         onChange={event => setDraft(event.target.value)} onBlur={() => finish(true)}
         onKeyDown={event => {
@@ -119,7 +127,7 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, con
         <p className="sidebar-label">{t('tabs.failures')}</p>
         <ul>{failures.map(runner => <li key={runner.id}><button type="button" className="nav-row"
           aria-current={selectedId === runner.id ? 'page' : undefined} onClick={() => onSelect(runner.id)}>
-          <span className="status-dot failed" aria-hidden="true">!</span><span className="runner-name">{runner.name}</span>
+          <StatusMarker state="failed" /><span className="runner-name">{runner.name}</span>
         </button></li>)}</ul>
       </section>}
     </nav>

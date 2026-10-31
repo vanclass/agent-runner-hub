@@ -43,7 +43,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
           f.observations.set(f.work.observation_id, structuredClone(f.work));
         });
         else await publish(page, n, { state: 'succeeded', terminal: true, outcome: 'succeeded' });
-        await expect(own.locator('.status-dot.completed')).toBeVisible();
+        await expect(own.locator('.status-dot.idle')).toBeVisible();
         await expect(own.locator('.unread-completion')).toBeVisible();
         if (n === 1) await create(page);
         else await row(page, 'Runner 2').locator('.nav-row').click();
@@ -86,7 +86,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
       fixture.observations.set(fixture.work.observation_id, structuredClone(fixture.work));
     });
     const own = row(page, 'Runner 1');
-    await expect(own.locator('.status-dot.completed')).toBeVisible();
+    await expect(own.locator('.status-dot.idle')).toBeVisible();
     await expect(own.locator('.unread-completion')).toBeVisible();
     await own.locator('.nav-row').click(); await home(page);
     await page.waitForTimeout(2200);

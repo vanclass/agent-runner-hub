@@ -11,7 +11,7 @@ export type RunnerView = {
   readonly detail?: HubText;
   readonly draft?: string;
   readonly submitting?: boolean;
-  readonly activity?: WorkActivity;
+  readonly activity?: WorkActivity | 'starting';
   readonly unreadCompletion?: boolean;
   readonly closing?: boolean;
 };
