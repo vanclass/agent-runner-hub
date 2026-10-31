@@ -1,8 +1,8 @@
 // Browser transport simulation; all input/state owners and React surfaces are production code.
-export function registerRunnerInteractions({ test, expect, transport, configure, create }) {
+export function registerRunnerInteractions({ test, expect, transport, configure, create, generatedFixture }) {
   const panel = page => page.getByRole('region', { name: 'Runner interaction', exact: true });
-  async function ready(page, kind = 'selection') {
-    await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
+  async function ready(page, kind = 'selection', options = {}) {
+    await transport(page, undefined, { work: true, auto: true, ...options }); await configure(page); await create(page);
     await page.evaluate(kind => {
       const fixture = window.__nativeFixture, session = fixture.sessions.get('pty-1');
       const features = session.control.features;
@@ -17,9 +17,9 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
           { choice_id: 'no', label: 'Reject explicitly', description: 'No approval', enabled: true, disabled_reason: '' },
           { choice_id: 'blocked', label: 'Disabled choice', description: '', enabled: false, disabled_reason: 'Canonical disabled reason' }],
         ...(kind === 'confirmation' ? { consequences: [{ text: 'Changes the canonical target', role: 'warning', details: ['Requires explicit consent'] }] } : {}) });
-      window.__interactionFixture = { view: makeView(kind, 'revision-1'), requests: [], fault: '', next: 9000, makeView };
-      session.control.observation.attention.foreground_interaction_active = true;
-      session.control.results = [{ id: 8000, command: '/target', state: 'pending-interaction' }];
+      window.__interactionFixture = { view: kind === 'none' ? { state: 'none' } : makeView(kind, 'revision-1'), requests: [], fault: '', next: 9000, makeView };
+      session.control.observation.attention.foreground_interaction_active = kind !== 'none';
+      session.control.results = kind === 'none' ? [] : [{ id: 8000, command: '/target', state: 'pending-interaction' }];
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'runner_feature' || args.request.feature !== 'interaction') return invoke(command, args);
@@ -36,11 +36,54 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
           reply: { api_version: 1, interaction: structuredClone(f.view), ...(responding ? {
             input_status: unknown ? 'unknown' : rejected ? 'not_accepted' : 'accepted', outcome_unknown: unknown,
             effect_status: unknown ? 'unknown' : 'awaiting_command_owner', interaction_status: request.action === 'cancel' ? 'cancelled' : 'completed' } : {}) } });
+        if (f.delay) await new Promise(resolve => setTimeout(resolve, f.delay));
         return { state: 'submitted', id, generation: features.generation };
       };
     }, kind);
-    await expect(panel(page).getByRole('heading', { level: 4 })).toBeVisible();
+    if (kind === 'none') await expect(panel(page)).toContainText('No active');
+    else await expect(panel(page).getByRole('heading', { level: 4 })).toBeVisible();
   }
+  for (const height of [550, 800]) test(`automatic observation keeps workspace stable at ${height}`, async ({ page }, info) => {
+    await ready(page, 'none', generatedFixture());
+    await expect(page.locator('.generated-image-preview img')).toBeVisible();
+    await page.setViewportSize({ width: 1280, height });
+    await page.waitForTimeout(150); // Allow the actual viewport resize debounce to settle before polling measurements.
+    await page.evaluate(() => { window.__interactionFixture.delay = 200; });
+    const samples = await page.evaluate(async () => {
+      const samples = [], until = performance.now() + 4200;
+      while (performance.now() < until) {
+        samples.push({ pending: document.querySelector('.runner-interaction').textContent.includes('receipt'),
+          boxes: ['.terminal-host', '.generated-image-preview', '.runner-interaction', '.composer-area'].map(selector => {
+            const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+            return { x, y, width, height };
+          }), resizes: window.__nativeFixture.resizes.length });
+        await new Promise(requestAnimationFrame);
+      }
+      return samples;
+    });
+    await info.attach('polling-rectangles', { body: JSON.stringify(samples), contentType: 'application/json' });
+    console.log('polling rectangles', height, JSON.stringify([samples[0], samples.find(s => s.pending)]));
+    expect(await page.evaluate(() => window.__interactionFixture.requests.length)).toBeGreaterThan(3);
+    expect(samples.some(s => s.pending)).toBe(false);
+    for (const sample of samples) expect(sample.boxes).toEqual(samples[0].boxes);
+    expect(samples.at(-1).resizes).toBe(samples[0].resizes);
+    await info.attach('stable-workspace', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.setViewportSize({ width: 900, height: height + 100 });
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.resizes.length)).toBeGreaterThan(samples.at(-1).resizes);
+    await expect(page.locator('.generated-image-preview img')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      const f = window.__interactionFixture;
+      f.view = f.makeView('text', 'visible-after-idle');
+    });
+    await expect(panel(page).getByRole('textbox')).toBeVisible();
+    await panel(page).getByRole('textbox').fill('draft survives polling');
+    await expect.poll(() => page.evaluate(() => window.__interactionFixture.requests.length)).toBeGreaterThan(10);
+    await expect(panel(page).getByRole('textbox')).toHaveValue('draft survives polling');
+    await page.evaluate(() => { window.__interactionFixture.view = { state: 'none' }; });
+    await expect(panel(page)).toHaveClass('runner-interaction compact');
+    await expect(panel(page).getByRole('textbox')).toHaveCount(0);
+  });
   for (const [kind, label, action, choice] of [['selection', 'Approve explicitly', 'select', 'yes'],
     ['confirmation', 'Approve explicitly', 'confirm', 'yes'], ['confirmation', 'Reject explicitly', 'confirm', 'no']]) {
     test(`structured interaction ${kind} explicit ${choice} while command remains pending`, async ({ page }, info) => {
@@ -48,7 +91,9 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
       expect(await page.evaluate(() => window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'))).toEqual([]);
       await expect(panel(page).getByRole('button', { name: 'Disabled choice', exact: true })).toBeDisabled();
       if (kind === 'confirmation') await expect(panel(page)).toContainText('Requires explicit consent');
+      await page.evaluate(() => { window.__interactionFixture.delay = 1200; });
       await panel(page).getByRole('button', { name: label, exact: true }).click();
+      await expect(panel(page).getByText('Waiting for the authenticated interaction receipt…', { exact: true })).toBeVisible();
       await expect(panel(page)).toContainText('Input accepted.');
       const result = await page.evaluate(() => ({ requests: window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'),
         command: window.__nativeFixture.sessions.get('pty-1').control.results[0], writes: window.__nativeFixture.writes }));

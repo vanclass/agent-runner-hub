@@ -26,7 +26,7 @@ registerRunnerStatus({ test, expect, transport, configure, create: createWork })
 registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
 registerComposerAttachments({ test, expect, transport, configure, create: createWork });
-registerRunnerInteractions({ test, expect, transport, configure, create: createWork });
+registerRunnerInteractions({ test, expect, transport, configure, create: createWork, generatedFixture });
 registerSlashCommands({ test, expect, transport, configure, create, entry });
 
 async function transport(page, freshTarget, referenceOptions) {

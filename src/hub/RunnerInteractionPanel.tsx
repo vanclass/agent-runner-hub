@@ -7,7 +7,7 @@ import './runnerInteraction.css';
 export function RunnerInteractionPanel({ interaction, results }: { interaction: RunnerInteraction; results: ControlResult[] }) {
   useHubTranslation();
   const view = interaction.view;
-  const compact = view?.state !== 'active' && !interaction.detail && !results.length;
+  const compact = view?.state !== 'active' && !interaction.writing && !interaction.detail && !results.length;
   return <section className={`runner-interaction${compact ? ' compact' : ''}`} aria-label={t('interaction.label')}>
     <h3>{t('interaction.label')}</h3>
     {interaction.detail && <p role="status">{tr(interaction.detail)}</p>}
@@ -17,7 +17,7 @@ export function RunnerInteractionPanel({ interaction, results }: { interaction: 
         : interaction.state === 'unsupported' ? 'interaction.unsupported'
         : interaction.state === 'disconnected' ? 'interaction.disconnected' : 'interaction.observing')}
         {view?.state === 'unsupported' && view.code && <span> ({view.code})</span>}</p>}
-    {interaction.busy && <p role="status">{t('interaction.pending')}</p>}
+    {interaction.writing && <p role="status">{t('interaction.pending')}</p>}
     {results.map(result => <p key={result.id} role="status">{t('interaction.commandResult')}: {result.command} — {result.state}
       {result.ownerStatus && ` (${result.ownerStatus})`}{result.code && ` [${result.code}]`}</p>)}
   </section>;
