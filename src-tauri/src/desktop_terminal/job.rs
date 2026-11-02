@@ -39,3 +39,21 @@ impl Job {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::{Foundation::DuplicateHandle, System::Threading::GetCurrentProcess};
+
+    #[test]
+    fn failed_job_termination_is_not_verified_exit() {
+        const JOB_OBJECT_QUERY: u32 = 0x0004;
+        let full = Job::new().unwrap();
+        let mut restricted = std::ptr::null_mut();
+        assert_ne!(unsafe { DuplicateHandle(GetCurrentProcess(), full.0.as_raw_handle(),
+            GetCurrentProcess(), &mut restricted, JOB_OBJECT_QUERY, 0, 0) }, 0);
+        let restricted = Job(unsafe { OwnedHandle::from_raw_handle(restricted) });
+        assert!(restricted.terminate().unwrap_err().contains("job termination failed"));
+        full.terminate().unwrap();
+    }
+}

@@ -11,6 +11,11 @@ fn image() -> Vec<u8> {
     }
     bytes
 }
+fn staging_root() -> std::path::PathBuf {
+    let root = super::super::clipboard::staging_root(Err("No Tauri application in this native fixture".into())).unwrap();
+    println!("Native installed-Runner acceptance staging root: {}", root.display());
+    root
+}
 fn wait_ready(harness: &mut Harness, session: &Session) {
     let deadline = std::time::Instant::now() + Duration::from_secs(40);
     loop {
@@ -57,7 +62,7 @@ fn installed_clipboard_terminal_selection_and_cancellation() {
     let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();
     let mut harness = Harness::new(); let id = harness.open_runner(&root);
     let session = harness.sessions.owned(&id, "test-window").unwrap(); wait_ready(&mut harness, &session);
-    let bytes = image(); let path = session.stage_clipboard(&bytes).unwrap();
+    let bytes = image(); let path = session.stage_clipboard(&bytes, &staging_root()).unwrap();
     let request = submit(&session, ReferenceRequest::Register { path: path.clone() });
     let cancelled = answer(&mut harness, &session, request, true);
     assert_eq!(cancelled.state, "rejected"); assert!(cancelled.reference.is_none());
@@ -80,7 +85,9 @@ fn installed_clipboard_staging_receipts_inventory_and_scoped_cleanup() {
     assert!(a.control_snapshot().unwrap().clipboard_staging, "Windows Native I/O must advertise live capture without a test gate");
     assert!(a.control_snapshot().unwrap().references.removal_capability.is_some());
     let bytes = image();
-    let path = a.stage_clipboard(&bytes).unwrap();
+    let storage = staging_root();
+    let path = a.stage_clipboard(&bytes, &storage).unwrap();
+    assert!(std::path::Path::new(&path).canonicalize().unwrap().starts_with(storage.canonicalize().unwrap()));
     let id = submit(&a, ReferenceRequest::Register { path: path.clone() });
     assert_eq!(std::fs::read(&path).unwrap(), bytes, "readable after admission");
     let mut registered = wait_result(&mut harness, &a, id);
@@ -105,7 +112,7 @@ fn installed_clipboard_staging_receipts_inventory_and_scoped_cleanup() {
     assert!(!wait_result(&mut harness, &a, list).inventory.unwrap().references.iter().any(|r| r.reference_id == stable));
     assert_eq!(std::fs::read(&path).unwrap(), bytes, "removed pending reference may already belong to a frozen workload");
     println!("Installed Runner register request {id}, committed {stable}; removal request {remove_id}, removed receipt and authoritative absence; PNG still readable.");
-    let other = b.stage_clipboard(&bytes).unwrap();
+    let other = b.stage_clipboard(&bytes, &storage).unwrap();
     let rejected_id = submit(&a, ReferenceRequest::Register { path: format!("{path}-missing") });
     let rejected = wait_result(&mut harness, &a, rejected_id);
     assert_eq!(rejected.state, "rejected"); assert!(rejected.reference.is_none());

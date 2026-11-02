@@ -1,5 +1,5 @@
 //! Hub-owned source staging only; Runner remains the reference authority.
-use std::{fs::{self, File, OpenOptions}, io::{Cursor, Write}, path::PathBuf,
+use std::{fs::{self, File, OpenOptions}, io::{Cursor, Write}, path::{Path, PathBuf},
     os::windows::{fs::OpenOptionsExt, io::{AsRawHandle, FromRawHandle}}};
 use windows_sys::Win32::{Foundation::INVALID_HANDLE_VALUE,
     Security::Cryptography::{BCryptGenRandom, BCRYPT_USE_SYSTEM_PREFERRED_RNG}, Storage::FileSystem::*};
@@ -9,6 +9,51 @@ const MAX_PIXELS: u64 = 32 * 1024 * 1024;
 const MAX_DECODED_BYTES: usize = 128 * 1024 * 1024;
 const MAX_SESSION_BYTES: usize = 256 * 1024 * 1024;
 const MAX_SESSION_IMAGES: usize = 128;
+
+pub fn staging_root(app_local_data: Result<PathBuf, String>) -> Result<PathBuf, String> {
+    // The managed Windows launchers supply this child-only profile at build and launch.
+    let compiled = option_env!("WEBVIEW2_USER_DATA_FOLDER").map(PathBuf::from);
+    let launched = std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").map(PathBuf::from);
+    select_root(tauri::is_dev(), Path::new(env!("CARGO_MANIFEST_DIR")),
+        compiled.as_deref().zip(launched.as_deref()), app_local_data)
+}
+
+fn select_root(development: bool, manifest: &Path, profile: Option<(&Path, &Path)>,
+    app_local_data: Result<PathBuf, String>) -> Result<PathBuf, String> {
+    let checkout = if let Some((compiled, _)) = profile.filter(|(a, b)| a == b) {
+        let root = compiled.ancestors().nth(4).ok_or("Clipboard development profile is invalid")?;
+        if root.join(".runner/web-app-tauri/cache/webview2") != compiled {
+            return Err("Clipboard development profile is not a supported launch context".into());
+        }
+        Some(root)
+    } else if development {
+        Some(development_checkout(manifest)?)
+    } else { None };
+    if let Some(root) = checkout {
+        if !root.is_absolute() || !root.join(".git").exists()
+            || !root.join("src-tauri/Cargo.toml").is_file() || !root.join(".runner/project.json").is_file() {
+            return Err("Clipboard development checkout could not be verified".into());
+        }
+        return root.canonicalize().map(|root| root.join("local/runtime/clipboard"))
+            .map_err(|error| format!("Clipboard development storage is unavailable: {error}"));
+    }
+    let root = app_local_data.map_err(|error| format!("Clipboard application-local storage is unavailable: {error}"))?;
+    if !root.is_absolute() { return Err("Clipboard application-local storage must be absolute".into()); }
+    Ok(root.join("clipboard"))
+}
+
+fn development_checkout(manifest: &Path) -> Result<&Path, String> {
+    let parent = manifest.parent().ok_or("Clipboard development manifest is invalid")?;
+    if manifest.file_name().is_none_or(|name| name != "src-tauri") {
+        return Err("Clipboard development manifest is unsupported".into());
+    }
+    if let Some(root) = manifest.ancestors().nth(6) {
+        if root.join(".runner/web-app-tauri/cache/dev").join(parent.file_name().unwrap()).join("src-tauri") == manifest {
+            return Ok(root);
+        }
+    }
+    Ok(parent)
+}
 
 fn validate_png(bytes: &[u8]) -> Result<(), String> {
     if bytes.len() > MAX_PNG_BYTES || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -75,42 +120,49 @@ fn delete_owned(file: &File) -> Result<(), String> {
     Ok(())
 }
 
-struct Directory { path: PathBuf, _guard: File }
+struct Directory { path: PathBuf, _guard: File, _root_guard: File }
 impl Directory {
-    fn new() -> Result<Self, String> {
-        let parent = std::env::temp_dir().canonicalize().map_err(|_| "Windows temporary directory is unavailable")?;
+    fn new(root: &Path) -> Result<Self, String> {
+        if !root.is_absolute() { return Err("Clipboard staging root must be absolute".into()); }
+        fs::create_dir_all(root).map_err(|error| format!("Clipboard storage initialization failed: {error}"))?;
+        let root_guard = OpenOptions::new().access_mode(FILE_READ_ATTRIBUTES)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT).open(root)
+            .map_err(|error| format!("Clipboard storage access failed: {error}"))?;
+        let parent = resolved(&root_guard)?;
+        identity(&root_guard)?;
         let path = parent.join(format!("AgentRunnerHub-clipboard-{}", random_name()?));
-        fs::create_dir(&path).map_err(|_| "Windows temporary directory is not writable")?;
+        fs::create_dir(&path).map_err(|error| format!("Clipboard storage is not writable: {error}"))?;
         let guard = OpenOptions::new().access_mode(FILE_READ_ATTRIBUTES)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT).open(&path)
             .map_err(|_| "Clipboard directory ownership could not be acquired")?;
         let actual = resolved(&guard)?;
-        if actual.parent() != Some(parent.as_path()) { return Err("Clipboard directory escaped its temporary parent".into()); }
+        if actual.parent() != Some(parent.as_path()) { return Err("Clipboard directory escaped its staging root".into()); }
         identity(&guard)?;
-        Ok(Self { path: actual, _guard: guard })
+        Ok(Self { path: actual, _guard: guard, _root_guard: root_guard })
     }
 }
 
 #[derive(Default)]
 pub struct ClipboardFiles { directory: Option<Directory>, files: Vec<File>, bytes: usize, terminated: bool }
 impl ClipboardFiles {
-    pub fn stage(&mut self, bytes: &[u8]) -> Result<String, String> {
+    pub fn stage(&mut self, bytes: &[u8], root: &Path) -> Result<String, String> {
         if self.terminated { return Err("Clipboard source owner has terminated".into()); }
         if self.files.len() >= MAX_SESSION_IMAGES || bytes.len() > MAX_SESSION_BYTES.saturating_sub(self.bytes) {
             return Err("Clipboard staging limit reached for this Runner. Finish this session before capturing more images.".into());
         }
         validate_png(bytes)?;
-        if self.directory.is_none() { self.directory = Some(Directory::new()?); }
+        if self.directory.is_none() { self.directory = Some(Directory::new(root)?); }
         let directory = self.directory.as_ref().unwrap();
         let path = directory.path.join(format!("clipboard-{}.png", random_name()?));
         let mut file = OpenOptions::new().create_new(true).read(true).write(true)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE).custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
-            .open(&path).map_err(|_| "Clipboard temporary file could not be created")?;
+            .open(&path).map_err(|_| "Clipboard staging file could not be created")?;
         let written = (|| {
             if resolved(&file)?.parent() != Some(directory.path.as_path()) { return Err("Clipboard file escaped its owning directory".into()); }
             identity(&file)?;
-            file.write_all(bytes).and_then(|_| file.sync_all()).map_err(|_| "Clipboard temporary file could not be written")?;
+            file.write_all(bytes).and_then(|_| file.sync_all()).map_err(|_| "Clipboard staging file could not be written")?;
             // Verify a second ordinary reader while the ownership handle is retained.
             if fs::read(&path).map_err(|_| "Clipboard source is not independently readable")? != bytes {
                 return Err("Clipboard source verification failed".into());

@@ -48,7 +48,11 @@ async fn runner_feature<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sess
 async fn runner_stage_clipboard<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String,
     png: Vec<u8>) -> Result<String, String> {
     let session = state.owned(&id, window.label())?;
-    tauri::async_runtime::spawn_blocking(move || session.stage_clipboard(&png)).await.map_err(|e| e.to_string())?
+    #[cfg(windows)]
+    let root = pty::clipboard::staging_root(window.path().app_local_data_dir().map_err(|error| error.to_string()))?;
+    #[cfg(not(windows))]
+    let root = std::path::PathBuf::new();
+    tauri::async_runtime::spawn_blocking(move || session.stage_clipboard(&png, &root)).await.map_err(|e| e.to_string())?
 }
 
 #[cfg(windows)]

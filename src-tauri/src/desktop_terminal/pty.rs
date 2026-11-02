@@ -6,7 +6,7 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 #[cfg(windows)]
 #[path = "job.rs"] mod job;
 #[cfg(windows)]
-#[path = "clipboard.rs"] mod clipboard;
+#[path = "clipboard.rs"] pub(super) mod clipboard;
 use process::ProcessKiller;
 use startup::InitialCursor;
 use serde::{Deserialize, Serialize};
@@ -109,7 +109,7 @@ impl Session {
         { let _ = request; Err("Runner control is supported only on Windows".into()) }
     }
 
-    pub fn stage_clipboard(&self, png: &[u8]) -> Result<String, String> {
+    pub fn stage_clipboard(&self, png: &[u8], root: &std::path::Path) -> Result<String, String> {
         #[cfg(windows)] {
             let snapshot = self.control_snapshot()?;
             let ready = snapshot.state == "ready" && cfg!(feature = "native-io")
@@ -121,10 +121,10 @@ impl Session {
             if !ready || pending { return Err("Clipboard staging requires an available authenticated Runner".into()); }
             let mut files = self.clipboard.lock().map_err(|_| "Clipboard staging is unavailable")?;
             if self.closing.load(Ordering::Acquire) { return Err("Runner session is closing".into()); }
-            return files.stage(png);
+            return files.stage(png, root);
         }
         #[cfg(not(windows))]
-        { let _ = png; Err("Clipboard staging is supported only on Windows".into()) }
+        { let _ = (png, root); Err("Clipboard staging is supported only on Windows".into()) }
     }
 
     pub fn write(&self, bytes: &[u8]) -> Result<(), String> {
