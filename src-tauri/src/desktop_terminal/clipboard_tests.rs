@@ -18,6 +18,18 @@ fn png() -> Vec<u8> {
     bytes
 }
 
+fn assert_staged_name(path: &Path) {
+    let session = path.parent().unwrap().file_name().unwrap().to_str().unwrap();
+    let image = path.file_name().unwrap().to_str().unwrap();
+    let session_id = session.strip_prefix("session-").unwrap();
+    let image_id = image.strip_prefix("image-").unwrap().strip_suffix(".png").unwrap();
+    for id in [session_id, image_id] {
+        assert_eq!(id.len(), 32);
+        assert!(id.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
+    }
+    assert_ne!(session_id, image_id);
+}
+
 #[test]
 fn development_and_installed_roots_do_not_depend_on_working_directory() {
     let fixture = root();
@@ -59,6 +71,7 @@ fn selected_roots_contain_created_pngs_and_survive_session_cleanup() {
     for root in [development, installed] {
         let mut files = ClipboardFiles::default();
         let path = PathBuf::from(files.stage(&png(), &root).unwrap());
+        assert_staged_name(&path);
         assert!(path.canonicalize().unwrap().starts_with(root.canonicalize().unwrap()));
         assert_eq!(path.parent().unwrap().parent().unwrap().canonicalize().unwrap(), root.canonicalize().unwrap());
         assert_eq!(fs::read(&path).unwrap(), png());
@@ -75,6 +88,9 @@ fn independently_readable_unique_sources_remain_until_explicit_release() {
     let a = PathBuf::from(first.stage(&bytes, &root()).unwrap());
     let b = PathBuf::from(first.stage(&bytes, &root()).unwrap());
     let c = PathBuf::from(second.stage(&bytes, &root()).unwrap());
+    for path in [&a, &b, &c] { assert_staged_name(path); }
+    assert_eq!(a.parent(), b.parent());
+    assert_ne!(a.file_name(), b.file_name());
     assert_ne!(a, b); assert_ne!(a.parent(), c.parent());
     assert_eq!(fs::read(&a).unwrap(), bytes);
     assert_eq!(fs::read(&b).unwrap(), bytes);

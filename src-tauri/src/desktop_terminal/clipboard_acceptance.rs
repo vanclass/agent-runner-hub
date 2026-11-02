@@ -22,7 +22,11 @@ fn wait_ready(harness: &mut Harness, session: &Session) {
         let snapshot = session.control_snapshot().unwrap();
         if snapshot.state == "ready" && snapshot.references.capability.is_some()
             && snapshot.observation.as_ref().is_some_and(|o| o.commands.iter().any(|c| c.text == "/files" && c.enabled)) { return; }
-        assert!(std::time::Instant::now() < deadline, "installed authenticated reference capability unavailable: {:?}", snapshot.detail);
+        assert!(std::time::Instant::now() < deadline,
+            "installed authenticated reference capability unavailable: state={}, references={}, commands={:?}, detail={:?}",
+            snapshot.state, snapshot.references.capability.is_some(),
+            snapshot.observation.as_ref().map(|o| o.commands.iter().map(|c| (&c.text, c.enabled)).collect::<Vec<_>>()),
+            snapshot.detail);
         harness.pump_for(Duration::from_millis(50));
     }
 }
@@ -87,6 +91,18 @@ fn installed_clipboard_staging_receipts_inventory_and_scoped_cleanup() {
     let bytes = image();
     let storage = staging_root();
     let path = a.stage_clipboard(&bytes, &storage).unwrap();
+    let source = std::path::Path::new(&path);
+    assert!(source.is_absolute());
+    let session_name = source.parent().unwrap().file_name().unwrap().to_str().unwrap();
+    let image_name = source.file_name().unwrap().to_str().unwrap();
+    let session_id = session_name.strip_prefix("session-").unwrap();
+    let image_id = image_name.strip_prefix("image-").unwrap().strip_suffix(".png").unwrap();
+    for id in [session_id, image_id] {
+        assert_eq!(id.len(), 32);
+        assert!(id.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
+    }
+    assert_ne!(session_id, image_id);
+    println!("Native staged source: {path}");
     assert!(std::path::Path::new(&path).canonicalize().unwrap().starts_with(storage.canonicalize().unwrap()));
     let id = submit(&a, ReferenceRequest::Register { path: path.clone() });
     assert_eq!(std::fs::read(&path).unwrap(), bytes, "readable after admission");

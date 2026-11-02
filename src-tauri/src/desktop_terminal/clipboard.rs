@@ -131,7 +131,7 @@ impl Directory {
             .map_err(|error| format!("Clipboard storage access failed: {error}"))?;
         let parent = resolved(&root_guard)?;
         identity(&root_guard)?;
-        let path = parent.join(format!("AgentRunnerHub-clipboard-{}", random_name()?));
+        let path = parent.join(format!("session-{}", random_name()?));
         fs::create_dir(&path).map_err(|error| format!("Clipboard storage is not writable: {error}"))?;
         let guard = OpenOptions::new().access_mode(FILE_READ_ATTRIBUTES)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
@@ -155,7 +155,7 @@ impl ClipboardFiles {
         validate_png(bytes)?;
         if self.directory.is_none() { self.directory = Some(Directory::new(root)?); }
         let directory = self.directory.as_ref().unwrap();
-        let path = directory.path.join(format!("clipboard-{}.png", random_name()?));
+        let path = directory.path.join(format!("image-{}.png", random_name()?));
         let mut file = OpenOptions::new().create_new(true).read(true).write(true)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE).custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
             .open(&path).map_err(|_| "Clipboard staging file could not be created")?;

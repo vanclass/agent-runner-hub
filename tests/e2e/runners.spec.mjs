@@ -236,7 +236,7 @@ async function transport(page, freshTarget, referenceOptions) {
         if (command === 'runner_stage_clipboard') {
           if (stageGate) await stageGate;
           if (stageFailure) throw new Error('Fixture staging is not writable');
-          const path = `/fixture/hub-owned/${args.id}/clipboard-${staged.length + 1}.png`;
+          const path = `/fixture/hub-owned/clipboard/session-${args.id}/image-${staged.length + 1}.png`;
           staged.push({ ...args, path }); return path;
         }
         if (command === 'plugin:dialog|open') return args.options.directory ? '/fixture/folder' : ['/fixture/image.png'];
