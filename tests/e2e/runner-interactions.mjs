@@ -115,6 +115,31 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
       else { expect(request).not.toHaveProperty('text'); expect(request).not.toHaveProperty('choice_id'); }
     });
   }
+  test('structured interaction text keeps draft focus across automatic observations', async ({ page }) => {
+    await ready(page, 'text');
+    const input = panel(page).getByRole('textbox');
+    await input.fill('draft');
+    const before = await page.evaluate(() => window.__interactionFixture.requests.length);
+    await expect.poll(() => page.evaluate(() => window.__interactionFixture.requests.length)).toBeGreaterThan(before + 3);
+    await expect(input).toBeEnabled();
+    await expect(input).toBeFocused();
+    await page.keyboard.type(' across polling', { delay: 120 });
+    await expect(input).toHaveValue('draft across polling');
+    expect(await page.evaluate(() => window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'))).toEqual([]);
+    await panel(page).getByRole('button', { name: 'Submit response', exact: true }).click();
+    await expect(panel(page)).toContainText('Input accepted.');
+    expect(await page.evaluate(() => window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'))).toHaveLength(1);
+  });
+  test('structured interaction uncertain text revision cannot be edited or replayed', async ({ page }) => {
+    await ready(page, 'text');
+    await panel(page).getByRole('textbox').fill('one explicit response');
+    await page.evaluate(() => { window.__interactionFixture.fault = 'unknown'; });
+    await panel(page).getByRole('button', { name: 'Submit response', exact: true }).click();
+    await expect(panel(page)).toContainText('uncertain');
+    await expect(panel(page).getByRole('textbox')).toBeDisabled();
+    await expect(panel(page).locator('button:enabled')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'))).toHaveLength(1);
+  });
   for (const fault of ['stale', 'owner', 'unknown']) {
     test(`structured interaction ${fault} blocks replay and terminal fallback`, async ({ page }) => {
       await ready(page);

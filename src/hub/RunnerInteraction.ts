@@ -108,8 +108,9 @@ export class RunnerInteraction {
     this.view = undefined;
     void this.request(request);
   }
-  canRespond(view: InteractionView) { return !this.closed && this.state === 'ready' && !this.busy
+  canEdit(view: InteractionView) { return !this.closed && this.state === 'ready' && !this.writing
     && view.state === 'active' && !this.retired.has(view.interaction_id); }
+  canRespond(view: InteractionView) { return this.canEdit(view) && !this.busy; }
   private async request(request: InteractionRequest) {
     const identity = this.identity;
     if (!identity || this.closed || this.pending) return;

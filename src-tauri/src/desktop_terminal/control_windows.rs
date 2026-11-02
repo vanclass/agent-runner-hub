@@ -218,7 +218,8 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 }).map_err(str::to_owned);
                 let _ = admitted.send(receipt);
             }
-            if observed.elapsed() >= Duration::from_secs(1) && protocol.pending.is_empty() {
+            if observed.elapsed() >= Duration::from_secs(1)
+                && !protocol.pending.values().any(|pending| matches!(pending.kind, super::RequestKind::Observe)) {
                 outgoing.extend(protocol.request(None, key)?);
                 observed = Instant::now();
             }

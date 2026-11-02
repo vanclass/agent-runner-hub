@@ -222,6 +222,12 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     while client.snapshot().results.last().unwrap().state != "pending-interaction" {
         assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
     }
+    let observed = client.snapshot().observation_serial;
+    thread::sleep(Duration::from_secs(3));
+    let refreshed = client.snapshot();
+    assert!(refreshed.observation_serial > observed, "foreground commands must not starve observation");
+    assert!(refreshed.observation_age_ms.unwrap() < 2500);
+    assert_eq!(refreshed.results.last().unwrap().state, "pending-interaction");
     for request in [control::interaction::Request::Observe { api_version:1 },
         control::interaction::Request::Respond { api_version:1, interaction_id:"exact-revision".into(),
             action:control::interaction::Action::Select { choice_id:"visible-choice".into() } }] {

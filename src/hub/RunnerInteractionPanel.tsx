@@ -40,7 +40,7 @@ function InteractionActions({ interaction, view }: { interaction: RunnerInteract
       {!choice.enabled && <p>{choice.disabled_reason}</p>}
     </li>)}</ul>}
     {view.kind === 'text' && <form onSubmit={event => { event.preventDefault(); interaction.respond(view, 'text', text); }}>
-      <label>{view.prompt}<input aria-label={view.prompt} value={text} disabled={!enabled} required={view.text_input?.required}
+      <label>{view.prompt}<input aria-label={view.prompt} value={text} disabled={!interaction.canEdit(view)} required={view.text_input?.required}
         onChange={event => setText(event.target.value)} /></label>
       <button type="submit" disabled={!enabled || !view.actions.includes('text')}>{t('interaction.submit')}</button>
     </form>}

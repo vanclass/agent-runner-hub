@@ -76,8 +76,10 @@ async function transport(page, freshTarget, referenceOptions) {
         id: text, text, aliases: [], parent_id: null, visible: true, enabled: text !== '/resume',
         disabled_reason: text === '/resume' ? 'No suspended execution' : '', description: text,
         children: text === '/account' ? [
-          { id: 'account.select', text: 'Select', visible: true, enabled: true, children: [] },
-          { id: 'account.caption', text: '', visible: true, enabled: true, children: [] },
+          { id: 'account.select', text: 'Select', aliases: [], parent_id: '/account', visible: true, enabled: true,
+            disabled_reason: '', description: '', children: [] },
+          { id: 'account.caption', text: '', aliases: [], parent_id: '/account', visible: true, enabled: true,
+            disabled_reason: '', description: '', children: [] },
         ] : [],
       })) });
     let count = 0, callback = 0, failNext = false, failWrite = false, serial = 0, alignNew = false;
@@ -1441,6 +1443,12 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await page.locator(`[data-runner-id="${secondId}"] .nav-row`).click();
   await expect(composer).toBeEnabled();
   await composer.fill('/status'); await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.length)).toBe(1);
+  await expect(composer).toHaveValue('/status');
+  await page.evaluate(() => {
+    const result = window.__nativeFixture.sessions.get('pty-2').control.results[0];
+    Object.assign(result, { state: 'accepted', phase: 'completed', ownerStatus: 'SUCCESS' });
+  });
   await expect(composer).toHaveValue('');
   expect(records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-2')).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-2', command: '/status' }]);
