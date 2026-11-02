@@ -66,13 +66,19 @@ async function native(action, target, signal) {
 
 try {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('node tools/hub-native.mjs <build|test> --target-dir <absolute Cargo output directory>\nUses the installed Tauri staging, feature selection, host preparation and checkout lease.\nUse a short real Cargo cache path on Windows. build produces a debug executable without an installer.');
+    console.log('node tools/hub-native.mjs <build|test> [--target-dir <absolute Cargo output directory>]\nDefaults to local/hub-native/target in this checkout.\nUses the installed Tauri staging, feature selection, host preparation and checkout lease.\nFor Windows linker path limits, explicitly select a short real path with --target-dir. No external fallback. build produces a debug executable without an installer.');
   } else {
-    if (args.length !== 3 || !['build', 'test'].includes(args[0]) || args[1] !== '--target-dir' || !path.isAbsolute(args[2])) {
-      throw new Error('Use --help or <build|test> --target-dir <absolute directory>.');
+    if (!['build', 'test'].includes(args[0]) || !(args.length === 1 ||
+        args.length === 3 && args[1] === '--target-dir' && path.isAbsolute(args[2]))) {
+      throw new Error('Use --help or <build|test> [--target-dir <absolute directory>].');
+    }
+    const target = args.length === 3 ? path.resolve(args[2]) : path.join(root, 'local/hub-native/target');
+    await fs.mkdir(target, { recursive: true });
+    if (args.length === 1) {
+      if (await fs.realpath(target) !== target) throw new Error('Default Cargo output must remain in this checkout.');
     }
     for (const event of events) process.on(event, cancel);
-    await native(args[0], path.resolve(args[2]), controller.signal);
+    await native(args[0], target, controller.signal);
   }
 } catch (error) {
   console.error(error.message);
