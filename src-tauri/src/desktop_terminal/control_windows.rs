@@ -15,8 +15,8 @@ struct SubmitError { detail: String, unknown: bool }
 impl From<&str> for SubmitError {
     fn from(detail: &str) -> Self { Self { detail: detail.into(), unknown: false } }
 }
-fn random_hex() -> Result<String, String> {
-    let mut bytes = [0u8; 32];
+fn random_hex<const N: usize>() -> Result<String, String> {
+    let mut bytes = [0u8; N];
     if unsafe { BCryptGenRandom(std::ptr::null_mut(), bytes.as_mut_ptr(), bytes.len() as u32,
         BCRYPT_USE_SYSTEM_PREFERRED_RNG) } != 0 { return Err("Secure Runner identity generation failed".into()); }
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
@@ -48,8 +48,8 @@ impl Launch {
     pub fn new(command: &mut CommandBuilder) -> Result<Self, String> {
         let (write, input) = pipe(false)?;
         let (read, output) = pipe(true)?;
-        let session = format!("hub-{}", random_hex()?);
-        let key = random_hex()?;
+        let session = random_hex::<16>()?;
+        let key = random_hex::<32>()?;
         command.args(["--session-id", &session, "--local-control-input", &format!("{}", input.as_raw_handle() as usize),
             "--local-control-output", &format!("{}", output.as_raw_handle() as usize)]);
         command.env("AGENT_RUNNER_LOCAL_CONTROL_KEY", &key);

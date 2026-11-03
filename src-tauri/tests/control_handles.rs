@@ -171,6 +171,17 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     job.configure(&mut command);
     let launch = control::Launch::new(&mut command).unwrap();
     let private_key = command.get_env("AGENT_RUNNER_LOCAL_CONTROL_KEY").unwrap().to_string_lossy().into_owned();
+    let args = command.get_argv();
+    let session = args.windows(2).find(|pair| pair[0] == "--session-id").unwrap()[1].to_string_lossy().into_owned();
+    assert_eq!(session.len(), 32);
+    assert!(session.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+    assert_eq!(private_key.len(), 64);
+    assert!(private_key.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+    let mut second = CommandBuilder::new("unused");
+    let _second_launch = control::Launch::new(&mut second).unwrap();
+    assert_ne!(command.get_env("AGENT_RUNNER_LOCAL_CONTROL_KEY"), second.get_env("AGENT_RUNNER_LOCAL_CONTROL_KEY"));
+    let second_session = second.get_argv().windows(2).find(|pair| pair[0] == "--session-id").unwrap()[1].to_string_lossy();
+    assert_ne!(session, second_session);
     let mut child = pair.slave.spawn_command(command).unwrap();
     let client: std::sync::Arc<control::Client> = launch.bind(child.process_id().unwrap());
     drop(pair.slave);
