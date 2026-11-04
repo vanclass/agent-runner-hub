@@ -47,9 +47,11 @@ export function projectEntryDefaults(value: unknown): EntryDefaults | undefined 
       || !text(model.model) || !text(model.reasoning_effort) || !text(model.service_tier)) return;
     result.model = { model: model.model, reasoning_effort: model.reasoning_effort, service_tier: model.service_tier };
   }
-  for (const key of ['account', 'runMode'] as const) {
+  for (const key of ['runMode'] as const) {
     if (value[key] !== undefined) { if (!text(value[key])) return; result[key] = value[key]; }
   }
+  // A previously populated saved selection must not become a fresh auto-initialization.
+  if (Object.keys(value).length > 0 && Object.keys(result).length === 0) result.initialized = true;
   return result;
 }
 
@@ -85,7 +87,6 @@ export class HubPreferences {
       const runnerSelections = value.runnerSelections === undefined ? undefined : projectRunnerSelections(value.runnerSelections);
       if (value.runnerSelections !== undefined && !runnerSelections) { this.retainOriginal(); return; }
       const shortcuts = value.shortcuts === undefined ? undefined : restoreShortcuts(value.shortcuts);
-      if (value.shortcuts !== undefined && !shortcuts) { this.retainOriginal(); return; }
       this.value = { version: 1, language: value.language as HubLanguage, theme: value.theme as HubTheme, singleEntry,
         confirmRunnerRemoval: value.confirmRunnerRemoval !== false,
         ...(runnerSelections ? { runnerSelections } : {}), ...(shortcuts ? { shortcuts } : {}) };

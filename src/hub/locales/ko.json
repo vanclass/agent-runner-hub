@@ -84,7 +84,6 @@
     "reuseIdle": "사용 가능한 유휴 Runner 재사용",
     "allocationHelp": "기본값은 항상 새 Runner 할당입니다. 재사용을 선택하면 해당 표시 세션을 할당 전에 다시 검증합니다.",
     "loadOptions": "사용 가능한 선택 새로 고침",
-    "legacyAccount": "저장된 계정 표시 이름 “{{account}}”은 미확정입니다. 정확한 에이전트 / 계정 ID를 선택하세요.",
     "promoted": "{{name}} 생성됨.",
     "configuring": "{{name}} 할당됨 · 요청한 설정 검증 중…",
     "observing": "{{name}} · 한 번 제출했으며 Runner 접수와 시작 근거를 기다리는 중…",

@@ -10,7 +10,7 @@ import { RunnerReferenceSelection } from './referenceSelection';
 
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier'>;
-export type EntryDefaults = { target?: Target; model?: Model; account?: string; accountIdentity?: ConfigAccount;
+export type EntryDefaults = { target?: Target; model?: Model; accountIdentity?: ConfigAccount;
   runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle'; initialized?: true };
 
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';

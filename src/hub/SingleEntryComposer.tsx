@@ -76,7 +76,6 @@ export function SingleEntrySettings({ entry }: { entry: SingleEntry }) {
     <p className="scope-note">{t('work.allocationHelp')}</p>
     <HubSelectionSettings entry={entry.selections} />
     <p className="scope-note">{t('entry.defaultsHelp')}</p>
-    {entry.defaults.account && !entry.defaults.accountIdentity && <p role="status">{t('work.legacyAccount', { account: entry.defaults.account })}</p>}
   </section>;
 }
 

@@ -27,14 +27,16 @@ export function projectShortcuts(value: unknown): ShortcutMap | undefined {
   return result;
 }
 export function restoreShortcuts(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
-  const old = value as Record<string, unknown>;
-  if (old.assign === old.entry) return;
-  const assign = old.assign === 'Ctrl+Enter' ? 'Enter' : old.assign;
-  const entry = old.entry === 'Home' ? 'Ctrl+Home' : old.entry;
-  return projectShortcuts({ ...old,
-    assign: typeof assign === 'string' && assign !== 'Enter' && reserved.includes(assign) ? 'Enter' : assign,
-    entry: typeof entry === 'string' && entry !== 'Ctrl+Home' && reserved.includes(entry) ? 'Ctrl+Home' : entry });
+  const current = projectShortcuts(value);
+  if (current) return current;
+  const result = { ...defaultShortcuts };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  const record = value as Record<string, unknown>;
+  for (const key of ['assign', 'entry', 'runner'] as const) {
+    const candidate = projectShortcuts({ ...result, [key]: record[key] });
+    if (candidate) Object.assign(result, candidate);
+  }
+  return result;
 }
 function prefix(event: KeyboardEvent) {
   return [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta'].filter(Boolean).join('+');

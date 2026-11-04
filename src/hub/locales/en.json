@@ -84,7 +84,6 @@
     "reuseIdle": "Reuse an eligible idle Runner",
     "allocationHelp": "Always create a new Runner by default. Reuse checks the exact visible Runner again before assignment.",
     "loadOptions": "Refresh available choices",
-    "legacyAccount": "Saved account label “{{account}}” is unresolved. Select an exact agent / account identity.",
     "promoted": "Created {{name}}.",
     "configuring": "Allocated {{name}} · verifying requested settings…",
     "observing": "{{name}} · submitted once; waiting for Runner admission and start evidence…",

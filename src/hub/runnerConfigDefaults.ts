@@ -2,7 +2,6 @@ import type { EntryDefaults } from './singleEntry';
 import type { RunnerObservation } from './runnerControl';
 import { same, type ConfigCatalog, type ConfigDesired, type ConfigSettings } from './runnerConfigContract';
 
-/** A stored profile label cannot recover the original agent/account identity. */
 export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigCatalog) {
   const desired: ConfigDesired = {}, unresolved: (keyof EntryDefaults)[] = [];
   const { options } = catalog;
@@ -16,15 +15,11 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
     if (options.accounts.some(a => same(a, defaults.accountIdentity))
       && same(defaults.accountIdentity, catalog.inspection.model_options_account)) desired.account = defaults.accountIdentity;
     else unresolved.push('accountIdentity');
-  } else if (defaults.account !== undefined) {
-    // Even a matching current label cannot prove a persisted label's identity.
-    // The user selects the exact agent_id/profile_name pair in the API form.
-    unresolved.push('account');
   }
   if (defaults.model) {
     const model = options.models.find(m => m.id === defaults.model?.model);
     if (model && model.reasoning_efforts.includes(defaults.model.reasoning_effort)
-      && model.service_tiers.includes(defaults.model.service_tier) && !unresolved.includes('account')
+      && model.service_tiers.includes(defaults.model.service_tier)
       && !unresolved.includes('accountIdentity')) {
       desired.model = { id: model.id, reasoning_effort: defaults.model.reasoning_effort };
       desired.service_tier = defaults.model.service_tier;

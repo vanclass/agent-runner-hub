@@ -36,7 +36,6 @@ export class HubSelections {
     const projected = projectEntryDefaults({ ...this.defaults, [key]: value,
       ...(!['allocationPolicy', 'root'].includes(key) ? { initialized: true } : {}) });
     if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
-    if (key === 'accountIdentity') delete projected.account;
     if (key === 'runMode' && !['direct-run', 'pure-direct-run'].includes(String(value))) delete projected.root;
     this.inspectionEdits?.add(key);
     this.defaults = projected;

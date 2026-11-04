@@ -16,6 +16,7 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
   await config.inspect(defaults.accountIdentity);
   if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
   const mapped = entryDefaultsToDesired(defaults, config.catalog);
+  if (!defaults.accountIdentity) throw new HubError(msg('config.defaultsUnresolved', { fields: 'accountIdentity' }));
   if (mapped.unresolved.length) throw new HubError(msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') }));
   config.setDraft(mapped.desired);
   await config.createPlan();

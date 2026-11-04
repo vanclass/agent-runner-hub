@@ -1,6 +1,49 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 
 const key = 'agent-runner-hub.preferences.v1';
+for (const account of ['first', 'second', { obsolete: true }]) {
+  test('inert saved label cannot initialize an account: ' + JSON.stringify(account), async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async ({ key, account }) => {
+      const { HubPreferences } = await import('/src/hub/preferences.ts');
+      const { HubSelections } = await import('/src/hub/HubSelections.ts');
+      const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+      const { entryDefaultsToDesired } = await import('/src/hub/runnerConfigDefaults.ts');
+      const raw = JSON.stringify({ version: 1, language: 'ko', theme: 'black', singleEntry: { account } });
+      localStorage.setItem(key, raw);
+      const store = new HubPreferences(), { service, fixture } = createConfigHarness(), commits = [];
+      const choices = new HubSelections(() => service, () => {}, store.value.singleEntry, v => commits.push(v));
+      choices.initialize(); await choices.inspectOptions();
+      return { defaults: choices.defaults, desired: entryDefaultsToDesired(choices.defaults, choices.catalog).desired,
+        raw, after: localStorage.getItem(key), commits, issue: store.issue };
+    }, { key, account });
+    expect(result.defaults).toEqual({ initialized: true });
+    expect(result.desired).toEqual({}); expect(result.commits).toEqual([]);
+    expect(result.after).toBe(result.raw); expect(result.issue).toBe('');
+  });
+}
+test('mixed labels retain independent exact selections and only explicit edits save', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async key => {
+    const { HubPreferences } = await import('/src/hub/preferences.ts');
+    const id = '12345678-1234-1234-1234-123456789abc';
+    const singleEntry = { initialized: true, accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run' };
+    const tab = { initialized: true, accountIdentity: { agent_id: 'other', profile_name: 'first' }, runMode: 'issue-run' };
+    const raw = JSON.stringify({ version: 1, language: 'ko', theme: 'black', singleEntry: { ...singleEntry, account: 'second' },
+      runnerSelections: { [id]: { ...tab, account: 'first' } } });
+    localStorage.setItem(key, raw); const store = new HubPreferences();
+    const restored = structuredClone(store.value), before = localStorage.getItem(key);
+    store.saveRunner(id, { ...store.value.runnerSelections[id], runMode: 'task-run' });
+    const reopened = new HubPreferences();
+    return { restored, raw, before, reopened: reopened.value, singleEntry, tab, id };
+  }, key);
+  expect(result.before).toBe(result.raw);
+  expect(result.restored.singleEntry).toEqual(result.singleEntry);
+  expect(result.restored.runnerSelections[result.id]).toEqual(result.tab);
+  expect(result.reopened.singleEntry).toEqual(result.singleEntry);
+  expect(result.reopened.runnerSelections[result.id]).toEqual({ ...result.tab, runMode: 'task-run' });
+});
+
 test('a removed saved account stays visible while interaction can choose a verified replacement', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {

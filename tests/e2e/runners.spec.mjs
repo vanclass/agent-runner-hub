@@ -965,9 +965,7 @@ for (const target of [
       await expect(recovery).toContainText('Historical work recovery is unconfirmed');
       expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
       if (reopening === 0) {
-        await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('/target');
-        await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-        await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
+        // This observation fixture has no work/configuration capability; simulate a fresh settings change.
         await page.evaluate(() => {
           const control = window.__nativeFixture.sessions.get('pty-1').control;
           control.observation.target = { binding_state: 'bound', owner: 'Project', project: 'Changed C' };
@@ -1010,10 +1008,10 @@ test('workspace isolates malformed records, duplicate identities and launch fail
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.count())).toBe(4);
   expect(await page.locator('.runner-row .runner-name').allTextContents()).toEqual(['Saved 1', 'Saved 2', 'Saved 3']);
   await page.locator('.runner-row').nth(0).locator('.nav-row').click();
-  await expect(page.getByText('fixture process launch failed', { exact: false })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'fixture process launch failed' })).toBeVisible();
   await page.locator('.runner-row').nth(1).locator('.nav-row').click();
-  await expect(page.getByText('Wrong configured installation', { exact: false })).toBeVisible();
-  await expect(page.locator('.runner-controls .control-status')).toContainText('Control disconnected');
+  await expect(page.getByRole('alert').filter({ hasText: 'Wrong configured installation' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Runner interaction', exact: true })).toContainText('Runner is disconnected');
   await expect(page.getByLabel('Restored Runner recovery')).toContainText('Recovery unavailable');
   await page.locator('.runner-row').nth(2).locator('.nav-row').click();
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();

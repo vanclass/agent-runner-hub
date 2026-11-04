@@ -59,7 +59,7 @@ export class RunnerWorkspace {
           return;
         }
         // Freeze the prior process's context before any replacement observations can arrive.
-        // Older version-1 tabs have only lastVerified; an existing hint always wins.
+        // Current producers can write only lastVerified; an existing hint always wins.
         const recoveryHint = tab.recoveryHint ?? tab.lastVerified;
         ids.add(tab.id.toLowerCase()); orders.add(tab.createdOrder);
         tabs.push({ ...tab, ...(recoveryHint ? { recoveryHint } : {}) });

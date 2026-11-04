@@ -149,27 +149,59 @@ for (const failure of ['write', 'concurrent', 'read']) {
     if (failure !== 'read') expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   });
 }
-test('historical shortcut defaults migrate without losing unrelated or custom preferences', async ({ page }) => {
-  await seed(page, JSON.stringify({ ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
-    shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Alt+Digit' } }));
+test('retired shortcut values use defaults without rewriting unrelated or custom preferences', async ({ page }) => {
+  const raw = JSON.stringify({ ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
+    shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Alt+Digit' } });
+  await seed(page, raw);
   await page.goto('/tests/fixtures/hub.html');
   await page.locator('.shortcut-settings-trigger').click();
   const buttons = page.locator('.shortcut-row button');
   await expect(buttons.nth(0)).toHaveText('Enter');
   await expect(buttons.nth(1)).toHaveText('Ctrl+Home');
   await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   await page.getByRole('button', { name: 'Apply and save' }).click();
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual({
     ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
     shortcuts: { assign: 'Enter', entry: 'Ctrl+Home', runner: 'Alt+Digit' } });
 });
 
+for (const shortcuts of [null, 'Home', {}, { assign: 'Home', entry: 'Home', runner: 'Ctrl+Digit' },
+  { assign: 'Alt+Enter', entry: 'unsupported', runner: 'Alt+Digit', draft: 'inert' }]) {
+  test('unsupported optional shortcuts isolate defaults: ' + JSON.stringify(shortcuts), async ({ page }) => {
+    const raw = JSON.stringify({ ...defaults, theme: 'black', shortcuts,
+      singleEntry: { initialized: true, runMode: 'issue-run', account: 'bad\u0000name' } });
+    await seed(page, raw); await page.goto('/tests/fixtures/hub.html');
+    await expect(page.locator('.hub')).toHaveAttribute('data-theme', 'black');
+    await expect(page.locator('.preferences-error')).toHaveCount(0);
+    expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
+    await page.locator('.shortcut-settings-trigger').click();
+    const buttons = page.locator('.shortcut-row button');
+    await expect(buttons.nth(0)).toHaveText(shortcuts?.assign === 'Alt+Enter' ? 'Alt+Enter' : 'Enter');
+    await expect(buttons.nth(1)).toHaveText('Ctrl+Home');
+  });
+}
+
+test('current lastVerified-only workspace load freezes context without writing bytes', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { RunnerWorkspace, runnerWorkspaceKey } = await import('/src/hub/RunnerWorkspace.ts');
+    const tab = { id: '12345678-1234-1234-1234-123456789abc', name: 'Retained', createdOrder: 2,
+      installationRoot: 'C:/verified-installation', launchOnOpen: true,
+      lastVerified: { target: { binding_state: 'bound', owner: 'Project', project: 'Previous' },
+        runMode: 'issue-run', workflowKind: 'IssueRun' } };
+    const raw = JSON.stringify({ version: 1, tabs: [tab] }, null, 2);
+    localStorage.setItem(runnerWorkspaceKey, raw);
+    const workspace = new RunnerWorkspace(), tabs = workspace.load();
+    return { raw, after: localStorage.getItem(runnerWorkspaceKey), tabs, tab, issue: workspace.issue };
+  });
+  expect(result.after).toBe(result.raw); expect(result.issue).toBe('');
+  expect(result.tabs).toEqual([{ ...result.tab, recoveryHint: result.tab.lastVerified }]);
+});
+
 const invalid = [
-  JSON.stringify({ ...defaults, shortcuts: { assign: 'Home', entry: 'Home', runner: 'Ctrl+Digit' } }),
-  JSON.stringify({ ...defaults, shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Ctrl+Digit', draft: 'rejected' } }),
   '{', JSON.stringify({ ...defaults, version: 99 }), JSON.stringify({ ...defaults, language: 'fr' }),
   JSON.stringify({ ...defaults, theme: 'dark' }), JSON.stringify({ ...defaults, language: ['ko'] }),
-  JSON.stringify({ ...defaults, singleEntry: { account: 'bad\u0000name' } }),
   JSON.stringify({ ...defaults, singleEntry: { target: { binding_state: 'bound', owner: 'Project', project: 'x', token: 'rejected' } } }),
   JSON.stringify({ ...defaults, token: 'rejected' }),
 ];
