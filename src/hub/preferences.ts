@@ -51,7 +51,9 @@ export function projectEntryDefaults(value: unknown): EntryDefaults | undefined 
     if (value[key] !== undefined) { if (!text(value[key])) return; result[key] = value[key]; }
   }
   // A previously populated saved selection must not become a fresh auto-initialization.
-  if (Object.keys(value).length > 0 && Object.keys(result).length === 0) result.initialized = true;
+  if (Object.keys(value).length > 0 && (Object.keys(result).length === 0
+    || Object.hasOwn(value, 'account') && Object.keys(result).every(key => ['allocationPolicy', 'root'].includes(key))))
+    result.initialized = true;
   return result;
 }
 

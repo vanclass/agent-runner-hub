@@ -1,24 +1,60 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 
 const key = 'agent-runner-hub.preferences.v1';
-for (const account of ['first', 'second', { obsolete: true }]) {
-  test('inert saved label cannot initialize an account: ' + JSON.stringify(account), async ({ page }) => {
+for (const draft of [{ allocationPolicy: 'reuse-idle' }, { root: 'C:/explicit' }]) {
+  test('current non-execution draft can initialize: ' + JSON.stringify(draft), async ({ page }) => {
     await page.goto('/');
-    const result = await page.evaluate(async ({ key, account }) => {
+    const result = await page.evaluate(async draft => {
+      const { HubSelections } = await import('/src/hub/HubSelections.ts');
+      const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+      const { service } = createConfigHarness(), commits = [];
+      const choices = new HubSelections(() => service, () => {}, {}, v => commits.push(v));
+      for (const [key, value] of Object.entries(draft)) choices.setDefault(key, value);
+      const initialized = choices.initialized;
+      await choices.inspectOptions();
+      return { initialized, defaults: choices.defaults, commits };
+    }, draft);
+    expect(result.initialized).toBe(false);
+    expect(result.defaults).toMatchObject({ ...draft, initialized: true,
+      accountIdentity: { agent_id: 'codex', profile_name: 'first' } });
+    expect(result.commits).toHaveLength(2);
+  });
+}
+for (const account of ['first', 'second', { obsolete: true }]) for (const extra of [{},
+  { allocationPolicy: 'reuse-idle' }, { root: 'C:/saved' }, { allocationPolicy: 'always-new', root: 'C:/saved' }]) {
+  test('inert saved label cannot initialize an account: ' + JSON.stringify({ account, extra }), async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async ({ key, account, extra }) => {
       const { HubPreferences } = await import('/src/hub/preferences.ts');
       const { HubSelections } = await import('/src/hub/HubSelections.ts');
       const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
       const { entryDefaultsToDesired } = await import('/src/hub/runnerConfigDefaults.ts');
-      const raw = JSON.stringify({ version: 1, language: 'ko', theme: 'black', singleEntry: { account } });
+      const id = '12345678-1234-1234-1234-123456789abc';
+      const raw = JSON.stringify({ version: 1, language: 'ko', theme: 'black', singleEntry: { account, ...extra },
+        runnerSelections: { [id]: { account, ...extra } } });
       localStorage.setItem(key, raw);
       const store = new HubPreferences(), { service, fixture } = createConfigHarness(), commits = [];
-      const choices = new HubSelections(() => service, () => {}, store.value.singleEntry, v => commits.push(v));
-      choices.initialize(); await choices.inspectOptions();
-      return { defaults: choices.defaults, desired: entryDefaultsToDesired(choices.defaults, choices.catalog).desired,
-        raw, after: localStorage.getItem(key), commits, issue: store.issue };
-    }, { key, account });
-    expect(result.defaults).toEqual({ initialized: true });
-    expect(result.desired).toEqual({}); expect(result.commits).toEqual([]);
+      const choices = new HubSelections(() => service, () => {}, store.value.singleEntry, v => {
+        commits.push(v); store.update({ singleEntry: v });
+      });
+      await choices.inspectOptions(); choices.initialize();
+      const tabCommits = [], tab = new HubSelections(() => service, () => {}, store.value.runnerSelections[id], v => {
+        tabCommits.push(v); store.saveRunner(id, v);
+      });
+      await tab.inspectOptions(); tab.initialize();
+      const restored = { defaults: choices.defaults, desired: entryDefaultsToDesired(choices.defaults, choices.catalog).desired,
+        raw, after: localStorage.getItem(key), commits: commits.length, issue: store.issue, tab: tab.defaults, tabCommits };
+      const exact = choices.catalog.options.accounts[0];
+      choices.setDefault('accountIdentity', exact);
+      while (choices.loadingOptions) await new Promise(resolve => setTimeout(resolve, 0));
+      return { ...restored, exact, saved: new HubPreferences().value.singleEntry,
+        explicitDesired: entryDefaultsToDesired(choices.defaults, choices.catalog).desired };
+    }, { key, account, extra });
+    expect(result.defaults).toEqual({ initialized: true, ...extra });
+    expect(result.desired).not.toHaveProperty('account'); expect(result.commits).toBe(0);
+    expect(result.tab).toEqual(result.defaults); expect(result.tabCommits).toEqual([]);
+    expect(result.saved.accountIdentity).toEqual(result.exact);
+    expect(result.saved).not.toHaveProperty('account'); expect(result.explicitDesired.account).toEqual(result.exact);
     expect(result.after).toBe(result.raw); expect(result.issue).toBe('');
   });
 }
