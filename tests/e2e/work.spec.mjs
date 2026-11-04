@@ -44,7 +44,7 @@ test('work v1 keeps dispatch admission and canonical start distinct with origina
   expect(result.final.work.terminal).toBe(false);
   expect(result.final.instruction).toBe(result.queued.instruction);
   expect(result.requests).toEqual([{ operation: 'work.submit', api_version: 1, instruction: 'exact instruction\n안녕 🌍' },
-    { operation: 'work.status', api_version: 1, submission_request_id: 1001 }]);
+    { operation: 'work.observe', api_version: 1, observation_id: 'api:1001' }]);
 });
 
 for (const mode of ['rejected', 'suspended', 'incomplete', 'unknown', 'succeeded', 'failed', 'interrupted']) {
@@ -68,7 +68,7 @@ for (const mode of ['rejected', 'suspended', 'incomplete', 'unknown', 'succeeded
     if (!['rejected', 'succeeded', 'failed', 'interrupted'].includes(mode)) { expect(result.refused).toBe(true); expect(result.submissions).toBe(1); }
   });
 }
-for (const fault of ['lost-admission', 'crossed', 'not-sent']) {
+for (const fault of ['lost-admission', 'crossed', 'not-sent', 'missing-origin', 'missing-observation', 'missing-identity', 'conflicting-identity']) {
   test('work v1 handles ' + fault + ' without replaying uncertain submission', async ({ page }) => {
     await page.goto('/');
     const result = await page.evaluate(async fault => {
@@ -90,6 +90,27 @@ for (const fault of ['lost-admission', 'crossed', 'not-sent']) {
     if (fault !== 'not-sent') { expect(result.refused).toBe(true); expect(result.after).toBe(result.count); }
   });
 }
+test('missing observation identity reconciles only through status of the original submission', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { RunnerWork } = await import('/src/hub/runnerWork.ts');
+    const { WorkFixture } = await import('/tests/fixtures/work.ts');
+    const fixture = new WorkFixture('owned'), identity = { session: 'owned', generation: 1 };
+    const work = new RunnerWork({ identity: () => identity, available: () => true,
+      submit: (_, request) => fixture.submit(request) }, () => {});
+    fixture.fault = 'missing-origin';
+    fixture.changed = () => work.observe('owned', 'ready', structuredClone(fixture.features)); fixture.changed();
+    await work.submit('once');
+    const before = { uncertain: work.current.uncertain, work: work.current.work, id: work.current.observationId };
+    fixture.fault = ''; await work.refreshStatus();
+    return { before, after: work.current.work.observation_id, uncertain: work.current.uncertain, requests: fixture.requests };
+  });
+  expect(result.before).toEqual({ uncertain: true, work: undefined, id: undefined });
+  expect(result.after).toBe('api:1001'); expect(result.uncertain).toBe(false);
+  expect(result.requests).toEqual([{ operation: 'work.submit', api_version: 1, instruction: 'once' },
+    { operation: 'work.status', api_version: 1, submission_request_id: 1001 }]);
+});
+
 test('work v1 fences session generations EOF and regressing event evidence', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {

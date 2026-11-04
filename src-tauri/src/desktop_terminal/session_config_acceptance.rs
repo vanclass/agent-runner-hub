@@ -56,8 +56,8 @@ pub(super) fn configure_test_session(harness: &mut Harness, session: &Arc<Sessio
         assert_eq!(result.state, "accepted"); assert_eq!(page.model_catalog_status, "available");
         assert_eq!(page.model_options_account, selection.account); assert_eq!(page.revision, before.revision);
         assert_eq!(page.options_page.offset, next);
-        if let Some(expected) = &guard { assert_eq!(page.options_revision.as_ref(), Some(expected)); }
-        guard = page.options_revision; models.extend(page.options.models);
+        if let Some(expected) = &guard { assert_eq!(&page.options_revision, expected); }
+        guard = Some(page.options_revision); models.extend(page.options.models);
         offset = page.options_page.next_offset;
         assert!(offset.is_none_or(|n| n > next) && (offset.is_none() || guard.is_some()));
     }
@@ -109,6 +109,7 @@ fn installed_session_config_read_only_discovery() {
     }
     let snapshot = session.control_snapshot().unwrap();
     assert_eq!(snapshot.state, "ready", "{snapshot:?}");
+    assert!(snapshot.features.work.is_some(), "Installed Runner must advertise the current Work contract");
     let capability = snapshot.features.session_config.unwrap();
     assert_eq!(capability.version, 1); assert!(capability.options_revision);
     let actual = inspect(&mut harness, &session);
@@ -121,7 +122,7 @@ fn installed_session_config_read_only_discovery() {
     println!("READ_ONLY_TEST_SELECTION {:?}", selected);
     session.close().unwrap(); harness.exited(&id);
     assert!(harness.sessions.sessions.lock().unwrap().is_empty());
-    println!("Installed Runner authenticated session_config v1/options_revision and read-only inspect verified; owned session closed.");
+    println!("Installed Runner authenticated current Session Config/Work discovery and read-only inspect verified; owned session closed.");
 }
 
 #[test]
@@ -145,7 +146,7 @@ fn installed_session_config_two_sessions_and_authoritative_receipts() {
     }
     assert_ne!(connected.features.generation, second.control_snapshot().unwrap().features.generation);
     let original = inspect(&mut harness, &first); let other = inspect(&mut harness, &second);
-    assert!(config::digest(original.options_revision.as_deref().unwrap()));
+    assert!(config::digest(&original.options_revision));
     let desired = config::Desired { target:Some("workspace".into()), run_mode:Some("issue-run".into()), ..Default::default() };
     let planned = plan(&mut harness, &first, desired);
     let foreign = call(&mut harness, &second, apply_request(&planned));
@@ -165,7 +166,7 @@ fn installed_session_config_two_sessions_and_authoritative_receipts() {
     let stale = call(&mut harness, &first, apply_request(&planned));
     assert_eq!(stale.code.as_deref(), Some("CONFIG_REVISION_STALE"));
     let stale_options = call(&mut harness, &first, config::Request::Inspect { api_version:1, account:None, offset:Some(0),
-        options_revision:original.options_revision.clone(), execution_context:None });
+        options_revision:Some(original.options_revision.clone()), execution_context:None });
     assert_eq!(stale_options.code.as_deref(), Some("CONFIG_OPTIONS_REVISION_STALE"));
     for (mode, direct_root) in [("direct-run", Some(root.clone())), ("task-run", None)] {
         let planned = plan(&mut harness, &first, config::Desired { run_mode:Some(mode.into()), root:direct_root, ..Default::default() });

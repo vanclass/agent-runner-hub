@@ -15,7 +15,7 @@ export type ConfigCapability = { version: 1; operations: string[]; options_page_
 export type ConfigTestSelection = { api_version: 1; execution_context: 'test'; account: ConfigAccount;
   codex_home: string; runner_root: string; authentication: 'available' };
 export type BoundTestSelection = { identity: ConfigIdentity; selection: ConfigTestSelection };
-export type ConfigInspect = { api_version: 1; revision: string; options_revision?: string | null;
+export type ConfigInspect = { api_version: 1; revision: string; options_revision: string;
   current: ConfigSettings; effective: RunnerObservation['selection']; runner_kind: string; setup_required: boolean;
   availability: Record<string, boolean>; constraints: string[]; root_requirements: Record<string, string>;
   model_catalog_status: string; model_options_account: ConfigAccount; options: ConfigOptions;
@@ -80,7 +80,7 @@ function isSettings(v: unknown): v is ConfigSettings {
     && isAccount(v.account) && record(v.model) && typeof v.model.id === 'string' && typeof v.model.reasoning_effort === 'string';
 }
 export function isInspection(v: unknown): v is ConfigInspect {
-  if (!record(v) || v.api_version !== 1 || !isDigest(v.revision) || !isSettings(v.current)
+  if (!record(v) || v.api_version !== 1 || !isDigest(v.revision) || !isDigest(v.options_revision) || !isSettings(v.current)
     || !isAccount(v.model_options_account) || !record(v.options) || !record(v.options_page)
     || !record(v.availability) || !strings(v.constraints) || !record(v.root_requirements)
     || !record(v.effective) || typeof v.runner_kind !== 'string' || typeof v.setup_required !== 'boolean'
@@ -124,11 +124,11 @@ export function isApply(v: unknown, plan: ConfigPlan, current: ConfigSettings): 
       }))));
 }
 
-export function validatePage(page: ConfigInspect, first: ConfigInspect, offset: number, size: number, guarded: boolean) {
+export function validatePage(page: ConfigInspect, first: ConfigInspect, offset: number, size: number) {
   if (page.options_page.offset !== offset || !same(page.model_options_account, first.model_options_account)
     || page.revision !== first.revision || !same(page.options_page.totals, first.options_page.totals)
     || !same(page.options.run_modes, first.options.run_modes) || page.model_catalog_status !== 'available'
-    || (guarded && (!isDigest(page.options_revision) || page.options_revision !== first.options_revision))) return false;
+    || !isDigest(page.options_revision) || page.options_revision !== first.options_revision) return false;
   const lists = ['targets', 'accounts', 'models'] as const;
   if (lists.some(k => page.options[k].length !== Math.min(size, Math.max(0, first.options_page.totals[k] - offset)))) return false;
   const expected = lists.some(k => first.options_page.totals[k] > offset + size) ? offset + size : null;

@@ -12,7 +12,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
   }
   for (const route of ['composer', 'typing']) {
     test(`runner discovery ${route} respects GUI input ownership and discovers sequential inactive completion`, async ({ page }, info) => {
-      await transport(page, undefined, { auto: true, work: true, workDiscovery: true });
+      await transport(page, undefined, { auto: true, work: true });
       await configure(page);
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
       await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
@@ -66,7 +66,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     });
   }
   test('runner discovery API route keeps one execution and one unread notification', async ({ page }) => {
-    await transport(page, undefined, { auto: true, work: true, workDiscovery: true });
+    await transport(page, undefined, { auto: true, work: true });
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
@@ -98,7 +98,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     expect(requests.some(r => r.operation === 'work.list')).toBe(true);
   });
   test('runner discovery pending reads yield to terminal, configuration, attachment staging and images', async ({ page }) => {
-    await transport(page, undefined, { auto: true, work: true, workDiscovery: true, generatedImages: [] });
+    await transport(page, undefined, { auto: true, work: true, generatedImages: [] });
     await configure(page); await create(page);
     await page.evaluate(() => {
       const fixture = window.__nativeFixture.sessions.get('pty-1').feature, send = fixture.submit.bind(fixture);
@@ -127,7 +127,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     await page.evaluate(() => window.__releaseRead());
   });
   test('runner discovery foreground confirmation routes the composer reply without new work', async ({ page }) => {
-    await transport(page, undefined, { auto: true, work: true, workDiscovery: true });
+    await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);
     await publish(page, 1, { state: 'suspended', outcome: 'interrupted' });
     await expect(row(page, 'Runner 1').locator('.status-dot.attention')).toBeVisible();

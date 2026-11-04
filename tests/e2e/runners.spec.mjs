@@ -117,7 +117,6 @@ async function transport(page, freshTarget, referenceOptions) {
           if (referenceOptions?.work) {
             const { WorkFixture } = await import('/tests/fixtures/work.ts');
             const fixture = new WorkFixture(id, count);
-            if (referenceOptions.workDiscovery) fixture.enableDiscovery();
             fixture.mode = referenceOptions.workMode ?? 'started';
             sessions.get(id).feature = fixture;
             sessions.get(id).control.features = fixture.features;

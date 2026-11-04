@@ -26,11 +26,11 @@ export class ConfigFixture {
   private sequence = 1000;
   private pending: { request: ConfigRequest; result: FeatureResult }[] = [];
   changed: () => void = () => {};
-  constructor(session = 'fixture-a', generation = 1, guarded = true) {
+  constructor(session = 'fixture-a', generation = 1) {
     this.session = session;
     this.features = { generation, runnerRoot: 'D:/Runner', sessionConfig: { version: 1, test_account_selection: true,
       operations: ['session_config.inspect', 'session_config.plan', 'session_config.apply'],
-      options_page_size: 2, options_revision: guarded }, results: [] };
+      options_page_size: 2, options_revision: true }, results: [] };
   }
   inspection(account = this.current.account, offset = 0): ConfigInspect {
     const models = Array.from({ length: 5 }, (_, i) => ({ id: `${account.profile_name === 'second' ? 's' : 'm'}${i}`,
@@ -126,8 +126,8 @@ export class ConfigFixture {
   }
 }
 
-export function createConfigHarness(session = 'fixture-a', generation = 1, guarded = true) {
-  const fixture = new ConfigFixture(session, generation, guarded);
+export function createConfigHarness(session = 'fixture-a', generation = 1) {
+  const fixture = new ConfigFixture(session, generation);
   const identity = { session, generation };
   const service = new RunnerConfigService({ identity: () => identity, available: () => true,
     submit: (session, request) => fixture.submit(session, request) }, () => {});

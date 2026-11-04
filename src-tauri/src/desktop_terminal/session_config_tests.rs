@@ -142,6 +142,26 @@ fn plan() -> features::Request {
     features::Request::SessionConfig(session_config::Request::Plan { api_version:1,
         desired:session_config::Desired { target:Some("workspace".into()), ..Default::default() } })
 }
+#[test]
+fn inspection_requires_a_valid_options_revision_even_on_a_single_page() {
+    let mut reply = json!({"status":"accepted","api_version":1,"revision":"a".repeat(64),
+        "options_revision":"b".repeat(64),"current":{"target":"workspace","account":{"agent_id":"codex","profile_name":"first"},
+        "model":{"id":"m","reasoning_effort":"medium"},"service_tier":"default","run_mode":"task-run","root":""},
+        "effective":packet(1,"accepted","completed")["selection"],"runner_kind":"existing","setup_required":false,
+        "availability":{},"constraints":[],"root_requirements":{},"model_catalog_status":"available",
+        "model_options_account":{"agent_id":"codex","profile_name":"first"},
+        "options":{"targets":[],"accounts":[],"models":[],"run_modes":[]},
+        "options_page":{"offset":0,"totals":{},"next_offset":null}});
+    reply["effective"] = json!({"account":"first","model":"m","reasoning_effort":"medium","service_tier":"default",
+        "source":"session","next_model":"m","next_reasoning_effort":"medium","next_service_tier":"default"});
+    assert!(inspect().response(&reply, 2).is_ok());
+    for invalid in [Value::Null, json!(""), json!("A".repeat(64)), json!(false)] {
+        reply["options_revision"] = invalid;
+        assert!(inspect().response(&reply, 2).is_err());
+    }
+    reply.as_object_mut().unwrap().remove("options_revision");
+    assert!(inspect().response(&reply, 2).is_err());
+}
 fn planned(id: u64) -> Value {
     let mut response = packet(id, "accepted", "completed");
     response.as_object_mut().unwrap().extend(json!({"api_version":1,"revision":"a".repeat(64),
@@ -165,7 +185,12 @@ fn capabilities_require_implemented_version_operations_and_options_guard() {
     let guarded = features::Request::SessionConfig(session_config::Request::Inspect { api_version:1, account:None,
         offset:Some(32), options_revision:Some("a".repeat(64)), execution_context:None });
     assert!(protocol.feature_request(guarded, "private").is_err());
-    assert!(protocol.feature_request(inspect(), "private").is_ok());
+    assert!(protocol.feature_request(inspect(), "private").is_err());
+    for value in [Value::Null, json!("true")] {
+        let mut cap = capability(); cap["options_revision"] = value;
+        protocol.snapshot.features.discover(&json!({"session_config":cap}));
+        assert!(protocol.feature_request(inspect(), "private").is_err());
+    }
 }
 #[test]
 fn typed_requests_reject_extra_fields_bad_evidence_and_boolean_versions() {

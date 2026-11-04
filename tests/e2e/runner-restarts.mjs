@@ -1,7 +1,7 @@
 export function registerRunnerRestarts({ test, expect, transport, configure, create }) {
   // Production Hub orchestration with a simulated native transport, never native acceptance.
   async function owner(page, count = 1) {
-    await transport(page, undefined, { auto: true, work: true, workDiscovery: true });
+    await transport(page, undefined, { auto: true, work: true });
     await page.goto('/');
     await page.evaluate(async count => {
       const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');

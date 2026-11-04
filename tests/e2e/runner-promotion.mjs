@@ -46,7 +46,7 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
   });
   for (const delayed of ['list', 'read', 'failure', 'unavailable']) {
     test(`promotion retains authority and fences old image ${delayed}`, async ({ page }) => {
-      await transport(page, undefined, { auto: true, work: true, workDiscovery: true, ...generatedFixture() }); await page.goto('/');
+      await transport(page, undefined, { auto: true, work: true, ...generatedFixture() }); await page.goto('/');
       await page.evaluate(async delayed => {
         const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
         const owner = window.__promotionOwner = new RunnerSessions(), created = owner.create('/fixture/install');

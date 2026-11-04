@@ -1,5 +1,5 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
-import { copy, same, record, isInspection, isTestSelection, sameInstallation, isPlan, isApply, isDigest, validatePage, uniqueOptions, validDesired,
+import { copy, same, record, isInspection, isTestSelection, sameInstallation, isPlan, isApply, validatePage, uniqueOptions, validDesired,
   type ConfigAccount, type ConfigCapability, type ConfigCatalog, type ConfigDesired, type ConfigIdentity,
   type ConfigInspect, type ConfigPlan, type ConfigApply, type ConfigSettings, type ConfigRequest, type FeatureSnapshot,
   type FeatureAdmission, type FeatureResult, type BoundTestSelection } from './runnerConfigContract';
@@ -47,7 +47,7 @@ export class RunnerConfigService {
   get latestApplication() { return this.applications.at(-1); }
   get uncertain() { return this.applications.some(a => a.verification === 'unknown' || a.result?.outcome_unknown); }
   supports(action: 'inspect' | 'plan' | 'apply') {
-    return !this.closed && this.capability?.version === 1
+    return !this.closed && this.capability?.version === 1 && this.capability.options_revision === true
       && this.capability.operations.includes(`session_config.${action}`) === true;
   }
   get canApply() {
@@ -65,7 +65,10 @@ export class RunnerConfigService {
     if (this.identity && identity && !same(identity, this.identity)) { this.close(); return; }
     if (identity) this.identity = identity;
     this.snapshot = snapshot;
-    this.capability = state === 'ready' ? snapshot?.sessionConfig ?? undefined : undefined;
+    const cap = snapshot?.sessionConfig;
+    this.capability = state === 'ready' && cap?.version === 1 && cap.options_revision === true
+      && Number.isSafeInteger(cap.options_page_size) && cap.options_page_size > 0 && cap.options_page_size <= 32
+      && Array.isArray(cap.operations) && cap.operations.includes('session_config.inspect') ? cap : undefined;
     if (!this.capability) { this.catalog = undefined; this.plan = undefined; this.planned = undefined; }
     for (const receipt of snapshot?.results ?? []) {
       if (receipt.feature !== 'session_config') continue;
@@ -211,18 +214,16 @@ export class RunnerConfigService {
       }
       if (account && !same(first.model_options_account, account)) throw new HubError(msg('config.identityChanged'));
       if (!account && !same(first.model_options_account, first.current.account)) throw new HubError(msg('config.identityChanged'));
-      if (cap.options_revision && !isDigest(first.options_revision)) throw new HubError(msg('config.incomplete'));
       const options = copy(first.options);
       let page = first, offset = 0;
       for (;;) {
-        if (!validatePage(page, first, offset, cap.options_page_size, cap.options_revision)) throw new HubError(msg('config.incomplete'));
+        if (!validatePage(page, first, offset, cap.options_page_size)) throw new HubError(msg('config.incomplete'));
         if (page.options_page.next_offset === null) break;
-        if (!cap.options_revision) throw new HubError(msg('config.legacyPages'));
         offset = page.options_page.next_offset;
-        page = await this.page(identity, account, offset, first.options_revision!);
+        page = await this.page(identity, account, offset, first.options_revision);
         for (const key of ['targets', 'accounts', 'models'] as const) {
           // Concatenate only after validating this page; publish only at terminal null.
-          if (!validatePage(page, first, offset, cap.options_page_size, true)) throw new HubError(msg('config.incomplete'));
+          if (!validatePage(page, first, offset, cap.options_page_size)) throw new HubError(msg('config.incomplete'));
           (options[key] as unknown[]).push(...page.options[key]);
         }
         if (!uniqueOptions(options)) throw new HubError(msg('config.identityChanged'));

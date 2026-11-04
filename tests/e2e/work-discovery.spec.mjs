@@ -31,7 +31,6 @@ async function setup(page, changes = {}) {
     const { RunnerWork } = await import('/src/hub/runnerWork.ts');
     const { WorkFixture, terminalWork } = await import('/tests/fixtures/work.ts');
     const fixture = new WorkFixture('owned');
-    fixture.enableDiscovery(2);
     const identity = { session: 'owned', generation: 1 };
     let available = true;
     const work = new RunnerWork({ identity: () => identity, available: () => available,
@@ -108,6 +107,25 @@ test('work discovery retains unread across new work and rejects repeated page ev
   expect(await page.evaluate(() => ({ count: window.__discovery.work.attempts.length, unread: window.__discovery.work.unread })))
     .toEqual({ count: 2, unread: false });
 });
+for (const fault of ['origin', 'observation_id', 'conflict']) {
+test(`work discovery rejects ${fault} identity evidence and preserves established work`, async ({ page }) => {
+  await setup(page);
+  const result = await page.evaluate(async fault => {
+    const { fixture, work, terminalWork } = window.__discovery;
+    fixture.observations.set('terminal:1', terminalWork(1, 1)); fixture.changed(); await work.refreshInventory();
+    const before = structuredClone(work.current.work), malformed = terminalWork(1, 2,
+      { state: 'succeeded', terminal: true, outcome: 'succeeded' });
+    if (fault === 'conflict') malformed.origin = 'api'; else delete malformed[fault];
+    fixture.observations.set('terminal:1', malformed);
+    let rejected = false; try { await work.refreshInventory(); } catch { rejected = true; }
+    return { rejected, before, after: work.current.work, count: work.attempts.length, unread: work.unread,
+      submits: fixture.requests.filter(r => r.operation === 'work.submit').length };
+  }, fault);
+  expect(result.rejected).toBe(true); expect(result.after).toEqual(result.before);
+  expect(result.count).toBe(1); expect(result.unread).toBe(false); expect(result.submits).toBe(0);
+});
+}
+
 test('work discovery merges API receipts and list observations into the original attempt', async ({ page }) => {
   await setup(page);
   await page.evaluate(async () => {
@@ -256,9 +274,19 @@ test('work discovery unsupported operations preserve API tracking and exact-sess
   expect(await page.evaluate(() => ({ activity: window.__discovery.work.activity, unread: window.__discovery.work.unread })))
     .toEqual({ activity: 'unknown', unread: false });
 });
-test('work discovery falls back to legacy API tracking for unsupported capability origins', async ({ page }) => {
-  await setup(page, { origins: ['api', 'api'] });
-  await page.evaluate(async () => { const { fixture, work } = window.__discovery; fixture.changed(); await work.submit('legacy API'); });
+for (const changes of [{ operations: ['work.submit', 'work.status'] }, { operations: ['work.submit', 'work.list', 'work.observe'] },
+  { operations: ['work.status', 'work.list', 'work.observe'] }, { operations: ['work.submit', 'work.status', 'work.list'] },
+  { operations: ['work.submit', 'work.status', 'work.observe'] }, { origins: undefined }, { origins: ['api', 'api'] },
+  { origins: ['terminal'] }, { max_page_size: undefined }, { max_page_size: 0 }, { max_page_size: 101 }, { max_page_size: 1.5 }]) {
+test(`incomplete Work capability stays unavailable: ${JSON.stringify(changes, (_, v) => v === undefined ? 'missing' : v)}`, async ({ page }) => {
+  await setup(page, changes);
+  await page.evaluate(async () => {
+    const { fixture, work } = window.__discovery; fixture.changed();
+    if (work.supported) throw new Error('unsupported capability admitted');
+    try { await work.submit('unsent'); throw new Error('submission admitted'); }
+    catch (error) { if (error.message === 'submission admitted') throw error; }
+  });
   await page.clock.runFor(1600);
-  expect(await page.evaluate(() => window.__discovery.fixture.requests.every(r => ['work.submit', 'work.status'].includes(r.operation)))).toBe(true);
+  expect(await page.evaluate(() => window.__discovery.fixture.requests)).toEqual([]);
 });
+}

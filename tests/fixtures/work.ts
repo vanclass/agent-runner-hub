@@ -17,15 +17,12 @@ export class WorkFixture {
   fault = '';
   work?: WorkObservation;
   readonly observations = new Map<string, WorkObservation>();
-  enableDiscovery(size = 2) {
-    this.config.features.work = { version: 1, operations: ['work.submit', 'work.status', 'work.list', 'work.observe'],
-      run_modes: [...runModes], origins: ['api', 'terminal'], max_page_size: size };
-  }
   changed: () => void = () => {};
   private held?: FeatureResult;
   constructor(session: string, generation = 1) {
     this.config = new ConfigFixture(session, generation);
-    this.config.features.work = { version: 1, operations: ['work.submit', 'work.status'], run_modes: [...runModes] };
+    this.config.features.work = { version: 1, operations: ['work.submit', 'work.status', 'work.list', 'work.observe'],
+      run_modes: [...runModes], origins: ['api', 'terminal'], max_page_size: 2 };
     this.config.changed = () => this.changed();
   }
   get features() { return this.config.features; }
@@ -37,19 +34,15 @@ export class WorkFixture {
     const result: FeatureResult = { id, feature: 'work', operation: request.operation, state: 'queued', phase: 'queued', admission: 'queued' };
     this.features.results.push(result);
     if (request.operation === 'work.submit') {
-      this.work = { submission_request_id: id, run_mode: this.config.current.run_mode, state: 'dispatching', admission: 'pending',
+      this.work = { observation_id: `api:${id}`, origin: 'api', submission_request_id: id,
+        run_mode: this.config.current.run_mode, state: 'dispatching', admission: 'pending',
         work_id: null, execution_id: '', event_id: 1, started_event_id: 0, terminal: false, outcome: 'pending',
         code: '', owner: 'input_consumer', owner_revision: 0 };
-      if (this.features.work?.origins) {
-        Object.assign(this.work, { observation_id: `api:${id}`, origin: 'api',
-          event_id: Math.max(0, ...[...this.observations.values()].map(w => w.event_id)) + 1 });
-      }
+      this.work.event_id = Math.max(0, ...[...this.observations.values()].map(w => w.event_id)) + 1;
       if (this.holdSubmit) this.held = result;
       else { result.state = 'accepted'; result.phase = 'completed'; result.reply = { receipt: 'dispatch_received', work: copy(this.work) }; }
-    } else if (request.operation === 'work.status' || request.operation === 'work.observe'
-      && request.observation_id === this.work?.observation_id) {
-      const original = this.work?.submission_request_id;
-      if (this.work && this.mode !== 'dispatch') {
+    } else {
+      if (this.work && !this.work.terminal && this.mode !== 'dispatch') {
         const previous = copy(this.work);
         const state = this.mode === 'started' ? 'active' : this.mode === 'admitted' ? 'instruction_admitted' : this.mode;
         const started = ['active', 'suspended', 'succeeded', 'failed', 'interrupted', 'incomplete', 'unknown'].includes(state);
@@ -64,22 +57,38 @@ export class WorkFixture {
         this.work.event_id = same({ ...previous, event_id: 0 }, { ...this.work, event_id: 0 })
           ? previous.event_id : previous.event_id + 3;
       }
-      result.state = 'accepted'; result.phase = 'completed';
       if (this.fault === 'completion-unknown' && this.work) Object.assign(this.work, { state: 'unknown', outcome: 'unknown' });
-      result.reply = (request.operation === 'work.status' ? original === request.submission_request_id
-        : request.observation_id === this.work?.observation_id) ? { work: copy(this.work) }
-        : { code: 'SUBMISSION_NOT_OBSERVED', outcome_unknown: true };
-      if (this.fault === 'crossed' && this.work) (result.reply as { work: WorkObservation }).work.submission_request_id!++;
-    } else {
-      result.state = 'accepted'; result.phase = 'completed';
-      if (request.operation === 'work.observe') result.reply = { work: copy(this.observations.get(request.observation_id)) };
-      else {
-        const changed = [...this.observations.values()].filter(w => w.event_id > request.after_event_id).sort((a, b) => a.event_id - b.event_id);
-        const works = changed.slice(0, request.limit), has_more = changed.length > works.length;
-        const latest_event_id = Math.max(0, ...[...this.observations.values()].map(w => w.event_id));
-        result.reply = { works: copy(works), has_more, latest_event_id,
-          next_after_event_id: has_more ? works.at(-1)!.event_id : latest_event_id };
+      if (this.work) this.observations.set(this.work.observation_id, copy(this.work));
+      if (request.operation === 'work.status' || request.operation === 'work.observe'
+        && request.observation_id === this.work?.observation_id) {
+        const original = this.work?.submission_request_id;
+        result.state = 'accepted'; result.phase = 'completed';
+        result.reply = (request.operation === 'work.status' ? original === request.submission_request_id
+          : request.observation_id === this.work?.observation_id) ? { work: copy(this.work) }
+          : { code: 'SUBMISSION_NOT_OBSERVED', outcome_unknown: true };
+        if (this.fault === 'crossed' && this.work) (result.reply as { work: WorkObservation }).work.submission_request_id!++;
+      } else {
+        result.state = 'accepted'; result.phase = 'completed';
+        if (request.operation === 'work.observe') result.reply = { work: copy(this.observations.get(request.observation_id)) };
+        else {
+          const changed = [...this.observations.values()].filter(w => w.event_id > request.after_event_id).sort((a, b) => a.event_id - b.event_id);
+          const works = changed.slice(0, request.limit), has_more = changed.length > works.length;
+          const latest_event_id = Math.max(0, ...[...this.observations.values()].map(w => w.event_id));
+          result.reply = { works: copy(works), has_more, latest_event_id,
+            next_after_event_id: has_more ? works.at(-1)!.event_id : latest_event_id };
+        }
       }
+    }
+    if (this.fault === 'crossed' && request.operation === 'work.list') {
+      const page = result.reply as { works: WorkObservation[] };
+      page.works.forEach(work => { if (work.origin === 'api') work.submission_request_id!++; });
+    }
+    const reply = result.reply as { work?: WorkObservation } | undefined;
+    if (reply?.work) {
+      const raw = reply.work as unknown as Record<string, unknown>;
+      if (['missing-origin', 'missing-identity'].includes(this.fault)) delete raw.origin;
+      if (['missing-observation', 'missing-identity'].includes(this.fault)) delete raw.observation_id;
+      if (this.fault === 'conflicting-identity') raw.observation_id = 'api:999';
     }
     if (this.work?.observation_id) this.observations.set(this.work.observation_id, copy(this.work));
     this.changed();

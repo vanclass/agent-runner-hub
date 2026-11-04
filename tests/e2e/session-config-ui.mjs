@@ -25,7 +25,8 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await expect(page.locator('.task-panel .runner-controls, .task-panel .runner-config, .task-panel .command-button')).toHaveCount(0);
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
-      s.feature.config.requests.every(r => r.operation === 'session_config.inspect') && !s.feature.requests.length))).toBe(true);
+      s.feature.config.requests.every(r => r.operation === 'session_config.inspect')
+      && s.feature.requests.every(r => r.operation === 'work.list')))).toBe(true);
     await page.evaluate(() => {
       const f = window.__nativeFixture.sessions.get('pty-1').feature;
       f.config.holdOperation = 'session_config.apply';
@@ -35,7 +36,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
       .some(r => r.operation === 'session_config.apply'))).toBe(true);
     await page.locator('.runner-row').nth(1).locator('.nav-row').click();
     await composer(page).fill('independent draft');
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests)).toEqual([]);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     await page.evaluate(() => {
       const f = window.__nativeFixture.sessions.get('pty-1').feature;
       f.config.holdOperation = ''; f.config.complete();
@@ -51,7 +52,8 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     expect(result.current).toEqual({ target: 'project:Exact', account: { agent_id: 'other', profile_name: 'first' },
       model: { id: 'm2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'direct-run', root: 'C:/explicit-root' });
     expect(result.work.filter(r => r.operation === 'work.submit')).toEqual([{ operation: 'work.submit', api_version: 1, instruction: 'exact once\n안녕 🌍' }]);
-    expect(result.effects).toEqual(['session_config.apply', 'work.submit']); expect(result.other).toEqual([]); expect(result.writes).toEqual([]);
+    expect(result.effects).toEqual(['session_config.apply', 'work.submit']);
+    expect(result.other.filter(r => r.operation !== 'work.list')).toEqual([]); expect(result.writes).toEqual([]);
     await info.attach('tab-submission', { body: await page.screenshot(), contentType: 'image/png' });
   });
   test('session submission verifies a no-op without Apply and rejects duplicate clicks', async ({ page }) => {
@@ -84,7 +86,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
       await composer(page).fill('keep me'); await send(page);
       await expect(page.locator('.composer-area [role=alert]')).toBeVisible();
       await expect(composer(page)).toHaveValue('keep me');
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       if (['partial', 'final-inspection'].includes(fault)) {
         await expect(page.locator('.config-receipt')).toContainText('Some settings committed');
         await expect(page.locator('.config-receipt')).toContainText('Owner-confirmed commit');
@@ -121,7 +123,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect(page.getByText('Process exited (0)', { exact: true })).toBeVisible();
     await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.complete());
     await expect(composer(page)).toHaveValue('never replay');
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
   });
   test('session foreground replies use PTY without configuration, work or reference admission', async ({ page }) => {
     await open(page);
@@ -131,7 +133,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await composer(page).fill('foreground answer'); await send(page);
     await expect(composer(page)).toHaveValue('');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.length)).toBe(before);
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.writes.length)).toBe(1);
     await page.locator('.xterm-helper-textarea').press('ArrowDown');
@@ -158,7 +160,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
       await composer(page).fill('references unsent'); await send(page);
       await expect(page.locator('.composer-area > [role=alert]')).toBeVisible({ timeout: 30000 });
       await expect(composer(page)).toHaveValue('references unsent');
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     });
   }
   test('session reference preflight still verifies selected inventory before API work', async ({ page }) => {

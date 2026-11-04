@@ -25,14 +25,14 @@ impl Request {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Capability { pub version: u32, pub operations: Vec<String>, pub options_page_size: u32,
-    #[serde(default)] pub options_revision: bool,
+    pub options_revision: bool,
     #[serde(default)] pub test_account_selection: bool }
 impl Capability {
     fn read(value: &Value) -> Option<Self> {
         let mut cap: Self = serde_json::from_value(value.clone()).ok()?;
         cap.operations.retain(|operation| matches!(operation.as_str(),
             "session_config.inspect" | "session_config.plan" | "session_config.apply"));
-        (cap.version == 1 && cap.options_page_size > 0 && cap.options_page_size <= 32
+        (cap.version == 1 && cap.options_revision && cap.options_page_size > 0 && cap.options_page_size <= 32
             && cap.operations.iter().any(|op| op == "session_config.inspect")
             && value["interaction_owner"] == "runner_terminal" && value["automatic_retry"] == false)
             .then_some(cap)
@@ -41,7 +41,6 @@ impl Capability {
         self.operations.iter().any(|op| op == request.operation())
             && match request {
                 Request::SessionConfig(session_config::Request::Inspect { execution_context: Some(_), .. }) => self.test_account_selection,
-                Request::SessionConfig(session_config::Request::Inspect { options_revision: Some(_), .. }) => self.options_revision,
                 _ => true,
             }
     }

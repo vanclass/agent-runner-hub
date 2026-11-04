@@ -1,7 +1,8 @@
 use super::*;
 
 fn cap() -> Value {
-    json!({"version":1,"operations":["work.submit","work.status"],"run_modes":work::RUN_MODES,
+    json!({"version":1,"operations":["work.submit","work.status","work.list","work.observe"],"run_modes":work::RUN_MODES,
+        "origins":["api","terminal"],"max_page_size":100,
         "observation_lifetime":"process_session","automatic_retry":false})
 }
 fn configured() -> Protocol {
@@ -16,7 +17,8 @@ fn status(original: u64) -> features::Request {
     features::Request::Work(work::Request::Status { api_version:1, submission_request_id:original })
 }
 fn evidence(original: u64, state: &str, event: u64, started: u64) -> Value {
-    json!({"submission_request_id":original,"run_mode":"task-run","state":state,"admission":if started>0 {"admitted"} else {"pending"},
+    json!({"observation_id":format!("api:{original}"),"origin":"api",
+        "submission_request_id":original,"run_mode":"task-run","state":state,"admission":if started>0 {"admitted"} else {"pending"},
         "work_id":if started>0 {json!({"kind":"task","id":"opaque-work"})} else {Value::Null},
         "execution_id":"","event_id":event,"started_event_id":started,"terminal":false,"outcome":"pending",
         "code":"","owner":"input_consumer","owner_revision":0})
@@ -95,6 +97,28 @@ fn unfinished_and_terminal_states_survive_without_inferred_task_completion() {
     }
 }
 #[test]
+fn current_observations_require_explicit_matching_origin_and_identity() {
+    for request in [submit(), status(2), features::Request::Work(work::Request::Observe {
+        api_version: 1, observation_id: "api:2".into() })] {
+        let mut predecessor = packet(2, "accepted", "completed");
+        predecessor["receipt"] = json!("dispatch_received"); predecessor["work"] = evidence(2, "active", 4, 3);
+        predecessor["work"].as_object_mut().unwrap().remove("origin");
+        predecessor["work"].as_object_mut().unwrap().remove("observation_id");
+        assert!(request.response(&predecessor, 2).is_err());
+        for field in ["origin", "observation_id"] {
+            for value in [None, Some(Value::Null), Some(json!("terminal:2")), Some(json!(false))] {
+                let mut p = configured(); p.feature_request(request.clone(), "key").unwrap();
+                let mut reply = packet(2, "accepted", "completed");
+                reply["receipt"] = json!("dispatch_received"); reply["work"] = evidence(2, "active", 4, 3);
+                if let Some(value) = value { reply["work"][field] = value; }
+                else { reply["work"].as_object_mut().unwrap().remove(field); }
+                assert!(p.response(reply).is_err(), "{field}");
+                assert!(p.snapshot.features.results[0].reply.is_none());
+            }
+        }
+    }
+}
+#[test]
 fn submission_exit_distinguishes_provably_unsent_from_ambiguous_without_replay() {
     for (bytes,expected) in [(0,"not-sent"),(1,"outcome-unknown")] {
         let mut p=configured(); p.feature_request(submit(),"key").unwrap();
@@ -103,12 +127,6 @@ fn submission_exit_distinguishes_provably_unsent_from_ambiguous_without_replay()
         assert_eq!(p.snapshot.features.results[0].state,expected); assert!(p.pending.is_empty());
         assert!(p.feature_request(submit(),"key").is_err());
     }
-}
-fn discovery_cap() -> Value {
-    let mut value = cap();
-    value["operations"] = json!(["work.submit", "work.status", "work.list", "work.observe"]);
-    value["origins"] = json!(["api", "terminal"]); value["max_page_size"] = json!(100);
-    value
 }
 fn terminal_evidence(event: u64) -> Value {
     let mut value = evidence(1, "succeeded", event, 1);
@@ -121,13 +139,24 @@ fn list(after: u64, limit: u32) -> features::Request {
     features::Request::Work(work::Request::List { api_version: 1, after_event_id: after, limit })
 }
 #[test]
-fn discovery_is_additive_and_requires_verified_origins_and_page_bound() {
-    let mut p = configured(); assert!(p.feature_request(list(0, 100), "key").is_err());
+fn current_work_requires_discovery_operations_origins_and_page_bound() {
+    let mut p = ready();
     for (field, bad) in [("origins", json!(["api"])), ("origins", json!(["api", "api"])), ("max_page_size", json!(101))] {
-        let mut cap = discovery_cap(); cap[field] = bad;
+        let mut cap = cap(); cap[field] = bad;
         p.snapshot.features.discover(&json!({"work": cap}));
         assert!(p.feature_request(list(0, 100), "key").is_err());
-        assert!(p.snapshot.features.supports(&status(2)));
+        assert!(!p.snapshot.features.supports(&status(2)));
+        assert!(p.request(Some("/status".into()), "key").is_ok());
+    }
+    for operation in ["work.submit", "work.status", "work.list", "work.observe"] {
+        let mut bad = cap(); bad["operations"].as_array_mut().unwrap().retain(|op| op != operation);
+        p.snapshot.features.discover(&json!({"work":bad}));
+        assert!(!p.snapshot.features.supports(&submit()));
+    }
+    for field in ["origins", "max_page_size"] {
+        let mut bad = cap(); bad.as_object_mut().unwrap().remove(field);
+        p.snapshot.features.discover(&json!({"work":bad}));
+        assert!(!p.snapshot.features.supports(&status(2)));
     }
 }
 #[test]
@@ -146,7 +175,7 @@ fn discovery_requests_reject_unbounded_or_ambiguous_identity_fields() {
 }
 #[test]
 fn terminal_null_identity_survives_list_and_individual_observe() {
-    let mut p = configured(); p.snapshot.features.discover(&json!({"work":discovery_cap()}));
+    let mut p = configured();
     let wire: Value = serde_json::from_slice(&p.feature_request(list(0, 1), "private").unwrap()).unwrap();
     assert_eq!(wire["operation"], "work.list"); assert_eq!(wire["after_event_id"], 0);
     assert!(wire.get("instruction").is_none());
@@ -169,7 +198,7 @@ fn discovery_rejects_incomplete_pages_and_invalid_cursor_evidence() {
     for (field, bad) in [("has_more", Value::Null), ("has_more", json!(true)),
         ("next_after_event_id", json!(1)), ("latest_event_id", json!(1)),
         ("works", json!([terminal_evidence(2), terminal_evidence(2)]))] {
-        let mut p = configured(); p.snapshot.features.discover(&json!({"work":discovery_cap()}));
+        let mut p = configured();
         p.feature_request(list(0, 2), "key").unwrap();
         let mut reply = packet(2, "accepted", "completed");
         reply["works"] = json!([terminal_evidence(2)]); reply["has_more"] = json!(false);
@@ -190,7 +219,7 @@ fn observations_reject_crossed_identity_and_missing_nullable_submission() {
     let request = work::Request::Observe { api_version: 1, observation_id: "terminal:1".into() };
     let mut reply = packet(2, "accepted", "completed"); reply["work"] = work;
     assert!(request.response(&reply, 2).is_err());
-    let mut p = configured(); p.snapshot.features.discover(&json!({"work":discovery_cap()}));
+    let mut p = configured();
     p.feature_request(list(0, 100), "key").unwrap();
     let mut foreign = packet(2, "accepted", "completed"); foreign["session_id"] = json!("neighbor");
     assert!(p.response(foreign).is_err());

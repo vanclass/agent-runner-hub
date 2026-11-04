@@ -77,8 +77,13 @@ impl Request {
                 if !selection.valid() { return Err(serde::de::Error::custom("Invalid test account evidence")); }
                 Ok(Response::TestSelection(selection))
             },
-            Self::Inspect { .. } if packet.get("options").is_some() =>
-                serde_json::from_value(packet.clone()).map(Response::Inspect),
+            Self::Inspect { .. } if packet["status"] == "accepted" || packet.get("options").is_some() => {
+                let inspection: Inspection = serde_json::from_value(packet.clone())?;
+                if !digest(&inspection.options_revision) {
+                    return Err(serde::de::Error::custom("Invalid options revision evidence"));
+                }
+                Ok(Response::Inspect(inspection))
+            },
             Self::Plan { .. } if packet.get("plan_status").is_some() =>
                 serde_json::from_value(packet.clone()).map(Response::Plan),
             Self::Apply { .. } if packet.get("apply_status").is_some() =>
@@ -101,7 +106,7 @@ pub struct Options { pub targets: Vec<TargetOption>, pub accounts: Vec<Account>,
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Page { pub offset: u32, pub totals: BTreeMap<String, u32>, pub next_offset: Option<u32> }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Inspection { pub api_version: u32, pub revision: String, pub options_revision: Option<String>,
+pub struct Inspection { pub api_version: u32, pub revision: String, pub options_revision: String,
     pub current: Settings, pub effective: super::Selection, pub runner_kind: String, pub setup_required: bool,
     pub availability: BTreeMap<String, bool>, pub constraints: Vec<String>, pub root_requirements: BTreeMap<String, String>,
     pub model_catalog_status: String, pub model_options_account: Account, pub options: Options, pub options_page: Page }

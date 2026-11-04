@@ -34,7 +34,7 @@ The explicit native work-acceptance caller is `work_acceptance.rs::public_work_i
 
 Candidates remain private to the collection until a validated terminal null next_offset. Rejection, stale/state change, unavailable catalogs, bad/missing pages, identity mismatch or lost completion discards the entire collection. A later explicit refresh starts over; no partial pages or models are reused. Reading a destination account never switches the Runner account. Changing accounts invalidates the plan and requires that account's own catalog.
 
-Without options_revision support, only a provably complete single page can become a catalog. Incomplete/unverifiable selections remain disabled. Missing or unsupported session configuration does not disable supported authenticated commands, references, images or structured interactions; terminal logs remain read-only.
+Native and frontend admission require options_revision capability support and a valid options digest on every inspection page, including a complete single page. Incomplete/unverifiable selections remain disabled. Missing or unsupported session configuration does not disable supported authenticated commands, references, images or structured interactions; terminal logs remain read-only.
 
 ## Draft, plan and apply
 
@@ -66,7 +66,7 @@ The English/Korean catalogs cover labels, submission progress, plans, partial re
 - `session_config_acceptance.rs`: explicit Windows installed-public-Runner discovery and isolated two-session API/receipt/stale-evidence/cleanup checks through the production native client. The existing native acceptance prerequisites and explicit selectors apply.
 - `work_acceptance.rs`: installed Test Runner configuration before one submission, independent ordinary session and exact owned shutdown. Optional `HUB_TEST_RUNNER_INSTRUCTION` supplies the image acceptance prompt; completed work must yield a verified native PNG, separately from transport admission.
 - `tests/e2e/test-account-selection.spec.mjs`: read-only test selection, actionable prerequisite failures, identity/root fencing and selected-account configuration before one ordinary work submission, using synthetic responses.
-- `tests/e2e/session-config.spec.mjs` and `session-config-delivery.spec.mjs`: service contracts, guarded/legacy pagination, destination accounts, plans, failure outcomes, identity fencing, defaults and late delivery.
+- `tests/e2e/session-config.spec.mjs` and `session-config-delivery.spec.mjs`: service contracts, guarded pagination and unguarded capability rejection, destination accounts, plans, failure outcomes, identity fencing, defaults and late delivery.
 - `tests/e2e/session-config-ui.mjs`, registered by `runners.spec.mjs`: exact tab submission, configuration-before-work, no-op verification, failure/draft retention, late start, foreground replies and reference preflight through simulated native APIs.
 - `tests/e2e/task-panel.mjs`, registered by `runners.spec.mjs`: geometry, scrolling, keyboard collapse, narrow overlays, retained unsupported defaults/Fast, per-tab selections and absence of exposed command/Apply controls.
 

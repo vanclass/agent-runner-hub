@@ -65,11 +65,12 @@ for (const fault of ['token', 'revision', 'totals', 'account', 'offset', 'next',
   });
 }
 
-test('legacy config never merges unguarded pages and still permits a proven complete single page', async ({ page }) => {
+test('unguarded config capabilities cannot establish even a complete single page', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
-    const { service, fixture } = createConfigHarness('legacy', 1, false);
+    const { service, fixture } = createConfigHarness();
+    fixture.features.sessionConfig.options_revision = false; fixture.changed();
     await service.inspect(); const incomplete = !service.catalog, requests = fixture.requests.length;
     const original = fixture.inspection.bind(fixture);
     fixture.inspection = (...args) => {
@@ -79,8 +80,22 @@ test('legacy config never merges unguarded pages and still permits a proven comp
     };
     await service.inspect(); return { incomplete, requests, complete: !!service.catalog };
   });
-  expect(result).toEqual({ incomplete: true, requests: 1, complete: true });
+  expect(result).toEqual({ incomplete: true, requests: 0, complete: false });
 });
+
+for (const evidence of [undefined, null, '', 'bad', 'A'.repeat(64)]) {
+  test(`config rejects invalid options_revision ${String(evidence)}`, async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async evidence => {
+      const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+      const inspect = fixture.inspection.bind(fixture);
+      fixture.inspection = (...args) => ({ ...inspect(...args), options_revision: evidence });
+      await service.inspect();
+      return { catalog: !!service.catalog, actual: !!service.actual, count: fixture.requests.length };
+    }, evidence);
+    expect(result).toEqual({ catalog: false, actual: false, count: 1 });
+  });
+}
 
 for (const status of ['invalid', 'confirmation_required']) {
   test(`session config disables apply for ${status} plans`, async ({ page }) => {

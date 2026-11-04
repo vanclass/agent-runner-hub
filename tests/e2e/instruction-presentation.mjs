@@ -11,7 +11,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
   }
   for (const route of ['tab', 'Single Entry']) {
     test(`instruction presentation ${route} retains exact text once across discovery tabs and rerenders`, async ({ page }, info) => {
-      await ready(page, { workDiscovery: true });
+      await ready(page);
       if (route === 'tab') { await create(page); await composer(page).fill(instruction); await send(page); }
       else {
         await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(instruction);
@@ -40,7 +40,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
     });
   }
   test('instruction presentation distinguishes repeated text submitted under new identities', async ({ page }) => {
-    await ready(page, { workMode: 'succeeded', workDiscovery: true }); await create(page);
+    await ready(page, { workMode: 'succeeded' }); await create(page);
     for (let count = 1; count <= 2; count++) {
       await composer(page).fill(instruction); await send(page);
       await expect(composer(page)).toHaveValue('', { timeout: 35000 });

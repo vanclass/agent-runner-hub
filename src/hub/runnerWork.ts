@@ -8,9 +8,9 @@ export type WorkRequest = { operation: 'work.submit'; api_version: 1; instructio
   | { operation: 'work.status'; api_version: 1; submission_request_id: number }
   | { operation: 'work.list'; api_version: 1; after_event_id: number; limit: number }
   | { operation: 'work.observe'; api_version: 1; observation_id: string };
-export type WorkCapability = { version: 1; operations: string[]; run_modes: string[]; origins?: string[]; max_page_size?: number };
+export type WorkCapability = { version: 1; operations: string[]; run_modes: string[]; origins: string[]; max_page_size: number };
 export type WorkObservation = {
-  observation_id?: string; origin?: 'api' | 'terminal'; submission_request_id: number | null; run_mode: string;
+  observation_id: string; origin: 'api' | 'terminal'; submission_request_id: number | null; run_mode: string;
   state: 'dispatching' | 'instruction_admitted' | 'execution_started' | 'active' | 'suspended' | 'incomplete'
     | 'succeeded' | 'failed' | 'interrupted' | 'unknown' | 'rejected';
   admission: 'pending' | 'admitted' | 'rejected' | 'unknown';
@@ -31,7 +31,6 @@ const settled = (r: FeatureResult) => ['accepted', 'rejected', 'failure', 'outco
 const positive = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) > 0;
 function validIdentity(v: Record<string, unknown>) {
   const id = v.submission_request_id;
-  if (v.observation_id === undefined && v.origin === undefined) return positive(id);
   return v.origin === 'api' ? positive(id) && v.observation_id === `api:${id}`
     : v.origin === 'terminal' && id === null && typeof v.observation_id === 'string'
       && /^terminal:[1-9][0-9]*$/.test(v.observation_id) && positive(Number(v.observation_id.slice(9)));
@@ -140,15 +139,16 @@ export class RunnerWork {
     return this.attempts.some(a => !a.notSent && (a.uncertain || !a.work?.terminal || a.work.outcome === 'unknown'));
   }
   get supported() {
-    return !this.closed && this.capability?.version === 1
-      && ['work.submit', 'work.status'].every(op => this.capability?.operations.includes(op))
-      && runModes.every(mode => this.capability?.run_modes.includes(mode));
+    const cap = this.capability;
+    return !this.closed && cap?.version === 1
+      && Array.isArray(cap.operations) && Array.isArray(cap.run_modes)
+      && ['work.submit', 'work.status', 'work.list', 'work.observe'].every(op => cap.operations.includes(op))
+      && cap.run_modes.length === runModes.length && runModes.every(mode => cap.run_modes.includes(mode))
+      && cap.origins?.length === 2 && ['api', 'terminal'].every(origin => cap.origins.includes(origin))
+      && positive(cap.max_page_size) && cap.max_page_size <= 100;
   }
   get discoverySupported() {
-    const cap = this.capability;
-    return this.supported && !this.discoveryDisabled && !!cap && ['work.list', 'work.observe'].every(op => cap.operations.includes(op))
-      && cap.origins?.length === 2 && ['api', 'terminal'].every(origin => cap.origins?.includes(origin))
-      && positive(cap.max_page_size) && cap.max_page_size <= 100;
+    return this.supported && !this.discoveryDisabled;
   }
   observe(session: string, state: string, snapshot?: FeatureSnapshot) {
     if (this.closed) return;
@@ -238,8 +238,8 @@ export class RunnerWork {
     this.upsert(reply.work, attempt);
   }
   private upsert(observation: WorkObservation, attempt?: WorkAttempt) {
-    const key = observation.observation_id ?? `api:${observation.submission_request_id}`;
-    const work = { ...copy(observation), observation_id: key, origin: observation.origin ?? 'api' as const };
+    const key = observation.observation_id;
+    const work = copy(observation);
     attempt ??= this.attempts.find(a => same(a.identity, this.identity) && (a.observationId === key
       || work.origin === 'api' && a.submissionId === work.submission_request_id));
     if (!attempt) {
@@ -291,7 +291,6 @@ export class RunnerWork {
         }
         if (request.operation === 'work.submit') {
           attempt!.submissionId = admission.id;
-          attempt!.observationId = `api:${admission.id}`;
           attempt!.notSent = false;
         }
         this.waiting.id = admission.id;

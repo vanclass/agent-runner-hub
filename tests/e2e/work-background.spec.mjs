@@ -40,7 +40,7 @@ for (const runMode of ['task-run', 'issue-run']) {
   });
 }
 for (const outcome of ['succeeded', 'failed', 'interrupted']) {
-  test(`background work original identity, duplicate events, unread and terminal stop ${outcome}`, async ({ page }) => {
+  test(`background work original identity, duplicate events and unread retain discovery after ${outcome}`, async ({ page }) => {
     await owners(page);
     await page.clock.runFor(3200);
     const unchanged = await page.evaluate(() => window.__workOwners.map(({ fixture, work }) => ({
@@ -59,10 +59,11 @@ for (const outcome of ['succeeded', 'failed', 'interrupted']) {
     expect(terminal.activity).toBe(outcome === 'succeeded' ? 'completed' : outcome);
     expect(terminal.unread).toBe(true); expect(terminal.afterView).toBe(false); expect(terminal.neighbor).toBe('running');
     expect(terminal.requests.filter(r => r.operation === 'work.submit')).toHaveLength(1);
-    expect(terminal.requests.filter(r => r.operation === 'work.status').every(r => r.submission_request_id === 1001)).toBe(true);
+    expect(terminal.requests.filter(r => r.operation === 'work.observe').every(r => r.observation_id === 'api:1001')).toBe(true);
     const count = terminal.requests.length;
     await page.clock.runFor(10000);
-    expect(await page.evaluate(() => window.__workOwners[0].fixture.requests.length)).toBe(count);
+    expect(await page.evaluate(count => window.__workOwners[0].fixture.requests.slice(count)
+      .every(r => r.operation === 'work.list'), count)).toBe(true);
     await page.evaluate(() => window.__workOwners[1].work.close());
     const second = await page.evaluate(() => window.__workOwners[1].fixture.requests.length);
     await page.clock.runFor(10000);
@@ -71,7 +72,9 @@ for (const outcome of ['succeeded', 'failed', 'interrupted']) {
 }
 test('background work unknown recovers through original status and terminal unknown never fabricates completion', async ({ page }) => {
   await owners(page);
-  await page.evaluate(() => { window.__workOwners[0].fixture.fault = 'crossed'; });
+  await page.evaluate(async () => {
+    const { fixture, work } = window.__workOwners[0]; fixture.fault = 'crossed'; await work.refreshStatus();
+  });
   await page.clock.runFor(1600);
   expect(await page.evaluate(() => window.__workOwners[0].work.activity)).toBe('unknown');
   await page.evaluate(() => { window.__workOwners[0].fixture.fault = ''; window.__workOwners[0].fixture.mode = 'succeeded'; });
@@ -87,7 +90,8 @@ test('background work unknown recovers through original status and terminal unkn
     unread: window.__workOwners[1].work.unread, count: window.__workOwners[1].fixture.requests.length }));
   expect(final.activity).toBe('unknown'); expect(final.unread).toBe(false);
   await page.clock.runFor(10000);
-  expect(await page.evaluate(() => window.__workOwners[1].fixture.requests.length)).toBe(final.count);
+  expect(await page.evaluate(count => window.__workOwners[1].fixture.requests.slice(count)
+    .every(r => r.operation === 'work.list'), final.count)).toBe(true);
 });
 test('background work closes only its exact generation and ignores stale receipts', async ({ page }) => {
   await owners(page);

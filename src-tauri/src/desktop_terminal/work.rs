@@ -38,9 +38,9 @@ impl Request {
         let reply: Response = serde_json::from_value(packet.clone()).map_err(|_| "Malformed work completion")?;
         if let Some(work) = &reply.work {
             let correlated = match self {
-                Self::Submit { .. } => work.submission_request_id == Some(id) && work.origin.as_deref() != Some("terminal"),
+                Self::Submit { .. } => work.submission_request_id == Some(id) && work.origin == "api",
                 Self::Status { submission_request_id, .. } => work.submission_request_id == Some(*submission_request_id),
-                Self::Observe { observation_id, .. } => work.observation_id.as_ref() == Some(observation_id),
+                Self::Observe { observation_id, .. } => &work.observation_id == observation_id,
                 Self::List { .. } => false,
             };
             if !correlated || !work.valid() { return Err("Work observation correlation mismatch"); }
@@ -64,17 +64,16 @@ impl Request {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Capability {
     pub version: u32, pub operations: Vec<String>, pub run_modes: Vec<String>,
-    #[serde(default)] pub origins: Vec<String>,
-    #[serde(default)] pub max_page_size: Option<u32>,
+    pub origins: Vec<String>,
+    pub max_page_size: u32,
 }
 impl Capability {
     pub fn read(value: &Value) -> Option<Self> {
         let mut cap: Self = serde_json::from_value(value.clone()).ok()?;
         let discovery = cap.origins.len() == 2 && ["api", "terminal"].iter().all(|origin|
-            cap.origins.iter().any(|s| s == origin)) && cap.max_page_size.is_some_and(|size| (1..=100).contains(&size));
-        cap.operations.retain(|op| matches!(op.as_str(), "work.submit" | "work.status")
-            || discovery && matches!(op.as_str(), "work.list" | "work.observe"));
-        (cap.version == 1 && ["work.submit", "work.status"].iter().all(|op| cap.operations.iter().any(|s| s == op))
+            cap.origins.iter().any(|s| s == origin)) && (1..=100).contains(&cap.max_page_size);
+        cap.operations.retain(|op| matches!(op.as_str(), "work.submit" | "work.status" | "work.list" | "work.observe"));
+        (cap.version == 1 && discovery && ["work.submit", "work.status", "work.list", "work.observe"].iter().all(|op| cap.operations.iter().any(|s| s == op))
             && cap.run_modes.len() == RUN_MODES.len() && RUN_MODES.iter().all(|mode| cap.run_modes.iter().any(|s| s == mode))
             && value["observation_lifetime"] == "process_session" && value["automatic_retry"] == false).then_some(cap)
     }
@@ -83,8 +82,8 @@ impl Capability {
 pub struct WorkIdentity { pub kind: String, pub id: String }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Observation {
-    #[serde(skip_serializing_if = "Option::is_none")] pub observation_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub origin: Option<String>,
+    pub observation_id: String,
+    pub origin: String,
     #[serde(deserialize_with = "nullable_submission")] pub submission_request_id: Option<u64>,
     pub run_mode: String, pub state: String, pub admission: String,
     pub work_id: Option<WorkIdentity>, pub execution_id: String, pub event_id: u64, pub started_event_id: u64,
@@ -107,10 +106,9 @@ fn valid_code(value: &str) -> bool {
 }
 impl Observation {
     fn valid(&self) -> bool {
-        let identity = match (&self.observation_id, self.origin.as_deref(), self.submission_request_id) {
-            (None, None, Some(id)) => id > 0 && id <= MAX_EVENT,
-            (Some(observation), Some("api"), Some(id)) => id > 0 && id <= MAX_EVENT && observation == &format!("api:{id}"),
-            (Some(observation), Some("terminal"), None) => observation.starts_with("terminal:") && observation_identity(observation),
+        let identity = match (self.observation_id.as_str(), self.origin.as_str(), self.submission_request_id) {
+            (observation, "api", Some(id)) => id > 0 && id <= MAX_EVENT && observation == format!("api:{id}"),
+            (observation, "terminal", None) => observation.starts_with("terminal:") && observation_identity(observation),
             _ => false,
         };
         identity && self.event_id > 0 && self.event_id <= MAX_EVENT && self.owner_revision <= MAX_EVENT
@@ -146,7 +144,7 @@ impl Response {
         let valid = works.len() <= limit as usize && works.iter().all(|work| {
             let ordered = work.event_id > previous && work.event_id <= latest;
             previous = work.event_id;
-            ordered && work.observation_id.is_some() && work.valid()
+            ordered && work.valid()
         });
         if !valid || latest > MAX_EVENT || latest < after || next < previous
             || (more && (works.is_empty() || next != previous || next >= latest)) || (!more && next != latest) {

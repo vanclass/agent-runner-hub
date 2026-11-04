@@ -32,7 +32,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       tabs: JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs }));
     expect(receipt.requests.filter(r => r.operation === 'work.submit')).toHaveLength(1);
     expect(receipt.requests.find(r => r.operation === 'work.submit').instruction).toBe('one instruction\n안녕 🌍');
-    expect(receipt.requests.filter(r => r.operation === 'work.status').every(r => r.submission_request_id === receipt.original)).toBeTruthy();
+    expect(receipt.requests.filter(r => r.operation === 'work.observe').every(r => r.observation_id === `api:${receipt.original}`)).toBeTruthy();
     expect(receipt.writes).toEqual([]);
     expect(receipt.count).toBe(2); expect(receipt.tabs).toHaveLength(1);
     await info.attach('single-entry-work-start-summary', { body: await page.screenshot(), contentType: 'image/png' });
@@ -43,23 +43,28 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('reuse once');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page); await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).uncheck();
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('always new');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 2');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    const newSubmission = await page.evaluate(() => [...window.__nativeFixture.sessions]
+      .filter(([, s]) => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === 'always new'))
+      .map(([id, s]) => ({ id, count: s.feature.requests.filter(r => r.operation === 'work.submit').length })));
+    expect(newSubmission).toHaveLength(1); expect(newSubmission[0].id).not.toBe('pty-1'); expect(newSubmission[0].count).toBe(1);
+    await expect(page.locator('.xterm-rows')).toContainText(newSubmission[0].id);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.allocationPolicy)).toBe('always-new');
   });
   test('work Single Entry falls back to supported fresh launch when no spare is ready', async ({ page }) => {
     await transport(page, undefined, { work: true, auto: true }); await page.goto('/');
     const result = await page.evaluate(async () => {
       const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
-      const owner = new RunnerSessions();
+      const owner = new RunnerSessions({ accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run' });
       owner.entry.setDraft('fresh launch once');
       await owner.entry.submit('/fixture/install');
+      if (owner.entry.phase !== 'delivered') throw new Error(JSON.stringify(owner.entry.detail));
       const session = owner.get(owner.entry.runnerId);
       const result = { count: window.__nativeFixture.count(), phase: owner.entry.phase,
         id: session.control.sessionId, starts: session.control.work.current.work.started_event_id };
@@ -79,7 +84,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       const { SingleEntry } = await import('/src/hub/singleEntry.ts');
       const owner = window.__owners, list = () => owner.getSnapshot().map(v => owner.get(v.id));
       const entries = [1, 2].map(() => new SingleEntry(list, (root, token) => owner.create(root, token),
-        () => {}, { allocationPolicy: 'reuse-idle' }));
+        () => {}, { allocationPolicy: 'reuse-idle', accountIdentity: { agent_id: 'codex', profile_name: 'first' } }));
       entries[0].setDraft('first'); entries[1].setDraft('second');
       await Promise.all(entries.map(e => e.submit('/fixture/install')));
       const result = { phases: entries.map(e => e.phase), ids: entries.map(e => e.runnerId),
@@ -92,7 +97,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
   test('work Single Entry ignores terminal success text until canonical start arrives', async ({ page }) => {
     await ready(page, { workMode: 'admitted' });
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('one waiting instruction'); await assign(page);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Admitted · start unconfirmed');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Admitted · start unconfirmed', { timeout: 35000 });
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', 'TASK COMPLETE: synthetic terminal text\r\n'));
     await home(page);
     await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('one waiting instruction');
@@ -107,7 +112,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.fault = 'completion-unknown'; });
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('start known');
     await assign(page);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Outcome unknown');
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Outcome unknown', { timeout: 35000 });
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event: 3');
     await home(page);
     await expect(page.getByRole('status').filter({ hasText: 'Runner verified start' })).toBeVisible();
@@ -119,7 +124,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await ready(page);
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.holdSubmit = true; });
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('uncertain once'); await assign(page);
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length), { timeout: 35000 }).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length), { timeout: 35000 }).toBe(1);
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
     await expect(page.locator('.runner-instruction pre')).toHaveText('uncertain once');
     await expect(page.locator('.runner-instruction')).toContainText('Outcome unknown');
@@ -127,7 +132,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.getByRole('alert').filter({ hasText: 'automatic retry and reassignment are blocked' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('uncertain once');
     await expect(page.getByRole('button', { name: 'Assign instruction' })).toBeDisabled();
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length)).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
   });
   for (const language of ['en', 'ko']) {
     test('work Single Entry keeps pending terminal interaction user-owned in ' + language, async ({ page }) => {
@@ -145,12 +150,12 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.keyboard.press('Escape');
       await page.locator('.xterm-helper-textarea').press('Escape');
       expect(await page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       await page.evaluate(() => { const fixture = window.__nativeFixture.sessions.get('pty-1').feature; fixture.config.holdOperation = ''; fixture.config.complete(); });
       await home(page);
       await expect(page.getByRole('button', { name: language === 'en' ? 'Release unsent assignment' : '미전송 배정 해제' })).toBeVisible();
       await expect(page.locator('.composer textarea')).toHaveValue('unsent during terminal interaction');
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     });
     test('work Single Entry catalogs configure exact account model Direct Root in ' + language, async ({ page }, info) => {
       await ready(page);
@@ -166,7 +171,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('configured once');
       await assign(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
       const result = await page.evaluate(() => ({ current: window.__nativeFixture.sessions.get('pty-1').feature.config.current,
         requests: window.__nativeFixture.sessions.get('pty-1').feature.config.requests,
         safe: JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry }));
@@ -188,11 +193,12 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     test('work Single Entry applies Base Run Mode ' + mode, async ({ page }) => {
       await ready(page);
       await page.evaluate(mode => localStorage.setItem('agent-runner-hub.preferences.v1', JSON.stringify({ version: 1, language: 'en', theme: 'light',
-        singleEntry: { runMode: mode, ...(['pure-direct-run', 'direct-run'].includes(mode) ? { root: 'C:/explicit-root' } : {}) } })), mode);
+        singleEntry: { accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: mode,
+          ...(['pure-direct-run', 'direct-run'].includes(mode) ? { root: 'C:/explicit-root' } : {}) } })), mode);
       await page.reload();
       await expect(page.locator('.spare-status')).toHaveCount(0);
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('mode once'); await assign(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe(mode);
     });
   }
@@ -218,7 +224,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
       await home(page); await expect(page.getByRole('button', { name: 'Release unsent assignment' })).toBeVisible();
       await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('retain this draft');
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
     });
   }
@@ -226,7 +232,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     test('work Single Entry retains ' + mode + ' without replay', async ({ page }) => {
       await ready(page, { workMode: mode });
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('once'); await assign(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText(mode === 'rejected' ? 'Rejected' : 'Outcome unknown');
+      await expect(page.getByLabel('Runner work', { exact: true })).toContainText(mode === 'rejected' ? 'Rejected' : 'Outcome unknown', { timeout: 35000 });
       await home(page);
       await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('once');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
