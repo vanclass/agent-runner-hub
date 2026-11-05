@@ -69,25 +69,30 @@ export async function stageBackend(root, destination, { platform = process.platf
   return config;
 }
 
-export function ownedOverride(frontend, origin, platform = process.platform, windows = []) {
+export function ownedOverride(frontend, origin, platform = process.platform, windows = [], developmentRoot) {
   return { build: { beforeDevCommand: null, beforeBuildCommand: null, beforeBundleCommand: null,
     frontendDist: frontend, ...(origin ? { devUrl: origin } : { devUrl: null }) },
-    ...(platform === 'darwin' && origin ? { app: { windows: windows.map(window => ({ ...window, incognito: true })) } } : {}),
+    app: {
+      ...(developmentRoot ? { appDirectoriesOverride: path.join(developmentRoot, '.runner/web-app-tauri/cache/app-data') } : {}),
+      ...(platform === 'darwin' && origin ? { windows: windows.map(window => ({ ...window, incognito: true })) } : {}),
+    },
     bundle: platform === 'darwin'
       ? { active: true, targets: ['app', 'dmg'], macOS: { signingIdentity: null } }
       : { active: true, targets: ['nsis'], useLocalToolsDir: true } };
 }
 
 export async function developmentEnvironment(root, config, environment) {
-  if (process.platform !== 'win32') return { ...environment };
+  if (config.app?.appDirectoriesOverride) {
+    throw new Error('Custom application data directories require a development isolation integration; original settings are preserved.');
+  }
   const windows = config.app?.windows || [];
-  if (windows.some(window => window.dataDirectory)
+  if (process.platform === 'win32' && (windows.some(window => window.dataDirectory)
       || new Set(windows.map(window => JSON.stringify([window.additionalBrowserArgs,
-        window.browserExtensionsEnabled, window.scrollBarStyle]))).size > 1) {
+        window.browserExtensionsEnabled, window.scrollBarStyle]))).size > 1)) {
     throw new Error('Custom WebView2 data directories/options require a development isolation integration; original window settings are preserved.');
   }
   let folder = root;
-  for (const name of ['.runner', 'web-app-tauri', 'cache', 'webview2']) {
+  for (const name of ['.runner', 'web-app-tauri', 'cache', 'app-data']) {
     folder = path.join(folder, name);
     let stat = await fs.lstat(folder).catch(error => {
       if (error.code === 'ENOENT') return null;
@@ -95,11 +100,18 @@ export async function developmentEnvironment(root, config, environment) {
     });
     if (!stat) { await fs.mkdir(folder); stat = await fs.lstat(folder); }
     if (!stat.isDirectory() || stat.isSymbolicLink() || await fs.realpath(folder) !== folder) {
-      throw new Error('The development WebView2 profile must be a plain checkout-local directory.');
+      throw new Error('Development data must use a plain checkout-local directory.');
     }
   }
+  if (process.platform !== 'win32') return { ...environment };
+  const profile = path.join(path.dirname(folder), 'webview2');
+  await fs.mkdir(profile, { recursive: true }).catch(error => {
+    if (error.code === 'EEXIST') throw new Error('The development WebView2 profile must be a plain checkout-local directory.');
+    throw error;
+  });
+  if (await fs.realpath(profile) !== profile) throw new Error('The development WebView2 profile must be a plain checkout-local directory.');
   // Child-only supported WebView2 override; persistent data is never reset on cancellation.
-  return { ...environment, WEBVIEW2_USER_DATA_FOLDER: folder };
+  return { ...environment, WEBVIEW2_USER_DATA_FOLDER: profile };
 }
 
 export async function prepareCargo(environment, folder, target, signal, run) {

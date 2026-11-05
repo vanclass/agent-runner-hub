@@ -8,19 +8,20 @@ import { command } from './native/process.mjs';
 import { stageBackend, ownedOverride, prepareCargo, developmentEnvironment } from './native/staging.mjs';
 
 export async function launch(root, origin, signal, stage) {
-  return withBuildOwnership(root, path.join(root, '.runner/web-app-launch/cache'), signal, stage, async () => {
-    let environment = await inspectNative(root, signal);
-    if (!environment.ready) environment = await prepareNative(root, environment, signal, stage, true);
-    const cache = path.join(root, '.runner/web-app-tauri/cache/launch');
-    await fs.mkdir(cache, { recursive: true });
-    if (await fs.realpath(cache) !== cache) throw new Error('Native launch cache must be a plain checkout directory.');
-    // Keep both MSVC outputs and the child working directory independent of checkout length.
-    const attempt = process.platform === 'win32'
-      ? await fs.mkdtemp(path.join(await fs.realpath(tmpdir()), 'ar-tauri-'))
-      : path.join(cache, randomUUID());
-    if (process.platform !== 'win32') await fs.mkdir(attempt);
-    const target = path.join(attempt, 'cargo');
-    try {
+  let attempt;
+  try {
+    const application = await withBuildOwnership(root, path.join(root, '.runner/web-app-launch/cache'), signal, stage, async () => {
+      let environment = await inspectNative(root, signal);
+      if (!environment.ready) environment = await prepareNative(root, environment, signal, stage, true);
+      const cache = path.join(root, '.runner/web-app-tauri/cache/launch');
+      await fs.mkdir(cache, { recursive: true });
+      if (await fs.realpath(cache) !== cache) throw new Error('Native launch cache must be a plain checkout directory.');
+      // Keep both MSVC outputs and the child working directory independent of checkout length.
+      attempt = process.platform === 'win32'
+        ? await fs.mkdtemp(path.join(await fs.realpath(tmpdir()), 'ar-tauri-'))
+        : path.join(cache, randomUUID());
+      if (process.platform !== 'win32') await fs.mkdir(attempt);
+      const target = path.join(attempt, 'cargo');
       if (process.platform === 'win32' && target.length > 80) {
         throw new Error('Windows Tauri Cargo target exceeds 80 characters: ' + target
           + '. Use a shorter Windows TEMP directory and retry.');
@@ -31,14 +32,14 @@ export async function launch(root, origin, signal, stage) {
       // Drive-letter frontendDist values parse as URLs in Tauri; keep Windows assets relative.
       const override = ownedOverride(process.platform === 'win32' ? '../frontend' : frontend,
         process.platform === 'win32' ? undefined : origin,
-        process.platform, config.app?.windows);
+        process.platform, config.app?.windows, root);
       if (process.platform === 'win32') {
         const destination = path.resolve(frontend, '.' + origin.base);
         if (destination !== frontend && !destination.startsWith(frontend + path.sep)) {
           throw new Error('Native frontend base must remain inside the staged assets.');
         }
         await fs.cp(origin.frontend, destination, { recursive: true });
-        if (origin.base !== '/') override.app = { windows: (config.app?.windows || []).map(window => ({
+        if (origin.base !== '/') override.app = { ...override.app, windows: (config.app?.windows || []).map(window => ({
           ...window, url: /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(window.url || '') ? window.url
             : origin.base.slice(1) + (window.url || 'index.html').replace(/^\/+/, ''),
         })) };
@@ -62,8 +63,9 @@ export async function launch(root, origin, signal, stage) {
         result = await command(process.execPath, [environment.cli, 'build', '--debug', '--no-bundle', '--ci',
           '--target', targetTriple, '--config', JSON.stringify(override), '--', '--locked'], backend, signal, { env, quiet: false });
         if (result.code === 0) {
-          stage('Opening Tauri 2 window', 'Using native application storage. Close the window or press Ctrl+C to stop.');
-          result = await command(path.join(target, targetTriple, 'debug', binary + '.exe'), [], backend, signal, { env, quiet: false });
+          // The finite CLI build has closed: no protected writer remains. Keep its
+          // invocation-owned executable/dependencies alive outside the build lease.
+          return { file: path.join(target, targetTriple, 'debug', binary + '.exe'), backend, env };
         }
       } else {
         stage('Opening Tauri 2 window', 'Using the verified production frontend. Close the window or press Ctrl+C to stop.');
@@ -71,9 +73,17 @@ export async function launch(root, origin, signal, stage) {
           '--config', JSON.stringify(override), '--no-watch', '--', '--locked'], backend, signal, { env, quiet: false });
       }
       if (result.code !== 0) throw new Error('Tauri launch failed. Resolve native prerequisites/compiler output and retry; source and locks are preserved.');
-    } finally {
+    }, true);
+    if (application) {
+      signal.throwIfAborted();
+      stage('Opening Tauri 2 window', 'Build complete. Close the window or press Ctrl+C to stop.');
+      const result = await command(application.file, [], application.backend, signal, { env: application.env, quiet: false });
+      if (result.code !== 0) throw new Error('Tauri launch failed. Resolve native runtime output and retry; source and locks are preserved.');
+    }
+  } finally {
+    if (attempt) {
       await fs.rm(attempt, { recursive: true, force: true,
         ...(process.platform === 'win32' ? { maxRetries: 5, retryDelay: 200 } : {}) });
     }
-  }, true);
+  }
 }

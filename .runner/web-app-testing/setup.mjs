@@ -47,6 +47,8 @@ export default async function setup() {
       clearScreen: false,
       cacheDir: path.join(root, 'node_modules/.vite-web-app-testing', id),
       server: { host: '127.0.0.1', middlewareMode: { server: http }, open: false,
+                watch: { ignored: ['**/.runner/web-app-tauri/cache/**', '**/.runner/web-app-electron/cache/**',
+                  '**/.runner/web-app-launch/cache/**'] },
                 hmr: { server: http, host: '127.0.0.1', port: undefined, clientPort: undefined } },
       plugins: [{
         name: 'runner-web-app-test-identity',
