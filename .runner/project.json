@@ -156,7 +156,7 @@
                 "path": [
                   "resource_version"
                 ],
-                "value": "2a6e3c05dd451c0a64c1c163566b59201bb6c7282d0effe332a73e3c65e37e89"
+                "value": "b57cfea01dcc4bc0e17d12173e158e942ddc19737f914d403db7047acc9186cb"
               },
               {
                 "path": [
@@ -226,7 +226,7 @@
                   "tauri_sha256",
                   "5bcc0a4aa87f21d0d433a0cb7becc282c4bfef25b5f0ff3b0ec3857a929513bd"
                 ],
-                "value": "d643820ff89740ecd4ab85cef5204774d430443d305a517dc47c8ffa6b5cf4d7"
+                "value": "85a5116cf2777b38207a1a886dc6577a165d96fdc83c8eb5ea718d2fb30328f8"
               },
               {
                 "path": [
@@ -462,7 +462,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "88f20476a1de3906766e3d34c9a4d6598454db8693efe81df832ecb193639963",
+              "digest": "bb5daed2d11a525afaf50b54eb58f8e4c6c1e38d735d986e23601877f63227f5",
               "identity": "WebApp.Tauri2"
             }
           },
@@ -853,7 +853,7 @@
                   "build_system.sha256",
                   "4c6bc58f4131281e592308207fe7b6c33929246ae8e929da39922f3967ee00d3"
                 ],
-                "value": "bdbb2e0fe447933945c7d81547243a81f0c243c6ceda31c8c624460de5b63ed4"
+                "value": "e45abaeacd612aa772ba3b7c53f208b5364f444a0166ff8679e52adbfa1bb303"
               },
               {
                 "path": [
@@ -1021,7 +1021,7 @@
                   "build_system.sha256",
                   "d58dc8e2ede77a8b944d7a281dbfaa846b0b33283f64ce3961c6f5a900d03a7a"
                 ],
-                "value": "d643820ff89740ecd4ab85cef5204774d430443d305a517dc47c8ffa6b5cf4d7"
+                "value": "85a5116cf2777b38207a1a886dc6577a165d96fdc83c8eb5ea718d2fb30328f8"
               },
               {
                 "path": [
@@ -1502,7 +1502,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "d6b0541807b1dd2f6b5abf6a54cde23c5d6e426118a2f12c418424455f2dc806",
+              "digest": "c61b7097797ba43b2d8fce40e0a8998e7959c8628e0d71e878c72384428e8288",
               "identity": "WebApp.WebAppBuildSystem"
             }
           }

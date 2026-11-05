@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { configuration, inputs, npm, treeHash } from './project.mjs';
 import { verifyOutput } from './output.mjs';
@@ -26,11 +27,13 @@ export const tauriAdapter = {
     const config = await configuration(root);
     const before = await nativeInputs(root, config, environment);
     const attempt = path.dirname(output);
-    const workspace = path.join(attempt, 'native');
+    // MSVC host build scripts need a short path even on long-path-enabled Windows.
+    const workspace = macos ? path.join(attempt, 'native')
+      : await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'runner-tauri-'));
     const frontend = path.join(workspace, 'frontend');
     const backend = path.join(workspace, 'src-tauri');
     const cargoOutput = path.join(workspace, 'cargo');
-    await fs.mkdir(workspace);
+    if (macos) await fs.mkdir(workspace);
     try {
       stage('Building native frontend', 'Running the existing TypeScript/Vite build into this execution’s staging directory; Ctrl+C cancels.');
       const outDir = path.relative(root, frontend).split(path.sep).join('/');
@@ -63,7 +66,10 @@ export const tauriAdapter = {
         throw new Error('Native main binary identity is ambiguous. Set a compatible Cargo default-run/mainBinaryName before retrying.');
       }
       stage('Packaging ' + (macos ? 'macOS' : 'Windows') + ' / Tauri 2', 'Compiling ' + triple + ' and native bundles in staging; Ctrl+C cancels.');
-      const override = ownedOverride(frontend, undefined, macos ? 'darwin' : 'win32');
+      // A Windows drive path can deserialize as a URL. Relative paths select
+      // Tauri's embedded directory assets instead of a runtime file location.
+      const frontendDist = macos ? frontend : path.relative(backend, frontend).split(path.sep).join('/');
+      const override = ownedOverride(frontendDist, undefined, macos ? 'darwin' : 'win32');
       const built = await command(process.execPath, [environment.cli, 'build', '--target', triple,
         '--config', JSON.stringify(override), '--bundles', macos ? 'app,dmg' : 'nsis', '--ci',
         ...(macos ? ['--no-sign'] : []), '--', '--locked'], backend, signal,
@@ -93,7 +99,8 @@ export const tauriAdapter = {
       }
       return { verificationStatus: 'verified', integrity, inputs: hash(before + '\0' + hash(nativeLock)) };
     } finally {
-      // This UUID staging workspace was allocated by the current result attempt.
+      // Commands have settled and product/input verification has finished.
+      // Remove only the workspace allocated by this invocation.
       await fs.rm(workspace, { recursive: true, force: true });
     }
   },

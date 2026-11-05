@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
 import { command } from './process.mjs';
@@ -86,8 +87,17 @@ async function verifyCache(cache, root, signal, folder = path.join(cache, 'NSIS'
   const plugin = await fs.readFile(path.join(cache, 'nsis_tauri_utils.dll'));
   const files = trustedFiles(zip, plugin);
   await verifyDirectory(folder, files, signal);
-  const version = await command(path.join(folder, 'makensis.exe'), ['/VERSION'], root, signal);
-  if (version.code !== 0 || !/^v?3\.11\s*$/.test(version.stdout)) throw new Error('Pinned NSIS compiler /VERSION did not report 3.11. Check application-control/permissions.');
+  // NSIS's launcher cannot reliably execute from deep cache/preparation paths.
+  const workspace = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'runner-nsis-'));
+  try {
+    const probe = path.join(workspace, 'NSIS');
+    await fs.cp(folder, probe, { recursive: true, errorOnExist: true, force: false });
+    await verifyDirectory(probe, files, signal);
+    const version = await command(path.join(probe, 'makensis.exe'), ['/VERSION'], workspace, signal);
+    if (version.code !== 0 || !/^v?3\.11\s*$/.test(version.stdout)) throw new Error('Pinned NSIS compiler /VERSION did not report 3.11. Check application-control/permissions.');
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
   return { cache, folder, integrity: sha256(zipSource.sha256 + pluginSource.sha256), version: '3.11' };
 }
 
