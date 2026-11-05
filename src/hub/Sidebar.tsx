@@ -125,7 +125,7 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, con
           title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
           disabled={addDisabled} aria-busy={adding} onClick={onAdd}>+</button>
       </div>
-      {restart.requested && <p className="restart-status" role="status">{t('restart.progress', { restarted: restart.restarted,
+      {(restart.pending > 0 || restart.running > 0 || restart.failed > 0) && <p className="restart-status" role="status">{t('restart.progress', { restarted: restart.restarted,
         running: restart.running, pending: restart.pending, failed: restart.failed, removed: restart.removed })}</p>}
       {restart.pending > 0 && <p className="restart-status">{t('restart.pending')}</p>}
       {restart.failures.map((failure, index) => <p className="restart-status" role="alert" key={index}>{failure.name}: {tr(failure.detail)}</p>)}

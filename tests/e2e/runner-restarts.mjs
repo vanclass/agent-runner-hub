@@ -16,6 +16,54 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   }
   const snapshot = page => page.evaluate(() => window.__restartOwner.restarts.snapshot);
   const cleanup = page => page.evaluate(() => window.__restartOwner.dispose());
+  for (const theme of ['light', 'black']) {
+    test(`global restart sidebar hides settled statistics ${theme}`, async ({ page }, info) => {
+      await transport(page, undefined, { auto: true, work: true }); await configure(page);
+      await page.evaluate(async theme => {
+        const resources = performance.getEntriesByType('resource').map(entry => entry.name);
+        const { default: { createElement } } = await import(resources.find(url => /\/react\.js\?/.test(url)));
+        const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
+        const { Sidebar } = await import('/src/hub/Sidebar.tsx');
+        const { RunnerRestarts } = await import('/src/hub/RunnerRestarts.ts');
+        const host = document.createElement('div'); document.body.append(host);
+        host.className = 'hub'; host.dataset.theme = theme;
+        const root = createRoot(host), noop = () => {};
+        const restarts = window.__sidebarRestarts = new RunnerRestarts(() => render());
+        function render() { root.render(createElement(Sidebar, { runners: [], selectedId: null,
+          failures: [], onSelect: noop, onRename: noop, onRemove: noop, onAdd: noop,
+          restarts, onRestart: () => restarts.request([]) })); }
+        render();
+      }, theme);
+      const sidebar = page.locator('.sidebar').last(), status = sidebar.locator('.restart-status');
+      await sidebar.locator('.runner-management summary').click();
+      const action = sidebar.getByRole('button', { name: 'Restart all Runners', exact: true });
+      await action.click(); await expect(status).toHaveCount(0); await expect(action).toBeEnabled();
+      await page.evaluate(() => {
+        window.__sidebarReady = false;
+        window.__sidebarRestarts.request([{ name: 'fixture Runner', ready: () => window.__sidebarReady,
+          restart: () => new Promise(resolve => { window.__settleSidebar = resolve; }) }]);
+      });
+      await expect(sidebar.locator('[role=status]')).toContainText('pending 1');
+      await expect(action).toBeDisabled();
+      await page.evaluate(() => { window.__sidebarReady = true; window.__sidebarRestarts.observe(); });
+      await expect(sidebar.locator('[role=status]')).toContainText('restarting 1');
+      await expect(action).toBeDisabled();
+      await page.evaluate(() => window.__settleSidebar('restarted'));
+      await expect(status).toHaveCount(0); await expect(action).toBeEnabled();
+      await info.attach('restart-complete', { body: await sidebar.screenshot(), contentType: 'image/png' });
+      await page.evaluate(() => window.__sidebarRestarts.request([
+        { name: 'removed Runner', ready: () => true, restart: async () => 'removed' },
+      ]));
+      await expect.poll(() => page.evaluate(() => window.__sidebarRestarts.snapshot.removed)).toBe(1);
+      await expect(status).toHaveCount(0); await expect(action).toBeEnabled();
+      await page.evaluate(() => window.__sidebarRestarts.request([
+        { name: 'failed Runner', ready: () => true, restart: async () => { throw new Error('fixture restart failure'); } },
+      ]));
+      await expect(sidebar.locator('[role=status]')).toContainText('failed 1');
+      await expect(sidebar.getByRole('alert')).toHaveText('failed Runner: Error: fixture restart failure');
+      await expect(action).toBeEnabled();
+    });
+  }
   async function replacement(page, path, mode = 'connecting') {
     await owner(page, path === 'speculative' ? 0 : 1);
     if (path === 'speculative') {
@@ -484,6 +532,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     await expect(page.locator('.mode-segments [aria-pressed=true]')).toHaveText(before);
     await page.locator('.single-entry').click();
     await expect(page.getByRole('button', { name: 'Restart all Runners', exact: true })).toBeEnabled();
+    await expect(page.locator('.sidebar .restart-status')).toHaveCount(0);
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => r.operation === 'work.submit').length)).toBe(0);
   });
 
