@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { withBuildOwnership, buildEnvironment } from './ownership.mjs';
+import { withBuildOwnership, buildEnvironment, buildWriter } from './ownership.mjs';
 import { foundation, ASTRO, VITE } from './foundation.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -59,6 +59,7 @@ export function npm(npmPath, args, root, signal, quiet = false) {
   const outputEnvironment = env.RUNNER_WEB_APP_BUILD_LEASE && outputIndex >= 0 && args[outputIndex + 1]
     ? { ...env, RUNNER_WEB_APP_BUILD_OUTPUT: path.resolve(root, args[outputIndex + 1]) } : env;
   return new Promise((resolve, reject) => {
+    const settled = buildWriter(root);
     const child = spawn(process.execPath, [npmPath, ...args], {
       cwd: root, stdio: quiet ? 'ignore' : ['ignore', 'inherit', 'inherit'],
       env: outputEnvironment,
@@ -76,8 +77,9 @@ export function npm(npmPath, args, root, signal, quiet = false) {
       }
     };
     signal.addEventListener('abort', cancel, { once: true });
-    child.once('error', reject);
+    child.once('error', error => { settled(); reject(error); });
     child.once('close', code => {
+      settled();
       signal.removeEventListener('abort', cancel);
       if (signal.aborted) reject(signal.reason);
       else resolve(code);

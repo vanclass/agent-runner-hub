@@ -54,7 +54,7 @@ try {
         await server?.close();
         await fs.rm(attempt, { recursive: true, force: true });
       }
-    });
+    }, true);
   }
 } catch (error) {
   console.error('Tauri development ' + (signal.aborted ? 'cancelled' : 'failed') + ': ' + error.message);

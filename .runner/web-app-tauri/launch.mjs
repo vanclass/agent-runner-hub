@@ -75,5 +75,5 @@ export async function launch(root, origin, signal, stage) {
       await fs.rm(attempt, { recursive: true, force: true,
         ...(process.platform === 'win32' ? { maxRetries: 5, retryDelay: 200 } : {}) });
     }
-  });
+  }, true);
 }

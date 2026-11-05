@@ -163,8 +163,11 @@ the existing checkout-local .runner/web-app-launch/cache/build.lock. Never delet
 lock. Managed Tool Add/Update/Remove also acquires this lease through Applied publication
 and rollback. If busy, installed Tool files remain unchanged: let the active build/preparation
 finish and retry the normal Review/Apply flow. Desired intent remains pending after failed Apply.
-After an abnormal process/host termination, first establish that the exact recorded
-owner has stopped before manually removing only that stale lock. Other checkouts are untouched.
+After abnormal termination, proven-abandoned leases recover through normal acquisition.
+Missing creation identity or child-settlement evidence, PID reuse and inaccessible/malformed
+metadata block recovery with guidance. This includes legacy records without child evidence.
+Preserve the lock until its owner and child writers are independently verified stopped;
+only then manually remove that exact stale lock and retry. Other checkouts are untouched.
 Tool files, local results/settings and root build entries are excluded from production freshness.
 
 ## Adapter extension boundary

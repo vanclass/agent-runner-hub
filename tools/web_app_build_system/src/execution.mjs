@@ -43,5 +43,5 @@ export async function executeTarget(root, local, target, signal, stage, { prepar
       await discardResult(attempt);
       throw error;
     }
-  });
+  }, true);
 }

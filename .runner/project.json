@@ -11,7 +11,7 @@
             "receipts": [],
             "requires": [],
             "resource": {
-              "digest": "cf06c6e2c41748c5c0582ff3778998909f235e2ad4ba19e71bb8ad96be01a2f0",
+              "digest": "5fc4cebc63bf1b8a8d1b048600fd719196ef3629111b66f5df71a2e99a2c40b5",
               "identity": "WebApp.ViteVanillaTS"
             }
           },
@@ -156,7 +156,7 @@
                 "path": [
                   "resource_version"
                 ],
-                "value": "2296843e27b27a1f0edd3928276d5e0c6b5b35929f0bcdc953075d9559be35dd"
+                "value": "50c689d2cf287838abc226cc089b83c1e95f67d0d168d5ac493a75800e3a438c"
               },
               {
                 "path": [
@@ -212,7 +212,7 @@
                   "tauri_sha256",
                   "592af73898614f50aa4e05cb011749685a8db453136da12515be90c95d1cae51"
                 ],
-                "value": "3ab0b2a475b2a570311e83877a04ee21357bac9de97e17453fe854cbf72bc671"
+                "value": "52f1565e00f7c4a45e7c9c7d9067a49e8a0ed44a349eb9782a4171c9b3ba08f4"
               },
               {
                 "path": [
@@ -233,7 +233,7 @@
                   "tauri_sha256",
                   "6cbe82a59a40dfb4a3272abbe25ca74f228a05350b3116ea807f877235608120"
                 ],
-                "value": "3f4a414ed4cda0b524bb3bb4a2cd2fec93d80a9d371eb93720061915fad217aa"
+                "value": "3dc976d83f2130c4e8b444b1531c9e77ffca01c33f1f6d902395812fa75b55b0"
               },
               {
                 "path": [
@@ -259,6 +259,13 @@
               {
                 "path": [
                   "tauri_sha256",
+                  "adb854b8289d9c18085715684a98db4b442afe6afdc56a80fbe723aeef6670b6"
+                ],
+                "value": "c30d30c4f7bf46206afe926a628f972709e876c084ec9a74c790a47c99de9680"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
                   "d5dd05dac2f9d22831babdcc1c373dfc40e2ec0f931043c7e88581311cdf1e11"
                 ],
                 "value": "2be10a3adddcea8a21abcc6d062822990fb1d3c6632945061d6f3c515108420d"
@@ -268,7 +275,7 @@
                   "tauri_sha256",
                   "d9c498860c589152c2a0bb85dce3188fc4dc503661abaab49149cb72c9a4b6fe"
                 ],
-                "value": "86562e457b2697eaac1eb6eb11798090fd6b99017cae9e4354bb5c6463a0163c"
+                "value": "8387e79f4ef8a4af811baf09a3a7332cb76bc4e5216b666bd0a7d01c220c30b5"
               },
               {
                 "path": [
@@ -282,7 +289,7 @@
                   "tauri_sha256",
                   "f44070608895ee0d86b0636c43bbbdf0d0caf8c1b785ee3a0fb82213d8dc558e"
                 ],
-                "value": "5f13660a494447d8371a274103ad54fe4e701eae2aeed9c855b93ad93701845a"
+                "value": "aa6aac14da83b5c613f7162e8c38a78c7ba61b43e592463076459bde4954f5b0"
               }
             ],
             "group_id": "Runtimes",
@@ -333,6 +340,14 @@
                 "scope": "file",
                 "target": {
                   "path": ".runner/web-app-tauri/launch.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".runner/web-app-tauri/lease.mjs",
                   "root": "project"
                 }
               },
@@ -447,7 +462,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "7907d5128e4a83b793b4c33d89544a13a431e3d30992f1fc598fde7ecee351d4",
+              "digest": "578071c0adc5bc578bbca1e2c107711e0137fe05756f5bda3a4f9cf2880acc18",
               "identity": "WebApp.Tauri2"
             }
           },
@@ -773,6 +788,13 @@
               {
                 "path": [
                   "build_system.sha256",
+                  "2a6d960517d2fe9a4765f8b31e300cdda7b52f92ad6932e8c175c778498b1650"
+                ],
+                "value": "c30d30c4f7bf46206afe926a628f972709e876c084ec9a74c790a47c99de9680"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
                   "2d5d9d022474ef9ee2e7aaf1cf4abf06f2322370ec2aee28395038e4eecbe36c"
                 ],
                 "value": "df47b5303887c88ee1cdeadd634f2d3231fd793e1a0058b015a6bba32c71c1c9"
@@ -796,7 +818,7 @@
                   "build_system.sha256",
                   "2e9a80763364b37de0c1623bea777b5901a60745b368b5803e899029d88d381c"
                 ],
-                "value": "4f7fa17031c6ecf5ff0b9b336bbb475a72f1f645c7852131d365983540d49da3"
+                "value": "f8b06b9f47fe315a7c0ff9fb518005d0033f3a05734e473bec3a04583cda65b5"
               },
               {
                 "path": [
@@ -894,7 +916,7 @@
                   "build_system.sha256",
                   "8b58c49fd0b2f06ad5419291c9b668789901b193b50d150d12af3476ec8c7ac9"
                 ],
-                "value": "3ab0b2a475b2a570311e83877a04ee21357bac9de97e17453fe854cbf72bc671"
+                "value": "52f1565e00f7c4a45e7c9c7d9067a49e8a0ed44a349eb9782a4171c9b3ba08f4"
               },
               {
                 "path": [
@@ -957,7 +979,7 @@
                   "build_system.sha256",
                   "be354022eee46c3e47dd846b5861d876b7e98e1037d2562ed9a974558726715f"
                 ],
-                "value": "e7c69b4c7ba96456abb741a32915c69f13ea354ee2b9b88cc95522d1ed73708b"
+                "value": "85a0eeb7a151ed9f202f244b99b111eb868c3fd4ccc00fd7a8805dc062823c0d"
               },
               {
                 "path": [
@@ -1041,7 +1063,7 @@
                   "build_system.sha256",
                   "ea38c6f7f38abf8b6111c87f711988516610820c7506c7509f3a2ba7679cb7a7"
                 ],
-                "value": "86562e457b2697eaac1eb6eb11798090fd6b99017cae9e4354bb5c6463a0163c"
+                "value": "8387e79f4ef8a4af811baf09a3a7332cb76bc4e5216b666bd0a7d01c220c30b5"
               },
               {
                 "path": [
@@ -1305,6 +1327,14 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
+                  "path": "tools/web_app_build_system/src/lease.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
                   "path": "tools/web_app_build_system/src/menu.mjs",
                   "root": "project"
                 }
@@ -1472,7 +1502,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "c409db3d6955a09269b53f6833bb7a5a58c4dac8a0979869dcbae0189b5fb725",
+              "digest": "9e8d1bb9541c2cd45ba70f4825a959af6024eae23de54a98da6672f9f7a4c7f4",
               "identity": "WebApp.WebAppBuildSystem"
             }
           }
@@ -1516,7 +1546,7 @@
             }
           },
           {
-            "after": "3ab0b2a475b2a570311e83877a04ee21357bac9de97e17453fe854cbf72bc671",
+            "after": "52f1565e00f7c4a45e7c9c7d9067a49e8a0ed44a349eb9782a4171c9b3ba08f4",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1543,7 +1573,16 @@
             }
           },
           {
-            "after": "86562e457b2697eaac1eb6eb11798090fd6b99017cae9e4354bb5c6463a0163c",
+            "after": "c30d30c4f7bf46206afe926a628f972709e876c084ec9a74c790a47c99de9680",
+            "before": "",
+            "key": "launcher.sha256",
+            "target": {
+              "path": ".runner/web-app-launch/lease.mjs",
+              "root": "project"
+            }
+          },
+          {
+            "after": "8387e79f4ef8a4af811baf09a3a7332cb76bc4e5216b666bd0a7d01c220c30b5",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1597,7 +1636,16 @@
             }
           },
           {
-            "after": "2cf2b4d8f4d781287b64e2d1e1a790b01ebef1d721253a898058f7a61a6498d8",
+            "after": "9911a5a05fdbfa5eafc6950bc17df3f5fbaaa2ab97f7ef858f609844cb2d09e0",
+            "before": "",
+            "key": "testing.sha256",
+            "target": {
+              "path": ".runner/web-app-testing/production.mjs",
+              "root": "project"
+            }
+          },
+          {
+            "after": "647e5509037267f8530f2fad19923b417be0b0ff628cddd7f2f2c6bf7e2dba7e",
             "before": "",
             "key": "testing.sha256",
             "target": {
@@ -1712,6 +1760,14 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
+              "path": ".runner/web-app-launch/lease.mjs",
+              "root": "project"
+            }
+          },
+          {
+            "kind": "exclusive_path",
+            "scope": "file",
+            "target": {
               "path": ".runner/web-app-launch/ownership.mjs",
               "root": "project"
             }
@@ -1753,6 +1809,14 @@
             "scope": "file",
             "target": {
               "path": ".runner/web-app-testing/fixture.mjs",
+              "root": "project"
+            }
+          },
+          {
+            "kind": "exclusive_path",
+            "scope": "file",
+            "target": {
+              "path": ".runner/web-app-testing/production.mjs",
               "root": "project"
             }
           },
@@ -1914,7 +1978,7 @@
           }
         ],
         "resource": {
-          "digest": "fb373e8da1e47988649e943901c5cb30390451fc159cb2c44e12d19623528575",
+          "digest": "e88e00e5bbdc032ecd202eafc21fa882a9daf914e60ce4f4e75b464c2bf82709",
           "identity": "WebApp"
         }
       }

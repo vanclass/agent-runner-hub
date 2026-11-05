@@ -18,8 +18,14 @@ export async function verifyChromium() {
     throw failure('WEB_APP_BROWSER_UNAVAILABLE', `Chromium is missing at ${executable}. Run npm run test:e2e:prepare with network access.`);
   }
   let browser;
+  let cancelled = false;
+  const cancel = () => { cancelled = true; void browser?.close().catch(() => {}); };
+  process.on('SIGINT', cancel);
+  process.on('SIGTERM', cancel);
   try {
-    browser = await chromium.launch({ channel: 'chromium', headless: true, handleSIGINT: false, timeout: 30_000 });
+    browser = await chromium.launch({ channel: 'chromium', headless: true,
+      handleSIGINT: false, handleSIGTERM: false, timeout: 30_000 });
+    if (cancelled) throw new Error('Chromium readiness cancelled');
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto('about:blank');
@@ -31,8 +37,11 @@ export async function verifyChromium() {
     await context.close();
     return { playwright: actual, chromium: version, executable };
   } catch (error) {
+    if (cancelled) throw failure('WEB_APP_BROWSER_CANCELLED', 'Chromium readiness cancelled.', error);
     throw failure('WEB_APP_BROWSER_LAUNCH_FAILED', `${error.message}. Run npm run test:e2e:prepare; inspect OS dependencies and executable permissions.`, error);
   } finally {
+    process.off('SIGINT', cancel);
+    process.off('SIGTERM', cancel);
     if (browser) {
       await browser.close();
       if (browser.isConnected()) throw new Error('WEB_APP_BROWSER_CLEANUP_FAILED: Chromium did not disconnect.');
