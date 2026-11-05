@@ -76,7 +76,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await ready(page);
     await page.getByRole('button', { name: 'Attach folder', exact: true }).click();
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
+    await page.getByRole('button', { name: 'task-run', exact: true }).click();
     await page.getByRole('button', { name: 'Attach file', exact: true }).click(); await paste(page, 'Single Entry instructions');
     expect(await requests(page)).toEqual([]);
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('allocate attachments once');

@@ -1,4 +1,45 @@
 export function registerTaskPanel({ test, expect, transport, configure, create, generatedFixture }) {
+  test('task panel preserves a restored unavailable mode visibly after catalog inspection', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page);
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+    await page.evaluate(() => {
+      const key = 'agent-runner-hub.preferences.v1', preferences = JSON.parse(localStorage.getItem(key));
+      preferences.singleEntry.runMode = 'restored-unavailable-mode';
+      localStorage.setItem(key, JSON.stringify(preferences));
+    });
+    await page.reload();
+    const retained = page.getByRole('button', { name: 'restored-unavailable-mode', exact: true });
+    await expect(retained).toHaveAttribute('aria-pressed', 'true'); await expect(retained).toBeDisabled();
+    await page.getByRole('combobox', { name: 'Requested Model', exact: true }).focus();
+    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toBeEnabled();
+    await expect(retained).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.runMode)).toBe('restored-unavailable-mode');
+  });
+  test('task panel conditional root retains draft across modes and reload with advanced reuse', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page);
+    const root = page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true });
+    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+    await root.fill('C:/retained-root');
+    await page.getByRole('button', { name: 'task-run', exact: true }).click();
+    await expect(root).toHaveCount(0);
+    const conversion = await page.evaluate(async () => {
+      const { entryDefaultsToDesired } = await import('/src/hub/runnerConfigDefaults.ts');
+      const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+      const { service } = createConfigHarness(); await service.inspect();
+      return entryDefaultsToDesired(JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry, service.catalog);
+    });
+    expect(conversion.unresolved).not.toContain('root');
+    expect(conversion.desired).not.toHaveProperty('root');
+    await page.getByRole('button', { name: 'issue-run', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'pure-direct-run', exact: true }).click();
+    await expect(root).toHaveValue('C:/retained-root');
+    await page.locator('.advanced-settings summary').click();
+    await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toBeVisible();
+    await page.reload();
+    await expect(root).toHaveValue('C:/retained-root');
+    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.config.requests ?? []).filter(r => r.operation.endsWith('.apply')))).toEqual([]);
+  });
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`task panel desktop geometry, scrolling, keyboard collapse and overlay ${language} ${theme}`, async ({ page }, info) => {
       await page.setViewportSize({ width: 1440, height: 800 });
@@ -49,6 +90,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     await model.selectOption({ label: 'm1' });
     await expect(fast).toBeChecked(); await expect(fast).toBeDisabled();
     await expect(page.getByRole('status').filter({ hasText: 'Saved value retained: fast' })).toBeVisible();
+    await page.locator('.advanced-settings summary').click();
     await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'second' }));
     await expect(model).toBeEnabled(); await expect(fast).toBeChecked(); await expect(fast).toBeDisabled();
     expect(await model.inputValue()).toContain('m1');
@@ -96,7 +138,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       }, status);
       await page.getByRole('combobox', { name: 'Requested Model', exact: true }).focus();
       await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
-      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
+      await page.getByRole('button', { name: 'task-run', exact: true }).click();
       await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('unsent');
       await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toHaveCount(0);
@@ -104,7 +146,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('unsent');
       await expect(page.locator('.task-panel .shortcut-bar, .task-panel .command-button')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);
     });
   }

@@ -40,6 +40,8 @@
     "launchFailed": "The old process settled, but replacement launch failed. Original logs remain under termination failures; no work was replayed."
   },
   "panel": {
+    "advanced": "Advanced Settings",
+    "runnerManagement": "Runner management",
     "title": "Task settings",
     "execution": "Execution Target",
     "model": "Model Settings",

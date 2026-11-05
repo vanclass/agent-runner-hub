@@ -76,8 +76,6 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       <div className="brand"><span className="brand-mark" aria-hidden="true">A</span><strong>AgentRunnerHub</strong></div>
       <span className="toolbar-location">{t('hub.workspace')} <span aria-hidden="true">/</span> {selected ? 'Runner' : t('common.singleEntry')}</span>
       <div className="hub-preferences">
-        <button type="button" className="shortcut-settings-trigger" aria-haspopup="dialog"
-          onClick={() => setShortcutsOpen(true)}>{t('shortcuts.title')}</button>
         <button type="button" className="app-settings-trigger" aria-haspopup="dialog"
           onClick={() => setSettingsOpen(true)}>{t('setup.settings')}</button>
       </div>
@@ -87,6 +85,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     {launchError && <p role="alert" className="runner-error">{tr(launchError)}</p>}
     <div className="shell-body">
       <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
+        restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
         onAdd={() => void createRunner()} addDisabled={!installation || launching} adding={launching}
         onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected}
@@ -95,14 +94,14 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
         control={sessions.get(selectedId ?? undefined)?.control}
-        restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
         scope={selectedId ?? 'single-entry'} />
     </div>
-    {shortcutsOpen && <ShortcutSettings value={shortcuts} onClose={() => setShortcutsOpen(false)} onSave={value => {
+    {shortcutsOpen && <ShortcutSettings value={shortcuts} onClose={() => { setShortcutsOpen(false); setSettingsOpen(true); }} onSave={value => {
       preferences.update({ shortcuts: value }); setShortcuts(preferences.value.shortcuts ?? defaultShortcuts);
       return preferences.issue;
     }} />}
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
+      onShortcuts={() => { setSettingsOpen(false); setShortcutsOpen(true); }}
       confirmRemoval={confirmRemoval} onConfirmRemoval={value => {
         preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value);
       }}

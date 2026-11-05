@@ -6,22 +6,22 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await transport(page, undefined, { auto: true, work: true, ...options }); await configure(page);
     await expect(field(page, 'Model').getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     await page.getByRole('button', { name: 'New Runner', exact: true }).click();
-    await expect(field(page, 'Run Mode')).toBeEnabled();
-    await field(page, 'Run Mode').focus();
-    await expect(field(page, 'Run Mode').getByRole('option', { name: 'task-run', exact: true })).toBeAttached();
-    await field(page, 'Run Mode').selectOption({ label: 'task-run' });
+    await page.locator('.mode-segments button').first().focus();
+    await expect(page.getByRole('button', { name: 'task-run', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'task-run', exact: true }).click();
   }
   test('session submission applies exact tab selections once before work, with no exposed commands', async ({ page }, info) => {
     await open(page);
     await page.getByRole('button', { name: 'New Runner', exact: true }).click();
     await page.locator('.runner-row').first().locator('.nav-row').click();
+    await page.locator('.advanced-settings summary').click();
     await field(page, 'Account').selectOption(JSON.stringify({ agent_id: 'other', profile_name: 'first' }));
     await expect(field(page, 'Model').getByRole('option', { name: 'm2', exact: true })).toBeAttached();
     await field(page, 'Model').selectOption({ label: 'm2' });
     await field(page, 'Reasoning effort').selectOption('high');
     await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
     await field(page, 'Project / Target').selectOption({ label: 'project:Exact' });
-    await field(page, 'Run Mode').selectOption({ label: 'direct-run' });
+    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await expect(page.locator('.task-panel .runner-controls, .task-panel .runner-config, .task-panel .command-button')).toHaveCount(0);
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
@@ -69,7 +69,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
   for (const fault of ['invalid', 'confirmation_required', 'partial', 'final-inspection', 'unknown-config', 'root', 'unsupported']) {
     test('session submission preserves unsent draft on ' + fault, async ({ page }) => {
       await open(page);
-      await field(page, 'Run Mode').selectOption({ label: fault === 'root' ? 'direct-run' : 'issue-run' });
+      await page.getByRole('button', { name: fault === 'root' ? 'direct-run' : 'issue-run', exact: true }).click();
       if (['partial', 'final-inspection'].includes(fault))
         await field(page, 'Project / Target').selectOption({ label: 'project:Exact' });
       await page.evaluate(fault => {
@@ -114,7 +114,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
   }
   test('session submission fences late configuration after owning process exit', async ({ page }) => {
     await open(page);
-    await field(page, 'Run Mode').selectOption({ label: 'issue-run' });
+    await page.getByRole('button', { name: 'issue-run', exact: true }).click();
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.holdOperation = 'session_config.apply'; });
     await composer(page).fill('never replay'); await send(page);
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests

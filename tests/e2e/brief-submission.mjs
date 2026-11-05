@@ -5,10 +5,10 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     if (tab) await create(page);
-    const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
+    const mode = page.getByRole('button', { name: 'issue-run', exact: true });
     await mode.focus();
-    await expect(mode.getByRole('option', { name: 'issue-run', exact: true })).toBeAttached();
-    await mode.selectOption({ label: 'issue-run' });
+    await expect(mode).toBeEnabled();
+    await mode.click();
   }
   for (const tab of [false, true]) {
     const path = tab ? 'Runner tab' : 'Single Entry';
@@ -84,7 +84,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     });
     test(`composer Enter ${path} shares Send and preserves editing composition and mode guards`, async ({ page }) => {
       await ready(page, tab);
-      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
+      await page.getByRole('button', { name: 'task-run', exact: true }).click();
       await input(page).fill('first'); await input(page).press('Shift+Enter');
       await page.keyboard.type('second'); await expect(input(page)).toHaveValue('first\nsecond');
       await input(page).press('Home'); await expect(input(page)).toBeFocused();

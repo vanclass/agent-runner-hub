@@ -5,15 +5,17 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await transport(page, undefined, { auto: true, work: true, ...options });
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
   }
   async function remap(page) {
-    await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
     for (const [action, chord] of [['Assign instruction', 'Alt+Enter'], ['Go to Single Entry', 'Alt+Home'], ['Go to Runner by position', 'Alt+2']]) {
       await page.getByRole('dialog').getByRole('button', { name: action, exact: true }).click();
       await page.keyboard.press(chord);
     }
     await page.getByRole('button', { name: 'Apply and save', exact: true }).click();
+    await page.keyboard.press('Escape');
   }
   test('shortcuts assign exactly once with defaults and custom restored keys through Single Entry', async ({ page }) => {
     await ready(page);
@@ -77,7 +79,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
       node.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
     });
     await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
-    await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Go to Single Entry', exact: true }).click();
     await page.keyboard.press('Control+Enter');
@@ -90,6 +92,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await expect(dialog.getByRole('alert')).toContainText('reserved');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
     await expect(page.locator('.shortcut-settings-trigger')).toBeFocused();
+    await page.keyboard.press('Escape');
     await terminal.focus(); await page.keyboard.press('Control+Home');
     await expect(page.locator('.composer textarea')).toBeFocused();
   });

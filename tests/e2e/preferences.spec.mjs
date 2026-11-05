@@ -112,7 +112,7 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
   test('shortcuts settings preserve preferences and accessible capture in ' + language + '/' + theme, async ({ page }, info) => {
     await seed(page, JSON.stringify({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' } }));
     await page.goto('/tests/fixtures/hub.html');
-    await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
     const dialog = page.getByRole('dialog'), buttons = dialog.locator('.shortcut-row button');
     await buttons.nth(0).click(); await page.keyboard.press('Alt+Enter');
     await buttons.nth(1).click(); await page.keyboard.press('Alt+Home');
@@ -123,7 +123,7 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
     expect(saved).toEqual({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' },
       shortcuts: { assign: 'Alt+Enter', entry: 'Alt+Home', runner: 'Alt+Digit' } });
-    await page.reload(); await page.locator('.shortcut-settings-trigger').click();
+    await page.reload(); await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
     await expect(buttons.nth(0)).toHaveText('Alt+Enter'); await expect(buttons.nth(1)).toHaveText('Alt+Home');
     await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
   });
@@ -141,7 +141,7 @@ for (const failure of ['write', 'concurrent', 'read']) {
         return original.call(this, name, ...args);
       };
     }, { key, raw, failure });
-    await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
     await page.locator('.shortcut-row button').first().click(); await page.keyboard.press('Alt+Enter');
     await page.getByRole('button', { name: 'Apply and save' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -154,7 +154,7 @@ test('retired shortcut values use defaults without rewriting unrelated or custom
     shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Alt+Digit' } });
   await seed(page, raw);
   await page.goto('/tests/fixtures/hub.html');
-  await page.locator('.shortcut-settings-trigger').click();
+  await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
   const buttons = page.locator('.shortcut-row button');
   await expect(buttons.nth(0)).toHaveText('Enter');
   await expect(buttons.nth(1)).toHaveText('Ctrl+Home');
@@ -175,7 +175,7 @@ for (const shortcuts of [null, 'Home', {}, { assign: 'Home', entry: 'Home', runn
     await expect(page.locator('.hub')).toHaveAttribute('data-theme', 'black');
     await expect(page.locator('.preferences-error')).toHaveCount(0);
     expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
-    await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
     const buttons = page.locator('.shortcut-row button');
     await expect(buttons.nth(0)).toHaveText(shortcuts?.assign === 'Alt+Enter' ? 'Alt+Enter' : 'Enter');
     await expect(buttons.nth(1)).toHaveText('Ctrl+Home');

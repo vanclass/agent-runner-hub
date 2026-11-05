@@ -16,6 +16,7 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
       .some(s => s.feature?.config.requests.length > 0))).toBe(true);
+    await page.locator('.advanced-settings summary').click();
     await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true }).check();
     await page.evaluate(() => {
       window.__releaseInspection();
@@ -37,15 +38,15 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     expect(await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).inputValue()).toBe('');
     await expect(page.getByRole('button', { name: 'Refresh available choices' })).toHaveCount(0);
     await create(page);
-    await requested(page, 'Run Mode').focus();
-    await requested(page, 'Run Mode').selectOption({ label: 'issue-run' });
+    await page.locator('.mode-segments button').first().focus();
+    await page.getByRole('button', { name: 'issue-run', exact: true }).click();
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await requested(page, 'Model').selectOption({ label: 'm2' });
     await create(page);
     await expect(requested(page, 'Model')).toHaveValue(/m2/);
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
-    await expect(requested(page, 'Run Mode')).toHaveValue(/issue-run/);
+    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toHaveAttribute('aria-pressed', 'true');
     const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
     expect(Object.values(saved.runnerSelections).map(v => v.model.model)).toEqual(['m0', 'm2']);
     const noEffects = await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
@@ -72,7 +73,7 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(saved);
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
-    await expect(requested(page, 'Run Mode')).toHaveValue(/issue-run/);
+    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await info.attach('restored-independent-Hub-selections', { body: await page.screenshot(), contentType: 'image/png' });
   });
 }

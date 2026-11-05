@@ -6,11 +6,12 @@ import { ThemePicker } from './ThemePicker';
 import { useHubTranslation } from './i18n';
 import type { HubLanguage } from './preferences';
 
-export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, onTheme, onLanguage, onVerified, onClose }: {
+export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, onTheme, onLanguage, onVerified, onClose, onShortcuts }: {
   required: boolean; installation: RunnerInstallation | null; theme: 'light' | 'black';
   onTheme: (theme: 'light' | 'black') => void; onLanguage: (language: HubLanguage) => void;
   onVerified: (installation: RunnerInstallation) => void; onClose: () => void;
   confirmRemoval: boolean; onConfirmRemoval: (value: boolean) => void;
+  onShortcuts: () => void;
 }) {
   const { t } = useHubTranslation();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -18,7 +19,7 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
     const element = dialog.current!;
     const previous = document.activeElement as HTMLElement | null;
     element.showModal();
-    element.querySelector<HTMLInputElement>('input')?.focus();
+    element.querySelector<HTMLElement>(required ? 'input' : '.shortcut-settings-trigger')?.focus();
     return () => { element.close(); previous?.focus(); };
   }, []);
   return <dialog ref={dialog} className="app-settings" aria-labelledby="installation-title"
@@ -41,5 +42,7 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
     </div>
     <label className="removal-preference"><input type="checkbox" checked={confirmRemoval}
       onChange={event => onConfirmRemoval(event.target.checked)} />{t('tabs.confirmPreference')}</label>
+    {!required && <button type="button" className="shortcut-settings-trigger" aria-haspopup="dialog"
+      onClick={onShortcuts}>{t('shortcuts.title')}</button>}
   </dialog>;
 }

@@ -1,4 +1,5 @@
-import { useHubTranslation, t } from './i18n';
+import { useHubTranslation, t, tr } from './i18n';
+import type { RunnerRestarts } from './RunnerRestarts';
 import { useRef, useState } from 'react';
 import type { RunnerView } from './model';
 import { RunnerTabRemoval } from './RunnerTabRemoval';
@@ -34,6 +35,8 @@ type SidebarProps = {
   onAdd: () => void;
   addDisabled: boolean;
   adding: boolean;
+  restarts: RunnerRestarts;
+  onRestart: () => void;
 };
 
 function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
@@ -91,9 +94,10 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
   </li>;
 }
 
-export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding }: SidebarProps) {
+export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
   useHubTranslation();
   const [removing, setRemoving] = useState<RunnerView>();
+  const restart = restarts.snapshot;
   function remove(runner: RunnerView) {
     if (confirmRemoval) setRemoving(runner);
     else onRemove(runner.id);
@@ -113,15 +117,21 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, con
         aria-current={selectedId === null ? 'page' : undefined} onClick={() => onSelect(null)}>
         <span className="entry-icon" aria-hidden="true">⌘</span><span>{t('common.singleEntry')}</span>
       </button>
-      <div className="runner-section-label"><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span></div>
+      <div className="runner-section-label"><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span>
+        <details className="runner-management"><summary aria-label={t('panel.runnerManagement')} title={t('panel.runnerManagement')}>⋯</summary>
+          <button type="button" disabled={restarts.pending} onClick={onRestart}>{t('restart.action')}</button>
+        </details>
+        <button type="button" className="add-runner" aria-label={t('hub.newRunner')}
+          title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
+          disabled={addDisabled} aria-busy={adding} onClick={onAdd}>+</button>
+      </div>
+      {restart.requested && <p className="restart-status" role="status">{t('restart.progress', { restarted: restart.restarted,
+        running: restart.running, pending: restart.pending, failed: restart.failed, removed: restart.removed })}</p>}
+      {restart.pending > 0 && <p className="restart-status">{t('restart.pending')}</p>}
+      {restart.failures.map((failure, index) => <p className="restart-status" role="alert" key={index}>{failure.name}: {tr(failure.detail)}</p>)}
       <ul className="runner-list">{runners.map(runner => <RunnerRow key={runner.id} runner={runner}
         active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
         onRemove={() => remove(runner)} />)}
-        <li className="add-runner-row"><button type="button" className="nav-row add-runner"
-          aria-label={t('hub.newRunner')} title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
-          disabled={addDisabled} aria-busy={adding} onClick={onAdd}>
-          <span aria-hidden="true">+</span>
-        </button></li>
       </ul>
       {failures.length > 0 && <section className="termination-failures" aria-label={t('tabs.failures')}>
         <p className="sidebar-label">{t('tabs.failures')}</p>

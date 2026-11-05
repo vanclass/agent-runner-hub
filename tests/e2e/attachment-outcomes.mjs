@@ -15,7 +15,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
   test('attachment outcomes Single Entry unknown admission cannot release or rebind its selection', async ({ page }) => {
     await ready(page, { unknownAdmission: true });
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
+    await page.getByRole('button', { name: 'task-run', exact: true }).click();
     await paste(page, 'Single Entry instructions');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('retain exact destination');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
@@ -47,7 +47,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
       await ready(page, { workMode: 'unknown' });
       if (entry) {
         await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-        await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
+        await page.getByRole('button', { name: 'task-run', exact: true }).click();
       }
       await paste(page, entry ? 'Single Entry instructions' : 'Runner instructions');
       const input = page.getByRole('textbox', { name: entry ? 'Single Entry instructions' : 'Runner instructions', exact: true });

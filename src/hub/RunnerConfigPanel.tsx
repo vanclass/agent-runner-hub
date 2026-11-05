@@ -36,7 +36,10 @@ export function RunnerConfigPanel({ control }: {
   const current = actual?.current;
   const plan = service.plan;
   if (!service.busy && !service.presentedError && !plan && !service.presentedApplications.length) return null;
-  return <details className="config-evidence" open>
+  const attention = service.busy || !!service.presentedError || !!plan && plan.plan_status !== 'ready'
+    || service.presentedApplications.some(application => application.verification === 'unknown'
+      || application.result?.apply_status !== 'applied');
+  return <details className="config-evidence" open={attention}>
     <summary>{t('config.title')}</summary>
     <p className="config-progress" role="status" aria-live="polite" aria-busy={service.busy}>
       {t(activity[service.activity])}{service.busy && service.progress && <> · {t(states[service.progress.state])}</>}

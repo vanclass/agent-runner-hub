@@ -49,14 +49,14 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
-    await expect(page.locator('.runner-list > li').last()).toHaveClass('add-runner-row');
+    await expect(page.locator('.runner-section-label .add-runner')).toBeVisible();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs);
     expect(saved.map(tab => tab.createdOrder)).toEqual([1, 2, 3]);
     expect(saved.map(tab => tab.name)).toEqual(['Runner 1', 'Runner 2', 'Runner 3']);
     await info.attach('green-add-tab', { body: await page.screenshot(), contentType: 'image/png' });
     await page.reload();
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
-    await expect(page.locator('.runner-list > li').last()).toHaveClass('add-runner-row');
+    await expect(page.locator('.runner-section-label .add-runner')).toBeVisible();
   });
   test('add directory: fallback launch is single flight and a failed launch has one honest diagnostic tab', async ({ page }) => {
     await transport(page); await configure(page);
@@ -74,32 +74,29 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await expect(page.locator('.runner-row')).toHaveCount(2);
     await expect(page.getByText('Process running', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
-    await expect(page.locator('.runner-list > li').last()).toHaveClass('add-runner-row');
+    await expect(page.locator('.runner-section-label .add-runner')).toBeVisible();
   });
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
-    test(`add directory: accessible green plus and three directory fields ${language} ${theme}`, async ({ page }, info) => {
+    test(`add directory: compact accessible plus and directory fields ${language} ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
       await expect(add(page)).toBeVisible(); await expect(add(page)).toBeDisabled();
       await page.getByLabel('AgentRunner location', { exact: true }).fill('/fixture/install');
       await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
       await expect(page.locator('.spare-status')).toHaveCount(0);
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-      await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
+      await page.getByRole('button', { name: 'direct-run', exact: true }).click();
       await picker(page);
       await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.getByRole('button', { name: language === 'en' ? (theme === 'light' ? 'Light' : 'Black') : (theme === 'light' ? '라이트' : '블랙'), exact: true }).click();
       await expect(add(page)).toHaveAccessibleName(language === 'en' ? 'New Runner' : '새 Runner');
       const shape = await add(page).evaluate(button => {
-        const box = button.getBoundingClientRect(), plus = button.firstElementChild.getBoundingClientRect();
+        const box = button.getBoundingClientRect();
         const style = getComputedStyle(button);
-        return { height: box.height, size: parseFloat(style.fontSize), background: style.backgroundColor,
-          dx: Math.abs(box.x + box.width / 2 - plus.x - plus.width / 2),
-          dy: Math.abs(box.y + box.height / 2 - plus.y - plus.height / 2) };
+        return { height: box.height, width: box.width, size: parseFloat(style.fontSize), background: style.backgroundColor };
       });
-      expect(shape.height).toBeGreaterThanOrEqual(44); expect(shape.size).toBeGreaterThanOrEqual(28);
-      expect(shape.dx).toBeLessThan(1); expect(shape.dy).toBeLessThan(1);
-      expect(shape.background).toBe(theme === 'light' ? 'rgb(214, 239, 223)' : 'rgb(25, 59, 41)');
+      expect(shape.height).toBe(28); expect(shape.width).toBe(28); expect(shape.size).toBe(21);
+      expect(shape.background).toBe(theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(17, 18, 20)');
       const fields = page.locator('dialog .directory-field');
       await expect(fields).toHaveCount(1);
       await fields.first().locator('button').click();
@@ -112,13 +109,13 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await root(page).locator('button').click();
       await expect(add(page)).toBeEnabled();
       await page.getByRole('navigation').locator('.single-entry').focus();
-      await page.keyboard.press('End'); await expect(add(page)).toBeFocused();
+      await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await expect(add(page)).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(page.locator('.runner-row')).toHaveCount(1);
-      const runMode = page.getByRole('combobox', { name: language === 'en' ? 'Requested Run Mode' : '요청 실행 모드', exact: true });
-      await runMode.focus();
+      const runMode = page.getByRole('button', { name: 'pure-direct-run', exact: true });
+      await page.locator('.mode-segments button').first().focus();
       await expect(runMode).toBeEnabled();
-      await runMode.selectOption({ label: 'pure-direct-run' });
+      await runMode.click();
       await root(page).locator('button').click();
       await expect(root(page).locator('input')).toHaveValue('/fixture/chosen folder');
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => /session_config\.(plan|apply)$/.test(r.operation)).length)).toBe(0);
@@ -148,15 +145,15 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
   test('add directory: Single Entry and configuration pickers discard newer drafts tab switches and process exit', async ({ page }) => {
     await ready(page); await picker(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
+    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
     await root(page).locator('input').fill('/entry original');
     await delayed(page, root(page));
-    await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'pure-direct-run' });
+    await page.getByRole('button', { name: 'pure-direct-run', exact: true }).click();
     await page.evaluate(() => window.__directoryPicker.finish('/stale mode'));
     await expect(root(page).locator('input')).toHaveValue('/entry original');
     await create(page);
-    await page.getByLabel('Requested Run Mode', { exact: true }).focus();
-    await page.getByLabel('Requested Run Mode', { exact: true }).selectOption({ label: 'direct-run' });
+    await page.locator('.mode-segments button').first().focus();
+    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
     await root(page).locator('input').fill('/config original');
     await delayed(page, root(page));
     await root(page).locator('input').fill('/config newer');

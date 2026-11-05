@@ -471,16 +471,17 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   test('global restart success preserves the selected tab and requested settings without replay', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
     const id = await page.locator('.runner-row').getAttribute('data-runner-id');
-    const before = await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).inputValue();
+    const before = await page.locator('.mode-segments [aria-pressed=true]').textContent();
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('keep unsent');
     await page.locator('.single-entry').click();
+    await page.locator('.runner-management summary').click();
     await page.getByRole('button', { name: 'Restart all Runners', exact: true }).click();
     await page.locator(`[data-runner-id="${id}"] .nav-row`).click();
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed.includes('pty-1'))).toBe(true);
     await expect(page.locator('.runner-row')).toHaveCount(1);
     await expect(page.locator(`[data-runner-id="${id}"] .nav-row`)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('keep unsent');
-    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toHaveValue(before);
+    await expect(page.locator('.mode-segments [aria-pressed=true]')).toHaveText(before);
     await page.locator('.single-entry').click();
     await expect(page.getByRole('button', { name: 'Restart all Runners', exact: true })).toBeEnabled();
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => r.operation === 'work.submit').length)).toBe(0);
@@ -508,7 +509,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   });
 
   for (const language of ['en', 'ko']) for (const theme of ['Light', 'Black']) {
-    test(`global restart action is Single Entry right-panel only and preserves drafts ${language} ${theme}`, async ({ page }, info) => {
+    test(`global restart sidebar menu preserves drafts ${language} ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
       const id = await page.locator('.runner-row').getAttribute('data-runner-id');
       await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('retained per-tab draft');
@@ -518,23 +519,28 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.keyboard.press('Escape');
       const label = language === 'ko' ? '전체 러너 재시작' : 'Restart all Runners';
-      await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+      await expect(page.locator('.task-panel').getByRole('button', { name: label, exact: true })).toHaveCount(0);
+      await page.locator('.runner-management summary').click();
       await page.locator('.single-entry').click();
       // Use the production composer selector so localization of its accessible name remains independently checked.
       await page.locator('.workspace textarea').fill('retained Single Entry draft');
       const action = page.getByRole('button', { name: label, exact: true });
-      await expect(action).toHaveCount(1); await expect(page.locator('.task-panel').getByRole('button', { name: label, exact: true })).toBeVisible();
+      await expect(action).toHaveCount(1); await expect(page.locator('.sidebar').getByRole('button', { name: label, exact: true })).toBeVisible();
+      const menuBox = await action.boundingBox(), sidebarBox = await page.locator('.sidebar').boundingBox();
+      expect(menuBox.x).toBeGreaterThanOrEqual(sidebarBox.x);
+      expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width);
       await action.click(); await expect(action).toBeDisabled();
-      await expect(page.locator('.task-panel [role=status]').filter({ hasText: language === 'ko' ? '대기 1' : 'pending 1' })).toBeVisible();
-      await expect(page.locator('.task-panel [role=status]').filter({ hasText: language === 'ko' ? '대기 1' : 'pending 1' })).toBeInViewport();
+      await expect(page.locator('.sidebar [role=status]').filter({ hasText: language === 'ko' ? '대기 1' : 'pending 1' })).toBeVisible();
+      await expect(page.locator('.sidebar [role=status]').filter({ hasText: language === 'ko' ? '대기 1' : 'pending 1' })).toBeInViewport();
       await expect(page.locator('.workspace textarea')).toHaveValue('retained Single Entry draft');
       await info.attach('restart-pending', { body: await page.screenshot(), contentType: 'image/png' });
       await page.locator(`[data-runner-id="${id}"] .nav-row`).click();
       await expect(page.locator('.composer-area textarea')).toHaveValue('retained per-tab draft');
       await expect(page.locator('.attachment-chip')).toContainText('/fixture/image.png');
-      await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeDisabled();
       await page.reload();
       await page.locator('.single-entry').click();
+      await page.locator('.runner-management summary').click();
       await expect(page.getByRole('button', { name: label, exact: true })).toBeEnabled();
       // Explicit restart intent is never persisted or restored.
       expect(await page.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1'))).includes('restart'))).toBe(false);

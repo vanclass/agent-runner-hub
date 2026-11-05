@@ -7,7 +7,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options }); await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption({ label: 'task-run' });
+    await page.getByRole('button', { name: 'task-run', exact: true }).click();
   }
   for (const route of ['tab', 'Single Entry']) {
     test(`instruction presentation ${route} retains exact text once across discovery tabs and rerenders`, async ({ page }, info) => {
