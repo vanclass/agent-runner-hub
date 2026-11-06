@@ -7,7 +7,7 @@ import { withBuildOwnership } from './ownership.mjs';
 const labels = { browser: 'Browser', tauri: 'Tauri 2', electron: 'Electron' };
 export async function runtimeEnabled(root, runtime, buildSystem = false) {
   try {
-    const manifest = JSON.parse(await fs.readFile(path.join(root, '.runner/project.json'), 'utf8'));
+    const manifest = JSON.parse(await fs.readFile(path.join(root, '.project-config/components.json'), 'utf8'));
     if (manifest.schema_version !== 1 || manifest.kind !== 'project_management') return false;
     const child = (state, group, option) => state?.components?.some(c => c.component_id === 'WebApp'
       && c.children?.some(item => state === manifest.desired

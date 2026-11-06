@@ -20,7 +20,7 @@ async function read(root, relative) {
 export async function captureReleaseInputs(root, target) {
   try {
     const binding = await read(root, 'tools/web_app_build_system/release-binding.json');
-    const manifest = await read(root, '.runner/project.json');
+    const manifest = await read(root, '.project-config/components.json');
     const project = binding.value, runtime = runtimes[target.id];
     const choice = await foundation(root, { requireApplied: true });
     let foundationResource;

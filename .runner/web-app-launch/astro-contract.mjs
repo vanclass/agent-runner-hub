@@ -9,7 +9,7 @@ const unsupported = () => new Error('Only the selected, verified React integrati
   + 'Use direct zero-argument imported factories in a static object config; preserve custom code and resolve it in Settings.');
 
 export async function appliedIntegrations(root) {
-  const manifest = JSON.parse(await fs.readFile(path.join(root, '.runner/project.json'), 'utf8'));
+  const manifest = JSON.parse(await fs.readFile(path.join(root, '.project-config/components.json'), 'utf8'));
   if (manifest.schema_version !== 1 || manifest.kind !== 'project_management'
       || !Array.isArray(manifest.applied?.components)) throw unsupported();
   const component = manifest.applied.components.find(c => c.component_id === 'WebApp');

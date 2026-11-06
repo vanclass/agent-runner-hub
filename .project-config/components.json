@@ -11,7 +11,7 @@
             "receipts": [],
             "requires": [],
             "resource": {
-              "digest": "ebfc3630d152da21db35ec90427c84c89d0df47e3189133177caddd4482a83a9",
+              "digest": "1ace11aa6b097871fffb8f762c9349f6922085efe7e288b9301f6d1cb42b6161",
               "identity": "WebApp.ViteVanillaTS"
             }
           },
@@ -156,7 +156,7 @@
                 "path": [
                   "resource_version"
                 ],
-                "value": "b57cfea01dcc4bc0e17d12173e158e942ddc19737f914d403db7047acc9186cb"
+                "value": "443dcb25031b36df8e374ab701a6fd9aedc273d4ce881f53fd7a6b3cbcb009ae"
               },
               {
                 "path": [
@@ -198,7 +198,7 @@
                   "tauri_sha256",
                   "4028eaffc5935c406fb0cc5a03c5a41c6f9f979f4b348aa052af8eb399f7cb6d"
                 ],
-                "value": "765a2780bac2b6dd68ef9e8839c1e5db68f68fb6f42727d89f4ac4fe528e4923"
+                "value": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d"
               },
               {
                 "path": [
@@ -268,7 +268,7 @@
                   "tauri_sha256",
                   "d5dd05dac2f9d22831babdcc1c373dfc40e2ec0f931043c7e88581311cdf1e11"
                 ],
-                "value": "2be10a3adddcea8a21abcc6d062822990fb1d3c6632945061d6f3c515108420d"
+                "value": "8d2f87851e1287fc8fe4f388040f9b2e7491aa5ed256625dfa29350cbaf35965"
               },
               {
                 "path": [
@@ -282,7 +282,7 @@
                   "tauri_sha256",
                   "e0739ba45bd63b387d4444076cc633886cdd61f9f5cfeb7713e36390f42554ba"
                 ],
-                "value": "ab5d0014864da6090f40d3d542c295a6fc7169da7ef2c40b7551a7d7a3b69b42"
+                "value": "214d139bad849188376749f802266ed31dbdc902d3803e15ee4102a2ec9045e3"
               },
               {
                 "path": [
@@ -462,7 +462,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "bb5daed2d11a525afaf50b54eb58f8e4c6c1e38d735d986e23601877f63227f5",
+              "digest": "4835492ef589dc60d4ed5533428c2a8e845e85ab52fac971434757000fdec5cc",
               "identity": "WebApp.Tauri2"
             }
           },
@@ -755,7 +755,7 @@
                   "build_system.sha256",
                   "1c516d9113a3bf81e1772a572f4ac91c3bb8dca01a61184ae9043a293aa429b5"
                 ],
-                "value": "ab5d0014864da6090f40d3d542c295a6fc7169da7ef2c40b7551a7d7a3b69b42"
+                "value": "214d139bad849188376749f802266ed31dbdc902d3803e15ee4102a2ec9045e3"
               },
               {
                 "path": [
@@ -769,7 +769,7 @@
                   "build_system.sha256",
                   "207b9e6b5241a1c3528df4ab4be7335f6441df6f863926895a7f74ada5e5bc69"
                 ],
-                "value": "d5c8857aabde54dec4f0298b0f51e29c63a0d6ffcc07e6b749ed903fb18ef454"
+                "value": "be1bd8cca3f655ad9f3e0bdaa7c0ad5b6aa8d511bda9f7a091e7e137126e623d"
               },
               {
                 "path": [
@@ -832,14 +832,14 @@
                   "build_system.sha256",
                   "3624c48ec1f86eb26883354e22006f8f4d46d0e6581d4b9c52dbdc81cbf7f3d1"
                 ],
-                "value": "89b5a57c7bf7b365de6eff961173a30008eaf6b79afc1cbd0d0221893e9098d4"
+                "value": "fd5ec071cddd49dafde61fd1098c895e733f102127178c3da698114367446f88"
               },
               {
                 "path": [
                   "build_system.sha256",
                   "3ebfe5d78d606a9be5e66f8c3ba0029d054ec64705e6ae99f1246f5c8c09a479"
                 ],
-                "value": "6fae493ae6ecd78981a6f3269b37211ec4c6feb962f2d0d39e0945bee1dc9c8b"
+                "value": "ee219777e2bb531495e722e442d718241d127ec511408d2718c8204ea141d69e"
               },
               {
                 "path": [
@@ -986,7 +986,7 @@
                   "build_system.sha256",
                   "bf6993436642e6efa2fd498bb4124f03eece97b754c30499ec9544ab75d605d9"
                 ],
-                "value": "765a2780bac2b6dd68ef9e8839c1e5db68f68fb6f42727d89f4ac4fe528e4923"
+                "value": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d"
               },
               {
                 "path": [
@@ -1070,7 +1070,7 @@
                   "build_system.sha256",
                   "ebe97edb2d7e3c90f5a0c779186a83cf221aa26d92b6d326d9497fa94a956ac9"
                 ],
-                "value": "2be10a3adddcea8a21abcc6d062822990fb1d3c6632945061d6f3c515108420d"
+                "value": "8d2f87851e1287fc8fe4f388040f9b2e7491aa5ed256625dfa29350cbaf35965"
               },
               {
                 "path": [
@@ -1502,7 +1502,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "c61b7097797ba43b2d8fce40e0a8998e7959c8628e0d71e878c72384428e8288",
+              "digest": "726918667a39852d0abe0720bfd8e53967baa16b6b331fea54be5ecc982de894",
               "identity": "WebApp.WebAppBuildSystem"
             }
           }
@@ -1510,7 +1510,7 @@
         "component_id": "WebApp",
         "projections": [
           {
-            "after": "89b5a57c7bf7b365de6eff961173a30008eaf6b79afc1cbd0d0221893e9098d4",
+            "after": "fd5ec071cddd49dafde61fd1098c895e733f102127178c3da698114367446f88",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1564,7 +1564,7 @@
             }
           },
           {
-            "after": "765a2780bac2b6dd68ef9e8839c1e5db68f68fb6f42727d89f4ac4fe528e4923",
+            "after": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1600,7 +1600,7 @@
             }
           },
           {
-            "after": "6fae493ae6ecd78981a6f3269b37211ec4c6feb962f2d0d39e0945bee1dc9c8b",
+            "after": "ee219777e2bb531495e722e442d718241d127ec511408d2718c8204ea141d69e",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1978,7 +1978,7 @@
           }
         ],
         "resource": {
-          "digest": "b604dc5f7e50581d08b3486214dedc9eececd253049cb5506759d46309210170",
+          "digest": "f5a58e4ba78effd234668f2a2038ce213b78d13ec587306053e0bb8d3c4d1a6d",
           "identity": "WebApp"
         }
       }

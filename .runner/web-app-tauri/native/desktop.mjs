@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export async function desktopFeatures(root) {
   let manifest;
-  try { manifest = JSON.parse(await fs.readFile(path.join(root, '.runner/project.json'), 'utf8')); }
+  try { manifest = JSON.parse(await fs.readFile(path.join(root, '.project-config/components.json'), 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return []; throw error; }
   const options = (state, applied) => state?.components?.filter(c => c.component_id === 'WebApp')
     .flatMap(c => c.children || []).filter(c => c.group_id === 'Tools')

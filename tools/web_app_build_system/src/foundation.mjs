@@ -25,7 +25,7 @@ function choice(component, applied = false) {
 
 export async function foundation(root, { requireApplied = false } = {}) {
   let manifest;
-  try { manifest = JSON.parse(await fs.readFile(path.join(root, '.runner/project.json'), 'utf8')); }
+  try { manifest = JSON.parse(await fs.readFile(path.join(root, '.project-config/components.json'), 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return VITE; throw error; }
   if (manifest.schema_version !== 1 || manifest.kind !== 'project_management'
       || !Array.isArray(manifest.desired?.components) || !Array.isArray(manifest.applied?.components)) {

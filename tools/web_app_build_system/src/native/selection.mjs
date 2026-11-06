@@ -4,7 +4,7 @@ const toolingHint = 'Desktop development/packaging requires Rust/Cargo. Windows 
 
 export async function runtimeSelection(root, buildSystem = false, hint = toolingHint) {
   try {
-    const manifest = JSON.parse(await fs.readFile(path.join(root, '.runner/project.json'), 'utf8'));
+    const manifest = JSON.parse(await fs.readFile(path.join(root, '.project-config/components.json'), 'utf8'));
     if (manifest.schema_version !== 1 || manifest.kind !== 'project_management') throw new Error('Invalid Project manifest.');
     const child = (state, group, option) => state?.components?.some(c => c.component_id === 'WebApp'
       && c.children?.some(item => state === manifest.desired
@@ -19,7 +19,7 @@ export async function runtimeSelection(root, buildSystem = false, hint = tooling
       hint] };
     return { enabled: true, hints: [] };
   } catch (error) {
-    return { enabled: false, hints: ['Restore the portable .runner/project.json manifest and Apply Tauri 2 selection'
+    return { enabled: false, hints: ['Restore the portable .project-config/components.json manifest and Apply Tauri 2 selection'
       + (buildSystem ? ' with Web App Build System' : '') + ': ' + error.message, hint] };
   }
 }
