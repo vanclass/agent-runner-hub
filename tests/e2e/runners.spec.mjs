@@ -656,6 +656,7 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   await expect(page.getByText('Restored defaults are requests only.', { exact: false })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
+  await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('confirmed after restart');
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });

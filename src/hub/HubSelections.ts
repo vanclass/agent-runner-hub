@@ -13,7 +13,7 @@ export class HubSelections {
   loadingOptions = false;
   detail: HubText = '';
   readonly restoredDefaults: boolean;
-  private attempted = false;
+  private attempted?: RunnerConfigService;
   private inspectionEdits?: Set<keyof EntryDefaults>;
   constructor(private readonly source: () => RunnerConfigService | undefined,
     private readonly changed: () => void, defaults: EntryDefaults = {},
@@ -28,16 +28,18 @@ export class HubSelections {
     return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key));
   }
   initialize() {
-    if (this.attempted || this.loadingOptions || !this.editable) return;
+    // Inspection itself temporarily hides a busy spare from the source supplier.
+    if (this.loadingOptions && this.attempted?.busy) return;
     const service = this.source();
-    if (!service) return;
+    if (!service || !service.supports('inspect') || this.attempted && this.attempted !== service)
+      this.attempted = undefined;
+    if (this.loadingOptions || !this.editable || !service) return;
     if (!service.supports('inspect')) {
       const detail = msg('config.unsupported');
       if (!same(this.detail, detail)) { this.detail = detail; this.changed(); }
       return;
     }
-    if (service.busy) return;
-    this.attempted = true;
+    if (service.busy || this.attempted === service) return;
     void this.inspectOptions();
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
@@ -69,25 +71,25 @@ export class HubSelections {
   }
   async inspectOptions() {
     if (!this.editable || this.loadingOptions) return;
-    this.attempted = true;
     const before = this.defaults, initialize = !this.initialized, service = this.source();
+    this.attempted = service;
     const edits = this.inspectionEdits = new Set<keyof EntryDefaults>();
     this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
     try {
       if (!service?.supports('inspect') || service.busy) throw new HubError(msg('config.notReady'));
       await service.inspect(before.accountIdentity);
       let catalog = service.catalog;
-      if (!catalog && before.accountIdentity && this.defaults === before) {
+      if (!catalog && before.accountIdentity && this.defaults === before && this.source() === service) {
         // Keep an unsupported saved identity, but expose verified alternatives for an explicit edit.
         await service.inspect();
         catalog = service.catalog;
       }
       if (!catalog) throw new HubError(service.error || msg('config.incomplete'));
-      if (!this.editable || this.source() !== service) {
-        this.detail = msg('config.draftChanged');
+      if (!this.editable || this.source() !== service || this.attempted !== service) {
+        this.detail = msg('config.incomplete');
         return;
       }
-      this.catalog = copy(catalog);
+      if (!edits.has('accountIdentity')) this.catalog = copy(catalog);
       if (initialize) {
         const available = catalog.inspection.availability;
         const current = configToEntryDefaults(catalog.inspection.current, catalog, this.observation(service));
@@ -105,7 +107,13 @@ export class HubSelections {
       }
       this.detail = before.accountIdentity && !same(before.accountIdentity, catalog.inspection.model_options_account)
         ? msg('config.defaultsUnresolved', { fields: 'accountIdentity' }) : '';
-    } catch (reason) { this.catalog = undefined; this.detail = errorText(reason); }
-    finally { this.inspectionEdits = undefined; this.loadingOptions = false; this.changed(); }
+    } catch (reason) {
+      this.catalog = undefined;
+      this.detail = this.source() === service ? errorText(reason) : msg('config.incomplete');
+    } finally {
+      if (edits.has('accountIdentity')) this.attempted = undefined;
+      this.inspectionEdits = undefined; this.loadingOptions = false; this.changed();
+      this.initialize();
+    }
   }
 }

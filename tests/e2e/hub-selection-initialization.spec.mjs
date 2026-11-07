@@ -1,5 +1,29 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 
+for (const recovery of ['replacement', 'readiness']) {
+  test(`failed automatic inspection recovers on ${recovery} only`, async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async recovery => {
+      const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+      const { HubSelections } = await import('/src/hub/HubSelections.ts');
+      const first = createConfigHarness(), next = createConfigHarness();
+      let source = first.service;
+      const choices = new HubSelections(() => source, () => {}, { runMode: 'issue-run' });
+      const settle = async () => { while (choices.loadingOptions) await new Promise(r => setTimeout(r, 5)); };
+      first.fixture.fault = 'missing'; choices.initialize(); await settle();
+      const failed = first.fixture.requests.length;
+      for (let i = 0; i < 5; i++) choices.initialize();
+      const unchanged = first.fixture.requests.length;
+      if (recovery === 'readiness') { source = undefined; choices.initialize(); }
+      source = recovery === 'replacement' ? next.service : first.service;
+      first.fixture.fault = ''; choices.initialize(); await settle();
+      return { failed, unchanged, catalog: !!choices.catalog, defaults: choices.defaults };
+    }, recovery);
+    expect(result.failed).toBeGreaterThan(0); expect(result.unchanged).toBe(result.failed);
+    expect(result.catalog).toBe(true); expect(result.defaults).toEqual({ runMode: 'issue-run' });
+  });
+}
+
 for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
   test(`pending first-run inspection preserves explicit ${field} edits and clears`, async ({ page }) => {
     await page.goto('/');
@@ -45,7 +69,7 @@ for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
   });
 }
 
-test('allocation-only preferences allow initialization and stale sources cannot commit or retry automatically', async ({ page }) => {
+test('allocation-only preferences survive stale completion and automatically inspect the replacement', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
@@ -55,17 +79,20 @@ test('allocation-only preferences allow initialization and stale sources cannot 
     const commits = [];
     const selections = new HubSelections(() => source, () => {}, { allocationPolicy: 'reuse-idle' }, v => commits.push(v), () => true, () => ({ selection: { account: (source === first.service ? first : next).fixture.current.account.profile_name } }));
     first.fixture.hold = true;
+    next.fixture.hold = true;
     selections.initialize();
     source = next.service;
     first.fixture.hold = false; first.fixture.complete();
-    while (selections.loadingOptions) await new Promise(resolve => setTimeout(resolve, 5));
-    selections.initialize();
+    while (!next.fixture.requests.length) await new Promise(resolve => setTimeout(resolve, 5));
     const stale = { defaults: selections.defaults, catalog: selections.catalog, commits: commits.length,
       requests: next.fixture.requests.length };
-    await selections.inspectOptions();
+    next.fixture.hold = false; next.fixture.complete();
+    while (selections.loadingOptions) await new Promise(resolve => setTimeout(resolve, 5));
     return { stale, defaults: selections.defaults, commits };
   });
-  expect(result.stale).toEqual({ defaults: { allocationPolicy: 'reuse-idle' }, commits: 0, requests: 0 });
+  expect(result.stale.defaults).toEqual({ allocationPolicy: 'reuse-idle' });
+  expect(result.stale.catalog).toBeUndefined();
+  expect(result.stale.commits).toBe(0); expect(result.stale.requests).toBeGreaterThan(0);
   expect(result.defaults.model.model).toBe('m0'); expect(result.defaults.allocationPolicy).toBe('reuse-idle');
   expect(result.commits).toHaveLength(1);
 });
