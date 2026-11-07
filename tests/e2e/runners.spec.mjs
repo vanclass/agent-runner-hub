@@ -1374,16 +1374,32 @@ test('process exit retains final output without restoring command controls', asy
 
 
 test('Runner panels expose selection fields without command shortcuts in both languages', async ({ page }) => {
-  await transport(page); await configure(page); await create(page); await create(page);
+  await transport(page, undefined, { auto: true, work: true }); await configure(page);
+  await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+  await create(page); await create(page);
   for (const language of ['en', 'ko']) {
     await page.locator('.app-settings-trigger').click();
-    await page.getByRole('combobox', { name: language === 'en' ? 'Language' : 'Language', exact: true }).selectOption(language);
+    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
     await page.keyboard.press('Escape');
     for (const row of [0, 1]) {
       await page.locator('.runner-row').nth(row).locator('.nav-row').click();
       await expect(page.locator('.task-panel .command-button, .task-panel .shortcut-bar, .task-panel .shortcut-editor')).toHaveCount(0);
-      await expect(page.locator('.task-panel select')).toHaveCount(4);
-      await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeVisible();
+      const panel = page.locator('.task-panel');
+      const fields = language === 'en'
+        ? ['Requested Account', 'Requested Run Mode', 'Requested Project / Target', 'Requested Model', 'Requested Reasoning effort']
+        : ['요청 계정', '요청 실행 모드', '요청 프로젝트 / 대상', '요청 모델', '요청 추론 수준'];
+      const mode = panel.getByRole('combobox', { name: fields[1], exact: true });
+      await panel.getByRole('combobox', { name: fields[0], exact: true }).focus();
+      await expect(mode).toBeEnabled();
+      for (const value of ['task-run', 'issue-run', 'pure-direct-run', 'direct-run']) {
+        await mode.selectOption(JSON.stringify(value));
+        const direct = value.includes('direct-run');
+        await expect(panel.locator('select')).toHaveCount(direct ? 4 : 5);
+        expect(await panel.getByRole('combobox').evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label'))))
+          .toEqual(direct ? fields.filter((_, index) => index !== 2) : fields);
+        const root = language === 'en' ? 'Requested Direct / Pure Direct Root' : '요청 Direct / Pure Direct 작업 경로';
+        await expect(panel.getByRole('textbox', { name: root, exact: true })).toHaveCount(direct ? 1 : 0);
+      }
     }
   }
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
