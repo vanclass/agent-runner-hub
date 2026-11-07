@@ -11,7 +11,7 @@ import { RunnerReferenceSelection } from './referenceSelection';
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier'>;
 export type EntryDefaults = { target?: Target; model?: Model; accountIdentity?: ConfigAccount;
-  runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle'; initialized?: true };
+  runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle' | 'reuse-same-mode'; initialized?: true };
 
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';
 
@@ -53,7 +53,8 @@ export class SingleEntry {
     private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
     saveDefaults: (value: EntryDefaults) => void = () => {},
-    optionsSource: () => RunnerSession | undefined = () => this.list()[0]) {
+    optionsSource: () => RunnerSession | undefined = () => this.list()[0],
+    private readonly affiliation: (id: string) => string | undefined = () => undefined) {
     this.selections = new HubSelections(() => optionsSource()?.control.config, changed, defaults, saveDefaults, () => this.editable,
       service => {
         const control = optionsSource()?.control;
@@ -87,7 +88,7 @@ export class SingleEntry {
     let attempted = false;
     try {
       let session: RunnerSession | undefined;
-      if (this.allocationPolicy === 'reuse-idle') {
+      if (this.allocationPolicy !== 'always-new') {
         for (const candidate of this.list()) {
           if (candidate.assignmentReserved) continue;
           if (candidate.control.work.current && candidate.control.work.supported && !candidate.control.work.busy) {
@@ -97,6 +98,8 @@ export class SingleEntry {
           try { await candidate.control.fresh(); } catch { continue; }
           const reason = idleReason(candidate);
           if (reason || !candidate.assignmentAvailable) continue;
+          if (this.allocationPolicy === 'reuse-same-mode'
+            && (!defaults.runMode || this.affiliation(candidate.view.id) !== defaults.runMode)) continue;
           if (!candidate.reserve(token)) continue;
           session = candidate;
           break;

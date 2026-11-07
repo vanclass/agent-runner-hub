@@ -37,10 +37,12 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await info.attach('single-entry-work-start-summary', { body: await page.screenshot(), contentType: 'image/png' });
   });
   test('work Single Entry explicit reuse preserves the selected visible process while always-new ignores it', async ({ page }) => {
-    await ready(page); await create(page); await home(page);
+    await ready(page); await create(page);
+    await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
+    await home(page);
 
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).check();
+    await page.getByRole('combobox', { name: 'Runner allocation policy' }).selectOption('reuse-idle');
     await page.keyboard.press('Escape');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('reuse once');
     await assign(page);
@@ -49,7 +51,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page);
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).uncheck();
+    await page.getByRole('combobox', { name: 'Runner allocation policy' }).selectOption('always-new');
     await page.keyboard.press('Escape');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('always new');
     await assign(page);

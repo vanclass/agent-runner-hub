@@ -82,9 +82,11 @@
     }
   },
   "work": {
-    "reuseIdle": "사용 가능한 유휴 Runner 재사용",
+    "allocationPolicy": "러너 배정 방식",
+    "alwaysNew": "항상 새 러너 생성",
+    "reuseSameMode": "동일 실행 모드에서 유휴 러너 재사용",
+    "reuseIdle": "실행 모드 무관하게 유휴 러너 재사용",
     "allocationHelp": "기본값은 항상 새 Runner 할당입니다. 재사용을 선택하면 해당 표시 세션을 할당 전에 다시 검증합니다.",
-    "loadOptions": "사용 가능한 선택 새로 고침",
     "promoted": "{{name}} 생성됨.",
     "configuring": "{{name}} 할당됨 · 요청한 설정 검증 중…",
     "observing": "{{name}} · 한 번 제출했으며 Runner 접수와 시작 근거를 기다리는 중…",
@@ -420,6 +422,7 @@
   },
   "entry": {
     "defaultsLabel": "Single Entry 기본 설정",
+    "selectAccount": "계정 선택",
     "useRunner": "Runner의 검증된 설정 사용",
     "defaultsHelp": "요청한 설정을 로컬에 저장한 뒤 할당된 Runner의 인증 API로 검증하고 적용한 후 작업을 제출합니다. 지원되는 확인 절차는 Hub 상호작용 제어를 사용합니다.",
     "instructions": "Single Entry 지시문",

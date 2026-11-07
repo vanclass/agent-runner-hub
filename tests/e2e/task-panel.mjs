@@ -38,7 +38,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
 
     await expect(page.locator('.task-panel').getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toHaveCount(0);
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Runner allocation policy' })).toBeVisible();
     await page.keyboard.press('Escape');
     await page.reload();
     await expect(root).toHaveValue('C:/retained-root');

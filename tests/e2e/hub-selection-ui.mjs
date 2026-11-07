@@ -1,7 +1,7 @@
 export function registerHubSelectionUI({ test, expect, transport, configure, create }) {
   const key = 'agent-runner-hub.preferences.v1';
   const requested = (page, field) => page.getByRole('combobox', { name: `Requested ${field}`, exact: true });
-  test('pending Hub initialization preserves the reuse-idle checkbox edit', async ({ page }) => {
+  test('pending Hub initialization preserves the allocation policy edit', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
     await page.evaluate(() => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
@@ -18,7 +18,7 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
       .some(s => s.feature?.config.requests.length > 0))).toBe(true);
 
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true }).check();
+    await page.getByRole('combobox', { name: 'Runner allocation policy', exact: true }).selectOption('reuse-idle');
     await page.keyboard.press('Escape');
     await page.evaluate(() => {
       window.__releaseInspection();
@@ -26,13 +26,13 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     });
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true })).toBeChecked();
+    await expect(page.getByRole('combobox', { name: 'Runner allocation policy', exact: true })).toHaveValue('reuse-idle');
     await page.keyboard.press('Escape');
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry.allocationPolicy, key)).toBe('reuse-idle');
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
       s.feature.requests.length === 0 && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
   });
-  test('Hub selections initialize automatically then restore independent tab choices without startup inspection', async ({ page }, info) => {
+  test('Hub selections automatically load fresh and restored independent tab catalogs', async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
     await expect(requested(page, 'Model').getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     const initial = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry, key);
@@ -60,20 +60,11 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await page.reload();
     await expect(requested(page, 'Model')).toHaveValue(/m2/);
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
-    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.config.requests))).toEqual([]);
-    // A changed authenticated catalog is loaded only on interaction; the saved value stays visible.
-    await page.evaluate(() => {
-      for (const s of window.__nativeFixture.sessions.values()) {
-        const original = s.feature.config.inspection.bind(s.feature.config);
-        s.feature.config.inspection = (...args) => {
-          const result = original(...args); result.options.models.forEach(m => { m.id = `new-${m.id}`; }); return result;
-        };
-      }
-    });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+      .flatMap(s => s.feature.config.requests).length)).toBeGreaterThan(0);
     await requested(page, 'Model').focus();
-    await expect(requested(page, 'Model').getByRole('option', { name: 'new-m0', exact: true })).toBeAttached();
+    await expect(requested(page, 'Model').getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     await expect(requested(page, 'Model')).toHaveValue(/m2/);
-    await expect(requested(page, 'Model').locator('option:checked')).toContainText('Not in verified options');
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(saved);
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(requested(page, 'Model')).toHaveValue(/m0/);

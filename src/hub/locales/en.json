@@ -82,9 +82,11 @@
     }
   },
   "work": {
-    "reuseIdle": "Reuse an eligible idle Runner",
+    "allocationPolicy": "Runner allocation policy",
+    "alwaysNew": "Always create a new Runner",
+    "reuseSameMode": "Reuse idle Runner in the same Run Mode",
+    "reuseIdle": "Reuse any idle Runner",
     "allocationHelp": "Always create a new Runner by default. Reuse checks the exact visible Runner again before assignment.",
-    "loadOptions": "Refresh available choices",
     "promoted": "Created {{name}}.",
     "configuring": "Allocated {{name}} · verifying requested settings…",
     "observing": "{{name}} · submitted once; waiting for Runner admission and start evidence…",
@@ -420,6 +422,7 @@
   },
   "entry": {
     "defaultsLabel": "Single Entry defaults",
+    "selectAccount": "Select an account",
     "useRunner": "Use Runner's verified setting",
     "defaultsHelp": "Requested settings are saved locally, then resolved and applied through the allocated Runner’s authenticated API before submission. Supported confirmations use Hub interaction controls.",
     "instructions": "Single Entry instructions",

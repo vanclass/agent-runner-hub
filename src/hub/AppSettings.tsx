@@ -6,14 +6,16 @@ import { ThemePicker } from './ThemePicker';
 import { useHubTranslation } from './i18n';
 import type { HubLanguage } from './preferences';
 import type { DomainDisplay } from './RunnerNavigation';
+import type { EntryDefaults } from './singleEntry';
 
-export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, reuseIdle, reuseEditable, onReuseIdle, onTheme, onLanguage, onVerified, onClose, onShortcuts, domainDisplay, onDomainDisplay }: {
+export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, allocationPolicy, reuseEditable, onAllocationPolicy, onTheme, onLanguage, onVerified, onClose, onShortcuts, domainDisplay, onDomainDisplay }: {
   required: boolean; installation: RunnerInstallation | null; theme: 'light' | 'black';
   onTheme: (theme: 'light' | 'black') => void; onLanguage: (language: HubLanguage) => void;
   onVerified: (installation: RunnerInstallation) => void; onClose: () => void;
   confirmRemoval: boolean; onConfirmRemoval: (value: boolean) => void;
   onShortcuts: () => void;
-  reuseIdle: boolean; reuseEditable: boolean; onReuseIdle: (value: boolean) => void;
+  allocationPolicy: EntryDefaults['allocationPolicy']; reuseEditable: boolean;
+  onAllocationPolicy: (value: NonNullable<EntryDefaults['allocationPolicy']>) => void;
   domainDisplay: DomainDisplay; onDomainDisplay: (value: DomainDisplay) => void;
 }) {
   const { t } = useHubTranslation();
@@ -51,8 +53,14 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
     </label>
     <label className="removal-preference"><input type="checkbox" checked={confirmRemoval}
       onChange={event => onConfirmRemoval(event.target.checked)} />{t('tabs.confirmPreference')}</label>
-    <label className="removal-preference" title={t('work.allocationHelp')}><input type="checkbox"
-      checked={reuseIdle} disabled={!reuseEditable} onChange={event => onReuseIdle(event.target.checked)} />{t('work.reuseIdle')}</label>
+    <label className="domain-preference" title={t('work.allocationHelp')}>{t('work.allocationPolicy')}
+      <select value={allocationPolicy} disabled={!reuseEditable} onChange={event =>
+        onAllocationPolicy(event.target.value as NonNullable<EntryDefaults['allocationPolicy']>)}>
+        <option value="always-new">{t('work.alwaysNew')}</option>
+        <option value="reuse-same-mode">{t('work.reuseSameMode')}</option>
+        <option value="reuse-idle">{t('work.reuseIdle')}</option>
+      </select>
+    </label>
     {!required && <button type="button" className="shortcut-settings-trigger" aria-haspopup="dialog"
       onClick={onShortcuts}>{t('shortcuts.title')}</button>}
   </dialog>;

@@ -23,7 +23,8 @@ export function projectEntryDefaults(value: unknown): EntryDefaults | undefined 
     result.initialized = true;
   }
   if (value.allocationPolicy !== undefined) {
-    if (value.allocationPolicy !== 'always-new' && value.allocationPolicy !== 'reuse-idle') return;
+    if (value.allocationPolicy !== 'always-new' && value.allocationPolicy !== 'reuse-idle'
+      && value.allocationPolicy !== 'reuse-same-mode') return;
     result.allocationPolicy = value.allocationPolicy;
   }
   if (value.accountIdentity !== undefined) {

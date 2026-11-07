@@ -28,9 +28,15 @@ export class HubSelections {
     return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key));
   }
   initialize() {
-    if (this.initialized || this.attempted || !this.editable) return;
+    if (this.attempted || this.loadingOptions || !this.editable) return;
     const service = this.source();
-    if (!service?.supports('inspect') || service.busy) return;
+    if (!service) return;
+    if (!service.supports('inspect')) {
+      const detail = msg('config.unsupported');
+      if (!same(this.detail, detail)) { this.detail = detail; this.changed(); }
+      return;
+    }
+    if (service.busy) return;
     this.attempted = true;
     void this.inspectOptions();
   }
@@ -63,6 +69,7 @@ export class HubSelections {
   }
   async inspectOptions() {
     if (!this.editable || this.loadingOptions) return;
+    this.attempted = true;
     const before = this.defaults, initialize = !this.initialized, service = this.source();
     const edits = this.inspectionEdits = new Set<keyof EntryDefaults>();
     this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
@@ -76,7 +83,7 @@ export class HubSelections {
         catalog = service.catalog;
       }
       if (!catalog) throw new HubError(service.error || msg('config.incomplete'));
-      if ((!initialize && this.defaults !== before) || !this.editable || this.source() !== service) {
+      if (!this.editable || this.source() !== service) {
         this.detail = msg('config.draftChanged');
         return;
       }

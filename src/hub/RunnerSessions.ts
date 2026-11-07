@@ -490,7 +490,8 @@ export class RunnerSessions {
     private readonly saveSelections: (id: string, value: EntryDefaults) => void = () => {}) {
     this.entry = new SingleEntry(() => [...this.sessions.values()],
       (location, token) => this.allocate(location, token), () => this.changed(), defaults, saveDefaults,
-      () => this.spare.optionsSource ?? [...this.sessions.values()].find(s => s.assignmentAvailable));
+      () => this.spare.optionsSource ?? [...this.sessions.values()].find(s => s.assignmentAvailable),
+      id => this.navigation.snapshot.affinities[id]);
   }
   getSelections(id?: string) { return id ? this.selections.get(id) : undefined; }
   private bindSelections(session: RunnerSession, retained?: EntryDefaults) {
@@ -717,17 +718,17 @@ export class RunnerSessions {
       return { session, launched: Promise.resolve() };
     }
     if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location) {
-      const session = this.promoteSpare();
-      if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
+      const session = this.promoteSpare(token);
       return { session, launched: Promise.resolve(), promoted: true };
     }
     return this.create(location, token);
   }
-  promoteSpare() {
+  promoteSpare(token?: symbol) {
     if (this.disposed) throw new HubError(msg('spare.closed'));
     const installationRoot = this.spare.snapshot.installation?.root;
     if (!installationRoot) throw new HubError(msg('spare.verify'));
     const session = this.spare.take();
+    if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
     const order = ++this.order;
     const tab = { id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot, launchOnOpen: true };

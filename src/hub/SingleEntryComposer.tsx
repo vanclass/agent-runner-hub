@@ -19,20 +19,15 @@ export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
           : key === 'runMode' ? runModeLabel(String(current ?? '')) : String(current ?? '');
     return <label className="setting"><span>{title}</span><select aria-label={t('entry.field', { field: title })}
       disabled={blocked} value={selected} onChange={e => entry.setDefault(key, e.target.value ? JSON.parse(e.target.value) : undefined)}>
-      <option value="" disabled={key === 'runMode'}>{key === 'runMode' ? title : t('entry.useRunner')}</option>
+      <option value="" disabled={key === 'runMode'}>{key === 'accountIdentity' ? t('entry.selectAccount') : key === 'runMode' ? title : t('entry.useRunner')}</option>
       {selected && !values.some(v => JSON.stringify(v.value) === selected) &&
         <option value={selected} title={retained} disabled>{retained}{options && ` · ${t('config.unlisted')}`}</option>}
       {values.map(v => <option key={JSON.stringify(v.value)} value={JSON.stringify(v.value)}>{v.label}</option>)}
     </select></label>;
   };
   const model = models?.find(m => m.id === defaults.model?.model);
-  return <section onFocusCapture={event => {
-    if (event.target instanceof HTMLSelectElement
-      && !entry.catalog && !entry.loadingOptions) void entry.inspectOptions();
-  }}>
-    {!entry.catalog && <button type="button" disabled={!entry.editable || entry.loadingOptions}
-      onClick={() => void entry.inspectOptions()}>{t('work.loadOptions')}</button>}
-    <p role="status">{entry.detail ? tr(entry.detail) : !entry.catalog ? t('config.notReady') : ''}</p>
+  return <section>
+    <p role="status">{entry.detail ? tr(entry.detail) : ''}</p>
     <div className="settings-grid">
     <section className="settings-group account-settings"><h2>{t('fields.account')}</h2>
       {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}

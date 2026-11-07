@@ -24,7 +24,7 @@ for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
       fixture.hold = false; fixture.complete(); await pending;
       const defaults = selections.defaults;
       const restored = new HubPreferences().value;
-      const restart = new HubSelections(() => { throw Error('unexpected restart inspection'); }, () => {}, restored.singleEntry);
+      const restart = new HubSelections(() => undefined, () => {}, restored.singleEntry);
       restart.initialize();
       return { defaults, restored, restart: restart.defaults, commits, tab, id, requests: fixture.requests };
     }, field);

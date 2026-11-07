@@ -111,8 +111,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       domainDisplay={domainDisplay} onDomainDisplay={value => {
         preferences.update({ domainDisplay: value }); setDomainDisplay(value);
       }}
-      reuseIdle={sessions.entry.allocationPolicy === 'reuse-idle'} reuseEditable={sessions.entry.editable}
-      onReuseIdle={value => sessions.entry.setDefault('allocationPolicy', value ? 'reuse-idle' : 'always-new')}
+      allocationPolicy={sessions.entry.allocationPolicy} reuseEditable={sessions.entry.editable}
+      onAllocationPolicy={value => sessions.entry.setDefault('allocationPolicy', value)}
       onShortcuts={() => { setSettingsOpen(false); setShortcutsOpen(true); }}
       confirmRemoval={confirmRemoval} onConfirmRemoval={value => {
         preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value);

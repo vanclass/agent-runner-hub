@@ -20,9 +20,11 @@ import { registerHubSelectionUI } from './hub-selection-ui.mjs';
 import { registerComposerAttachments } from './composer-attachments.mjs';
 import { registerRunnerInteractions } from './runner-interactions.mjs';
 import { registerSlashCommands } from './slash-commands.mjs';
+import { registerWG2 } from './wg2.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
+registerWG2({ test, expect, transport, configure });
 registerRunnerStatus({ test, expect, transport, configure, create: createWork });
 registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
@@ -1298,7 +1300,7 @@ async function entry(page, text = '/status') {
   } });
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).check();
+  await page.getByRole('combobox', { name: 'Runner allocation policy' }).selectOption('reuse-idle');
   await page.keyboard.press('Escape');
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(text);
 }
