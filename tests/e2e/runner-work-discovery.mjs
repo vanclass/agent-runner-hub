@@ -15,7 +15,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
       await transport(page, undefined, { auto: true, work: true });
       await configure(page);
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-      await page.getByRole('button', { name: 'task-run', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
       await create(page);
       const own = row(page, 'Runner 1');
       for (let n = 1; n <= 2; n++) {
@@ -69,7 +69,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     await transport(page, undefined, { auto: true, work: true });
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('button', { name: 'task-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('single API work');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).evaluate(button => {
       button.addEventListener('click', () => {
@@ -110,7 +110,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     });
     await expect.poll(() => page.evaluate(() => window.__readHeld)).toBe(true);
     await expect(page.locator('.task-panel .shortcut-bar')).toHaveCount(0);
-    await page.locator('.advanced-settings summary').click();
+
     await page.getByRole('combobox', { name: 'Requested Account', exact: true }).focus();
     await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Attach file', exact: true }).click();

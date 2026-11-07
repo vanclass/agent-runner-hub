@@ -22,17 +22,9 @@
 .task-panel .settings-grid { gap: 18px; margin-top: 8px; }
 .task-panel .settings-group { display: grid; gap: 10px; min-width: 0; }
 .task-panel .settings-group h2 { margin: 0; font-size: 12px; font-weight: 600; }
-.task-panel .execution-settings > .setting > span { display: none; }
+.task-panel .account-settings > .setting > span { display: none; }
 .task-panel .model-settings .setting { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; }
 .task-panel .fast-option { justify-content: flex-end; font-size: 12px; }
-.task-panel .advanced-settings { border-top: 1px solid var(--border); padding-top: 12px; font-size: 12px; }
-.task-panel .advanced-settings > .setting { margin: 12px 0; }
-.task-panel .advanced-settings label { display: flex; gap: 8px; align-items: center; }
-.task-panel .advanced-settings input { width: auto; }
-.mode-segments { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--toolbar); border: 1px solid var(--border); border-radius: 8px; }
-.mode-segments button { flex: 1 1 0; min-width: 0; padding: 6px 4px; font-size: 11px; border: 1px solid transparent; background: transparent; overflow-wrap: anywhere; }
-.mode-segments button:first-child { flex: 1 0 100%; }
-.mode-segments button[aria-pressed='true'] { background: var(--selected); color: var(--selected-text); border-color: var(--focus); }
 .runner-management { position: static; }
 .runner-management summary { cursor: pointer; list-style: none; padding: 4px 8px; border-radius: 5px; }
 .runner-management button { position: absolute; left: 0; right: 0; top: 100%; z-index: 8; width: 100%; padding: 10px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 4px 12px #0003; }

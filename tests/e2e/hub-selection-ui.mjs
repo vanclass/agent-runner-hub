@@ -16,14 +16,18 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
       .some(s => s.feature?.config.requests.length > 0))).toBe(true);
-    await page.locator('.advanced-settings summary').click();
+
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true }).check();
+    await page.keyboard.press('Escape');
     await page.evaluate(() => {
       window.__releaseInspection();
       for (const s of window.__nativeFixture.sessions.values()) { s.feature.config.hold = false; s.feature.config.complete(); }
     });
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner', exact: true })).toBeChecked();
+    await page.keyboard.press('Escape');
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry.allocationPolicy, key)).toBe('reuse-idle');
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
       s.feature.requests.length === 0 && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
@@ -33,20 +37,20 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await expect(requested(page, 'Model').getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     const initial = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry, key);
     expect(initial).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Workspace', project: '' },
-      accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'pure-direct-run',
+      accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
       model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } });
-    expect(await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).inputValue()).toBe('');
+    await expect(page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Refresh available choices' })).toHaveCount(0);
     await create(page);
-    await page.locator('.mode-segments button').first().focus();
-    await page.getByRole('button', { name: 'issue-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).focus();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await requested(page, 'Model').selectOption({ label: 'm2' });
     await create(page);
     await expect(requested(page, 'Model')).toHaveValue(/m2/);
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
-    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toHaveValue(JSON.stringify('issue-run'));
     const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
     expect(Object.values(saved.runnerSelections).map(v => v.model.model)).toEqual(['m0', 'm2']);
     const noEffects = await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
@@ -73,7 +77,7 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual(saved);
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
-    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toHaveValue(JSON.stringify('issue-run'));
     await info.attach('restored-independent-Hub-selections', { body: await page.screenshot(), contentType: 'image/png' });
   });
 }

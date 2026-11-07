@@ -40,10 +40,9 @@
     "launchFailed": "The old process settled, but replacement launch failed. Original logs remain under termination failures; no work was replayed."
   },
   "panel": {
-    "advanced": "Advanced Settings",
     "runnerManagement": "Runner management",
     "title": "Task settings",
-    "execution": "Execution Target",
+    "execution": "Execution Mode",
     "model": "Model Settings",
     "fast": "Fast",
     "retained": "Saved value retained: {{value}} · unavailable for this model. Select a supported value before applying."

@@ -639,11 +639,11 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   await transport(page, undefined, { work: true, auto: true });
   await configure(page); await create(page); await entry(page, 'private instruction never saved');
   await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true }).getByRole('option', { name: 'codex / first', exact: true })).toBeAttached();
-    await page.locator('.advanced-settings summary').click();
+
   await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
   await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
   await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
-  await page.getByRole('button', { name: 'issue-run', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
   await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')));
   expect(Object.keys(saved.singleEntry).sort()).toEqual(['accountIdentity', 'allocationPolicy', 'initialized', 'model', 'runMode', 'target']);
@@ -670,7 +670,7 @@ test('Single Entry toggles Fast without a default-tier button and preserves reta
   await expect(model).toBeEnabled();
   await model.selectOption({ label: 'm0' });
   await page.getByRole('combobox', { name: 'Requested Reasoning effort', exact: true }).selectOption('high');
-  await page.getByRole('button', { name: 'issue-run', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
   await expect(page.getByRole('button', { name: 'Use default tier', exact: true })).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).uncheck();
@@ -859,8 +859,8 @@ async function createWork(page) {
   await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })
     .getByRole('option', { name: 'm0', exact: true })).toBeAttached();
   await create(page);
-  await page.locator('.mode-segments button').first().focus();
-  await page.getByRole('button', { name: 'task-run', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).focus();
+  await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
 }
 async function createPrepared(page) {
   if (!await page.locator('.runner-row').count()) {
@@ -1295,7 +1295,9 @@ async function entry(page, text = '/status') {
     s.next_model = s.model; s.next_reasoning_effort = s.reasoning_effort; s.next_service_tier = s.service_tier;
   } });
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).check();
+  await page.keyboard.press('Escape');
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(text);
 }
 
@@ -1381,7 +1383,7 @@ test('Runner panels expose selection fields without command shortcuts in both la
       await page.locator('.runner-row').nth(row).locator('.nav-row').click();
       await expect(page.locator('.task-panel .command-button, .task-panel .shortcut-bar, .task-panel .shortcut-editor')).toHaveCount(0);
       await expect(page.locator('.task-panel select')).toHaveCount(4);
-      await expect(page.locator('.mode-segments')).toBeVisible();
+      await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeVisible();
     }
   }
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);

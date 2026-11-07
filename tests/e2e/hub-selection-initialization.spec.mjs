@@ -14,7 +14,7 @@ for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
       preferences.saveRunner(id, tab);
       const selections = new HubSelections(() => service, () => {}, {}, value => {
         commits.push(value); preferences.update({ singleEntry: value });
-      });
+      }, () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
       fixture.hold = true;
       const pending = selections.inspectOptions();
       if (field === 'root') selections.setDefault('root', 'C:\\explicit-root');
@@ -33,7 +33,7 @@ for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
     if (field === 'root') expect(result.defaults.root).toBe('C:\\explicit-root');
     else expect(result.defaults).not.toHaveProperty(field);
     if (field !== 'target') expect(result.defaults.target.owner).toBe('Workspace');
-    if (field !== 'runMode') expect(result.defaults.runMode).toBe('pure-direct-run');
+    if (field !== 'runMode') expect(result.defaults.runMode).toBe('task-run');
     if (!['model', 'accountIdentity'].includes(field)) expect(result.defaults.model.model).toBe('m0');
     if (field === 'accountIdentity') expect(result.defaults).not.toHaveProperty('model');
     expect(result.restored.singleEntry).toEqual(result.defaults);
@@ -53,7 +53,7 @@ test('allocation-only preferences allow initialization and stale sources cannot 
     const first = createConfigHarness(), next = createConfigHarness();
     let source = first.service;
     const commits = [];
-    const selections = new HubSelections(() => source, () => {}, { allocationPolicy: 'reuse-idle' }, v => commits.push(v));
+    const selections = new HubSelections(() => source, () => {}, { allocationPolicy: 'reuse-idle' }, v => commits.push(v), () => true, () => ({ selection: { account: (source === first.service ? first : next).fixture.current.account.profile_name } }));
     first.fixture.hold = true;
     selections.initialize();
     source = next.service;
@@ -69,3 +69,29 @@ test('allocation-only preferences allow initialization and stale sources cannot 
   expect(result.defaults.model.model).toBe('m0'); expect(result.defaults.allocationPolicy).toBe('reuse-idle');
   expect(result.commits).toHaveLength(1);
 });
+
+for (const available of [true, false]) {
+  test('current account and non-first model initialize only with fresh observation: ' + available, async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async available => {
+      const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+      const { HubSelections } = await import('/src/hub/HubSelections.ts');
+      const { service, fixture } = createConfigHarness(), commits = [];
+      fixture.current = { ...fixture.current, account: fixture.accounts[1], target: 'project:Exact',
+        model: { id: 's2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'issue-run' };
+      const selection = new HubSelections(() => service, () => {}, {}, value => commits.push(value), () => true,
+        () => available ? { selection: { account: fixture.current.account.profile_name } } : undefined);
+      await selection.inspectOptions();
+      return { defaults: selection.defaults, commits, detail: selection.detail, requests: fixture.requests };
+    }, available);
+    expect(result.requests.every(r => r.operation === 'session_config.inspect')).toBe(true);
+    if (available) {
+      expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' },
+        accountIdentity: { agent_id: 'codex', profile_name: 'second' }, runMode: 'task-run',
+        model: { model: 's2', reasoning_effort: 'high', service_tier: 'fast' } });
+      expect(result.commits).toHaveLength(1);
+    } else {
+      expect(result.defaults).toEqual({}); expect(result.commits).toEqual([]); expect(result.detail).toBeTruthy();
+    }
+  });
+}

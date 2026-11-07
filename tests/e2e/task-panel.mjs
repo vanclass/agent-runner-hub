@@ -8,19 +8,20 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       localStorage.setItem(key, JSON.stringify(preferences));
     });
     await page.reload();
-    const retained = page.getByRole('button', { name: 'restored-unavailable-mode', exact: true });
-    await expect(retained).toHaveAttribute('aria-pressed', 'true'); await expect(retained).toBeDisabled();
+    const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
+    const retained = mode.locator('option:checked');
+    await expect(retained).toContainText('restored-unavailable-mode'); await expect(retained).toHaveAttribute('disabled', '');
     await page.getByRole('combobox', { name: 'Requested Model', exact: true }).focus();
-    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toBeEnabled();
-    await expect(retained).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
+    await expect(retained).toContainText('restored-unavailable-mode');
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.runMode)).toBe('restored-unavailable-mode');
   });
-  test('task panel conditional root retains draft across modes and reload with advanced reuse', async ({ page }) => {
+  test('task panel conditional root retains draft across modes and reload with App Settings reuse', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
     const root = page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true });
-    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
     await root.fill('C:/retained-root');
-    await page.getByRole('button', { name: 'task-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
     await expect(root).toHaveCount(0);
     const conversion = await page.evaluate(async () => {
       const { entryDefaultsToDesired } = await import('/src/hub/runnerConfigDefaults.ts');
@@ -30,12 +31,15 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     });
     expect(conversion.unresolved).not.toContain('root');
     expect(conversion.desired).not.toHaveProperty('root');
-    await page.getByRole('button', { name: 'issue-run', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'issue-run', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: 'pure-direct-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toHaveValue(JSON.stringify('issue-run'));
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('pure-direct-run'));
     await expect(root).toHaveValue('C:/retained-root');
-    await page.locator('.advanced-settings summary').click();
+
+    await expect(page.locator('.task-panel').getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toBeVisible();
+    await page.keyboard.press('Escape');
     await page.reload();
     await expect(root).toHaveValue('C:/retained-root');
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.config.requests ?? []).filter(r => r.operation.endsWith('.apply')))).toEqual([]);
@@ -63,6 +67,27 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.getByRole('button', { name: language === 'en' ? (theme === 'light' ? 'Light' : 'Black') : (theme === 'light' ? '라이트' : '블랙'), exact: true }).click();
       await page.keyboard.press('Escape');
+      const panel = page.locator('.task-panel'), mode = panel.locator('.execution-settings select').first();
+      await panel.locator('.account-settings select').focus();
+      await expect(mode).toBeEnabled();
+      await expect(panel.locator('.advanced-settings, .mode-segments')).toHaveCount(0);
+      await expect(panel.getByRole('checkbox', { name: /Reuse|재사용/ })).toHaveCount(0);
+      expect(await panel.locator('.settings-group').evaluateAll(nodes => nodes.map(n => n.className)))
+        .toEqual(['settings-group account-settings', 'settings-group execution-settings', 'settings-group model-settings']);
+      expect(await mode.locator('option:not([value=""])').allTextContents())
+        .toEqual(['Pure Direct Run', 'Direct Run', 'Task Run', 'Issue Run']);
+      for (const value of ['pure-direct-run', 'direct-run', 'task-run', 'issue-run']) {
+        await mode.selectOption(JSON.stringify(value));
+        const direct = value.includes('direct-run');
+        await expect(panel.locator('.directory-input')).toHaveCount(direct ? 1 : 0);
+        await expect(panel.locator('.execution-settings > .setting select')).toHaveCount(direct ? 1 : 2);
+        if (!direct) {
+          const target = panel.locator('.execution-settings > .setting select').last();
+          await expect(target.getByRole('option', { name: 'Exact', exact: true })).toBeAttached();
+          await target.selectOption({ label: 'Exact' });
+          expect(JSON.parse(await target.inputValue())).toEqual({ binding_state: 'bound', owner: 'Project', project: 'Exact' });
+        }
+      }
       await info.attach('desktop-panel', { body: await page.screenshot(), contentType: 'image/png' });
       await toggle.focus(); await page.keyboard.press('Enter');
       await expect(toggle).toBeFocused(); await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -90,7 +115,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     await model.selectOption({ label: 'm1' });
     await expect(fast).toBeChecked(); await expect(fast).toBeDisabled();
     await expect(page.getByRole('status').filter({ hasText: 'Saved value retained: fast' })).toBeVisible();
-    await page.locator('.advanced-settings summary').click();
+
     await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'second' }));
     await expect(model).toBeEnabled(); await expect(fast).toBeChecked(); await expect(fast).toBeDisabled();
     expect(await model.inputValue()).toContain('m1');
@@ -138,7 +163,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       }, status);
       await page.getByRole('combobox', { name: 'Requested Model', exact: true }).focus();
       await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
-      await page.getByRole('button', { name: 'task-run', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
       await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('unsent');
       await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toHaveCount(0);

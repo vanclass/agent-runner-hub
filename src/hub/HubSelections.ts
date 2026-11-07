@@ -3,8 +3,10 @@ import { projectEntryDefaults } from './preferences';
 import type { EntryDefaults } from './singleEntry';
 import type { RunnerConfigService } from './RunnerConfigService';
 import { copy, same, type ConfigCatalog } from './runnerConfigContract';
+import { configToEntryDefaults } from './runnerConfigDefaults';
+import type { RunnerObservation } from './runnerControl';
 
-/** Requested Hub choices only; inspection never adopts current/effective Runner settings. */
+/** Saved requests win; only new selections adopt verified current Runner defaults. */
 export class HubSelections {
   defaults: EntryDefaults;
   catalog?: ConfigCatalog;
@@ -16,7 +18,8 @@ export class HubSelections {
   constructor(private readonly source: () => RunnerConfigService | undefined,
     private readonly changed: () => void, defaults: EntryDefaults = {},
     private readonly save: (value: EntryDefaults) => void = () => {},
-    private readonly canEdit: () => boolean = () => true) {
+    private readonly canEdit: () => boolean = () => true,
+    private readonly observation: (service: RunnerConfigService) => RunnerObservation | undefined = () => undefined) {
     this.defaults = projectEntryDefaults(defaults) ?? {};
     this.restoredDefaults = Object.keys(this.defaults).some(key => key !== 'allocationPolicy');
   }
@@ -73,30 +76,18 @@ export class HubSelections {
         catalog = service.catalog;
       }
       if (!catalog) throw new HubError(service.error || msg('config.incomplete'));
-      if (initialize) {
-        const account = catalog.options.accounts[0];
-        if (!account) throw new HubError(msg('config.incomplete'));
-        // Resolve the first candidate account itself, even if current uses another account.
-        await service.inspect(account);
-        catalog = service.catalog;
-        if (!catalog || !same(catalog.inspection.model_options_account, account)
-          || !same(catalog.options.accounts[0], account)) throw new HubError(service.error || msg('config.incomplete'));
-      }
       if ((!initialize && this.defaults !== before) || !this.editable || this.source() !== service) {
         this.detail = msg('config.draftChanged');
         return;
       }
       this.catalog = copy(catalog);
       if (initialize) {
-        const { targets, accounts, run_modes, models } = catalog.options;
-        const model = models[0], available = catalog.inspection.availability;
-        if (!targets[0] || !accounts[0] || !run_modes[0] || !model?.reasoning_efforts[0] || !model.service_tiers[0]
+        const available = catalog.inspection.availability;
+        const current = configToEntryDefaults(catalog.inspection.current, catalog, this.observation(service));
+        if (!current || !catalog.options.run_modes.includes('task-run')
           || !['target', 'account', 'run_mode', 'model', 'service_tier'].every(key => available[key] === true))
           throw new HubError(msg('config.incomplete'));
-        const initial: EntryDefaults = { initialized: true,
-          target: { binding_state: 'bound', owner: targets[0].owner, project: targets[0].project },
-          accountIdentity: accounts[0], runMode: run_modes[0], model: { model: model.id,
-            reasoning_effort: model.reasoning_efforts[0], service_tier: model.service_tiers[0] } };
+        const initial: EntryDefaults = { ...current, initialized: true, runMode: 'task-run' };
         // Account edits invalidate dependent model defaults, including explicit account clears.
         for (const key of edits) delete initial[key];
         if (edits.has('accountIdentity')) delete initial.model;

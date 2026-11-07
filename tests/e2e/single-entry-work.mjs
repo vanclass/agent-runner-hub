@@ -9,11 +9,10 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await configure(page);
     await expect(page.locator('.spare-status')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
   }
   test('work Single Entry defaults to a promoted spare focuses immediately and submits exactly once', async ({ page }, info) => {
     await ready(page);
-    await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).not.toBeChecked();
+    await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toHaveCount(0);
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('one instruction\n안녕 🌍');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).evaluate(b => { b.click(); b.click(); });
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
@@ -39,15 +38,19 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
   });
   test('work Single Entry explicit reuse preserves the selected visible process while always-new ignores it', async ({ page }) => {
     await ready(page); await create(page); await home(page);
-    await page.locator('.advanced-settings summary').click();
+
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).check();
+    await page.keyboard.press('Escape');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('reuse once');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
-    await home(page); await page.locator('.advanced-settings summary').click();
+    await home(page);
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' }).uncheck();
+    await page.keyboard.press('Escape');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('always new');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 2');
@@ -162,7 +165,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     test('work Single Entry catalogs configure exact account model Direct Root in ' + language, async ({ page }, info) => {
       await ready(page);
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-      await page.locator('.advanced-settings summary').click();
+
       await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
       await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'other', profile_name: 'first' }));
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
@@ -170,7 +173,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.getByRole('combobox', { name: 'Requested Reasoning effort', exact: true }).selectOption('high');
       await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
       await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
-      await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
       await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
       await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('configured once');
       await assign(page);
@@ -216,7 +219,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       }, fault);
       if (fault === 'partial') {
         await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-        await page.getByRole('button', { name: 'issue-run', exact: true }).click();
+        await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
         await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
       }
       if (fault === 'legacy-account') {

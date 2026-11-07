@@ -45,7 +45,6 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await home(page);
     await expect(page.locator('.spare-status')).toHaveCount(0);
     await page.getByLabel('Single Entry instructions', { exact: true }).fill('same append order');
-    await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
@@ -84,7 +83,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await page.getByRole('button', { name: 'Verify and Start', exact: true }).click();
       await expect(page.locator('.spare-status')).toHaveCount(0);
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-      await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
       await picker(page);
       await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
@@ -112,10 +111,10 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await page.keyboard.press('Tab'); await page.keyboard.press('Tab'); await expect(add(page)).toBeFocused();
       await page.keyboard.press('Enter');
       await expect(page.locator('.runner-row')).toHaveCount(1);
-      const runMode = page.getByRole('button', { name: 'pure-direct-run', exact: true });
-      await page.locator('.mode-segments button').first().focus();
+      const runMode = page.locator('.task-panel .execution-settings select').first();
+      await runMode.focus();
       await expect(runMode).toBeEnabled();
-      await runMode.click();
+      await runMode.selectOption(JSON.stringify('pure-direct-run'));
       await root(page).locator('button').click();
       await expect(root(page).locator('input')).toHaveValue('/fixture/chosen folder');
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => /session_config\.(plan|apply)$/.test(r.operation)).length)).toBe(0);
@@ -145,15 +144,15 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
   test('add directory: Single Entry and configuration pickers discard newer drafts tab switches and process exit', async ({ page }) => {
     await ready(page); await picker(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
     await root(page).locator('input').fill('/entry original');
     await delayed(page, root(page));
-    await page.getByRole('button', { name: 'pure-direct-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('pure-direct-run'));
     await page.evaluate(() => window.__directoryPicker.finish('/stale mode'));
     await expect(root(page).locator('input')).toHaveValue('/entry original');
     await create(page);
-    await page.locator('.mode-segments button').first().focus();
-    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).focus();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
     await root(page).locator('input').fill('/config original');
     await delayed(page, root(page));
     await root(page).locator('input').fill('/config newer');

@@ -519,7 +519,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   test('global restart success preserves the selected tab and requested settings without replay', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
     const id = await page.locator('.runner-row').getAttribute('data-runner-id');
-    const before = await page.locator('.mode-segments [aria-pressed=true]').textContent();
+    const before = await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).inputValue();
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('keep unsent');
     await page.locator('.single-entry').click();
     await page.locator('.runner-management summary').click();
@@ -529,7 +529,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     await expect(page.locator('.runner-row')).toHaveCount(1);
     await expect(page.locator(`[data-runner-id="${id}"] .nav-row`)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('keep unsent');
-    await expect(page.locator('.mode-segments [aria-pressed=true]')).toHaveText(before);
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toHaveValue(before);
     await page.locator('.single-entry').click();
     await expect(page.getByRole('button', { name: 'Restart all Runners', exact: true })).toBeEnabled();
     await expect(page.locator('.sidebar .restart-status')).toHaveCount(0);

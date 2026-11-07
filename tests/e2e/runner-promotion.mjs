@@ -3,7 +3,7 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     await transport(page, undefined, { auto: true, work: true, ...generatedFixture() });
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('button', { name: 'issue-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
     await create(page);
     await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await expect(page.locator('.generated-image-preview img')).toBeVisible();
@@ -34,8 +34,8 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     });
     await expect(page.getByRole('button', { name: 'Refresh images', exact: true })).toBeDisabled();
     await expect(page.locator('.generated-image-preview')).toHaveCount(0);
-    await page.locator('.mode-segments button').first().focus();
-    await page.getByRole('button', { name: 'task-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).focus();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('new tab work');
     await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
     await expect(page.locator('.runner-work-status')).toContainText('Verified start event', { timeout: 35000 });

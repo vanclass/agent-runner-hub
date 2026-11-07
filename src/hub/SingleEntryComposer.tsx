@@ -5,9 +5,9 @@ import { same } from './runnerConfigContract';
 import { DirectoryInput } from './DirectoryInput';
 import { ComposerAttachments } from './ComposerAttachments';
 import { instructionKey } from './instructionKey';
-import type { ReactNode } from 'react';
+import { runModeLabel } from './runModeLabel';
 
-export function HubSelectionSettings({ entry, advanced }: { entry: HubSelections; advanced?: ReactNode }) {
+export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
   const models = same(defaults.accountIdentity, catalog?.inspection.model_options_account) ? options?.models : [];
   const blocked = !entry.editable || entry.loadingOptions;
@@ -15,10 +15,11 @@ export function HubSelectionSettings({ entry, advanced }: { entry: HubSelections
     const current = defaults[key], selected = current === undefined ? '' : JSON.stringify(current);
     const retained = key === 'model' ? defaults.model?.model
       : key === 'accountIdentity' ? `${defaults.accountIdentity?.agent_id} / ${defaults.accountIdentity?.profile_name}`
-        : key === 'target' ? [defaults.target?.owner, defaults.target?.project].filter(Boolean).join(' / ') : String(current ?? '');
+        : key === 'target' ? defaults.target?.project || 'workspace'
+          : key === 'runMode' ? runModeLabel(String(current ?? '')) : String(current ?? '');
     return <label className="setting"><span>{title}</span><select aria-label={t('entry.field', { field: title })}
       disabled={blocked} value={selected} onChange={e => entry.setDefault(key, e.target.value ? JSON.parse(e.target.value) : undefined)}>
-      <option value="">{t('entry.useRunner')}</option>
+      <option value="" disabled={key === 'runMode'}>{key === 'runMode' ? title : t('entry.useRunner')}</option>
       {selected && !values.some(v => JSON.stringify(v.value) === selected) &&
         <option value={selected} title={retained} disabled>{retained}{options && ` · ${t('config.unlisted')}`}</option>}
       {values.map(v => <option key={JSON.stringify(v.value)} value={JSON.stringify(v.value)}>{v.label}</option>)}
@@ -26,24 +27,21 @@ export function HubSelectionSettings({ entry, advanced }: { entry: HubSelections
   };
   const model = models?.find(m => m.id === defaults.model?.model);
   return <section onFocusCapture={event => {
-    if ((event.target instanceof HTMLSelectElement
-      || event.target instanceof HTMLButtonElement && !!event.target.closest('.mode-segments'))
+    if (event.target instanceof HTMLSelectElement
       && !entry.catalog && !entry.loadingOptions) void entry.inspectOptions();
   }}>
     {!entry.catalog && <button type="button" disabled={!entry.editable || entry.loadingOptions}
       onClick={() => void entry.inspectOptions()}>{t('work.loadOptions')}</button>}
     <p role="status">{entry.detail ? tr(entry.detail) : !entry.catalog ? t('config.notReady') : ''}</p>
     <div className="settings-grid">
+    <section className="settings-group account-settings"><h2>{t('fields.account')}</h2>
+      {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
+    </section>
     <section className="settings-group execution-settings"><h2>{t('panel.execution')}</h2>
-    {select('target', t('fields.target'), options?.targets.map(v => ({
-      value: { binding_state: 'bound', owner: v.owner, project: v.project }, label: v.id })) ?? [])}
-    <h2>{t('fields.runMode')}</h2>
-    <div className="mode-segments" role="group" aria-label={t('entry.field', { field: t('fields.runMode') })}>
-      {[undefined, ...new Set([...(options?.run_modes ?? []), ...(defaults.runMode ? [defaults.runMode] : [])])].map(value =>
-        <button type="button" key={value ?? 'default'} aria-pressed={defaults.runMode === value}
-          disabled={blocked || (!!value && !options?.run_modes.includes(value))}
-          onClick={() => entry.setDefault('runMode', value)}>{value ?? t('entry.useRunner')}</button>)}
-    </div>
+    {select('runMode', t('fields.runMode'), options?.run_modes.map(value => ({ value, label: runModeLabel(value) })) ?? [])}
+    {!['pure-direct-run', 'direct-run'].includes(defaults.runMode ?? '') &&
+      select('target', t('fields.target'), options?.targets.map(v => ({
+        value: { binding_state: 'bound', owner: v.owner, project: v.project }, label: v.project || v.id })) ?? [])}
     {['pure-direct-run', 'direct-run'].includes(defaults.runMode ?? '') && <>
     <DirectoryInput label={t('entry.field', { field: t('config.root') })} scope={defaults}
       isCurrent={() => entry.defaults === defaults && entry.editable && !entry.loadingOptions}
@@ -72,11 +70,6 @@ export function HubSelectionSettings({ entry, advanced }: { entry: HubSelections
       || !['default', 'fast'].includes(defaults.model.service_tier)) &&
       <p role="status">{t('panel.retained', { value: defaults.model.service_tier })}</p>}
     </section>
-    <details className="advanced-settings"><summary>{t('panel.advanced')}</summary>
-      {defaults.accountIdentity && <p className="scope-note">{defaults.accountIdentity.agent_id} / {defaults.accountIdentity.profile_name}</p>}
-      {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
-      {advanced}
-    </details>
   </div>
   {entry.restoredDefaults && <p className="scope-note">{t('entry.restored')}</p>}
   </section>;
@@ -85,8 +78,7 @@ export function HubSelectionSettings({ entry, advanced }: { entry: HubSelections
 export function SingleEntrySettings({ entry }: { entry: SingleEntry }) {
   useHubTranslation();
   return <section className="context-settings" aria-label={t('entry.defaultsLabel')} title={t('entry.defaultsHelp')}>
-    <HubSelectionSettings entry={entry.selections} advanced={<label title={t('work.allocationHelp')}><input type="checkbox" checked={entry.allocationPolicy === 'reuse-idle'} disabled={!entry.editable}
-      onChange={e => entry.setDefault('allocationPolicy', e.target.checked ? 'reuse-idle' : 'always-new')} />{t('work.reuseIdle')}</label>} />
+    <HubSelectionSettings entry={entry.selections} />
   </section>;
 }
 

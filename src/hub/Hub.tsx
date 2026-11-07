@@ -101,6 +101,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       return preferences.issue;
     }} />}
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
+      reuseIdle={sessions.entry.allocationPolicy === 'reuse-idle'} reuseEditable={sessions.entry.editable}
+      onReuseIdle={value => sessions.entry.setDefault('allocationPolicy', value ? 'reuse-idle' : 'always-new')}
       onShortcuts={() => { setSettingsOpen(false); setShortcutsOpen(true); }}
       confirmRemoval={confirmRemoval} onConfirmRemoval={value => {
         preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value);

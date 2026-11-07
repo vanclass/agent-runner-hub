@@ -495,7 +495,8 @@ export class RunnerSessions {
       session.control.config.setDraft({});
       this.saveSelections(id, value);
     }, () => this.sessions.get(id) === session && session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing
-      && !session.view.submitting && !session.submissionUncertain);
+      && !session.view.submitting && !session.submissionUncertain,
+    () => session.control.observationFresh ? session.control.snapshot.observation : undefined);
     this.selections.set(id, selections);
     session.hubSelections = selections;
     if (!saved && selections.initialized) this.saveSelections(id, selections.defaults);

@@ -54,7 +54,11 @@ export class SingleEntry {
     private readonly changed: () => void, defaults: EntryDefaults = {},
     saveDefaults: (value: EntryDefaults) => void = () => {},
     optionsSource: () => RunnerSession | undefined = () => this.list()[0]) {
-    this.selections = new HubSelections(() => optionsSource()?.control.config, changed, defaults, saveDefaults, () => this.editable);
+    this.selections = new HubSelections(() => optionsSource()?.control.config, changed, defaults, saveDefaults, () => this.editable,
+      service => {
+        const control = optionsSource()?.control;
+        return control?.config === service && control.observationFresh ? control.snapshot.observation : undefined;
+      });
     this.attachments = new RunnerReferenceSelection(undefined, changed);
   }
   get allocationPolicy() { return this.defaults.allocationPolicy ?? 'always-new'; }
