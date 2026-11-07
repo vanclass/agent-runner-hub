@@ -89,7 +89,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     {sessions.workspace.issue && <p role="alert" className="runner-error">{tr(sessions.workspace.issue)}</p>}
     {launchError && <p role="alert" className="runner-error">{tr(launchError)}</p>}
     <div className="shell-body">
-      <Sidebar domains={domains} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
+      <Sidebar domains={domains} runners={allRunners} domainDisplay={domainDisplay}
+        selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
         onReorder={(domain, id, before, expected) => sessions.navigation.reorder(allRunners, domainDisplay, domain, id, before, expected)}
         restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
         onAdd={mode => void createRunner(mode)} addDisabled={!installation || launching} adding={launching}

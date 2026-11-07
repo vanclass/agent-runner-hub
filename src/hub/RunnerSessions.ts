@@ -526,7 +526,8 @@ export class RunnerSessions {
       this.entry?.selections.initialize();
       this.selections.forEach(selections => selections.initialize());
     }
-    for (const [id, session] of this.sessions) this.navigation.observe(id, session.control.work);
+    for (const [id, session] of this.sessions) this.navigation.observe(id, session.control.work,
+      this.selections.get(id)?.defaults.runMode ?? session.tab.lastVerified?.runMode);
     for (const item of this.retired.values()) this.navigation.observe(undefined, item.session.control.work);
     if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab), this.navigation.snapshot);
     this.snapshot = [...this.sessions.values()].map(session => session.tabView);

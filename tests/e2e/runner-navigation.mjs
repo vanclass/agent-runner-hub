@@ -24,7 +24,8 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await display(page, 'run-mode');
     await publish(page, 'pty-1', 'issue-run', false, 'unknown');
     await page.waitForTimeout(2100);
-    await expect(page.locator('.runner-domain')).toHaveCount(0);
+    await expect(page.locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.executedModes)).toEqual([]);
     await publish(page, 'pty-1', 'task-run');
     await expect(domain(page, 'task-run').locator('.runner-row')).toHaveAttribute('data-runner-id', id);
     await publish(page, 'pty-1', 'issue-run', true, 'unknown');
@@ -40,6 +41,49 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(domain(page, 'task-run').locator('.runner-row')).toHaveCount(0);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation)).toEqual(presentation);
     await info.attach('unknown-outcome-restored', { body: await page.screenshot(), contentType: 'image/png' });
+  });
+  test('navigation Runner mode edit moves the same session only after confirmed submission start', async ({ page }, info) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+    const id = await page.locator('.runner-row').getAttribute('data-runner-id');
+    await publish(page, 'pty-1', 'issue-run'); await display(page, 'run-mode');
+    await expect(domain(page, 'issue-run').locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
+    await mode.focus(); await mode.selectOption(JSON.stringify('task-run'));
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.mode = 'dispatch'; });
+    const text = page.locator('.composer textarea');
+    await text.fill('move this existing Runner');
+    const before = await page.evaluate(() => ({ native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed }));
+    await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
+      .filter(r => r.operation === 'work.submit').length), { timeout: 35000 }).toBe(1);
+    await expect(domain(page, 'issue-run').locator('.runner-row.active')).toHaveAttribute('data-runner-id', id);
+    await expect(text).toHaveValue('move this existing Runner');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.mode = 'started'; });
+    await expect(domain(page, 'task-run').locator('.runner-row.active')).toHaveAttribute('data-runner-id', id);
+    await expect(text).toHaveValue('');
+    await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
+    expect(await page.evaluate(() => ({ native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed }))).toEqual(before);
+    await expect(mode).toHaveValue(JSON.stringify('task-run'));
+    await info.attach('confirmed-tab-mode-move', { body: await page.screenshot(), contentType: 'image/png' });
+  });
+  test('navigation unstarted tab survives display toggles and reload without false history or process counts', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+    const id = await page.locator('.runner-row').getAttribute('data-runner-id');
+    await page.locator('.composer textarea').fill('retained draft');
+    for (const value of ['run-mode', 'unified', 'run-mode']) {
+      await display(page, value);
+      await expect(page.locator('.runner-row')).toHaveCount(1);
+      await expect(page.locator('.runner-row.active')).toHaveAttribute('data-runner-id', id);
+      await expect(page.locator('.composer textarea')).toHaveValue('retained draft');
+      await expect(page.locator('.sidebar-footer')).toContainText('1 processes running');
+      expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+    }
+    await page.reload();
+    await expect(page.locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    await expect(page.locator('.runner-section-label .sidebar-label')).toHaveCount(0);
+    await page.locator('.runner-row .nav-row').click();
+    await expect(page.locator('.sidebar-footer')).toContainText('1 processes running');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.executedModes)).toEqual([]);
   });
   async function mouseMove(page, from, to, after, info) {
     const a = await from.boundingBox(), b = await to.boundingBox();
@@ -58,12 +102,17 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
   test('navigation production domains observe starts, persist, add and reorder without changing ownership', async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
     await expect(domain(page, 'runner')).toBeVisible(); await expect(domain(page, 'runner').locator('.runner-row')).toHaveCount(0);
+    await display(page, 'run-mode');
+    await expect(page.locator('.runner-domain, .add-runner, .runner-section-label .sidebar-label')).toHaveCount(0);
+    await expect(page.locator('.single-entry')).toBeVisible();
+    await display(page, 'unified');
     await create(page);
     await display(page, 'run-mode');
-    await expect(page.locator('.runner-domain, .add-runner')).toHaveCount(0);
+    await expect(page.locator('.runner-row')).toHaveCount(1);
+    await expect(page.locator('.runner-section-label .sidebar-label')).toHaveCount(0);
     await publish(page, 'pty-1', 'issue-run', false);
     await page.waitForTimeout(2100);
-    await expect(page.locator('.runner-domain')).toHaveCount(0);
+    await expect(page.locator('.runner-row')).toHaveCount(1);
     await publish(page, 'pty-1', modes[0]);
     await expect(domain(page, modes[0])).toBeVisible();
     for (let i = 1; i < modes.length; i++) {
@@ -99,7 +148,9 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     for (const d of await page.locator('.runner-domain').all()) {
       const add = await d.locator('.add-runner').boundingBox(), last = await d.locator('.runner-row').last().boundingBox();
       expect(add.y).toBeGreaterThanOrEqual(last.y + last.height);
-      await expect(d.locator('.add-runner')).toHaveCSS('background-color', 'rgb(22, 129, 61)');
+      expect(add.height).toBe(48);
+      expect(add.width).toBeCloseTo((await d.boundingBox()).width, 0);
+      await expect(d.locator('.add-runner')).toHaveCSS('background-color', 'rgb(214, 239, 223)');
     }
     const menu = await page.locator('.runner-management').boundingBox(), header = await page.locator('.runner-section-label').boundingBox();
     expect(menu.x + menu.width).toBeCloseTo(header.x + header.width, 0);
@@ -121,6 +172,12 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
       await page.keyboard.press('Escape');
       await expect(page.locator('.runner-domain')).toHaveCount(4);
       await expect(page.locator('.hub')).toHaveAttribute('data-theme', theme);
+      const add = page.locator('.add-runner').first();
+      await expect(add).toHaveCSS('height', '48px');
+      await expect(add).toHaveCSS('background-color', theme === 'light' ? 'rgb(214, 239, 223)' : 'rgb(25, 59, 41)');
+      await add.hover();
+      await expect(add).toHaveCSS('background-color', theme === 'light' ? 'rgb(189, 228, 205)' : 'rgb(36, 83, 57)');
+      await page.mouse.move(700, 20);
       await info.attach(`navigation-${language}-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
     }
     const startHover = async () => {

@@ -18,7 +18,7 @@ export class RunnerNavigation {
   constructor(private readonly changed: () => void) {}
   get snapshot(): NavigationPresentation { return structuredClone(this.value); }
   restore(value: NavigationPresentation) { this.value = structuredClone(value); }
-  observe(id: string | undefined, work: RunnerWork) {
+  observe(id: string | undefined, work: RunnerWork, context?: string) {
     for (const attempt of work.attempts) {
       if (!work.hasConfirmedStart(attempt)) continue;
       const mode = attempt.work!.run_mode as RunMode;
@@ -33,6 +33,8 @@ export class RunnerNavigation {
     if (newest && newest.work!.started_event_id > (seen.get(id) ?? 0)) {
       seen.set(id, newest.work!.started_event_id);
       this.value.affinities[id] = newest.work!.run_mode as RunMode;
+    } else if (!newest && !this.value.affinities[id] && runModes.includes(context as RunMode)) {
+      this.value.affinities[id] = context as RunMode;
     }
   }
   intent(id: string, mode?: RunMode) {
@@ -44,10 +46,11 @@ export class RunnerNavigation {
       return rank(a.id) - rank(b.id) || a.createdOrder - b.createdOrder;
     });
     if (display === 'unified') return [{ id: 'runner', runners: ordered }];
-    const modes = runModes.filter(mode => this.value.executedModes.includes(mode));
+    const placement = (runner: RunnerView) => this.value.affinities[runner.id] ?? 'task-run';
+    const modes = runModes.filter(mode => this.value.executedModes.includes(mode)
+      || ordered.some(runner => placement(runner) === mode));
     return modes.map(mode => ({ id: mode, runners: ordered.filter(runner => {
-      const affinity = this.value.affinities[runner.id];
-      return (modes.includes(affinity) ? affinity : modes[0]) === mode;
+      return placement(runner) === mode;
     }) }));
   }
   reorder(runners: readonly RunnerView[], display: DomainDisplay, domainId: RunnerDomain['id'],

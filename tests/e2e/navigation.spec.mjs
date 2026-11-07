@@ -1,5 +1,28 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 
+test('navigation projects restored context and provisional tabs without inventing execution history', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { RunnerNavigation } = await import('/src/hub/RunnerNavigation.ts');
+    const { RunnerWork } = await import('/src/hub/runnerWork.ts');
+    const nav = new RunnerNavigation(() => {});
+    const work = new RunnerWork({ identity: () => undefined, available: () => false,
+      submit: async () => ({ state: 'not-sent', detail: '' }) }, () => {});
+    const tabs = ['restored', 'unknown', 'added'].map((id, createdOrder) => ({ id, createdOrder }));
+    const empty = nav.project([], 'run-mode');
+    nav.observe('restored', work, 'direct-run'); nav.intent('added', 'issue-run');
+    const initial = nav.project(tabs, 'run-mode');
+    const saved = nav.snapshot; const restored = new RunnerNavigation(() => {}); restored.restore(saved);
+    work.close(); return { empty, initial, saved, reloaded: restored.project(tabs, 'run-mode'),
+      unified: restored.project(tabs, 'unified') };
+  });
+  expect(result.empty).toEqual([]); expect(result.saved.executedModes).toEqual([]);
+  expect(result.initial.map(d => [d.id, d.runners.map(r => r.id)])).toEqual([
+    ['direct-run', ['restored']], ['task-run', ['unknown']], ['issue-run', ['added']]]);
+  expect(result.reloaded).toEqual(result.initial);
+  expect(result.unified[0].runners.map(r => r.id)).toEqual(['restored', 'unknown', 'added']);
+});
+
 test('navigation work presentation excludes settings, rejection and delayed prior-UUID updates', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {

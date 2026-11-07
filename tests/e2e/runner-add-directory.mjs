@@ -48,14 +48,14 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
-    await expect(page.locator('.runner-section-label .add-runner')).toBeVisible();
+    await expect(page.locator('.runner-domain .add-runner')).toBeVisible();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs);
     expect(saved.map(tab => tab.createdOrder)).toEqual([1, 2, 3]);
     expect(saved.map(tab => tab.name)).toEqual(['Runner 1', 'Runner 2', 'Runner 3']);
     await info.attach('green-add-tab', { body: await page.screenshot(), contentType: 'image/png' });
     await page.reload();
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
-    await expect(page.locator('.runner-section-label .add-runner')).toBeVisible();
+    await expect(page.locator('.runner-domain .add-runner')).toBeVisible();
   });
   test('add directory: fallback launch is single flight and a failed launch has one honest diagnostic tab', async ({ page }) => {
     await transport(page); await configure(page);
@@ -73,10 +73,10 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await expect(page.locator('.runner-row')).toHaveCount(2);
     await expect(page.getByText('Process running', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
-    await expect(page.locator('.runner-section-label .add-runner')).toBeVisible();
+    await expect(page.locator('.runner-domain .add-runner')).toBeVisible();
   });
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
-    test(`add directory: compact accessible plus and directory fields ${language} ${theme}`, async ({ page }, info) => {
+    test(`add directory: full-width accessible plus and directory fields ${language} ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
       await expect(add(page)).toBeVisible(); await expect(add(page)).toBeDisabled();
       await page.getByLabel('AgentRunner location', { exact: true }).fill('/fixture/install');
@@ -94,8 +94,9 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
         const style = getComputedStyle(button);
         return { height: box.height, width: box.width, size: parseFloat(style.fontSize), background: style.backgroundColor };
       });
-      expect(shape.height).toBe(28); expect(shape.width).toBe(28); expect(shape.size).toBe(21);
-      expect(shape.background).toBe(theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(17, 18, 20)');
+      expect(shape.height).toBe(48); expect(shape.size).toBe(32);
+      expect(shape.width).toBeCloseTo((await page.locator('.runner-domain').boundingBox()).width, 0);
+      expect(shape.background).toBe(theme === 'light' ? 'rgb(214, 239, 223)' : 'rgb(25, 59, 41)');
       const fields = page.locator('dialog .directory-field');
       await expect(fields).toHaveCount(1);
       await fields.first().locator('button').click();

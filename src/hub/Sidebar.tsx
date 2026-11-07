@@ -1,7 +1,7 @@
 import { useHubTranslation, t, tr } from './i18n';
 import type { RunnerRestarts } from './RunnerRestarts';
 import { useEffect, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
-import type { RunMode, RunnerDomain } from './RunnerNavigation';
+import type { DomainDisplay, RunMode, RunnerDomain } from './RunnerNavigation';
 import { runModeLabel } from './runModeLabel';
 import type { RunnerView } from './model';
 import { RunnerTabRemoval } from './RunnerTabRemoval';
@@ -28,6 +28,8 @@ function StatusMarker({ state }: { state: MarkerState }) {
 
 type SidebarProps = {
   domains: readonly RunnerDomain[];
+  runners: readonly RunnerView[];
+  domainDisplay: DomainDisplay;
   onReorder: (domain: RunnerDomain['id'], id: string, before: string | null, expected: readonly string[]) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -98,9 +100,8 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove, drag, dropBef
   </li>;
 }
 
-export function Sidebar({ domains, onReorder, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
+export function Sidebar({ domains, runners, domainDisplay, onReorder, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
   useHubTranslation();
-  const runners = domains.flatMap(domain => domain.runners);
   type Drag = { domain: RunnerDomain['id']; id: string; ids: string[]; before: string | null };
   const [drag, setDrag] = useState<Drag>();
   const dragging = useRef<Drag>();
@@ -149,7 +150,8 @@ export function Sidebar({ domains, onReorder, selectedId, onSelect, onRename, on
         aria-current={selectedId === null ? 'page' : undefined} onClick={() => onSelect(null)}>
         <span className="entry-icon" aria-hidden="true">⌘</span><span>{t('common.singleEntry')}</span>
       </button>
-      <div className="runner-section-label"><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span>
+      <div className="runner-section-label">
+        {domainDisplay === 'unified' && <><p className="sidebar-label">{t('sidebar.runners')}</p><span>{runners.length}</span></>}
         <details className="runner-management"><summary aria-label={t('panel.runnerManagement')} title={t('panel.runnerManagement')}>⋯</summary>
           <button type="button" disabled={restarts.pending} onClick={onRestart}>{t('restart.action')}</button>
         </details>
