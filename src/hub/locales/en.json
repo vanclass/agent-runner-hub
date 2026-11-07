@@ -411,6 +411,9 @@
     "navigation": "Workspace navigation",
     "workspace": "WORKSPACE",
     "runners": "RUNNERS",
+    "domainDisplay": "Domain display",
+    "unified": "Unified",
+    "byMode": "By execution mode",
     "rowHint": "{{name}} · {{status}}. Double-click or press F2 to rename.",
     "renameNamed": "Rename {{name}}",
     "processes": "{{count}} processes running"

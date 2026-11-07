@@ -1,6 +1,8 @@
 import { useHubTranslation, t, tr } from './i18n';
 import type { RunnerRestarts } from './RunnerRestarts';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
+import type { RunMode, RunnerDomain } from './RunnerNavigation';
+import { runModeLabel } from './runModeLabel';
 import type { RunnerView } from './model';
 import { RunnerTabRemoval } from './RunnerTabRemoval';
 
@@ -25,22 +27,24 @@ function StatusMarker({ state }: { state: MarkerState }) {
 }
 
 type SidebarProps = {
-  runners: readonly RunnerView[];
+  domains: readonly RunnerDomain[];
+  onReorder: (domain: RunnerDomain['id'], id: string, before: string | null, expected: readonly string[]) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
   onRemove: (id: string) => void;
   confirmRemoval: boolean;
   failures: readonly RunnerView[];
-  onAdd: () => void;
+  onAdd: (mode?: RunMode) => void;
   addDisabled: boolean;
   adding: boolean;
   restarts: RunnerRestarts;
   onRestart: () => void;
 };
 
-function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
+function RunnerRow({ runner, active, onSelect, onRename, onRemove, drag, dropBefore }: {
   runner: RunnerView; active: boolean; onSelect: () => void; onRename: (name: string) => void; onRemove: () => void;
+  drag: HTMLAttributes<HTMLLIElement>; dropBefore: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(runner.name);
@@ -58,7 +62,7 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
   const state: MarkerState = runner.activity && !['completed', 'interrupted'].includes(runner.activity)
     ? runner.activity as MarkerState : runner.status === 'starting' ? 'starting' : runner.status === 'failed' ? 'failed' : 'unknown';
   const status = statusLabel(state);
-  return <li className={`runner-row ${active ? 'active' : ''}`} data-runner-id={runner.id}
+  return <li {...drag} draggable={!editing} className={`runner-row ${active ? 'active' : ''} ${dropBefore ? 'drop-before' : ''}`} data-runner-id={runner.id}
     onMouseDown={event => { if (event.button === 1) event.preventDefault(); }}
     onAuxClick={event => {
       if (event.button !== 1) return;
@@ -94,10 +98,38 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove }: {
   </li>;
 }
 
-export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
+export function Sidebar({ domains, onReorder, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
   useHubTranslation();
+  const runners = domains.flatMap(domain => domain.runners);
+  type Drag = { domain: RunnerDomain['id']; id: string; ids: string[]; before: string | null };
+  const [drag, setDrag] = useState<Drag>();
+  const dragging = useRef<Drag>();
+  const clearDrag = () => { dragging.current = undefined; setDrag(undefined); };
+  const signature = JSON.stringify(domains.map(d => [d.id, d.runners.map(r => r.id)]));
+  useEffect(() => { clearDrag(); }, [signature]);
   const [removing, setRemoving] = useState<RunnerView>();
   const restart = restarts.snapshot;
+  function startDrag(event: DragEvent, domain: RunnerDomain, id: string) {
+    if ((event.target as HTMLElement).closest('input, .rename-action, .remove-action')) { event.preventDefault(); return; }
+    dragging.current = { domain: domain.id, id, ids: domain.runners.map(r => r.id), before: id };
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', id);
+  }
+  function hover(event: DragEvent<HTMLUListElement>, domain: RunnerDomain) {
+    const current = dragging.current;
+    if (!current || current.domain !== domain.id) { setDrag(undefined); return; }
+    event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+    const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('.runner-row')];
+    const target = rows.find(row => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
+    const next = { ...current, before: target?.dataset.runnerId ?? null };
+    dragging.current = next; setDrag(next);
+  }
+  function drop(event: DragEvent, domain: RunnerDomain) {
+    event.preventDefault();
+    const current = dragging.current;
+    if (current?.domain === domain.id) onReorder(domain.id, current.id, current.before, current.ids);
+    clearDrag();
+  }
   function remove(runner: RunnerView) {
     if (confirmRemoval) setRemoving(runner);
     else onRemove(runner.id);
@@ -121,18 +153,27 @@ export function Sidebar({ runners, selectedId, onSelect, onRename, onRemove, con
         <details className="runner-management"><summary aria-label={t('panel.runnerManagement')} title={t('panel.runnerManagement')}>⋯</summary>
           <button type="button" disabled={restarts.pending} onClick={onRestart}>{t('restart.action')}</button>
         </details>
-        <button type="button" className="add-runner" aria-label={t('hub.newRunner')}
-          title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
-          disabled={addDisabled} aria-busy={adding} onClick={onAdd}>+</button>
       </div>
       {(restart.pending > 0 || restart.running > 0 || restart.failed > 0) && <p className="restart-status" role="status">{t('restart.progress', { restarted: restart.restarted,
         running: restart.running, pending: restart.pending, failed: restart.failed, removed: restart.removed })}</p>}
       {restart.pending > 0 && <p className="restart-status">{t('restart.pending')}</p>}
       {restart.failures.map((failure, index) => <p className="restart-status" role="alert" key={index}>{failure.name}: {tr(failure.detail)}</p>)}
-      <ul className="runner-list">{runners.map(runner => <RunnerRow key={runner.id} runner={runner}
-        active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
-        onRemove={() => remove(runner)} />)}
-      </ul>
+      <div className="runner-domains" onDragEnd={clearDrag} onKeyDown={event => { if (event.key === 'Escape') clearDrag(); }}>
+        {domains.map(domain => <section className="runner-domain" key={domain.id} data-domain={domain.id}>
+          {domain.id !== 'runner' && <p className="sidebar-label">{runModeLabel(domain.id)}</p>}
+          <ul className={`runner-list ${drag?.domain === domain.id && drag.before === null ? 'drop-end' : ''}`}
+            onDragOver={event => hover(event, domain)} onDrop={event => drop(event, domain)}>
+            {domain.runners.map(runner => <RunnerRow key={runner.id} runner={runner}
+              drag={{ onDragStart: event => startDrag(event, domain, runner.id), onDragEnd: clearDrag }}
+              dropBefore={drag?.domain === domain.id && drag.before === runner.id}
+              active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
+              onRemove={() => remove(runner)} />)}
+          </ul>
+          <button type="button" className="add-runner nav-row" aria-label={t('hub.newRunner')}
+            title={t(adding ? 'hub.launching' : addDisabled ? 'hub.verifyFirst' : 'hub.newRunner')}
+            disabled={addDisabled} aria-busy={adding} onClick={() => onAdd(domain.id === 'runner' ? undefined : domain.id)}>+</button>
+        </section>)}
+      </div>
       {failures.length > 0 && <section className="termination-failures" aria-label={t('tabs.failures')}>
         <p className="sidebar-label">{t('tabs.failures')}</p>
         <ul>{failures.map(runner => <li key={runner.id}><button type="button" className="nav-row"

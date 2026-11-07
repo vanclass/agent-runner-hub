@@ -34,6 +34,8 @@
 
 - Read-only Runner logs, explicit authenticated commands and foreground confirmation/selection/text/Back/cancel: [Structured foreground interactions](runner_terminals.md#structured-foreground-interactions) and [Input and process observations](runner_terminals.md#input-and-process-observations); owners `../../src/hub/RunnerInteraction.ts`, `../../src/hub/RunnerInteractionPanel.tsx`, `../../src/hub/runnerInput.ts`, `../../src/hub/runnerControl.ts`, `../../src-tauri/src/desktop_terminal/interaction.rs` and existing session/transport owners; focused checks `../../tests/e2e/runner-interactions.mjs`, `../../src-tauri/src/desktop_terminal/interaction_tests.rs` and `../../src-tauri/tests/control_handles.rs`.
 
+- Execution-mode sidebar domains, persisted presentation history/affinity, tab drag ordering and flattened navigation: [Runner navigation presentation](runner_navigation.md); owners `../../src/hub/RunnerNavigation.ts`, `../../src/hub/RunnerWorkspace.ts`, `../../src/hub/RunnerSessions.ts`, `../../src/hub/Sidebar.tsx` and `../../src/hub/Hub.tsx`; focused checks `../../tests/e2e/navigation.spec.mjs` and `../../tests/e2e/runner-navigation.mjs` registered by `../../tests/e2e/runners.spec.mjs`. Select for domain display, observed-mode persistence or tab display-order changes.
+
 ## 신규 domain 등록 조건
 
 - 반복 작업에서 책임 경계나 현재 동작을 다시 추론해야 하는 안정된 기능 영역이어야 한다.

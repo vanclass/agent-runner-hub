@@ -9,6 +9,7 @@ import { AppSettings } from './AppSettings';
 import { ShortcutSettings } from './ShortcutSettings';
 import { defaultShortcuts, useHubShortcuts } from './shortcuts';
 import type { RunnerView } from './model';
+import type { DomainDisplay, RunMode } from './RunnerNavigation';
 import './hub.css';
 
 export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerView[] }) {
@@ -23,7 +24,10 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     singleEntry => preferences.update({ singleEntry }), preferences.value.runnerSelections,
     (id, value) => preferences.saveRunner(id, value)));
   const liveRunners = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot);
-  const runners = [...fixtures, ...liveRunners];
+  const [domainDisplay, setDomainDisplay] = useState<DomainDisplay>(preferences.value.domainDisplay ?? 'unified');
+  const allRunners = [...fixtures, ...liveRunners];
+  const domains = sessions.navigation.project(allRunners, domainDisplay);
+  const runners = domains.flatMap(domain => domain.runners);
   const spare = sessions.spareSnapshot;
   const installation = spare.installation;
   const [setupRequired, setSetupRequired] = useState(true);
@@ -45,30 +49,31 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   useEffect(() => { sessions.view(selectedId); return () => sessions.view(null); }, [sessions, selectedId]);
   const [theme, setTheme] = useState<'light' | 'black'>(preferences.value.theme);
   const [confirmRemoval, setConfirmRemoval] = useState(preferences.value.confirmRunnerRemoval);
-  const selected = runners.find(runner => runner.id === selectedId) ?? sessions.failures.find(runner => runner.id === selectedId);
+  const selected = allRunners.find(runner => runner.id === selectedId) ?? sessions.failures.find(runner => runner.id === selectedId);
   useEffect(() => { if (selectedId && !selected) setSelectedId(null); }, [selectedId, selected]);
   function rename(id: string, name: string) {
     const session = sessions.get(id);
     if (session) { session.rename(name); return; }
     setRunners(current => current.map(runner => runner.id === id ? { ...runner, name } : runner));
   }
-  async function createRunner() {
+  async function createRunner(mode?: RunMode) {
     if (!installation || launchPending.current) return;
     launchPending.current = true;
     setLaunching(true); setLaunchError('');
     try {
       const { session, launched } = sessions.allocate(installation.root);
+      sessions.navigation.intent(session.view.id, mode);
       setSelectedId(session.view.id);
       await launched;
     } catch (reason) { setLaunchError(errorText(reason)); }
     finally { launchPending.current = false; setLaunching(false); }
   }
   function closeRunner(id: string) {
+    const index = runners.findIndex(runner => runner.id === id);
     if (!sessions.close(id)) return;
     preferences.forgetRunner(id);
-    const remaining = sessions.getSnapshot();
-    const order = runners.find(runner => runner.id === id)?.createdOrder ?? 0;
-    const next = remaining.find(runner => runner.createdOrder > order) ?? remaining.at(-1);
+    const remaining = runners.filter(runner => runner.id !== id);
+    const next = remaining[index] ?? remaining.at(-1);
     setSelectedId(current => current === id ? next?.id ?? null : current);
   }
   return <div className="hub" data-theme={theme}>
@@ -84,9 +89,10 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     {sessions.workspace.issue && <p role="alert" className="runner-error">{tr(sessions.workspace.issue)}</p>}
     {launchError && <p role="alert" className="runner-error">{tr(launchError)}</p>}
     <div className="shell-body">
-      <Sidebar runners={runners} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
+      <Sidebar domains={domains} selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
+        onReorder={(domain, id, before, expected) => sessions.navigation.reorder(allRunners, domainDisplay, domain, id, before, expected)}
         restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
-        onAdd={() => void createRunner()} addDisabled={!installation || launching} adding={launching}
+        onAdd={mode => void createRunner(mode)} addDisabled={!installation || launching} adding={launching}
         onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected}
         session={sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined)}
@@ -101,6 +107,9 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       return preferences.issue;
     }} />}
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
+      domainDisplay={domainDisplay} onDomainDisplay={value => {
+        preferences.update({ domainDisplay: value }); setDomainDisplay(value);
+      }}
       reuseIdle={sessions.entry.allocationPolicy === 'reuse-idle'} reuseEditable={sessions.entry.editable}
       onReuseIdle={value => sessions.entry.setDefault('allocationPolicy', value ? 'reuse-idle' : 'always-new')}
       onShortcuts={() => { setSettingsOpen(false); setShortcutsOpen(true); }}

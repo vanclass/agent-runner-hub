@@ -5,7 +5,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await transport(page, undefined, { auto: true, work: true, ...options });
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('button', { name: 'direct-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
   }
   async function remap(page) {

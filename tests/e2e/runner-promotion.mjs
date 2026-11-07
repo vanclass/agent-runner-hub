@@ -21,6 +21,10 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     await page.waitForTimeout(2000); await create(page);
     const next = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0]);
     expect(next.id).not.toBe(old.id); expect(next.createdOrder).toBeGreaterThan(old.createdOrder);
+    const navigation = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation);
+    expect(navigation.executedModes).not.toEqual([]);
+    expect(navigation.affinities).not.toHaveProperty(next.id);
+    expect(navigation.affinities).not.toHaveProperty(old.id);
     await expect(page.locator('.runner-work-status, .config-receipt, .unread-completion, .status-dot.completed')).toHaveCount(0);
     await expect(page.locator('.runner-instruction')).toHaveCount(0);
     await expect(page.locator('.generated-images summary')).toHaveCount(0);

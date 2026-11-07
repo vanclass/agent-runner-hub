@@ -42,11 +42,13 @@ Installation changes and Hub disposal invalidate the spare generation, stop obse
 
 The green centered plus is an action at the end of the Runner list, including the empty list; it has no workspace record. Each allocation appends one real tab in creation order before that action and selects it. Manual activation is guarded against concurrent clicks until launch settles. A failed fresh launch retains its explicit failed tab and diagnostic, without automatic retry. The same list preserves rename, middle-click close and unread work indicators.
 
-Single Entry omits the central heading, badge and decorative starting prompt. The empty sidebar retains Single Entry and the add action without explanatory empty text. Normal spare preparation/readiness stays internal; allocation errors and assignment results remain in their existing action-owned surfaces.
+Single Entry omits the central heading, badge and decorative starting prompt. Sidebar domains and their add actions follow [Runner navigation presentation](runner_navigation.md), independently of process allocation. Normal spare preparation/readiness stays internal; allocation errors and assignment results remain in their existing action-owned surfaces.
 
 ## Durable workspace and recovery
 
 `RunnerWorkspace.ts` owns the versioned `agent-runner-hub.workspace.v1` local-storage record and its explicit metadata projection. `RunnerSessions.ts` restores the validated records in saved creation order before launching any processes. The manifest retains stable Hub IDs, labels, order, verified installation roots, launch intent and separate last-authenticated and historical target/run-mode/workflow contexts. A single atomic replacement commits relevant changes during use; failed writes retain the prior commit and display a warning. Unsupported or unreadable manifests remain untouched. Invalid or duplicate records are skipped independently with a visible diagnostic.
+
+The optional presentation subrecord stores [navigation metadata](runner_navigation.md#ownership-and-storage) separately from creation order and recovery context.
 
 The optional `recoveryHint` retains the earlier process context while historical recovery remains unconfirmed; `lastVerified` continues following fresh authenticated observations. Current version-1 producers can write `lastVerified` without a hint. Loading freezes that saved context as `recoveryHint` before any fresh process starts; this is active restart behavior. An existing hint always survives later observations, setting changes and reopening. Both contexts use the same explicit nonsecret projection; neither provides current settings or recovery authority. Current settings come only from the current control snapshot.
 

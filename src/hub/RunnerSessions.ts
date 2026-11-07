@@ -10,6 +10,7 @@ import type { RunnerView } from './model';
 import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
 import { submitConfiguredWork } from './runnerSubmission';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
+import { RunnerNavigation } from './RunnerNavigation';
 import { RunnerSpare } from './RunnerSpare';
 import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './RunnerRestarts';
 import type { RunnerInstallation } from './runnerInstallation';
@@ -455,6 +456,7 @@ export class RunnerSession {
 }
 
 export class RunnerSessions {
+  readonly navigation = new RunnerNavigation(() => this.changed());
   private readonly sessions = new Map<string, RunnerSession>();
   private readonly retired = new Map<string, { session: RunnerSession; root: string;
     state: 'checking' | 'idle' | 'restart-pending' | 'restarting' | 'restart-failed' | 'terminating' | 'failed' }>();
@@ -467,7 +469,13 @@ export class RunnerSessions {
   readonly restarts = new RunnerRestarts(() => this.changed());
   private consumers = 0;
   private readonly spare = new RunnerSpare(
-    (installationRoot, changed) => new RunnerSession({ installationRoot }, changed), () => this.changed(),
+    (installationRoot, changed) => {
+      const session = new RunnerSession({ installationRoot }, () => {
+        this.navigation.observe(undefined, session.control.work);
+        changed();
+      });
+      return session;
+    }, () => this.changed(),
     (session, root) => this.retainRestartFailure(session, root));
   get spareSnapshot() { return this.spare.snapshot; }
   setInstallation(installation: RunnerInstallation | null) {
@@ -518,7 +526,9 @@ export class RunnerSessions {
       this.entry?.selections.initialize();
       this.selections.forEach(selections => selections.initialize());
     }
-    if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab));
+    for (const [id, session] of this.sessions) this.navigation.observe(id, session.control.work);
+    for (const item of this.retired.values()) this.navigation.observe(undefined, item.session.control.work);
+    if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab), this.navigation.snapshot);
     this.snapshot = [...this.sessions.values()].map(session => session.tabView);
     this.listeners.forEach(listener => listener());
   };
@@ -663,6 +673,7 @@ export class RunnerSessions {
     if (this.restored) return;
     this.restored = true;
     const tabs = this.workspace.load();
+    this.navigation.restore(this.workspace.presentation);
     for (const tab of tabs) {
       const session = new RunnerSession(tab, this.changed, true);
       this.sessions.set(tab.id, session);

@@ -5,10 +5,10 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     if (tab) await create(page);
-    const mode = page.getByRole('button', { name: 'issue-run', exact: true });
+    const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
     await mode.focus();
     await expect(mode).toBeEnabled();
-    await mode.click();
+    await mode.selectOption(JSON.stringify('issue-run'));
   }
   for (const tab of [false, true]) {
     const path = tab ? 'Runner tab' : 'Single Entry';

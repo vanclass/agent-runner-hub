@@ -88,10 +88,18 @@
 .entry-icon { font-size: 18px; width: 14px; }
 .runner-section-label { display: flex; align-items: center; justify-content: space-between; margin-top: 28px; }
 .runner-section-label > span { font-size: 10px; color: var(--muted); margin: 0 10px 10px; }
-.runner-list { list-style: none; margin: 0 -4px; padding: 4px; min-height: 0; overflow-y: auto; }
+/* 도메인 간격과 삽입선 두께다. 늘리면 더 넓고 굵게, 줄이면 더 조밀하고 얇게 표시한다. */
+.runner-domains { overflow-y: auto; min-height: 0; }
+.runner-domain { padding-bottom: 10px; }
+.runner-list { list-style: none; margin: 0; padding: 4px; min-height: 0; }
+.runner-management { margin-left: auto; }
+.domain-preference { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.drop-before::before, .drop-end::after { content: ''; display: block; height: 3px; background: var(--accent); border-radius: 2px; }
+.drop-before::before { position: absolute; top: -3px; left: 0; right: 0; z-index: 1; }
+.runner-row[draggable]:active { opacity: .65; }
 .runner-row { position: relative; border-radius: 6px; margin-bottom: 3px; }
 /* 추가 탭과 더하기 기호의 크기다. 늘리면 더 크고, 줄이면 더 조밀해진다. */
-.hub .add-runner { width: 28px; height: 28px; padding: 0; font-size: 21px; line-height: 1; color: var(--accent); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.hub .add-runner { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 21px; line-height: 1; color: #fff; background: #16813d; border: 1px solid var(--border); border-radius: 6px; }
 .hub .add-runner:hover:not(:disabled) { background: var(--selected); }
 .hub .add-runner:disabled { opacity: .55; }
 .directory-field { min-width: 0; display: flex; flex-direction: column; gap: 7px; }

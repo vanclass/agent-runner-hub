@@ -411,6 +411,9 @@
     "navigation": "작업 공간 탐색",
     "workspace": "작업 공간",
     "runners": "RUNNER",
+    "domainDisplay": "도메인 표시 방식",
+    "unified": "통합",
+    "byMode": "실행 모드별",
     "rowHint": "{{name}} · {{status}}. 두 번 클릭하거나 F2를 눌러 이름을 변경하세요.",
     "renameNamed": "{{name}} 이름 변경",
     "processes": "프로세스 {{count}}개 실행 중"

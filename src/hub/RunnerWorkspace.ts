@@ -1,4 +1,6 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
+import { emptyPresentation, type NavigationPresentation } from './RunnerNavigation';
+import { runModes } from './runnerWork';
 export type VerifiedContext = {
   target: { binding_state: string; owner: string; project: string };
   runMode: string;
@@ -39,7 +41,24 @@ function record(value: unknown): RunnerTabRecord | undefined {
     ...(lastVerified ? { lastVerified } : {}), ...(recoveryHint ? { recoveryHint } : {}) };
 }
 
+function presentation(value: unknown, tabs: readonly RunnerTabRecord[]): NavigationPresentation | undefined {
+  if (!object(value) || Object.keys(value).some(k => !['executedModes', 'order', 'affinities'].includes(k))
+    || !Array.isArray(value.executedModes) || !Array.isArray(value.order) || !object(value.affinities)
+    || value.executedModes.some(m => !runModes.includes(m))
+    || new Set(value.executedModes).size !== value.executedModes.length
+    || value.order.some(id => typeof id !== 'string' || !uuid.test(id))
+    || new Set(value.order).size !== value.order.length) return;
+  const ids = new Set(tabs.map(tab => tab.id));
+  const affinities: NavigationPresentation['affinities'] = {};
+  for (const [id, mode] of Object.entries(value.affinities)) {
+    if (!uuid.test(id) || !runModes.includes(mode as typeof runModes[number])) return;
+    if (ids.has(id)) affinities[id] = mode as typeof runModes[number];
+  }
+  return { executedModes: [...value.executedModes], order: value.order.filter(id => ids.has(id)), affinities };
+}
+
 export class RunnerWorkspace {
+  presentation = emptyPresentation();
   issue: HubText = '';
   private saveFailed = false;
   private writable = true;
@@ -64,6 +83,11 @@ export class RunnerWorkspace {
         ids.add(tab.id.toLowerCase()); orders.add(tab.createdOrder);
         tabs.push({ ...tab, ...(recoveryHint ? { recoveryHint } : {}) });
       });
+      if (value.presentation !== undefined) {
+        const projected = presentation(value.presentation, tabs);
+        if (!projected) throw new HubError(msg('runtime.workspace.unsupported'));
+        this.presentation = projected;
+      }
       return tabs.sort((a, b) => a.createdOrder - b.createdOrder);
     } catch (reason) {
       this.writable = false;
@@ -71,7 +95,7 @@ export class RunnerWorkspace {
       return [];
     }
   }
-  save(tabs: readonly RunnerTabRecord[]) {
+  save(tabs: readonly RunnerTabRecord[], navigation = this.presentation) {
     if (!this.writable) return false;
     const projected = tabs.map(tab => record(tab));
     if (projected.some(tab => !tab)) {
@@ -79,11 +103,14 @@ export class RunnerWorkspace {
       this.issue = msg('runtime.workspace.invalidTabSave');
       return false;
     }
-    const raw = JSON.stringify({ version: 1, tabs: projected });
+    const metadata = presentation(navigation, tabs);
+    if (!metadata) return false;
+    const raw = JSON.stringify({ version: 1, tabs: projected, presentation: metadata });
     if (raw === this.committed) return true;
     try {
       // One atomic storage replacement leaves the previous committed layout intact on failure.
       localStorage.setItem(runnerWorkspaceKey, raw);
+      this.presentation = metadata;
       this.committed = raw;
       if (this.saveFailed) { this.issue = ''; this.saveFailed = false; }
       return true;
