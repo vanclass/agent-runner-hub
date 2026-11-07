@@ -177,6 +177,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
     receive: mpsc::Receiver<(Request, Admission)>, stopped: &AtomicBool, state: &Mutex<Snapshot>) -> Result<(), &'static str> {
     let mut incoming = Vec::<u8>::new();
     let mut outgoing = Vec::<u8>::new();
+    let mut deferred = std::collections::VecDeque::new();
     let started = Instant::now();
     let mut observed = Instant::now();
     while !stopped.load(Ordering::Acquire) {
@@ -193,18 +194,24 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
             incoming.extend_from_slice(&bytes[..count as usize]);
             while let Some(end) = incoming.iter().position(|b| *b == b'\n') {
                 if end > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
-                let packet = serde_json::from_slice(&incoming[..end]).map_err(|_| "Malformed Runner control response")?;
+                let packet: serde_json::Value = serde_json::from_slice(&incoming[..end]).map_err(|_| "Malformed Runner control response")?;
                 incoming.drain(..=end);
                 if protocol.connection.is_none() {
                     protocol.hello(&packet)?;
                     outgoing.extend(protocol.request(None, key)?);
                     observed = Instant::now();
+                } else if packet["event"] == "hello" {
+                    protocol.successor_hello(&packet)?;
                 } else { protocol.response(packet)?; }
             }
             if incoming.len() > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
         }
-        if protocol.snapshot.state == "ready" {
-            for (request, admitted) in receive.try_iter() {
+        if protocol.snapshot.state == "ready" && !protocol.recovering_direct() {
+            deferred.extend(receive.try_iter());
+            while let Some((request, _)) = deferred.front() {
+                if matches!(request, Request::Feature(super::features::Request::Recovery(super::recovery::Request::Recover { .. })))
+                    && !protocol.pending.is_empty() { break; }
+                let (request, admitted) = deferred.pop_front().unwrap();
                 let result = match request {
                     Request::Command(command) => protocol.request(Some(command), key),
                     Request::Reference(request) => protocol.reference_request(request, key),
@@ -217,8 +224,10 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                     protocol.next
                 }).map_err(str::to_owned);
                 let _ = admitted.send(receipt);
+                if protocol.recovering_direct() { break; }
             }
             if observed.elapsed() >= Duration::from_secs(1)
+                && deferred.is_empty() && !protocol.recovering_direct()
                 && !protocol.pending.values().any(|pending| matches!(pending.kind, super::RequestKind::Observe)) {
                 outgoing.extend(protocol.request(None, key)?);
                 observed = Instant::now();

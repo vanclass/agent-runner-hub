@@ -38,6 +38,7 @@ export class RunnerSession {
   private pending: Uint8Array[] = [];
   private resizeTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
+  unexpectedExit = false;
   private reservation?: symbol;
   private deliveryUnknown = false;
   private nativeState: 'unverified' | 'open' | 'closing' | 'settled' | 'failed' = 'unverified';
@@ -51,7 +52,8 @@ export class RunnerSession {
   private presentationRetired = false;
   get tab() {
     if (!this.tabRecord) throw new Error('Hidden Runner has no workspace tab');
-    return this.tabRecord;
+    const { recovery: _prior, ...tab } = this.tabRecord;
+    return { ...tab, ...(this.control.recovery.saved ? { recovery: this.control.recovery.saved } : {}) };
   }
   previousContext: RunnerTabRecord['recoveryHint'];
   get reusableIdle() { return !this.view.closing && this.idleForClose; }
@@ -99,7 +101,7 @@ export class RunnerSession {
   }
 
   constructor(tab: RunnerTabRecord | Pick<RunnerTabRecord, 'installationRoot'>,
-    private changed: () => void, public restored = false) {
+    private changed: () => boolean | void, public restored = false) {
     this.tabRecord = 'id' in tab ? tab : undefined;
     if (this.tabRecord?.launchOnOpen === false) this.nativeState = 'settled';
     this.previousContext = this.tabRecord?.recoveryHint;
@@ -108,8 +110,11 @@ export class RunnerSession {
       name: this.tabRecord?.name ?? '', status: this.tabRecord?.launchOnOpen === false ? 'exited' : 'starting',
       canSubmit: false, draft: '', submitting: false };
     this.control = new RunnerControl(() => {
-      if (!this.disposed) { this.captureVerified(); this.observeSubmission(); this.syncTerminalInput(); this.changed(); }
+      if (!this.disposed) { this.captureVerified(); this.observeSubmission(); this.syncTerminalInput(); return this.changed(); }
     });
+    this.control.recovery.restore(this.tabRecord?.recovery, restored && this.tabRecord?.launchOnOpen === true);
+    if (restored && this.tabRecord?.launchOnOpen && !this.tabRecord.recovery && this.previousContext)
+      this.control.recovery.legacy();
     this.references = new RunnerReferenceSelection(this.control, () => { if (!this.disposed) this.changed(); });
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
@@ -258,9 +263,13 @@ export class RunnerSession {
         if (this.disposed || this.pty && event.id !== this.pty.id) return;
         this.nativeState = event.error ? 'failed' : 'settled';
         this.nativeFailure = event.error ?? undefined;
-        if (this.tabRecord) this.tabRecord = { ...this.tabRecord, launchOnOpen: false };
+        const unexpected = !this.view.closing && !this.disposed && event.code !== 0;
+        if (!unexpected) this.control.recovery.discard();
         const final = (event as typeof event & { control?: ControlSnapshot }).control;
         this.control.stop(msg('runtime.control.processExited'), final);
+        const qualifying = !!this.control.recovery.saved;
+        this.unexpectedExit = unexpected && qualifying && this.nativeSettled;
+        if (this.tabRecord) this.tabRecord = { ...this.tabRecord, launchOnOpen: unexpected && qualifying };
         this.references.dispose();
         this.update({ status: 'exited', exitCode: event.code, detail: event.error ?? undefined });
       }, reason => this.error(reason));
@@ -287,6 +296,7 @@ export class RunnerSession {
     }
     this.tabRecord = tab;
     this.changed = changed;
+    this.control.recovery.restore(undefined, false);
     this.restored = false;
     this.captureVerified();
     this.update({ id: tab.id, name: tab.name, createdOrder: tab.createdOrder, detail: undefined });
@@ -464,6 +474,7 @@ export class RunnerSessions {
   private snapshot: readonly RunnerView[] = [];
   private order = 0;
   private restored = false;
+  private readonly interrupted = new WeakSet<RunnerSession>();
   private disposed = false;
   readonly workspace = new RunnerWorkspace();
   readonly restarts = new RunnerRestarts(() => this.changed());
@@ -498,7 +509,7 @@ export class RunnerSessions {
     const id = session.view.id, saved = this.savedSelections[id];
     const defaults = retained ?? saved ?? this.entry.defaults;
     const selections = new HubSelections(() => session.control.snapshot.state === 'ready'
-      && !session.control.assignmentLocked ? session.control.config : undefined,
+      && !session.control.assignmentLocked && !session.control.recovery.busy ? session.control.config : undefined,
     this.changed, defaults, value => {
       if (this.sessions.get(id) !== session) return;
       session.control.config.setDraft({});
@@ -529,10 +540,19 @@ export class RunnerSessions {
     }
     for (const [id, session] of this.sessions) this.navigation.observe(id, session.control.work,
       this.selections.get(id)?.defaults.runMode ?? session.tab.lastVerified?.runMode);
+    for (const [id, session] of this.sessions) {
+      if (!session.unexpectedExit || this.interrupted.has(session)) continue;
+      this.interrupted.add(session);
+      queueMicrotask(() => {
+        if (!this.disposed && this.sessions.get(id) === session && !session.view.closing)
+          void this.replaceForRestart(id, session, false, true).catch(reason => session.closeFailure(reason));
+      });
+    }
     for (const item of this.retired.values()) this.navigation.observe(undefined, item.session.control.work);
-    if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab), this.navigation.snapshot);
+    const saved = !this.restored || this.workspace.save([...this.sessions.values()].map(session => session.tab), this.navigation.snapshot);
     this.snapshot = [...this.sessions.values()].map(session => session.tabView);
     this.listeners.forEach(listener => listener());
+    return saved;
   };
   get(id?: string) { return id ? this.sessions.get(id) : undefined; }
   restartAll() {
@@ -586,7 +606,7 @@ export class RunnerSessions {
       check();
     });
   }
-  private async replaceForRestart(id: string, session: RunnerSession, hidden: boolean): Promise<RestartOutcome> {
+  private async replaceForRestart(id: string, session: RunnerSession, hidden: boolean, interrupted = false): Promise<RestartOutcome> {
     const root = hidden ? this.retired.get(id)!.root : session.tab.installationRoot;
     const owns = () => !this.disposed && (hidden ? this.retired.get(id)?.session : this.sessions.get(id)) === session;
     const tab = hidden ? { installationRoot: root } : { ...session.tab, launchOnOpen: true };
@@ -597,7 +617,7 @@ export class RunnerSessions {
       throw new HubError(msg('restart.cleanupFailed'));
     }
     if (!owns()) return 'removed';
-    const replacement = new RunnerSession(tab, this.changed, hidden ? false : session.restored);
+    const replacement = new RunnerSession(tab, this.changed, !hidden && (interrupted || session.restored));
     replacement.setDraft(session.view.draft ?? '');
     if (hidden) {
       this.retired.set(id, { session: replacement, root, state: 'restarting' });
@@ -609,7 +629,7 @@ export class RunnerSessions {
       && (hidden ? this.retired.get(id)?.session : this.sessions.get(id)) === replacement;
     try {
       await replacement.open(root);
-      await this.waitForReplacement(replacement, replacementOwned);
+      if (!interrupted) await this.waitForReplacement(replacement, replacementOwned);
     } catch (reason) {
       this.retainRestartFailure(session, root);
       replacement.closeFailure(reason);
@@ -739,8 +759,13 @@ export class RunnerSessions {
     this.spare.replenish();
     return session;
   }
+  intentionalShutdown() {
+    for (const session of this.sessions.values()) session.control.recovery.discard();
+    if (this.restored) this.workspace.save([...this.sessions.values()].map(session => session.tab), this.navigation.snapshot);
+  }
   dispose() {
     this.disposed = true;
+    this.intentionalShutdown();
     this.listeners.forEach(listener => listener());
     this.restarts.dispose();
     this.entry.attachments.dispose();

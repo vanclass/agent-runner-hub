@@ -18,6 +18,8 @@ pub mod session_config;
 pub mod features;
 #[path = "work.rs"]
 pub mod work;
+#[path = "recovery.rs"]
+pub mod recovery;
 #[path = "brief.rs"]
 pub mod brief;
 #[path = "run.rs"]
@@ -133,7 +135,31 @@ impl Protocol {
             || packet["operations"] != json!(["observe", "command"]) {
             return Err("Runner control identity did not match the created process");
         }
+        if self.connection.is_some() { return Err("Unexpected repeated control hello"); }
         self.connection = Some(connection.into());
+        Ok(())
+    }
+    fn recovering_direct(&self) -> bool {
+        self.pending.values().any(|p| matches!(&p.feature,
+            Some(features::Request::Recovery(recovery::Request::Recover { reference, .. })) if reference.successor().is_some()))
+    }
+    fn successor_hello(&mut self, packet: &Value) -> Result<(), &'static str> {
+        let expected = self.pending.iter().find_map(|(id, p)| match &p.feature {
+            Some(features::Request::Recovery(recovery::Request::Recover { reference, .. })) =>
+                reference.successor().map(|session| (*id, session.to_owned())),
+            _ => None,
+        }).ok_or("Unrequested successor hello")?;
+        if expected.1 == self.session || packet["session_id"] != expected.1
+            || packet["process_id"].as_u64() != Some(self.pid as u64)
+            || packet["connection_id"].as_str() == self.connection.as_deref() {
+            return Err("Recovery successor identity mismatch");
+        }
+        let mut verified = Protocol::new(self.pid, expected.1.clone());
+        verified.hello(packet)?;
+        self.session = expected.1;
+        self.connection = verified.connection;
+        self.snapshot.state = "connecting".into();
+        self.observed_at = None;
         Ok(())
     }
     fn request(&mut self, command: Option<String>, key: &str) -> Result<Vec<u8>, &'static str> {
@@ -193,6 +219,9 @@ impl Protocol {
     }
     fn feature_request(&mut self, request: features::Request, key: &str) -> Result<Vec<u8>, &'static str> {
         request.validate()?;
+        if self.recovering_direct() { return Err("Recovery handoff pending"); }
+        if matches!(&request, features::Request::Recovery(recovery::Request::Recover { .. }))
+            && !self.pending.is_empty() { return Err("Control requests must settle before recovery"); }
         if self.snapshot.state != "ready" || !self.snapshot.features.supports(&request) {
             return Err("Unsupported or unavailable native feature");
         }
@@ -259,6 +288,11 @@ impl Protocol {
             self.snapshot.features.response(id, request, state, finished, &packet)?;
         }
         self.snapshot.references.response(id, state, finished, &packet)?;
+        if finished && matches!(&pending.feature, Some(features::Request::Recovery(recovery::Request::Recover { .. }))) {
+            // Successor hello is only identity evidence. Fresh observe reestablishes readiness
+            // after the original request has delivered its verified final result.
+            self.snapshot.state = "ready".into();
+        }
         if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
             result.state = state.into();
             result.phase = phase.map(str::to_owned);

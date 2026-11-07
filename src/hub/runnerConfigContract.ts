@@ -1,5 +1,6 @@
 import type { RunnerObservation } from './runnerControl';
 import type { WorkCapability, WorkRequest } from './runnerWork';
+import type { RecoveryRequest } from './RunnerRecovery';
 import type { RunCapability, RunRequest } from './runnerRunContract';
 import type { InteractionCapability, InteractionRequest } from './RunnerInteraction';
 
@@ -34,11 +35,12 @@ export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 
   | { operation: 'session_config.inspect'; api_version: 1; execution_context: 'test'; account?: never; offset?: never; options_revision?: never }
   | { operation: 'session_config.plan'; api_version: 1; desired: ConfigDesired }
   | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string };
-export type FeatureResult = { id: number; feature: 'session_config' | 'work' | 'brief' | 'run' | 'interaction'; operation: ConfigRequest['operation'] | WorkRequest['operation'] | RunRequest['operation'] | InteractionRequest['operation'] | 'brief.stage';
+export type FeatureResult = { id: number; feature: 'recovery' | 'session_config' | 'work' | 'brief' | 'run' | 'interaction'; operation: RecoveryRequest['operation'] | ConfigRequest['operation'] | WorkRequest['operation'] | RunRequest['operation'] | InteractionRequest['operation'] | 'brief.stage';
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown' | 'not-sent';
   admission: 'unconfirmed' | 'queued' | 'rejected' | 'not-sent'; phase?: string | null; code?: string | null;
   reply?: unknown };
 export type FeatureSnapshot = { generation: number; runnerRoot?: string | null; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null;
+  recovery?: { version: 1; operations: string[] } | null;
   interaction?: InteractionCapability | null;
   brief?: { version: 1; operations: string[] } | null; run?: RunCapability | null; results: FeatureResult[] };
 export type FeatureAdmission = { state: 'submitted'; id: number; generation: number }

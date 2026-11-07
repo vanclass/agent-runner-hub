@@ -29,7 +29,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
         host.className = 'hub'; host.dataset.theme = theme;
         const root = createRoot(host), noop = () => {};
         const restarts = window.__sidebarRestarts = new RunnerRestarts(() => render());
-        function render() { root.render(createElement(Sidebar, { runners: [], selectedId: null,
+        function render() { root.render(createElement(Sidebar, { runners: [], domains: [], domainDisplay: 'unified', selectedId: null,
           failures: [], onSelect: noop, onRename: noop, onRemove: noop, onAdd: noop,
           restarts, onRestart: () => restarts.request([]) })); }
         render();

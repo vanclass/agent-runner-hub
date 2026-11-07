@@ -37,6 +37,9 @@ images=[dict(image_id=letter*32,source_sequence=sequence,output_index=0,source='
 image_cap=dict(version=1,operations=['generated_images.list','generated_images.read'],mime_types=['image/png'],max_image_bytes=16777216,max_chunk_bytes=17,page_size=1,lifetime='owning_control_connection',read_only=True)
 brief_cap=dict(version=1,operations=['brief.stage'],run_modes=['issue-run'],lifetime='process_session',automatic_retry=False)
 run_cap=dict(version=1,operations=['run.invoke','run.status'],run_modes=['issue-run'],observation_lifetime='process_session',automatic_retry=False,receipt='request_accepted')
+recovery_cap=dict(version=1,operations=['recovery.reference','recovery.recover'],reference_version=1,
+    families=['direct-run','task-run','issue-run'],automatic_retry=False,instruction_replay=False,
+    outcomes=['recovered','absent','blocked','identity_conflict','interaction_required','unverified','partial'])
 run=None
 interaction_cap=dict(version=1,operations=['interaction.observe','interaction.respond'],dispatch_boundary='foreground_input',automatic_replay=False,lifetime='current_owner')
 config_cap=dict(version=1,operations=['session_config.inspect'],options_page_size=32,options_revision=True,test_account_selection=True,interaction_owner='runner_terminal',automatic_retry=False)
@@ -56,6 +59,14 @@ while True:
     assert request_id>previous
     previous=request_id
     send(request_id=request_id,status='accepted',phase='queued')
+    if packet['operation']=='recovery.recover':
+        reference=packet['reference']
+        assert reference['family']=='direct-run' and reference['session_id']=='retained-pipe'
+        identity.update(session_id=reference['session_id'],connection_id='b'*32)
+        send(event='hello',operations=['observe','command'],interaction_owner='runner_terminal')
+        time.sleep(.1)
+        send(request_id=request_id,status='accepted',phase='completed',reference=reference,recovery_status='recovered',outcome_unknown=False)
+        continue
     if packet['operation']=='session_config.inspect':
         assert packet['api_version']==1 and packet['execution_context']=='test'
         assert not any(key in packet for key in ['offset','account','options_revision'])
@@ -130,7 +141,7 @@ while True:
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
         attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[dict(id=c,text=c,aliases=['/d'] if c=='/disabled' else [],parent_id=None,visible=True,enabled=c!='/disabled',disabled_reason='',description='',children=[]) for c in ['/status','/brief','/target','/disabled']])
-    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap,session_config=config_cap))
+    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(recovery=recovery_cap,generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap,session_config=config_cap))
 "#;
 
 #[test]
@@ -197,6 +208,20 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(!public.contains(&private_key), "Private launch key reached public snapshot");
     for private in ["key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
     assert!(ready.generated_images_supported);
+    let exact: control::recovery::Reference = serde_json::from_value(serde_json::json!({
+        "version":1,"family":"direct-run","session_id":"retained-pipe","generation_id":"generation-1",
+        "thread_id":"thread-1","resume_id":"","source_exec_run_id":"exec-1"})).unwrap();
+    let recovery = client.feature(control::features::Request::Recovery(control::recovery::Request::Recover {
+        api_version:1, reference:exact }));
+    let control::features::Admission::Submitted { id: recovery_id, .. } = recovery else { panic!("{recovery:?}") };
+    loop {
+        let snapshot = client.snapshot();
+        if let Some(result) = snapshot.features.results.iter().find(|r| r.id == recovery_id && r.phase.as_deref() == Some("completed")) {
+            let Some(control::features::Response::Recovery(reply)) = &result.reply else { panic!("{result:?}") };
+            assert_eq!(reply.recovery_status.as_deref(), Some("recovered")); break;
+        }
+        assert!(Instant::now() < deadline, "{snapshot:?}"); thread::sleep(Duration::from_millis(10));
+    }
     let select = control::features::Request::SessionConfig(serde_json::from_value(serde_json::json!({
         "operation":"session_config.inspect","api_version":1,"execution_context":"test"})).unwrap());
     let control::features::Admission::Submitted { id, generation } = client.feature(select) else { panic!("Test selection not admitted") };

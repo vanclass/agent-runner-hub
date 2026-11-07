@@ -1,26 +1,31 @@
 //! Implemented native feature contracts share the v1 transport and identity.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use super::{session_config, work, brief, run, interaction};
+use super::{session_config, work, brief, run, interaction, recovery};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "feature", content = "request", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Request { SessionConfig(session_config::Request), Work(work::Request), Brief(brief::Request), Run(run::Request), Interaction(interaction::Request) }
+pub enum Request { Recovery(recovery::Request), SessionConfig(session_config::Request), Work(work::Request), Brief(brief::Request), Run(run::Request), Interaction(interaction::Request) }
 impl Request {
-    pub fn name(&self) -> &'static str { match self { Self::Interaction(_) => "interaction", Self::SessionConfig(_) => "session_config", Self::Work(_) => "work", Self::Brief(_) => "brief", Self::Run(_) => "run" } }
+    pub fn name(&self) -> &'static str { match self { Self::Recovery(_) => "recovery", Self::Interaction(_) => "interaction", Self::SessionConfig(_) => "session_config", Self::Work(_) => "work", Self::Brief(_) => "brief", Self::Run(_) => "run" } }
     pub fn operation(&self) -> &'static str { match self {
+        Self::Recovery(r) => r.operation(),
         Self::Interaction(r) => r.operation(), Self::SessionConfig(r) => r.operation(), Self::Work(r) => r.operation(), Self::Brief(_) => "brief.stage", Self::Run(r) => r.operation() } }
     pub fn validate(&self) -> Result<(), &'static str> { match self {
+        Self::Recovery(r) => r.validate(),
         Self::Interaction(r) => r.validate(), Self::SessionConfig(r) => r.validate(), Self::Work(r) => r.validate(), Self::Brief(r) => r.validate(), Self::Run(r) => r.validate() } }
     pub fn fields(&self) -> Value { match self {
+        Self::Recovery(r) => serde_json::to_value(r).unwrap(),
         Self::Interaction(r) => serde_json::to_value(r).unwrap(), Self::SessionConfig(r) => serde_json::to_value(r).unwrap(), Self::Work(r) => serde_json::to_value(r).unwrap(),
         Self::Brief(r) => serde_json::to_value(r).unwrap(), Self::Run(r) => serde_json::to_value(r).unwrap() } }
     pub fn wait_limit(&self) -> std::time::Duration { match self {
+        Self::Recovery(_) => super::COMPLETION_TIMEOUT,
         Self::Interaction(_) => super::COMPLETION_TIMEOUT, Self::SessionConfig(r) => r.wait_limit(), Self::Work(r) => r.wait_limit(), Self::Brief(_) | Self::Run(_) => super::COMPLETION_TIMEOUT } }
     pub fn response(&self, packet: &Value, id: u64) -> Result<Response, &'static str> {
+        if let Self::Recovery(r) = self { return r.response(packet).map(Response::Recovery); }
         match self { Self::Interaction(r) => r.response(packet).map(Response::Interaction), Self::SessionConfig(r) => r.response(packet).map(Response::SessionConfig),
             Self::Work(r) => r.response(packet, id).map(Response::Work), Self::Brief(r) => r.response(packet).map(Response::Brief),
-            Self::Run(r) => r.response(packet, id).map(Response::Run) }
+            Self::Run(r) => r.response(packet, id).map(Response::Run), Self::Recovery(_) => unreachable!() }
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -47,7 +52,7 @@ impl Capability {
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
-pub enum Response { SessionConfig(session_config::Response), Work(work::Response), Brief(brief::Response), Run(run::Response), Interaction(interaction::Response) }
+pub enum Response { Recovery(recovery::Response), SessionConfig(session_config::Response), Work(work::Response), Brief(brief::Response), Run(run::Response), Interaction(interaction::Response) }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultView {
@@ -58,6 +63,7 @@ pub struct ResultView {
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Features {
+    pub recovery: Option<recovery::Capability>,
     pub runner_root: Option<String>,
     pub interaction: Option<interaction::Capability>,
     pub brief: Option<brief::Capability>,
@@ -66,6 +72,7 @@ pub struct Features {
 }
 impl Features {
     pub fn discover(&mut self, packet: &Value) {
+        self.recovery = recovery::Capability::read(&packet["recovery"]);
         self.interaction = interaction::Capability::read(&packet["interaction"]);
         self.brief = brief::Capability::read(&packet["brief"]);
         self.run = run::Capability::read(&packet["run"]);
@@ -73,6 +80,7 @@ impl Features {
         self.work = work::Capability::read(&packet["work"]);
     }
     pub fn supports(&self, request: &Request) -> bool { match request {
+        Request::Recovery(_) => self.recovery.is_some(),
         Request::Interaction(r) => self.interaction.is_some() && match r {
             interaction::Request::Observe { .. } => true,
             _ => self.results.iter().rev().find(|result| result.feature == "interaction")
@@ -109,6 +117,7 @@ impl Features {
         Ok(())
     }
     pub fn disconnect(&mut self, pending: impl Iterator<Item = (u64, bool)>) {
+        self.recovery = None;
         self.interaction = None;
         self.brief = None;
         self.run = None;

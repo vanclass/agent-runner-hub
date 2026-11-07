@@ -64,7 +64,7 @@ export function isWork(value: unknown, original?: number): value is WorkObservat
     && (!value.started_event_id || value.admission === 'admitted') && (!value.terminal || value.outcome !== 'pending');
 }
 
-/** Composed once per owning Runner. No work identity or uncertain delivery enters storage. */
+/** Process-local observations; exact durable recovery references belong to RunnerRecovery. */
 export class RunnerWork {
   readonly attempts: WorkAttempt[] = [];
   capability?: WorkCapability;

@@ -1,6 +1,7 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { emptyPresentation, type NavigationPresentation } from './RunnerNavigation';
 import { runModes } from './runnerWork';
+import { recoveryRecord, type RecoveryRecord } from './RunnerRecovery';
 export type VerifiedContext = {
   target: { binding_state: string; owner: string; project: string };
   runMode: string;
@@ -14,6 +15,7 @@ export type RunnerTabRecord = {
   launchOnOpen: boolean;
   lastVerified?: VerifiedContext;
   recoveryHint?: VerifiedContext;
+  recovery?: RecoveryRecord;
 };
 export const runnerWorkspaceKey = 'agent-runner-hub.workspace.v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -38,7 +40,8 @@ function record(value: unknown): RunnerTabRecord | undefined {
   // Explicit projection: process/control identities, drafts and instructions never cross this boundary.
   return { id: value.id, name: value.name, createdOrder: value.createdOrder as number,
     installationRoot: value.installationRoot, launchOnOpen: value.launchOnOpen,
-    ...(lastVerified ? { lastVerified } : {}), ...(recoveryHint ? { recoveryHint } : {}) };
+    ...(lastVerified ? { lastVerified } : {}), ...(recoveryHint ? { recoveryHint } : {}),
+    ...(value.recovery !== undefined ? { recovery: recoveryRecord(value.recovery) ?? { state: 'unverified' as const } } : {}) };
 }
 
 function presentation(value: unknown, tabs: readonly RunnerTabRecord[]): NavigationPresentation | undefined {

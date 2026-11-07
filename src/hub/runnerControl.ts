@@ -6,6 +6,7 @@ import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
 import { RunnerBrief } from './RunnerBrief';
 import { RunnerInteraction } from './RunnerInteraction';
+import { RunnerRecovery } from './RunnerRecovery';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
@@ -56,6 +57,7 @@ export class RunnerControl {
   readonly config: RunnerConfigService;
   readonly work: RunnerWork;
   readonly brief: RunnerBrief;
+  readonly recovery: RunnerRecovery;
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
   assignmentLocked = false;
@@ -84,7 +86,11 @@ export class RunnerControl {
   releaseAttachments(lease: symbol) {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
-  constructor(private readonly changed: () => void) {
+  constructor(private readonly changed: () => boolean | void) {
+    this.recovery = new RunnerRecovery(undefined, false, {
+      completionMs: controlTiming.completionMs,
+      submit: request => invoke<FeatureAdmission>('runner_feature', { id: this.id, request: { feature: 'recovery', request } }),
+    }, changed);
     this.interaction = new RunnerInteraction((id, request) => invoke<FeatureAdmission>('runner_feature', {
       id, request: { feature: 'interaction', request },
     }), changed, controlTiming.completionMs);
@@ -112,6 +118,7 @@ export class RunnerControl {
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
       available: (operation, lease) => !this.stopped && (!this.tabClosing || operation === 'work.list') && this.snapshot.state === 'ready'
+        && !this.recovery.busy
         && !this.brief.busy
         && !(['work.status', 'work.observe'].includes(operation) || operation === 'work.submit' && lease && lease === this.attachmentLease
           ? this.otherControlBusyExceptAttachments : this.otherControlBusy)
@@ -143,11 +150,15 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
+      this.receivedAt = performance.now();
       this.observeCommand();
       if (!this.tabClosing) this.interaction.observe(this.id, snapshot.state, snapshot.features);
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
       this.work.observe(this.id, snapshot.state, snapshot.features);
+      this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
+        !this.attachmentLocked && !this.otherControlBusyWithoutRecovery && !this.config.busy && !this.work.busy && !this.brief.busy,
+        this.work.attempts.filter(attempt => this.work.hasConfirmedStart(attempt)));
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
@@ -156,7 +167,7 @@ export class RunnerControl {
       this.timer = setTimeout(() => void this.refresh(), controlTiming.pollMs);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
-  get pending() { return this.controlBusy || this.config.busy || this.work.writing || this.brief.busy; }
+  get pending() { return this.recovery.busy || this.controlBusy || this.config.busy || this.work.writing || this.brief.busy; }
   get busy() { return this.tabClosing || this.pending; }
   private get controlBusy() {
     return this.assignmentLocked || this.otherControlBusy;
@@ -165,6 +176,9 @@ export class RunnerControl {
     return this.attachmentLocked || this.otherControlBusyExceptAttachments;
   }
   private get otherControlBusyExceptAttachments() {
+    return this.recovery.busy || this.otherControlBusyWithoutRecovery;
+  }
+  private get otherControlBusyWithoutRecovery() {
     return this.interaction.writing || this.interaction.view?.state === 'active'
       || this.sending || this.commandUnresolved || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
@@ -281,6 +295,8 @@ export class RunnerControl {
     if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
     this.config.close();
     if (this.id) this.work.observe(this.id, 'disconnected', this.snapshot.features);
+    this.recovery.retireCompleted(this.work.attempts.filter(attempt => this.work.hasConfirmedStart(attempt)));
+    this.recovery.close();
     this.work.close();
     this.changed();
   }

@@ -4,7 +4,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
   const ids = locator => locator.locator('.runner-row').evaluateAll(rows => rows.map(r => r.dataset.runnerId));
   async function display(page, value) {
     await page.locator('.app-settings-trigger').click();
-    await page.locator('.domain-preference select').selectOption(value);
+    await page.getByRole('combobox', { name: 'Domain display', exact: true }).selectOption(value);
     await page.keyboard.press('Escape');
   }
   async function publish(page, pty, mode, started = true, outcome = 'succeeded') {

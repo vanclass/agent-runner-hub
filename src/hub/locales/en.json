@@ -392,8 +392,7 @@
   "common": {
     "singleEntry": "Single Entry",
     "notConnected": "Not connected",
-    "unknown": "unknown",
-    "unbound": "Unbound"
+    "unknown": "unknown"
   },
   "fields": {
     "model": "Model",
@@ -438,28 +437,17 @@
     "restored": "Restored defaults are requests only. They are checked again against fresh settings in the assigned Runner before sending."
   },
   "recovery": {
-    "launchFailed": "Recovery unavailable: check the Runner launch error below.",
-    "ended": "Recovery unavailable: this Runner process has ended.",
-    "disconnected": "Recovery unavailable: Runner control is disconnected.",
-    "waiting": "Waiting for a fresh Runner control connection.",
-    "notOffered": "Recovery is not offered by this Runner.",
-    "finish": "Use supported Hub interaction controls. Unsupported foreground owners block input.",
-    "unavailable": "Recovery is currently unavailable.",
-    "label": "Restored Runner recovery",
-    "restored": "Restored workspace.",
-    "fresh": "Fresh Runner process started.",
-    "creating": "Creating a fresh Runner process…",
-    "failed": "Runner launch failed.",
-    "previousEnded": "Previous process ended; no process was restored.",
-    "discovery": "Runner discovers recovery candidates. Hub accepts only supported structured interactions.",
-    "commandCompleted": " Runner completed the command; its canonical result owns the work recovery outcome.",
-    "unconfirmed": "Historical work recovery is unconfirmed.",
-    "target": "Historical target: {{owner}}",
-    "binding": " Binding: {{binding}}.",
-    "mode": " Previous run mode: {{mode}}.",
-    "workflow": " Previous workflow: {{workflow}}.",
-    "contextHelp": "Previous process context only; current settings below come from this Runner.",
-    "recover": "Recover earlier work"
+    "auto": {
+      "waiting": "Waiting to recover this tab’s previous work…",
+      "recovering": "Recovering this tab’s exact previous work…",
+      "recovered": "Previous work recovered. Execution has not been resumed.",
+      "absent": "Previous work was not found. Check Runner diagnostics.",
+      "blocked": "Recovery blocked. Resolve the reported Runner ownership condition.",
+      "identity_conflict": "Recovery identity conflict. Inspect Runner diagnostics; no substitute was selected.",
+      "interaction_required": "Recovery needs your decision. Use /recover in this Runner.",
+      "unverified": "Recovery unverified. Check the exact reference and Runner diagnostics.",
+      "partial": "Recovery outcome uncertain. Inspect canonical Runner state before any manual recovery."
+    }
   },
   "references": {
     "reconcile": "Reconcile pending references",

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { RunnerSessions } from './RunnerSessions';
 import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
@@ -38,6 +39,18 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const launchPending = useRef(false);
   const [launchError, setLaunchError] = useState<HubText>('');
   useEffect(() => sessions.retain(), [sessions]);
+  useEffect(() => {
+    const closing = () => sessions.intentionalShutdown();
+    window.addEventListener('beforeunload', closing);
+    let removed = false;
+    let unlisten: (() => void) | undefined;
+    try {
+      void getCurrentWindow().onCloseRequested(closing).then(stop => {
+        if (removed) stop(); else unlisten = stop;
+      }).catch(() => {});
+    } catch { /* Browser previews have no native window. */ }
+    return () => { removed = true; unlisten?.(); window.removeEventListener('beforeunload', closing); };
+  }, [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useHubShortcuts(shortcuts, runners.map(runner => runner.id), selectedId === null && !!installation, {
     selectedId,

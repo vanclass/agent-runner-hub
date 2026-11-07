@@ -21,10 +21,12 @@ import { registerComposerAttachments } from './composer-attachments.mjs';
 import { registerRunnerInteractions } from './runner-interactions.mjs';
 import { registerSlashCommands } from './slash-commands.mjs';
 import { registerWG2 } from './wg2.mjs';
+import { registerAutoRecovery } from './runner-auto-recovery.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
 registerWG2({ test, expect, transport, configure });
+registerAutoRecovery({ test, expect, transport, configure, create: createPrepared });
 registerRunnerStatus({ test, expect, transport, configure, create: createWork });
 registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
@@ -125,6 +127,7 @@ async function transport(page, freshTarget, referenceOptions) {
             sessions.get(id).control.features = fixture.features;
             if (referenceOptions.brief !== undefined && referenceOptions.brief !== 'unsupported')
               fixture.features.brief = { version: 1, operations: ['brief.stage'] };
+            if (referenceOptions.recovery) fixture.features.recovery = { version: 1, operations: ['recovery.reference', 'recovery.recover'] };
             if (referenceOptions.brief !== undefined) {
               const { RunFixture } = await import('/tests/fixtures/run.ts');
               sessions.get(id).run = new RunFixture(fixture.features, referenceOptions.runResult);
@@ -195,6 +198,18 @@ async function transport(page, freshTarget, referenceOptions) {
         }
         if (command === 'runner_feature') {
           const fixture = sessions.get(args.id).feature;
+          if (args.request.feature === 'recovery') {
+            const request = args.request.request, id = 9000 + (sessions.get(args.id).recoveries ??= []).length;
+            sessions.get(args.id).recoveries.push(structuredClone(request));
+            const outcome = referenceOptions.recoveryResults?.[args.id] ?? 'recovered';
+            const reference = request.reference ?? { version: 1, family: 'task-run',
+              repository_namespace: 'project-exact', task_number: args.id.slice(4), task_workload_id: 'work-' + args.id };
+            fixture.features.results.push({ id, feature: 'recovery', operation: request.operation, admission: 'queued',
+              state: outcome === 'recovered' ? 'accepted' : 'rejected', phase: 'completed',
+              reply: request.operation === 'recovery.reference' ? { reference, observation_id: request.observation_id }
+                : { reference, recovery_status: outcome, outcome_unknown: ['partial', 'unverified'].includes(outcome), code: '' } });
+            return { state: 'submitted', id, generation: fixture.features.generation };
+          }
           if (args.request.feature === 'run') return sessions.get(args.id).run.submit(args.request.request);
           if (args.request.feature === 'brief') {
             const session = sessions.get(args.id), id = 7000;
@@ -927,7 +942,7 @@ test('workspace restores five stable tabs without replaying input or commands', 
       .toEqual(saved.tabs.map(tab => tab.id));
     await page.locator('.runner-row').nth(1).locator('.nav-row').click();
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Durable 이름');
-    await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical work recovery is unconfirmed');
+    await expect(page.locator('.runner-recovery')).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
     expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
   }
@@ -960,13 +975,9 @@ for (const target of [
       expect(persisted.tabs[0].id).toBe(saved.tabs[0].id);
       expect(persisted.tabs[0].createdOrder).toBe(saved.tabs[0].createdOrder);
       expect(persisted.tabs[0].lastVerified).toEqual({ target, runMode: 'task-run', workflowKind: '' });
-      const recovery = page.getByLabel('Restored Runner recovery');
-      await expect(recovery).toContainText('Historical target: Project / Historical A');
+      await expect(page.locator('.runner-recovery')).toHaveCount(0);
       expect(persisted.tabs[0].recoveryHint).toEqual(historical);
-      await expect(recovery).toContainText('Previous run mode: issue-run');
-      await expect(recovery).toContainText('Previous workflow: IssueRun');
       await expect(page.locator('.task-panel .terminal-observation')).toHaveCount(0);
-      await expect(recovery).toContainText('Historical work recovery is unconfirmed');
       expect(await page.evaluate(() => [window.__nativeFixture.writes, window.__nativeFixture.commands])).toEqual([[], []]);
       if (reopening === 0) {
         // This observation fixture has no work/configuration capability; simulate a fresh settings change.
@@ -980,12 +991,7 @@ for (const target of [
         });
         await expect.poll(verified).toEqual({ target: { binding_state: 'bound', owner: 'Project', project: 'Changed C' },
           runMode: 'direct-run', workflowKind: '' });
-        await page.getByRole('button', { name: 'Recover earlier work', exact: true }).click();
-        await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
-          { id: 2, command: '/recover', state: 'accepted', code: 'SUCCESS' }]; });
-        await expect(recovery).toContainText('Recover earlier work: accepted (SUCCESS)');
-        await expect(recovery).not.toContainText('/recover');
-        await expect(recovery).toContainText('Historical work recovery is unconfirmed');
+        await expect(page.getByRole('button', { name: 'Recover earlier work', exact: true })).toHaveCount(0);
         const changed = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0]);
         expect(changed.lastVerified.target.project).toBe('Changed C');
         expect(changed.lastVerified.runMode).toBe('direct-run');
@@ -1016,7 +1022,7 @@ test('workspace isolates malformed records, duplicate identities and launch fail
   await page.locator('.runner-row').nth(1).locator('.nav-row').click();
   await expect(page.getByRole('alert').filter({ hasText: 'Wrong configured installation' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Runner interaction', exact: true })).toContainText('Runner is disconnected');
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Recovery unavailable');
+  await expect(page.locator('.runner-recovery')).toHaveCount(0);
   await page.locator('.runner-row').nth(2).locator('.nav-row').click();
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();
   await expect(page.getByRole('alert').filter({ hasText: 'invalid or duplicate' })).toBeVisible();
@@ -1056,33 +1062,10 @@ test('workspace retains the last atomic commit when storage rejects a write', as
   await page.reload();
   await expect(page.locator('.runner-row')).toHaveCount(1);
   await page.locator('.runner-row .nav-row').click();
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / pty-1');
+  await expect(page.locator('.runner-recovery')).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0].name)).toBe('Runner 1');
 });
 
-test('restored recovery uses only the current canonical command and terminal outcome', async ({ page }) => {
-  await transport(page); await configure(page); await create(page);
-  await page.reload();
-  await page.locator('.runner-row .nav-row').click();
-  const button = page.getByRole('button', { name: 'Recover earlier work', exact: true });
-  await expect(button).toBeDisabled();
-  await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').control.observation.commands.push({
-    id: 'recover', text: '/recover', aliases: [], parent_id: null, visible: true, enabled: true,
-    disabled_reason: '', description: 'Discover retained work', children: [],
-  }));
-  await expect(button).toBeEnabled();
-  await button.click();
-  expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/recover' }]);
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
-    { id: 1, command: '/recover', state: 'pending-interaction' }]; });
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('pending-interaction');
-  await expect(button).toBeDisabled();
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.results = [
-    { id: 1, command: '/recover', state: 'rejected', code: 'CANCELLED' }]; });
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('rejected (CANCELLED)');
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical work recovery is unconfirmed');
-  expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-});
 
 test('workspace keeps ended tabs dormant and strips untrusted replay fields', async ({ page }) => {
   await transport(page);
@@ -1100,15 +1083,15 @@ test('workspace keeps ended tabs dormant and strips untrusted replay fields', as
   expect(stored.tabs[0].recoveryHint).toEqual({ target: { binding_state: 'bound', owner: 'Project', project: 'Retained A' },
     runMode: 'task-run', workflowKind: 'TaskRun' });
   await page.locator('.runner-row .nav-row').click();
-  await expect(page.getByLabel('Restored Runner recovery')).toContainText('Historical target: Project / Retained A');
+  await expect(page.locator('.runner-recovery')).toHaveCount(0);
   await expect(page.locator('.task-panel .terminal-observation')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Project / Target /target', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Recover earlier work', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Recover earlier work', exact: true })).toHaveCount(0);
 });
 
 test('workspace drops an uncertain Single Entry submission on reopening', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
-  await entry(page, '/WG6 uncertain instruction');
+  await entry(page, '/status WG6 uncertain instruction');
   await page.evaluate(() => window.__nativeFixture.failWrite());
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
   await assignedEntry(page);

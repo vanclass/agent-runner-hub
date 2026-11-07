@@ -8,6 +8,8 @@ use std::{io::{BufRead, Write}, sync::mpsc, time::Duration};
 #[path = "session_config_acceptance.rs"] mod session_config_acceptance;
 #[cfg(windows)]
 #[path = "work_acceptance.rs"] mod work_acceptance;
+#[cfg(windows)]
+#[path = "recovery_acceptance.rs"] mod recovery_acceptance;
 
 #[test]
 #[ignore = "Requires an explicitly configured installed Runner on a native host"]

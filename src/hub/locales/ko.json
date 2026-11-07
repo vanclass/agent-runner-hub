@@ -392,8 +392,7 @@
   "common": {
     "singleEntry": "Single Entry",
     "notConnected": "연결되지 않음",
-    "unknown": "알 수 없음",
-    "unbound": "연결된 대상 없음"
+    "unknown": "알 수 없음"
   },
   "fields": {
     "model": "모델",
@@ -438,28 +437,17 @@
     "restored": "복원된 기본 설정은 요청값입니다. 전송 전에 배정된 Runner의 최신 설정과 다시 대조합니다."
   },
   "recovery": {
-    "launchFailed": "복구할 수 없습니다. 아래의 Runner 시작 오류를 확인하세요.",
-    "ended": "복구할 수 없습니다. 이 Runner 프로세스가 종료되었습니다.",
-    "disconnected": "복구할 수 없습니다. Runner 제어 연결이 끊겼습니다.",
-    "waiting": "새 Runner 제어 연결을 기다리는 중입니다.",
-    "notOffered": "이 Runner는 복구를 제공하지 않습니다.",
-    "finish": "지원되는 Hub 상호작용 제어를 사용하세요. 미지원 포그라운드 소유자는 입력을 차단합니다.",
-    "unavailable": "현재 복구를 사용할 수 없습니다.",
-    "label": "복원된 Runner 복구",
-    "restored": "작업 공간을 복원했습니다.",
-    "fresh": "새 Runner 프로세스를 시작했습니다.",
-    "creating": "새 Runner 프로세스를 만드는 중…",
-    "failed": "Runner를 시작하지 못했습니다.",
-    "previousEnded": "이전 프로세스가 종료되었으며 프로세스를 복원하지 않았습니다.",
-    "discovery": "Runner가 복구 후보를 찾습니다. Hub는 지원되는 구조화 상호작용만 입력할 수 있습니다.",
-    "commandCompleted": " Runner가 명령을 완료했습니다. 작업 복구 결과는 명령의 공식 결과로 확인하세요.",
-    "unconfirmed": "이전 작업의 복구는 확인되지 않았습니다.",
-    "target": "이전 대상: {{owner}}",
-    "binding": " 연결 상태: {{binding}}.",
-    "mode": " 이전 실행 모드: {{mode}}.",
-    "workflow": " 이전 워크플로: {{workflow}}.",
-    "contextHelp": "이전 프로세스의 컨텍스트입니다. 아래의 현재 설정은 이 Runner에서 가져옵니다.",
-    "recover": "이전 작업 복구"
+    "auto": {
+      "waiting": "이 탭의 이전 작업 복구를 기다리는 중…",
+      "recovering": "이 탭의 정확한 이전 작업을 복구하는 중…",
+      "recovered": "이전 작업을 복구했습니다. 실행을 재개하지 않았습니다.",
+      "absent": "이전 작업을 찾지 못했습니다. Runner 진단을 확인하세요.",
+      "blocked": "복구가 차단되었습니다. Runner의 소유권 조건을 해결하세요.",
+      "identity_conflict": "복구 식별자가 충돌합니다. 대체 작업을 선택하지 않았습니다. Runner 진단을 확인하세요.",
+      "interaction_required": "복구에 사용자 결정이 필요합니다. 이 Runner에서 /recover를 사용하세요.",
+      "unverified": "복구가 검증되지 않았습니다. 정확한 참조와 Runner 진단을 확인하세요.",
+      "partial": "복구 결과가 불확실합니다. 수동 복구 전에 Runner의 공식 상태를 확인하세요."
+    }
   },
   "references": {
     "reconcile": "대기 참조 대조",
