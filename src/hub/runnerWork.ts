@@ -86,8 +86,12 @@ export class RunnerWork {
     timer: ReturnType<typeof setTimeout> };
   private readonly requests = new Map<number, WorkRequest>();
   private readonly seen = new Map<number, FeatureResult>();
+  private readonly confirmedStarts = new WeakSet<WorkAttempt>();
   constructor(private readonly transport: WorkTransport, private readonly changed: () => void) {}
   get current() { return this.attempts.at(-1); }
+  hasConfirmedStart(attempt: WorkAttempt) {
+    return !attempt.notSent && this.confirmedStarts.has(attempt);
+  }
   get presentedAttempts() {
     return this.attempts.filter(a => !this.previousAttempts.has(a)
       && (!a.work || a.work.event_id > this.presentationAfter));
@@ -252,9 +256,14 @@ export class RunnerWork {
     if (previous && (previous.started_event_id > 0 && work.started_event_id !== previous.started_event_id
       || previous.admission === 'admitted' && work.admission !== 'admitted' || work.owner_revision < previous.owner_revision
       || previous.work_id && !same(previous.work_id, work.work_id)
-      || work.event_id === previous.event_id && !same(work, previous))) { attempt.uncertain = true; return; }
+      || work.event_id === previous.event_id && !same(work, previous))) {
+      this.confirmedStarts.delete(attempt); attempt.uncertain = true; return;
+    }
     if (previous && same(work, previous) && !attempt.uncertain) return;
     attempt.observationId = key; attempt.work = work; attempt.notSent = false;
+    // A verified start remains evidence even when its completion outcome is unknown.
+    if (work.started_event_id > 0) this.confirmedStarts.add(attempt);
+    else this.confirmedStarts.delete(attempt);
     attempt.uncertain = work.outcome === 'unknown' || work.admission === 'unknown';
     if (work.terminal && !attempt.notified && ['succeeded', 'failed', 'interrupted', 'incomplete', 'rejected'].includes(work.outcome)) {
       attempt.notified = true;

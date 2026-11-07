@@ -7,16 +7,40 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await page.locator('.domain-preference select').selectOption(value);
     await page.keyboard.press('Escape');
   }
-  async function publish(page, pty, mode, started = true) {
-    await page.evaluate(async ({ pty, mode, started }) => {
+  async function publish(page, pty, mode, started = true, outcome = 'succeeded') {
+    await page.evaluate(async ({ pty, mode, started, outcome }) => {
       const { terminalWork } = await import('/tests/fixtures/work.ts');
       const f = window.__nativeFixture.sessions.get(pty).feature;
       const event = Math.max(0, ...[...f.observations.values()].map(w => w.event_id)) + 1;
       f.observations.set(`terminal:${event}`, terminalWork(event, event, { run_mode: mode,
-        started_event_id: started ? event : 0, state: started ? 'succeeded' : 'rejected',
-        admission: started ? 'admitted' : 'rejected', terminal: true, outcome: started ? 'succeeded' : 'rejected' }));
-    }, { pty, mode, started });
+        started_event_id: started ? event : 0, state: started || outcome === 'unknown' ? outcome : 'rejected',
+        admission: started ? 'admitted' : outcome === 'unknown' ? 'unknown' : 'rejected',
+        terminal: true, outcome: started || outcome === 'unknown' ? outcome : 'rejected' }));
+    }, { pty, mode, started, outcome });
   }
+  test('navigation confirmed unknown outcome creates domain and current affinity retained after reload', async ({ page }, info) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+    const id = await page.locator('.runner-row').getAttribute('data-runner-id');
+    await display(page, 'run-mode');
+    await publish(page, 'pty-1', 'issue-run', false, 'unknown');
+    await page.waitForTimeout(2100);
+    await expect(page.locator('.runner-domain')).toHaveCount(0);
+    await publish(page, 'pty-1', 'task-run');
+    await expect(domain(page, 'task-run').locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    await publish(page, 'pty-1', 'issue-run', true, 'unknown');
+    await expect(domain(page, 'issue-run').locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    await expect(domain(page, 'task-run').locator('.runner-row')).toHaveCount(0);
+    await expect(domain(page, 'issue-run').locator('.status-dot.unknown')).toBeVisible();
+    const presentation = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation);
+    expect(presentation.executedModes).toEqual(['task-run', 'issue-run']);
+    expect(presentation.affinities[id]).toBe('issue-run');
+    await info.attach('unknown-outcome-domain', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.reload();
+    await expect(domain(page, 'issue-run').locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    await expect(domain(page, 'task-run').locator('.runner-row')).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation)).toEqual(presentation);
+    await info.attach('unknown-outcome-restored', { body: await page.screenshot(), contentType: 'image/png' });
+  });
   async function mouseMove(page, from, to, after, info) {
     const a = await from.boundingBox(), b = await to.boundingBox();
     await page.mouse.move(a.x + 45, a.y + a.height / 2); await page.mouse.down();

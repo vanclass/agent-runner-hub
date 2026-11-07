@@ -20,12 +20,12 @@ export class RunnerNavigation {
   restore(value: NavigationPresentation) { this.value = structuredClone(value); }
   observe(id: string | undefined, work: RunnerWork) {
     for (const attempt of work.attempts) {
-      if (attempt.notSent || attempt.uncertain || !attempt.work?.started_event_id) continue;
-      const mode = attempt.work.run_mode as RunMode;
+      if (!work.hasConfirmedStart(attempt)) continue;
+      const mode = attempt.work!.run_mode as RunMode;
       if (!this.value.executedModes.includes(mode)) this.value.executedModes.push(mode);
     }
     if (!id) return;
-    const started = work.presentedAttempts.filter(a => !a.notSent && !a.uncertain && a.work?.started_event_id);
+    const started = work.presentedAttempts.filter(a => work.hasConfirmedStart(a));
     const newest = started.reduce<typeof started[number] | undefined>((a, b) =>
       !a || b.work!.started_event_id > a.work!.started_event_id ? b : a, undefined);
     const seen = this.latest.get(work) ?? new Map<string, number>();

@@ -10,7 +10,7 @@ App Settings stores the independent unified/by-mode choice through `HubPreferenc
 
 ## Execution history and domain affinity
 
-`RunnerSessions` forwards already authenticated, validated `RunnerWork` observations. Only confirmed starts contribute modes; current settings, requested selections, admission-only/rejected/unsent or uncertain attempts do not. Both API and terminal origins use the same boundary. Observed modes accumulate without claiming that Runner can restore every previous process's work inventory.
+`RunnerSessions` forwards already authenticated, validated `RunnerWork` observations. Only confirmed starts contribute modes; current settings, requested selections, admission-only/rejected/unsent or conflicting observations do not. `RunnerWork` owns start confirmation independently of completion uncertainty: an admitted positive start still contributes history and current-presentation affinity when its outcome is unknown, without becoming success or reusable idle work. Both API and terminal origins use the same boundary. Observed modes accumulate without claiming that Runner can restore every previous process's work inventory.
 
 Global history may consume retained/hidden observations. Tab affinity consumes only `presentedAttempts`; an update to an old attempt after hidden-session reuse cannot assign that attempt to the new UUID. The latest actual start within the current work owner outranks display intent and older starts. A fresh process with no new start retains saved affinity. Repeated observations do not duplicate history.
 
