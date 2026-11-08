@@ -6,7 +6,7 @@ use serde_json::Value;
 #[serde(tag = "operation", deny_unknown_fields)]
 pub enum Request {
     #[serde(rename = "run.invoke")]
-    Invoke { api_version: u32 },
+    Invoke { api_version: u32, #[serde(default, skip_serializing_if = "Option::is_none")] text: Option<String> },
     #[serde(rename = "run.status")]
     Status { api_version: u32, invocation_request_id: u64 },
 }
@@ -16,7 +16,7 @@ impl Request {
     }
     pub fn validate(&self) -> Result<(), &'static str> {
         let valid = match self {
-            Self::Invoke { api_version } => *api_version == 1,
+            Self::Invoke { api_version, .. } => *api_version == 1,
             Self::Status { api_version, invocation_request_id } => *api_version == 1 && (1..=MAX_SAFE).contains(invocation_request_id),
         };
         if valid { Ok(()) } else { Err("INVALID_RUN_REQUEST") }

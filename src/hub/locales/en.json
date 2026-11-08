@@ -326,6 +326,12 @@
     "instructionOnly": "Attachments require a new work instruction. Remove them before sending commands or terminal replies."
   },
   "brief": {
+    "input": "Brief",
+    "runInput": "Run instructions (optional)",
+    "runRequesting": "Requesting Run…",
+    "runConfirmed": "IssueRun start confirmed by committed Runner authority. Execution remains with Runner.",
+    "runUnconfirmed": "Run initiation unconfirmed. Draft and original assignment retained; inspect Runner without replay.",
+    "runDeclined": "Run did not start. Draft retained; inspect Runner before resubmitting.",
     "unavailable": "Brief → Run unavailable. Select IssueRun and use a Runner advertising Brief staging and independent Run initiation.",
     "staging": "Staging Brief…",
     "staged": "Brief staged.",

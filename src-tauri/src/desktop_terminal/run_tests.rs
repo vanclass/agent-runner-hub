@@ -3,7 +3,7 @@ fn capability() -> Value {
     json!({"version":1,"operations":["run.invoke","run.status"],"run_modes":["issue-run"],
         "observation_lifetime":"process_session","automatic_retry":false,"receipt":"request_accepted"})
 }
-fn invoke() -> features::Request { features::Request::Run(run::Request::Invoke { api_version:1 }) }
+fn invoke() -> features::Request { features::Request::Run(run::Request::Invoke { api_version:1, text: None }) }
 fn status(original: u64) -> features::Request {
     features::Request::Run(run::Request::Status { api_version:1, invocation_request_id:original })
 }
@@ -19,6 +19,22 @@ fn response(id: u64, original: u64, started: bool) -> Value {
 }
 fn run_ready() -> Protocol {
     let mut p = ready(); p.snapshot.features.discover(&json!({"run":capability()})); p
+}
+#[test]
+fn run_optional_text_roundtrips_without_changing_status_or_argument_free_calls() {
+    let text = "  과검증 과설계에 주의해\n    추가 논의 🌍\t \n";
+    let mut p = run_ready();
+    let request: run::Request = serde_json::from_value(json!({"operation":"run.invoke","api_version":1,"text":text})).unwrap();
+    request.validate().unwrap();
+    let wire: Value = serde_json::from_slice(&p.feature_request(features::Request::Run(request), "key").unwrap()).unwrap();
+    assert_eq!(wire["text"], text);
+    let mut bare = run_ready();
+    let wire: Value = serde_json::from_slice(&bare.feature_request(invoke(), "key").unwrap()).unwrap();
+    assert!(wire.get("text").is_none());
+    for text in [json!(1), json!(false), json!([]), json!({})] {
+        assert!(serde_json::from_value::<run::Request>(json!({"operation":"run.invoke","api_version":1,"text":text})).is_err());
+    }
+    assert!(serde_json::from_value::<run::Request>(json!({"operation":"run.status","api_version":1,"invocation_request_id":2,"text":"no"})).is_err());
 }
 #[test]
 fn run_capability_and_request_admission_are_contract_gated() {

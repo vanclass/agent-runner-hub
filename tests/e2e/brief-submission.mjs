@@ -12,9 +12,26 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
   }
   for (const tab of [false, true]) {
     const path = tab ? 'Runner tab' : 'Single Entry';
+    for (const body of ['과검증 과설계에 주의해', '']) {
+      test(`Brief Run ${path} separates exact Korean inputs (${body ? 'both' : 'Run only'})`, async ({ page }) => {
+        await ready(page, tab, body ? {} : { brief: 'unsupported' });
+        const text = '추가 논의 사항이 없다면 작업 계획 수립하고 지시문 작성해';
+        await input(page).fill(body);
+        const run = page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true });
+        await run.fill(text); await run.press('Control+Enter');
+        await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
+          .filter(r => r.operation === 'run.invoke')), { timeout: 35000 }).toEqual([{ operation: 'run.invoke', api_version: 1, text }]);
+        if (!tab) await page.keyboard.press('Control+Home');
+        await expect(input(page)).toHaveValue(''); await expect(run).toHaveValue('');
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? []))
+          .toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
+      });
+    }
     test(`Brief Run ${path} preserves exact multiline body and waits for committed start`, async ({ page }, info) => {
       await ready(page, tab, { runResult: 'pending' });
       const body = '  한글 🌍\n    indented\t \n/run remains Brief text  \n\n';
+      const runText = '추가 논의 사항이 없다면 작업 계획 수립하고 지시문 작성해\n  exact trailing  \n';
+      await page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true }).fill(runText);
       await input(page).fill(body); await input(page).focus();
       await page.keyboard.down('Control'); await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
       await page.keyboard.up('Enter'); await page.keyboard.up('Control');
@@ -23,6 +40,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         .filter(r => r.operation === 'run.status').length), { timeout: 35000 }).toBeGreaterThan(0);
       await expect(input(page)).toBeDisabled();
       await expect(input(page)).toHaveValue(body);
+      await expect(page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true })).toHaveValue(runText);
       await expect(page.getByRole('status').filter({ hasText: 'Run request accepted · waiting for committed IssueRun start evidence' }).first()).toBeVisible();
       const original = await page.evaluate(() => {
         const n = window.__nativeFixture, s = n.sessions.get('pty-1');
@@ -30,14 +48,16 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       });
       expect(original.body).toEqual([{ operation: 'brief.stage', api_version: 1, body }]);
       expect(original.commands).toEqual([]);
-      expect(original.run.filter(r => r.operation === 'run.invoke')).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
+      expect(original.run.filter(r => r.operation === 'run.invoke')).toEqual([{ operation: 'run.invoke', api_version: 1, text: runText }]);
       expect(original.run.filter(r => r.operation === 'run.status').every(r => r.invocation_request_id === 8001)).toBe(true);
-      expect(original.mode).toBe('issue-run'); expect(original.work).toEqual([]); expect(original.writes).toEqual([]);
+      expect(original.mode).toBe('issue-run');
+      expect(original.work.filter(r => r.operation === 'work.submit')).toEqual([]); expect(original.writes).toEqual([]);
       await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });
       await expect(page.getByRole('status').filter({ hasText: 'IssueRun start confirmed by committed Runner authority' }).first()).toBeVisible();
       if (!tab) await page.keyboard.press('Control+Home');
       await expect(input(page)).toHaveValue('');
       await expect(input(page)).toBeEnabled();
+      await expect(page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true })).toHaveValue('');
       await info.attach('brief-run-confirmed', { body: await page.screenshot(), contentType: 'image/png' });
       await page.clock.install();
       for (const lifecycle of ['WAITING_FOR_HUMAN', 'PAUSED', 'RUNNING', 'FAILED']) {
@@ -58,12 +78,14 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     for (const brief of ['rejected', 'unknown', 'unsupported', 'malformed', 'crossed', 'disconnected']) {
       test(`Brief Run ${path} never runs after ${brief} staging`, async ({ page }) => {
         await ready(page, tab, { brief });
+        await page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true }).fill('  retained Run 한글\n');
         await input(page).fill('  retained 한글\ntrailing  \n'); await input(page).press('Control+Enter');
         if (!tab) await page.keyboard.press('Control+Home');
         const label = brief === 'rejected' ? 'Brief rejected' : brief === 'unsupported' ? 'Brief → Run unavailable' : 'Brief staging uncertain';
         await expect(page.getByRole('status').filter({ hasText: label }).first()).toBeVisible({ timeout: 35000 });
         if (!tab) await page.keyboard.press('Control+Home');
         await expect(input(page)).toHaveValue('  retained 한글\ntrailing  \n');
+        await expect(page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true })).toHaveValue('  retained Run 한글\n');
         await page.keyboard.press('Control+Enter');
         expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests)).toEqual([]);
@@ -84,7 +106,8 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     });
     test(`composer Enter ${path} shares Send and preserves editing composition and mode guards`, async ({ page }) => {
       await ready(page, tab);
-      await page.getByRole('button', { name: 'task-run', exact: true }).click();
+      await page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true }).fill('unsent Run');
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
       await input(page).fill('first'); await input(page).press('Shift+Enter');
       await page.keyboard.type('second'); await expect(input(page)).toHaveValue('first\nsecond');
       await input(page).press('Home'); await expect(input(page)).toBeFocused();
@@ -94,12 +117,15 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true }));
       });
       expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit'))).toEqual([]);
       await input(page).press('Enter');
       await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit')))
         .toMatchObject([{ instruction: 'first\nsecond' }]);
       expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+      if (!tab) await page.keyboard.press('Control+Home');
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+      await expect(page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true })).toHaveValue('unsent Run');
     });
     for (const [runResult, label] of [['human', 'Run requires human input'], ['paused', 'Run requires human input'],
       ['not-started', 'Runner confirms Run did not start'], ['returned', 'Run owner returned'],
@@ -107,10 +133,12 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       ['unsupported', 'Brief → Run unavailable']]) {
       test(`Brief Run ${path} retains ownership after ${runResult}`, async ({ page }) => {
         await ready(page, tab, { runResult });
+        await page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true }).fill('  retained Run\n');
         await input(page).fill('retained invocation'); await input(page).press('Control+Enter');
         if (!tab) await page.keyboard.press('Control+Home');
         await expect(page.getByRole('status').filter({ hasText: label }).first()).toBeVisible({ timeout: 35000 });
         await expect(input(page)).toHaveValue('retained invocation');
+        await expect(page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true })).toHaveValue('  retained Run\n');
         await page.keyboard.press('Control+Enter');
         const requests = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests);
         expect(requests.filter(r => r.operation === 'run.invoke').length).toBe(runResult === 'unsupported' ? 0 : 1);
@@ -135,7 +163,9 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await page.evaluate(() => {
       window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true;
     });
-    await expect(page.getByRole('alert').filter({ hasText: 'Use the Runner interaction controls for foreground replies.' })).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText:
+      /Use the Runner interaction controls for foreground replies\.|Runner attention or suspension is unsettled\. Instruction unsent\./
+    })).toBeVisible({ timeout: 35000 });
     await expect(input(page)).toHaveValue('Brief must stay out of PTY');
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);

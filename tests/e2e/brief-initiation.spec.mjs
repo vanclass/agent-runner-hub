@@ -1,7 +1,7 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 test.beforeEach(async ({ page }) => { await page.goto('/'); });
 
-test('Brief initiation deadline retains pending evidence and prevents replay', async ({ page }) => {
+test('Brief initiation Run-text-only deadline retains pending evidence and prevents replay', async ({ page }) => {
   await page.clock.install();
   await page.evaluate(async () => {
     const { RunnerBrief } = await import('/src/hub/RunnerBrief.ts');
@@ -19,7 +19,7 @@ test('Brief initiation deadline retains pending evidence and prevents replay', a
       }, run: (session, request) => { if (session !== 'original') throw Error('retargeted'); return fixture.submit(request); },
     }, () => {});
     brief.observe(snapshot); window.__brief = { brief, fixture, snapshot };
-    window.__brief.promise = brief.submit('retained body');
+    window.__brief.promise = brief.submit('', undefined, '  retained Run 한글\n    🌍\t \n');
   });
   await expect.poll(() => page.evaluate(() => window.__brief.fixture.requests.length)).toBeGreaterThan(1);
   await page.clock.runFor(66000);
@@ -28,10 +28,12 @@ test('Brief initiation deadline retains pending evidence and prevents replay', a
     const result = await promise; await brief.submit('must not replay');
     return { result, blocked: brief.blocked, requests: fixture.requests };
   });
-  expect(result.result).toMatchObject({ staged: true, status: 'unknown', outcome: 'pending',
+  expect(result.result).toMatchObject({ staged: false, status: 'unknown', outcome: 'pending',
     initiation: { initiation_status: 'pending' } });
   expect(result.blocked).toBe(true);
   expect(result.requests.filter(r => r.operation === 'run.invoke')).toHaveLength(1);
+  expect(result.requests.find(r => r.operation === 'run.invoke').text).toBe('  retained Run 한글\n    🌍\t \n');
+  expect(result.result.stagingRequest).toBeUndefined();
 });
 
 for (const fault of ['disconnected', 'generation', 'capability', 'lost-completion']) {

@@ -21,11 +21,15 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   return <section className="composer-area" aria-label={t('composer.label')}>
     <RunnerWorkStatus work={session.control.work} />
     <ComposerAttachments selection={session.references} disabled={!!session.view.closing || pending || session.assignmentReserved || session.submissionUncertain}>
-      <textarea data-instruction="true" aria-label={t('composer.runnerInstructions')} value={text} rows={3} disabled={!available || pending}
+      <textarea data-instruction="true" aria-label={t(session.hubSelections?.defaults.runMode === 'issue-run' ? 'brief.input' : 'composer.runnerInstructions')} value={text} rows={3} disabled={!available || pending}
         onKeyDown={event => instructionKey(event, briefRun => {
           if (!briefRun || session.hubSelections?.defaults.runMode === 'issue-run') void submit(briefRun);
         })}
         placeholder={t('composer.placeholder')} onChange={event => session.setDraft(event.target.value)} />
+      {session.hubSelections?.defaults.runMode === 'issue-run' && <textarea aria-label={t('brief.runInput')} rows={2}
+        value={session.runDraft} disabled={!available || pending} placeholder={t('brief.runInput')}
+        onChange={event => session.setRunDraft(event.target.value)}
+        onKeyDown={event => instructionKey(event, briefRun => { void submit(briefRun); })} />}
       <div className="composer-actions"><button type="button" className="send-button" aria-label={t('composer.send')} disabled={!available || pending || !text}
         onClick={() => void submit()}>{pending ? t('composer.sending') : t('composer.send')} <span aria-hidden="true">↗</span></button></div>
     </ComposerAttachments>

@@ -82,11 +82,15 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
 }) {
   return <section className="composer-area" aria-label={t('composer.label')}>
     <ComposerAttachments selection={entry.attachments} disabled={entry.pending || entry.phase === 'unknown'}>
-      <textarea data-instruction="true" aria-label={t('entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
+      <textarea data-instruction="true" aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
         onKeyDown={event => instructionKey(event, briefRun => {
           if (!briefRun || entry.defaults.runMode === 'issue-run') void entry.submit(location, onSelectRunner, briefRun);
         })}
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
+      {entry.defaults.runMode === 'issue-run' && <textarea aria-label={t('brief.runInput')} rows={2}
+        value={entry.runDraft} disabled={!entry.editable} placeholder={t('brief.runInput')}
+        onChange={event => entry.setRunDraft(event.target.value)}
+        onKeyDown={event => instructionKey(event, briefRun => { void entry.submit(location, onSelectRunner, briefRun); })} />}
       <div className="composer-actions">
         <button className="send-button" type="button" disabled={!entry.editable || !entry.draft.trim()}
           onClick={() => void entry.submit(location, onSelectRunner)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>

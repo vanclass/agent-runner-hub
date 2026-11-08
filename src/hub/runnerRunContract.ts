@@ -1,7 +1,7 @@
 import { isDigest, record } from './runnerConfigContract';
 
 export type RunCapability = { version: 1; operations: string[] };
-export type RunRequest = { operation: 'run.invoke'; api_version: 1 }
+export type RunRequest = { operation: 'run.invoke'; api_version: 1; text?: string }
   | { operation: 'run.status'; api_version: 1; invocation_request_id: number };
 export type RunObservation = {
   invocation_request_id: number; request_status: 'accepted';

@@ -110,6 +110,7 @@ while True:
         continue
     if packet['operation']=='run.invoke':
         assert staged==1
+        assert packet['text']=='  추가 논의 사항이 없다면 작업 계획 수립하고 지시문 작성해\n    🌍\t \n'
         assert run is None
         run=dict(invocation_request_id=request_id,request_status='accepted',initiation_status='pending',dispatch_status='dispatching',
             issue_run_id='',authority_digest='',state_revision=0,lifecycle_status='',lifecycle_terminal=False,
@@ -326,7 +327,8 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
             let mut original = 0;
             for started in [false, true] {
                 let request = if started { control::run::Request::Status { api_version:1, invocation_request_id:original } }
-                    else { control::run::Request::Invoke { api_version:1 } };
+                    else { control::run::Request::Invoke { api_version:1,
+                        text: Some("  추가 논의 사항이 없다면 작업 계획 수립하고 지시문 작성해\n    🌍\t \n".into()) } };
                 let run = client.feature(control::features::Request::Run(request));
                 let id = match run { control::features::Admission::Submitted { id, generation } => {
                     assert_eq!(generation, ready.features.generation); id }, other => panic!("{other:?}") };

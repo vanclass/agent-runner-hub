@@ -84,29 +84,33 @@ export class RunnerBrief {
     }
     return 'unknown';
   }
-  async submit(body: string, lease?: symbol): Promise<BriefResult> {
+  async submit(body: string, lease?: symbol, text?: string): Promise<BriefResult> {
     const identity = this.port.identity(), snapshot = this.snapshot;
     if (this.busy || this.blocked) return { brief: true, staged: false, status: 'rejected' };
     this.result = undefined;
     if (!identity || !this.port.available(lease) || snapshot?.observation?.run_mode !== 'issue-run'
-      || snapshot.features?.brief?.version !== 1 || !snapshot.features.brief.operations.includes('brief.stage')
-      || !supportsRun(snapshot.features.run)) {
+      || body.length > 0 && (snapshot.features?.brief?.version !== 1 || !snapshot.features.brief.operations.includes('brief.stage'))
+      || !supportsRun(snapshot.features?.run)) {
       this.detail = msg('brief.unavailable'); this.changed();
       return this.result = { brief: true, staged: false, status: 'rejected' };
     }
-    this.busy = true; this.detail = msg('brief.staging'); this.changed();
+    this.busy = true; this.detail = msg(body.length ? 'brief.staging' : 'brief.runRequesting'); this.changed();
     let staged = false, status: BriefResult['status'] = 'unknown';
     let stagingRequest: FeatureAdmission | undefined, runRequest: FeatureAdmission | undefined;
     const evidence: Partial<BriefResult> = {};
     try {
-      stagingRequest = await this.port.stage(identity.session, body);
-      status = await this.receipt(identity, stagingRequest, 'brief.stage');
+      if (body.length > 0) {
+        stagingRequest = await this.port.stage(identity.session, body);
+        status = await this.receipt(identity, stagingRequest, 'brief.stage');
+        staged = status === 'completed';
+      } else status = 'completed';
       if (status === 'completed') {
-        staged = true; this.detail = msg('brief.staged'); this.changed();
+        if (staged) { this.detail = msg('brief.staged'); this.changed(); }
         if (!this.current(identity)) status = 'unknown';
         else {
-          this.detail = msg('brief.requesting'); this.changed();
-          runRequest = await this.port.run(identity.session, { operation: 'run.invoke', api_version: 1 });
+          this.detail = msg(staged ? 'brief.requesting' : 'brief.runRequesting'); this.changed();
+          runRequest = await this.port.run(identity.session,
+            { operation: 'run.invoke', api_version: 1, ...(text !== undefined && text.length > 0 ? { text } : {}) });
           status = await this.receipt(identity, runRequest, 'run.invoke');
           if (runRequest.state === 'not-sent') status = 'unknown';
           if (runRequest.state === 'submitted') {
@@ -129,6 +133,10 @@ export class RunnerBrief {
       : status === 'unknown'
       ? staged ? 'brief.runUnknown' : 'brief.stageUnknown' : staged ? 'brief.runRejected' : 'brief.stageRejected');
     this.result = { brief: true, staged, status, identity, stagingRequest, runRequest, ...evidence }; this.changed();
+    if (!body.length) {
+      this.detail = msg(status === 'completed' ? 'brief.runConfirmed' : status === 'unknown' ? 'brief.runUnconfirmed' : 'brief.runDeclined');
+      this.changed();
+    }
     return this.result;
   }
 }

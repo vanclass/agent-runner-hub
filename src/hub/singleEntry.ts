@@ -38,6 +38,7 @@ export function idleReason(session: RunnerSession, allowReferences = false) {
 
 export class SingleEntry {
   draft = '';
+  runDraft = '';
   readonly selections: HubSelections;
   attachments: RunnerReferenceSelection;
   get defaults() { return this.selections.defaults; }
@@ -74,11 +75,12 @@ export class SingleEntry {
     this.changed();
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) { this.selections.setDefault(key, value); }
+  setRunDraft(value: string) { if (this.editable) { this.runDraft = value; this.changed(); } }
   inspectOptions() { return this.selections.inspectOptions(); }
   async submit(location?: string, focus: (id: string) => void = () => {}, briefRun = false) {
-    if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
+    if (!this.editable || this.loadingOptions || !(briefRun ? this.draft.length || this.runDraft.length : this.draft.trim())) return;
     if (briefRun && this.defaults.runMode !== 'issue-run') return;
-    const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
+    const text = this.draft, runText = this.runDraft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.phase = 'preparing';
     this.detail = msg('runtime.entry.checking');
@@ -165,7 +167,7 @@ export class SingleEntry {
         attempted = true;
         this.changed();
         return this.attachments.deliveryLease;
-      }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined);
+      }, briefRun ? lease => destination.control.brief.submit(text, lease, runText) : undefined);
       if (briefRun) {
         const result = await submission as BriefResult;
         attempted = result.staged || result.status === 'unknown';
@@ -173,7 +175,7 @@ export class SingleEntry {
         this.evidence.push(this.detail);
         this.phase = result.status === 'completed' ? 'delivered' : attempted ? 'unknown' : 'incomplete';
         if (result.status === 'completed') {
-          this.draft = ''; this.attachments.finishSubmission(true);
+          this.draft = ''; this.runDraft = ''; this.attachments.finishSubmission(true);
           this.attachments = new RunnerReferenceSelection(undefined, this.changed);
           session.release(token); this.active = undefined;
         }
@@ -223,7 +225,10 @@ export class SingleEntry {
     if (this.active) {
       const { session, token } = this.active;
       session.release(token);
-      if (transfer && !session.view.draft) { session.setDraft(this.draft); this.draft = ''; }
+      if (transfer && !session.view.draft && !session.runDraft) {
+        session.setDraft(this.draft); session.setRunDraft(this.runDraft);
+        this.draft = ''; this.runDraft = '';
+      }
       this.active = undefined;
     }
     this.phase = 'editing';
