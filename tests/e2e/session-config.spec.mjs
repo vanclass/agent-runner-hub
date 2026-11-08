@@ -1,5 +1,30 @@
 import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
 
+test('unbound native startup preserves verified choices without choosing a target', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+    const { HubSelections } = await import('/src/hub/HubSelections.ts');
+    const { configToEntryDefaults } = await import('/src/hub/runnerConfigDefaults.ts');
+    fixture.current.target = '';
+    const observation = () => ({ target: { binding_state: 'unset', owner: '', project: '' }, selection: service.actual?.effective });
+    const selections = new HubSelections(() => service, () => {}, {}, () => {}, () => true, observation);
+    await selections.inspectOptions();
+    const before = structuredClone(selections.defaults), available = !!selections.catalog;
+    const uncertain = configToEntryDefaults(service.actual.current, service.catalog, { ...observation(), target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
+    const unknown = configToEntryDefaults({ ...service.actual.current, target: 'project:missing' }, service.catalog, observation());
+    selections.setDefault('target', { binding_state: 'bound', owner: 'Project', project: 'Exact' });
+    return { available, before, selected: selections.defaults.target, uncertain: !!uncertain, unknown: !!unknown,
+      readOnly: fixture.requests.every(r => r.operation === 'session_config.inspect') };
+  });
+  expect(result.available).toBe(true);
+  expect(result.before).not.toHaveProperty('target');
+  expect(result.before.accountIdentity).toEqual({ agent_id: 'codex', profile_name: 'first' });
+  expect(result.selected).toEqual({ binding_state: 'bound', owner: 'Project', project: 'Exact' });
+  expect(result.uncertain).toBe(false); expect(result.unknown).toBe(false);
+  expect(result.readOnly).toBe(true);
+});
+
 test('session config binds identity only after an authenticated ready snapshot', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {

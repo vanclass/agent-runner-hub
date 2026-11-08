@@ -40,13 +40,15 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
 export function configToEntryDefaults(settings: ConfigSettings, catalog: ConfigCatalog, observation?: RunnerObservation): EntryDefaults | undefined {
   const target = catalog.options.targets.find(t => t.id === settings.target);
   const model = catalog.options.models.find(m => m.id === settings.model.id);
-  if (!target || !model || !model.reasoning_efforts.includes(settings.model.reasoning_effort)
+  const unbound = settings.target === '' && observation?.target?.binding_state === 'unset'
+    && observation.target.owner === '' && observation.target.project === '';
+  if ((!target && !unbound) || !model || !model.reasoning_efforts.includes(settings.model.reasoning_effort)
     || !model.service_tiers.includes(settings.service_tier) || !catalog.options.run_modes.includes(settings.run_mode)
     || !same(settings.account, catalog.inspection.model_options_account)
     || !catalog.options.accounts.some(a => same(a, settings.account))
     || !observation || observation.selection.account !== settings.account.profile_name
     || !same(settings.account, catalog.inspection.current.account)) return;
-  return { target: { binding_state: 'bound', owner: target.owner, project: target.project },
+  return { ...(target ? { target: { binding_state: 'bound', owner: target.owner, project: target.project } } : {}),
     accountIdentity: { ...settings.account }, runMode: settings.run_mode,
     ...(['pure-direct-run', 'direct-run'].includes(settings.run_mode) && settings.root ? { root: settings.root } : {}),
     model: { model: model.id, reasoning_effort: settings.model.reasoning_effort, service_tier: settings.service_tier } };
