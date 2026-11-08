@@ -52,7 +52,8 @@ fn installed_exact_recovery_reference_is_unverified_without_confirmed_work() {
         harness.pump_for(Duration::from_millis(30));
     }
     let snapshot = session.control_snapshot().unwrap();
-    assert_eq!(snapshot.state, "ready", "{snapshot:?}");
+    assert_eq!(snapshot.state, "ready", "{snapshot:?}; native Runner output: {}",
+        String::from_utf8_lossy(harness.output.get(&id).map(Vec::as_slice).unwrap_or_default()));
     assert!(snapshot.features.recovery.is_some(), "Installed Runner recovery capability unavailable");
     let admission = session.control_feature(features::Request::Recovery(recovery::Request::Reference {
         api_version: 1, observation_id: "terminal:1".into(),
@@ -81,4 +82,5 @@ fn installed_exact_recovery_reference_is_unverified_without_confirmed_work() {
     assert_eq!(fresh.state, "ready", "{fresh:?}");
     assert_ne!(fresh.features.generation, snapshot.features.generation);
     replacement.close().unwrap(); harness.exited(&next);
+    assert!(harness.sessions.sessions.lock().unwrap().is_empty(), "Owned acceptance sessions must be retired");
 }
