@@ -80,7 +80,9 @@ impl Features {
         self.work = work::Capability::read(&packet["work"]);
     }
     pub fn supports(&self, request: &Request) -> bool { match request {
-        Request::Recovery(_) => self.recovery.is_some(),
+        Request::Recovery(r) => self.recovery.as_ref().is_some_and(|cap|
+            cap.operations.iter().any(|op| op == r.operation())
+                && (!matches!(r, recovery::Request::Observe { .. }) || cap.lifecycle_version == Some(1))),
         Request::Interaction(r) => self.interaction.is_some() && match r {
             interaction::Request::Observe { .. } => true,
             _ => self.results.iter().rev().find(|result| result.feature == "interaction")

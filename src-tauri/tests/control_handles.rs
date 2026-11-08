@@ -37,7 +37,8 @@ images=[dict(image_id=letter*32,source_sequence=sequence,output_index=0,source='
 image_cap=dict(version=1,operations=['generated_images.list','generated_images.read'],mime_types=['image/png'],max_image_bytes=16777216,max_chunk_bytes=17,page_size=1,lifetime='owning_control_connection',read_only=True)
 brief_cap=dict(version=1,operations=['brief.stage'],run_modes=['issue-run'],lifetime='process_session',automatic_retry=False)
 run_cap=dict(version=1,operations=['run.invoke','run.status'],run_modes=['issue-run'],observation_lifetime='process_session',automatic_retry=False,receipt='request_accepted')
-recovery_cap=dict(version=1,operations=['recovery.reference','recovery.recover'],reference_version=1,
+recovery_cap=dict(version=1,operations=['recovery.reference','recovery.recover','recovery.observe'],reference_version=1,
+    lifecycle_version=1,lifecycle_dispositions=['completed','discarded','suspended','incomplete','in_use','identity_conflict','absent','unverified'],
     families=['direct-run','task-run','issue-run'],automatic_retry=False,instruction_replay=False,
     outcomes=['recovered','absent','blocked','identity_conflict','interaction_required','unverified','partial'])
 run=None
@@ -59,6 +60,14 @@ while True:
     assert request_id>previous
     previous=request_id
     send(request_id=request_id,status='accepted',phase='queued')
+    if packet['operation']=='recovery.observe':
+        reference=packet['reference']
+        assert packet['api_version']==1 and reference['session_id']=='retained-pipe'
+        send(request_id=request_id,status='accepted',phase='completed',reference=reference,
+             lifecycle_version=1,disposition='completed',terminal=True,authoritative=True,ownership='available',code='',
+             evidence=dict(owner='direct_generation',revision=1,session_revision=1,sealed=False,state='completed',phase='exited',
+                           digests={str(i):'a'*64 for i in range(3)}))
+        continue
     if packet['operation']=='recovery.recover':
         reference=packet['reference']
         assert reference['family']=='direct-run' and reference['session_id']=='retained-pipe'
@@ -212,13 +221,26 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
         "version":1,"family":"direct-run","session_id":"retained-pipe","generation_id":"generation-1",
         "thread_id":"thread-1","resume_id":"","source_exec_run_id":"exec-1"})).unwrap();
     let recovery = client.feature(control::features::Request::Recovery(control::recovery::Request::Recover {
-        api_version:1, reference:exact }));
+        api_version:1, reference:exact.clone() }));
     let control::features::Admission::Submitted { id: recovery_id, .. } = recovery else { panic!("{recovery:?}") };
     loop {
         let snapshot = client.snapshot();
         if let Some(result) = snapshot.features.results.iter().find(|r| r.id == recovery_id && r.phase.as_deref() == Some("completed")) {
             let Some(control::features::Response::Recovery(reply)) = &result.reply else { panic!("{result:?}") };
             assert_eq!(reply.recovery_status.as_deref(), Some("recovered")); break;
+        }
+        assert!(Instant::now() < deadline, "{snapshot:?}"); thread::sleep(Duration::from_millis(10));
+    }
+    let observed = client.feature(control::features::Request::Recovery(control::recovery::Request::Observe {
+        api_version:1, reference:exact.clone() }));
+    let control::features::Admission::Submitted { id: observed_id, .. } = observed else { panic!("{observed:?}") };
+    loop {
+        let snapshot = client.snapshot();
+        if let Some(result) = snapshot.features.results.iter().find(|r| r.id == observed_id && r.phase.as_deref() == Some("completed")) {
+            let Some(control::features::Response::Recovery(reply)) = &result.reply else { panic!("{result:?}") };
+            assert_eq!(result.state, "accepted"); assert_eq!(reply.reference.as_ref(), Some(&exact));
+            assert_eq!(reply.disposition.as_deref(), Some("completed"));
+            assert_eq!(reply.authoritative, Some(true)); assert_eq!(reply.terminal, Some(true)); break;
         }
         assert!(Instant::now() < deadline, "{snapshot:?}"); thread::sleep(Duration::from_millis(10));
     }

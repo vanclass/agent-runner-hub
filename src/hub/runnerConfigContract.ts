@@ -40,7 +40,7 @@ export type FeatureResult = { id: number; feature: 'recovery' | 'session_config'
   admission: 'unconfirmed' | 'queued' | 'rejected' | 'not-sent'; phase?: string | null; code?: string | null;
   reply?: unknown };
 export type FeatureSnapshot = { generation: number; runnerRoot?: string | null; sessionConfig?: ConfigCapability | null; work?: WorkCapability | null;
-  recovery?: { version: 1; operations: string[] } | null;
+  recovery?: { version: 1; operations: string[]; lifecycle_version?: number | null } | null;
   interaction?: InteractionCapability | null;
   brief?: { version: 1; operations: string[] } | null; run?: RunCapability | null; results: FeatureResult[] };
 export type FeatureAdmission = { state: 'submitted'; id: number; generation: number }

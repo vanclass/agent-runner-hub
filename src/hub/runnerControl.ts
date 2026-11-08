@@ -89,6 +89,7 @@ export class RunnerControl {
   constructor(private readonly changed: () => boolean | void) {
     this.recovery = new RunnerRecovery(undefined, false, {
       completionMs: controlTiming.completionMs,
+      observeMs: controlTiming.refreshMs,
       submit: request => invoke<FeatureAdmission>('runner_feature', { id: this.id, request: { feature: 'recovery', request } }),
     }, changed);
     this.interaction = new RunnerInteraction((id, request) => invoke<FeatureAdmission>('runner_feature', {
@@ -157,7 +158,9 @@ export class RunnerControl {
       this.config.observe(this.id, snapshot.state, snapshot.features);
       this.work.observe(this.id, snapshot.state, snapshot.features);
       this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
-        !this.attachmentLocked && !this.otherControlBusyWithoutRecovery && !this.config.busy && !this.work.busy && !this.brief.busy,
+        !this.assignmentLocked && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
+          && !snapshot.observation?.attention.foreground_interaction_active
+          && !this.config.busy && !this.work.busy && !this.brief.busy,
         this.work.attempts.filter(attempt => this.work.hasConfirmedStart(attempt)));
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);

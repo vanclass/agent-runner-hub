@@ -128,6 +128,8 @@ async function transport(page, freshTarget, referenceOptions) {
             if (referenceOptions.brief !== undefined && referenceOptions.brief !== 'unsupported')
               fixture.features.brief = { version: 1, operations: ['brief.stage'] };
             if (referenceOptions.recovery) fixture.features.recovery = { version: 1, operations: ['recovery.reference', 'recovery.recover'] };
+            if (referenceOptions.lifecycle) Object.assign(fixture.features.recovery,
+              { lifecycle_version: 1, operations: ['recovery.reference', 'recovery.recover', 'recovery.observe'] });
             if (referenceOptions.brief !== undefined) {
               const { RunFixture } = await import('/tests/fixtures/run.ts');
               sessions.get(id).run = new RunFixture(fixture.features, referenceOptions.runResult);
@@ -204,6 +206,21 @@ async function transport(page, freshTarget, referenceOptions) {
             const outcome = referenceOptions.recoveryResults?.[args.id] ?? 'recovered';
             const reference = request.reference ?? { version: 1, family: 'task-run',
               repository_namespace: 'project-exact', task_number: args.id.slice(4), task_workload_id: 'work-' + args.id };
+            if (request.operation === 'recovery.observe') {
+              const disposition = sessions.get(args.id).lifecycle ?? referenceOptions.lifecycle;
+              const terminal = ['completed', 'discarded'].includes(disposition);
+              const authoritative = ['completed', 'discarded', 'suspended', 'incomplete', 'in_use'].includes(disposition);
+              const issue = reference.family === 'issue-run';
+              const evidence = { owner: issue ? 'issue_lifecycle' : 'task_workload', revision: 1,
+                state: disposition === 'discarded' ? 'aborted' : disposition === 'completed' ? issue ? 'finalized' : 'completed' : 'running',
+                phase: 'fixture', digests: { '0': 'a'.repeat(64), ...(!issue ? { '1': 'b'.repeat(64) } : {}) },
+                ...(issue ? { ownership_revision: 1 } : {}) };
+              fixture.features.results.push({ id, feature: 'recovery', operation: request.operation, admission: 'queued',
+                state: 'accepted', phase: 'completed', reply: { reference, lifecycle_version: 1, disposition,
+                  terminal, authoritative, ownership: disposition === 'in_use' ? 'in_use' : authoritative ? 'available' : 'unavailable',
+                  evidence: authoritative ? evidence : null, code: '' } });
+              return { state: 'submitted', id, generation: fixture.features.generation };
+            }
             fixture.features.results.push({ id, feature: 'recovery', operation: request.operation, admission: 'queued',
               state: outcome === 'recovered' ? 'accepted' : 'rejected', phase: 'completed',
               reply: request.operation === 'recovery.reference' ? { reference, observation_id: request.observation_id }

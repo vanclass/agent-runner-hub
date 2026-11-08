@@ -4,6 +4,42 @@ use control::{features, recovery};
 use std::time::Instant;
 
 #[test]
+#[ignore = "Requires HUB_RUNNER_ACCEPTANCE_ROOT and an explicitly supplied exact HUB_RECOVERY_OBSERVE_REFERENCE"]
+fn installed_exact_lifecycle_observation_without_work_dispatch() {
+    let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();
+    let reference: recovery::Reference = serde_json::from_str(&std::env::var("HUB_RECOVERY_OBSERVE_REFERENCE").unwrap()).unwrap();
+    let mut harness = Harness::new();
+    let id = harness.open_runner(&root);
+    let session = harness.sessions.owned(&id, "test-window").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(45);
+    while session.control_snapshot().unwrap().state == "connecting" {
+        assert!(Instant::now() < deadline); harness.pump_for(Duration::from_millis(30));
+    }
+    let snapshot = session.control_snapshot().unwrap();
+    assert_eq!(snapshot.state, "ready", "{snapshot:?}");
+    assert_eq!(snapshot.features.recovery.as_ref().unwrap().lifecycle_version, Some(1));
+    let admission = session.control_feature(features::Request::Recovery(recovery::Request::Observe {
+        api_version: 1, reference: reference.clone(),
+    })).unwrap();
+    let features::Admission::Submitted { id: request_id, .. } = admission else { panic!("{admission:?}") };
+    // The result is observed through the actual native client, never injected into WorkEvidence.
+    loop {
+        let current = session.control_snapshot().unwrap();
+        assert_eq!(current.features.generation, snapshot.features.generation);
+        if let Some(result) = current.features.results.iter().find(|r| r.id == request_id && r.phase.as_deref() == Some("completed")) {
+            let Some(features::Response::Recovery(reply)) = &result.reply else { panic!("{result:?}") };
+            assert_eq!(result.state, "accepted"); assert_eq!(reply.reference.as_ref(), Some(&reference));
+            assert_eq!(reply.authoritative, Some(true));
+            println!("Installed exact lifecycle: disposition={:?}, terminal={:?}, ownership={:?}",
+                reply.disposition, reply.terminal, reply.ownership);
+            break;
+        }
+        assert!(Instant::now() < deadline, "{current:?}"); harness.pump_for(Duration::from_millis(30));
+    }
+    session.close().unwrap(); harness.exited(&id);
+}
+
+#[test]
 #[ignore = "Requires HUB_RUNNER_ACCEPTANCE_ROOT; no instructions or continuation are submitted"]
 fn installed_exact_recovery_reference_is_unverified_without_confirmed_work() {
     let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();

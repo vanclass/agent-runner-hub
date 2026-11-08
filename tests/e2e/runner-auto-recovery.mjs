@@ -19,6 +19,32 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
   const saved = page => page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
   const calls = page => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
     .flatMap(s => s.recoveries ?? []).filter(r => r.operation === 'recovery.recover'));
+  for (const disposition of ['completed', 'discarded']) test('lifecycle skips settled reference before restore: ' + disposition, async ({ page }) => {
+    await seed(page, [{ reference: reference(1), state: 'eligible' }], { lifecycle: disposition });
+    await expect.poll(async () => (await saved(page)).tabs[0].recovery).toBeUndefined();
+    expect(await calls(page)).toEqual([]);
+    const id = (await saved(page)).tabs[0].id;
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
+    await page.waitForTimeout(1200);
+    expect((await saved(page)).tabs[0].id).toBe(id);
+    expect(await calls(page)).toEqual([]);
+  });
+  for (const family of ['task-run', 'issue-run']) test('lifecycle retires recovered ' + family + ' without local WorkEvidence completion', async ({ page }) => {
+    const exact = family === 'task-run' ? reference(1) : { version: 1, family, issue_run_id: 'issue-1',
+      created_by_runner_session_id: 'origin', creation_provenance_digest: 'a'.repeat(64) };
+    await seed(page, [{ reference: exact, state: 'eligible' }], { lifecycle: 'incomplete' });
+    await expect.poll(() => calls(page)).toHaveLength(1);
+    expect((await calls(page))[0].reference).toEqual(exact);
+    await expect.poll(async () => (await saved(page)).tabs[0].recovery.state).toBe('eligible');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').lifecycle = 'completed'; });
+    await expect.poll(async () => (await saved(page)).tabs[0].recovery).toBeUndefined();
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.observations.size)).toBe(0);
+    const id = (await saved(page)).tabs[0].id;
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
+    await page.waitForTimeout(1200);
+    expect((await saved(page)).tabs[0].id).toBe(id);
+    expect(await calls(page)).toHaveLength(1);
+  });
   for (const count of [1, 3]) test('automatic recovery after unexpected renderer loss with ' + count + ' tabs', async ({ page }) => {
     const references = Array.from({ length: count }, (_, i) => reference(i + 1));
     await seed(page, references.map(reference => ({ reference, state: 'eligible' })));
