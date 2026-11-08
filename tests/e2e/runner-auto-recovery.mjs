@@ -72,7 +72,7 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
     for (const row of await page.locator('.runner-row .nav-row').all()) await row.click();
     await expect(page.locator('.runner-recovery')).toHaveCount(0);
   });
-  test('automatic recovery captures confirmed starts, replaces interrupted process and retires completed work', async ({ page }) => {
+  test('automatic recovery retains its reference across unrelated replacement-session completion', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true, recovery: true });
     await configure(page); await create(page);
     await page.evaluate(async () => {
@@ -93,7 +93,78 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
       window.__nativeFixture.sessions.get(owner).feature.observations.set('terminal:1',
         terminalWork(1, 1, { state: 'succeeded', terminal: true, outcome: 'succeeded' }));
     }, owner);
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery).toBeUndefined();
+    await page.waitForTimeout(2200);
+    expect((await saved(page)).tabs[0].recovery).toEqual(before.recovery);
+    await page.evaluate(owner => window.__nativeFixture.exit(owner, 1), owner);
+    await expect.poll(() => calls(page)).toHaveLength(2);
+    expect((await calls(page))[1].reference).toEqual(before.recovery.reference);
+    expect((await saved(page)).tabs[0].id).toBe(before.id);
+  });
+  test('automatic recovery never substitutes new active work or retires unbound exit evidence', async ({ page }) => {
+    await seed(page, [{ reference: reference(1), state: 'eligible' }]);
+    await expect.poll(() => calls(page)).toHaveLength(1);
+    await page.evaluate(async () => {
+      const { terminalWork } = await import('/tests/fixtures/work.ts');
+      window.__nativeFixture.sessions.get('pty-1').feature.observations.set('terminal:1', terminalWork(1, 1));
+    });
+    await page.waitForTimeout(2200);
+    expect((await saved(page)).tabs[0].recovery.reference).toEqual(reference(1));
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').recoveries)).toHaveLength(1);
+    await page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      Object.assign(session.feature.observations.get('terminal:1'), {
+        event_id: 2, terminal: true, state: 'succeeded', outcome: 'succeeded' });
+      window.__nativeFixture.exit('pty-1', 1, structuredClone(session.control));
+    });
+    await expect.poll(() => calls(page)).toHaveLength(2);
+    expect((await calls(page))[1].reference).toEqual(reference(1));
+  });
+  test('automatic recovery retires only bound settled work after successful persistence', async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async reference => {
+      const { RunnerRecovery } = await import('/src/hub/RunnerRecovery.ts');
+      const { terminalWork } = await import('/tests/fixtures/work.ts');
+      const attempt = { identity: { session: 'owned', generation: 1 }, uncertain: false, notSent: false,
+        work: terminalWork(1, 1) };
+      let committed, fail = false;
+      const requests = [];
+      const recovery = new RunnerRecovery(undefined, false, { completionMs: 1000, submit: async request => {
+        requests.push(request); return { state: 'submitted', id: 1, generation: 1 };
+      } }, () => { if (fail) return false; committed = structuredClone(recovery.saved); return true; });
+      const snapshot = { generation: 1, results: [], recovery: { version: 1, operations: ['recovery.reference', 'recovery.recover'] } };
+      recovery.observe(snapshot, true, true, [attempt]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      snapshot.results.push({ id: 1, feature: 'recovery', operation: 'recovery.reference', state: 'accepted',
+        phase: 'completed', reply: { observation_id: 'terminal:1', reference } });
+      recovery.observe(snapshot, true, true, [attempt]);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const captured = structuredClone(recovery.saved);
+      const retained = [];
+      for (const [state, terminal, outcome] of [['suspended', false, 'interrupted'], ['incomplete', true, 'incomplete'],
+        ['unknown', true, 'unknown']]) {
+        Object.assign(attempt.work, { state, terminal, outcome });
+        const unrelated = { ...attempt, work: terminalWork(2, 9, { state: 'succeeded', terminal: true, outcome: 'succeeded' }) };
+        recovery.observe(snapshot, true, true, [attempt, unrelated]);
+        recovery.retireCompleted([unrelated]);
+        retained.push(structuredClone(recovery.saved));
+      }
+      Object.assign(attempt.work, { state: 'succeeded', terminal: true, outcome: 'succeeded' });
+      recovery.observe(snapshot, false, true, [attempt]);
+      retained.push(structuredClone(recovery.saved));
+      fail = true;
+      recovery.observe(snapshot, true, true, [attempt]);
+      const failed = { live: structuredClone(recovery.saved), committed };
+      fail = false;
+      recovery.observe(snapshot, true, true, [attempt]);
+      recovery.close();
+      return { captured, retained, failed, retired: !recovery.saved && !committed, requests };
+    }, reference(1));
+    const captured = { reference: reference(1), state: 'eligible' };
+    expect(result.captured).toEqual(captured);
+    expect(result.retained).toEqual(Array(4).fill(captured));
+    expect(result.failed).toEqual({ live: captured, committed: captured });
+    expect(result.retired).toBe(true);
+    expect(result.requests).toEqual([{ operation: 'recovery.reference', api_version: 1, observation_id: 'terminal:1' }]);
   });
   test('intentional Hub teardown suppresses recovery but keeps tab identity', async ({ page }) => {
     await seed(page, [{ reference: reference(1), state: 'eligible' }]);

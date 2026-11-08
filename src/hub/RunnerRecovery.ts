@@ -44,6 +44,7 @@ export class RunnerRecovery {
   private pending: boolean;
   private capturing?: WorkAttempt;
   private latest?: WorkAttempt;
+  private referenced?: WorkAttempt;
   private closed = false;
   private waiting?: { id?: number; generation: number; finish: (r?: FeatureResult) => void; timer: ReturnType<typeof setTimeout> };
   constructor(saved: RecoveryRecord | undefined, restore: boolean, private transport: RecoveryTransport,
@@ -56,6 +57,7 @@ export class RunnerRecovery {
   get busy() { return !!this.waiting || this.pending; }
   restore(saved: RecoveryRecord | undefined, restore: boolean) {
     this.closed = false;
+    this.latest = this.capturing = this.referenced = undefined;
     this.saved = saved && copy(saved);
     if (this.saved?.state === 'attempting') this.saved.state = 'partial';
     this.pending = restore && this.saved?.state === 'eligible';
@@ -92,10 +94,13 @@ export class RunnerRecovery {
       });
       return;
     }
+    this.retireCompleted(attempts);
+    // Recovery admission supplies no observation binding for the replacement process.
+    // Preserve retained/uncertain evidence until its exact owner can prove settlement.
+    if (this.saved) return;
     const latest = attempts.reduce<WorkAttempt | undefined>((a, b) =>
       (b.work?.started_event_id ?? 0) > (a?.work?.started_event_id ?? 0) ? b : a, undefined);
     if (this.latest && !attempts.includes(this.latest)) {
-      if (this.saved?.state === 'eligible') this.set({ ...this.saved, state: 'unverified', code: 'RECOVERY_WORK_UNVERIFIED' });
       return;
     }
     if (!latest?.work) return;
@@ -117,18 +122,19 @@ export class RunnerRecovery {
       const reply = result?.reply;
       if (result?.state === 'accepted' && result.phase === 'completed' && record(reply)
         && reply.observation_id === observation_id && isRecoveryReference(reply.reference)) {
+        this.referenced = latest;
         this.set({ reference: reply.reference, state: 'eligible' });
       } else { this.outcome = 'unverified'; this.set({ state: 'unverified', code: 'RECOVERY_REFERENCE_UNVERIFIED' }); }
     });
   }
   legacy() { if (!this.saved) this.outcome = 'unverified'; }
   retireCompleted(attempts: readonly WorkAttempt[]) {
-    const latest = attempts.reduce<WorkAttempt | undefined>((a, b) =>
-      (b.work?.started_event_id ?? 0) > (a?.work?.started_event_id ?? 0) ? b : a, undefined);
-    if (latest?.work?.terminal && !['incomplete', 'unknown'].includes(latest.work.outcome)
-      && latest.work.started_event_id >= (this.latest?.work?.started_event_id ?? 0)) {
-      this.saved = undefined; this.outcome = undefined;
-    }
+    const work = this.referenced?.work;
+    if (!this.saved?.reference || !this.referenced || !attempts.includes(this.referenced)
+      || !work?.terminal || ['incomplete', 'unknown'].includes(work.outcome)) return;
+    const retained = this.saved;
+    if (this.set(undefined) === false) this.saved = retained;
+    else { this.referenced = undefined; this.outcome = undefined; }
   }
   discard() { this.close(); this.saved = undefined; this.outcome = undefined; }
   close() {
