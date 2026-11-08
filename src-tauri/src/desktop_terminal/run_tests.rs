@@ -22,19 +22,24 @@ fn run_ready() -> Protocol {
 }
 #[test]
 fn run_optional_text_roundtrips_without_changing_status_or_argument_free_calls() {
-    let text = "  과검증 과설계에 주의해\n    추가 논의 🌍\t \n";
-    let mut p = run_ready();
-    let request: run::Request = serde_json::from_value(json!({"operation":"run.invoke","api_version":1,"text":text})).unwrap();
-    request.validate().unwrap();
-    let wire: Value = serde_json::from_slice(&p.feature_request(features::Request::Run(request), "key").unwrap()).unwrap();
-    assert_eq!(wire["text"], text);
+    for text in ["", " \t\n ", "  과검증 과설계에 주의해\n    추가 논의 🌍\t \n"] {
+        let mut p = run_ready();
+        let request: run::Request = serde_json::from_value(json!({"operation":"run.invoke","api_version":1,"text":text})).unwrap();
+        request.validate().unwrap();
+        let wire: Value = serde_json::from_slice(&p.feature_request(features::Request::Run(request), "key").unwrap()).unwrap();
+        assert_eq!(wire["text"], text);
+    }
     let mut bare = run_ready();
-    let wire: Value = serde_json::from_slice(&bare.feature_request(invoke(), "key").unwrap()).unwrap();
+    let request: run::Request = serde_json::from_value(json!({"operation":"run.invoke","api_version":1})).unwrap();
+    request.validate().unwrap();
+    let wire: Value = serde_json::from_slice(&bare.feature_request(features::Request::Run(request), "key").unwrap()).unwrap();
     assert!(wire.get("text").is_none());
-    for text in [json!(1), json!(false), json!([]), json!({})] {
+    for text in [Value::Null, json!(1), json!(1.5), json!(false), json!([]), json!({})] {
         assert!(serde_json::from_value::<run::Request>(json!({"operation":"run.invoke","api_version":1,"text":text})).is_err());
     }
-    assert!(serde_json::from_value::<run::Request>(json!({"operation":"run.status","api_version":1,"invocation_request_id":2,"text":"no"})).is_err());
+    for text in [json!("no"), json!(""), Value::Null] {
+        assert!(serde_json::from_value::<run::Request>(json!({"operation":"run.status","api_version":1,"invocation_request_id":2,"text":text})).is_err());
+    }
 }
 #[test]
 fn run_capability_and_request_admission_are_contract_gated() {

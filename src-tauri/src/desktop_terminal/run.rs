@@ -6,9 +6,12 @@ use serde_json::Value;
 #[serde(tag = "operation", deny_unknown_fields)]
 pub enum Request {
     #[serde(rename = "run.invoke")]
-    Invoke { api_version: u32, #[serde(default, skip_serializing_if = "Option::is_none")] text: Option<String> },
+    Invoke { api_version: u32, #[serde(default, deserialize_with = "present_text", skip_serializing_if = "Option::is_none")] text: Option<String> },
     #[serde(rename = "run.status")]
     Status { api_version: u32, invocation_request_id: u64 },
+}
+fn present_text<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    String::deserialize(d).map(Some)
 }
 impl Request {
     pub fn operation(&self) -> &'static str {
