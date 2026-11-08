@@ -2,7 +2,6 @@
   "interaction": {
     "label": "Runner interaction",
     "commandResult": "Command result",
-    "none": "No active foreground interaction.",
     "unsupported": "Structured input is unsupported for this Runner or foreground owner. Terminal logs are read-only.",
     "observing": "Observing authenticated foreground state…",
     "pending": "Waiting for the authenticated interaction receipt…",
@@ -322,8 +321,7 @@
     "earlier": "Move attachment {{name}} earlier",
     "later": "Move attachment {{name}} later",
     "reconcile": "Reconcile registration",
-    "hint": "Drop files or folders · Ctrl+V for PNG images · Pickers available as fallback",
-    "fallback": "Native drop is unavailable here. Use file/folder buttons in the desktop app. Image paste requires PNG data in the paste event.",
+    "fallback": "Native file/folder drop is unavailable here. Image paste requires PNG data in the paste event.",
     "instructionOnly": "Attachments require a new work instruction. Remove them before sending commands or terminal replies."
   },
   "brief": {
@@ -351,15 +349,10 @@
     "label": "Instruction composer",
     "runnerInstructions": "Runner instructions",
     "placeholder": "Write an instruction…",
-    "attachFile": "Attach file",
-    "attachFolder": "Attach folder",
-    "folder": "Folder",
-    "send": "Send instruction",
-    "sending": "Sending…",
     "verifying": "Verifying attachments and sending this input. Use Runner interaction controls for supported prompts…",
     "uncertain": "Delivery is uncertain. Draft retained; check the final Runner receipt. Hub will not replay it.",
     "reserved": "Single Entry holds this Runner. Review the assignment in Single Entry before using this composer.",
-    "appends": "Send applies the requested settings, then submits one instruction to this Runner."
+    "appends": "Enter applies the requested settings, then submits one instruction to this Runner."
   },
   "terminal": {
     "label": "Runner terminal",

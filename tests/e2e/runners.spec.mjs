@@ -17,7 +17,7 @@ import { registerInstallationSetup } from './installation-setup.mjs';
 import { registerTaskPanel } from './task-panel.mjs';
 import { registerLogViewport } from './log-viewport.mjs';
 import { registerHubSelectionUI } from './hub-selection-ui.mjs';
-import { registerComposerAttachments } from './composer-attachments.mjs';
+import { registerComposerAttachments, drop } from './composer-attachments.mjs';
 import { registerRunnerInteractions } from './runner-interactions.mjs';
 import { registerSlashCommands } from './slash-commands.mjs';
 import { registerWG2 } from './wg2.mjs';
@@ -646,7 +646,7 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   const id = await page.locator('.runner-row').first().getAttribute('data-runner-id');
   const target = await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).inputValue();
   await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('draft /status 그대로');
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await drop(page, ['/fixture/image.png']);
   await expect(page.locator('.attachment-chip')).toContainText('Staged');
   await expect(page.locator('.generated-images summary')).toHaveCount(0);
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
@@ -926,7 +926,7 @@ test('unsupported foreground blocks composer replies and preserves the draft wit
   await foreground(page, 'pty-1', true);
   await expect(page.getByLabel('Runner interaction', { exact: true })).toContainText('unsupported');
   await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('One uncertain ordinary delivery');
-  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
 });
 
@@ -1309,7 +1309,7 @@ async function entry(page, text = '/status') {
 
 test('Single Entry skips a Runner with prepared references and verifies the chosen empty inventory', async ({ page }) => {
   await transport(page, undefined, { auto: true }); await configure(page); await create(page);
-  await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+  await drop(page, ['/fixture/image.png']);
   await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
   await create(page); await entry(page);
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
@@ -1339,7 +1339,7 @@ test('Single Entry reserves authenticated command admission once across tabs', a
   await page.getByRole('button', { name: 'Assign instruction', exact: true }).evaluate(button => { button.click(); button.click(); });
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.length)).toBe(1);
   await page.locator('.runner-row').first().locator('.nav-row').click();
-  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toBeDisabled();
   await page.evaluate(() => window.__nativeFixture.resumeWrites());
@@ -1441,7 +1441,7 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await page.locator(`[data-runner-id="${firstId}"] .nav-row`).click();
   await expect(composer).toHaveValue('first line\n안녕 🌍');
   await expect(composer).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   await expect(composer).toHaveValue('first line\n안녕 🌍');
   const sent = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-1').filter(record => record.down);
   expect(sent).toEqual([]);
@@ -1463,7 +1463,7 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
   await page.locator(`[data-runner-id="${secondId}"] .nav-row`).click();
   await expect(composer).toBeEnabled();
-  await composer.fill('/status'); await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  await composer.fill('/status'); await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).press('Enter');
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.length)).toBe(1);
   await expect(composer).toHaveValue('/status');
   await page.evaluate(() => {
@@ -1501,6 +1501,6 @@ test('configuration failure, launch failure and unexpected exit stay local to th
   await expect(page.getByText('Process running', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__nativeFixture.exit('pty-1', 23));
   await expect(page.getByText('Process exited (23)', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
 });

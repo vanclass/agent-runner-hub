@@ -30,6 +30,7 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
         const unknown = responding && f.fault === 'unknown';
         if (responding && !rejected && !unknown) f.view = { state: 'none' };
         if (rejected) f.view = { state: 'unsupported', code: 'INTERACTION_MULTI_SELECTION_UNSUPPORTED' };
+        if (responding && f.hold) await new Promise(resolve => { f.release = resolve; });
         features.results.push({ id, feature: 'interaction', operation: request.operation,
           state: unknown ? 'outcome-unknown' : rejected ? 'rejected' : 'accepted', phase: 'completed', admission: 'queued',
           code: rejected ? 'STALE_INTERACTION' : null,
@@ -40,7 +41,7 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
         return { state: 'submitted', id, generation: features.generation };
       };
     }, kind);
-    if (kind === 'none') await expect(panel(page)).toContainText('No active');
+    if (kind === 'none') await expect(panel(page)).toHaveCount(0);
     else await expect(panel(page).getByRole('heading', { level: 4 })).toBeVisible();
   }
   for (const height of [550, 800]) test(`automatic observation keeps workspace stable at ${height}`, async ({ page }, info) => {
@@ -52,9 +53,9 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
     const samples = await page.evaluate(async () => {
       const samples = [], until = performance.now() + 4200;
       while (performance.now() < until) {
-        samples.push({ pending: document.querySelector('.runner-interaction').textContent.includes('receipt'),
+        samples.push({ pending: !!document.querySelector('.runner-interaction')?.textContent.includes('receipt'),
           boxes: ['.terminal-host', '.generated-image-preview', '.runner-interaction', '.composer-area'].map(selector => {
-            const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+            const { x, y, width, height } = document.querySelector(selector)?.getBoundingClientRect() ?? {};
             return { x, y, width, height };
           }), resizes: window.__nativeFixture.resizes.length });
         await new Promise(requestAnimationFrame);
@@ -81,7 +82,7 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
     await expect.poll(() => page.evaluate(() => window.__interactionFixture.requests.length)).toBeGreaterThan(10);
     await expect(panel(page).getByRole('textbox')).toHaveValue('draft survives polling');
     await page.evaluate(() => { window.__interactionFixture.view = { state: 'none' }; });
-    await expect(panel(page)).toHaveClass('runner-interaction compact');
+    await expect(panel(page)).toHaveCount(0);
     await expect(panel(page).getByRole('textbox')).toHaveCount(0);
   });
   for (const [kind, label, action, choice] of [['selection', 'Approve explicitly', 'select', 'yes'],
@@ -91,9 +92,10 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
       expect(await page.evaluate(() => window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'))).toEqual([]);
       await expect(panel(page).getByRole('button', { name: 'Disabled choice', exact: true })).toBeDisabled();
       if (kind === 'confirmation') await expect(panel(page)).toContainText('Requires explicit consent');
-      await page.evaluate(() => { window.__interactionFixture.delay = 1200; });
+      await page.evaluate(() => { window.__interactionFixture.hold = true; });
       await panel(page).getByRole('button', { name: label, exact: true }).click();
       await expect(panel(page).getByText('Waiting for the authenticated interaction receipt…', { exact: true })).toBeVisible();
+      await page.evaluate(() => window.__interactionFixture.release());
       await expect(panel(page)).toContainText('Input accepted.');
       const result = await page.evaluate(() => ({ requests: window.__interactionFixture.requests.filter(r => r.operation === 'interaction.respond'),
         command: window.__nativeFixture.sessions.get('pty-1').control.results[0], writes: window.__nativeFixture.writes }));

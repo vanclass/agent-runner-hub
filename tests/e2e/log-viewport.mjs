@@ -1,4 +1,45 @@
-export function registerLogViewport({ test, expect, transport, configure }) {
+export function registerLogViewport({ test, expect, transport, configure, create }) {
+  for (const height of [550, 800]) test(`Runner composer overlays log at ${height}`, async ({ page }, info) => {
+    await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
+    await page.setViewportSize({ width: 1100, height });
+    const input = page.getByRole('textbox', { name: 'Runner instructions', exact: true });
+    await expect(input).toBeEnabled();
+    const geometry = () => page.evaluate(() => {
+      const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, height: r.height, width: r.width }; };
+      const input = document.querySelector('.runner-composer textarea'), style = getComputedStyle(input);
+      return { input: rect('.runner-composer textarea'), content: rect('.runner-composer-content'),
+        terminal: rect('.terminal-host'), slot: rect('.runner-composer'), workspace: rect('.workspace'),
+        line: parseFloat(style.lineHeight), padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) };
+    });
+    await input.fill('one\ntwo\nthree');
+    const base = await geometry();
+    expect(Math.abs(base.input.height - (base.line * 3 + base.padding))).toBeLessThanOrEqual(1);
+    for (const draft of ['one\ntwo\nthree\nfour', 'one\ntwo\nthree\nfour\nfive', 'wrapped words '.repeat(180)]) {
+      await input.fill(draft);
+      const grown = await geometry();
+      expect(grown.input.height).toBeGreaterThan(base.input.height);
+      expect(grown.content.bottom).toBe(base.content.bottom);
+      expect(grown.content.top).toBeLessThan(base.content.top);
+      expect(grown.content.top).toBeGreaterThanOrEqual(grown.workspace.top + 15);
+      expect(grown.terminal).toEqual(base.terminal); expect(grown.slot).toEqual(base.slot);
+    }
+    await input.fill(Array.from({ length: 80 }, (_, i) => `editable line ${i}`).join('\n'));
+    expect(await input.evaluate(n => n.scrollHeight > n.clientHeight)).toBe(true);
+    await input.evaluate(n => { n.scrollTop = 0; }); await input.hover(); await page.mouse.wheel(0, 4000);
+    await expect.poll(() => input.evaluate(n => n.scrollTop)).toBeGreaterThan(0);
+    expect(await input.evaluate(n => n.scrollTop)).toBeGreaterThan(0);
+    await info.attach(`composer-capped-${height}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await page.locator('.runner-row .nav-row').first().click();
+    await expect(input).toHaveValue(/editable line 79$/);
+    expect((await geometry()).input.height).toBeGreaterThan(base.input.height);
+    await input.fill('one\ntwo\nthree\nfour\nfive'); await input.press('Enter');
+    await expect(input).toHaveValue('', { timeout: 35000 });
+    expect(Math.abs((await geometry()).input.height - base.input.height)).toBeLessThanOrEqual(1);
+    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+  });
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`quiet Single Entry ${language}/${theme}`, async ({ page }, info) => {
       await transport(page);

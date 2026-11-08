@@ -46,10 +46,6 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
     {session ? <RunnerComposer session={session} /> : singleEntry ? <SingleEntryComposer entry={entry}
       location={installation?.root} onSelectRunner={onSelectRunner} /> : <section className="composer-area" aria-label={t('composer.label')}>
         <div className="composer"><textarea aria-label={t('composer.runnerInstructions')} disabled rows={3} />
-          <div className="composer-actions"><div className="attachments">
-            <button disabled aria-label={t('composer.attachFile')}>＋ <span>{t('composer.attachFile')}</span></button>
-            <button disabled aria-label={t('composer.attachFolder')}>▱ <span>{t('composer.folder')}</span></button>
-          </div><button className="send-button" disabled>{t('composer.send')} <span aria-hidden="true">↗</span></button></div>
         </div><p className="composer-note">{t('workspace.attachmentsUnavailable')}</p></section>}
   </main>;
 }

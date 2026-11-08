@@ -38,7 +38,7 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
   await expect(longRow.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
   await expect(longRow.locator('.remove-action')).toBeVisible();
   await expect(page.locator('.workspace .context-settings')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Send instruction' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send instruction' })).toHaveCount(0);
   await page.keyboard.press('F2');
   const input = page.getByRole('textbox', { name: 'Runner name', exact: true });
   await expect(input).toBeFocused();
@@ -99,12 +99,12 @@ for (const theme of ['Light', 'Black']) {
     await page.locator('[data-runner-id="third"] .nav-row').click();
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('button', { name: theme, exact: true }).click();
-    const surfaces = ['.toolbar', '.sidebar', '.workspace', '.composer', 'select', '.theme-picker', '.runner-row.active', '.send-button'];
+    const surfaces = ['.toolbar', '.sidebar', '.workspace', '.composer', 'select', '.theme-picker', '.runner-row.active'];
     const colors = await page.evaluate(selectors => selectors.map(selector =>
       getComputedStyle(document.querySelector(selector)).backgroundColor), surfaces);
     const expected = theme === 'Light'
-      ? ['rgb(245, 245, 244)', 'rgb(241, 242, 243)', 'rgba(0, 0, 0, 0)', 'rgb(250, 250, 250)', 'rgb(250, 250, 250)', 'rgb(241, 242, 243)', 'rgb(220, 233, 251)', 'rgb(236, 238, 241)']
-      : ['rgb(25, 26, 29)', 'rgb(23, 24, 27)', 'rgba(0, 0, 0, 0)', 'rgb(21, 22, 25)', 'rgb(21, 22, 25)', 'rgb(23, 24, 27)', 'rgb(38, 60, 89)', 'rgb(38, 40, 45)'];
+      ? ['rgb(245, 245, 244)', 'rgb(241, 242, 243)', 'rgba(0, 0, 0, 0)', 'rgb(250, 250, 250)', 'rgb(250, 250, 250)', 'rgb(241, 242, 243)', 'rgb(220, 233, 251)']
+      : ['rgb(25, 26, 29)', 'rgb(23, 24, 27)', 'rgba(0, 0, 0, 0)', 'rgb(21, 22, 25)', 'rgb(21, 22, 25)', 'rgb(23, 24, 27)', 'rgb(38, 60, 89)'];
     expect(colors).toEqual(expected);
     await expect(page.locator('.hub')).toHaveCSS('background-color', theme === 'Light' ? 'rgb(255, 255, 255)' : 'rgb(17, 18, 20)');
     const active = page.locator('.runner-row.active .nav-row');
@@ -117,7 +117,7 @@ for (const theme of ['Light', 'Black']) {
     await testInfo.attach(`${theme}-1000x700`, { body: await page.screenshot(), contentType: 'image/png' });
     for (const size of [{ width: 760, height: 560 }, { width: 626, height: 450 }, { width: 1400, height: 900 }]) {
       await page.setViewportSize(size);
-      await expect(page.getByRole('button', { name: 'Send instruction' })).toBeInViewport();
+      await expect(page.getByRole('button', { name: 'Send instruction' })).toHaveCount(0);
       await expect(page.getByRole('textbox', { name: 'Runner instructions' })).toBeInViewport();
       await expect(page.locator('.composer-note')).toBeInViewport();
       expect((await page.locator('.output').boundingBox()).height).toBeGreaterThan(90);

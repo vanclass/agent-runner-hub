@@ -2,7 +2,6 @@
   "interaction": {
     "label": "Runner 상호작용",
     "commandResult": "명령 결과",
-    "none": "활성 포그라운드 상호작용이 없습니다.",
     "unsupported": "이 Runner 또는 포그라운드 소유자는 구조화 입력을 지원하지 않습니다. 터미널 로그는 읽기 전용입니다.",
     "observing": "인증된 포그라운드 상태를 확인하는 중…",
     "pending": "인증된 상호작용 응답을 기다리는 중…",
@@ -322,8 +321,7 @@
     "earlier": "첨부 {{name}} 앞으로 이동",
     "later": "첨부 {{name}} 뒤로 이동",
     "reconcile": "등록 결과 대조",
-    "hint": "파일·폴더 끌어 놓기 · PNG 이미지 Ctrl+V · 선택 버튼 사용 가능",
-    "fallback": "현재 네이티브 끌어 놓기를 사용할 수 없습니다. 데스크톱 앱의 파일·폴더 버튼을 사용하세요. 이미지 붙여넣기는 붙여넣기 이벤트의 PNG 데이터가 필요합니다.",
+    "fallback": "현재 네이티브 파일·폴더 끌어 놓기를 사용할 수 없습니다. 이미지 붙여넣기는 붙여넣기 이벤트의 PNG 데이터가 필요합니다.",
     "instructionOnly": "첨부는 새 작업 지시문에만 사용할 수 있습니다. 명령이나 터미널 응답을 보내려면 첨부를 제거하세요."
   },
   "brief": {
@@ -351,15 +349,10 @@
     "label": "지시문 입력창",
     "runnerInstructions": "Runner 지시문",
     "placeholder": "지시문 작성…",
-    "attachFile": "파일 첨부",
-    "attachFolder": "폴더 첨부",
-    "folder": "폴더",
-    "send": "지시문 전송",
-    "sending": "전송 중…",
     "verifying": "첨부를 검증하고 입력을 전송하는 중입니다. 지원되는 프롬프트는 Runner 상호작용 제어를 사용하세요…",
     "uncertain": "전달 결과가 불확실합니다. 초안을 유지했습니다. 최종 Runner 응답을 확인하세요. Hub는 재전송하지 않습니다.",
     "reserved": "Single Entry가 이 Runner를 사용 중입니다. 이 입력창을 사용하기 전에 Single Entry에서 배정을 확인하세요.",
-    "appends": "전송하면 요청한 설정을 적용한 뒤 이 Runner에 지시문을 한 번 제출합니다."
+    "appends": "Enter를 누르면 요청한 설정을 적용한 뒤 이 Runner에 지시문을 한 번 제출합니다."
   },
   "terminal": {
     "label": "Runner 터미널",

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { watchFileDrop } from '../../.runner/web-app-desktop/io/nativeIO';
 import type { RunnerReferenceSelection, Candidate } from './referenceSelection';
-import { errorText, t, tr, type HubText } from './i18n';
+import { t, tr } from './i18n';
 
 function referenceState(state: Candidate['phase']) {
   switch (state) {
@@ -26,7 +26,6 @@ export function ComposerAttachments({ selection, disabled, children }: {
   const host = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState(false);
   const [dropUnavailable, setDropUnavailable] = useState(false);
-  const [error, setError] = useState<HubText>('');
   const available = !disabled && selection.available;
   useEffect(() => {
     let disposed = false, stop: (() => void) | undefined;
@@ -43,10 +42,6 @@ export function ComposerAttachments({ selection, disabled, children }: {
       .catch(() => { if (!disposed) setDropUnavailable(true); });
     return () => { disposed = true; stop?.(); };
   }, [selection, available]);
-  async function choose(folder: boolean) {
-    setError('');
-    try { await selection.choose(folder); } catch (reason) { setError(errorText(reason)); }
-  }
   const items = selection.candidates.filter(item => !item.submitted && selection.state(item) !== 'cancelled'
     && (selection.state(item) !== 'removed' || !item.cancelRequested));
   return <div ref={host} className={`composer attachment-composer${hover ? ' attachment-drop-active' : ''}`}
@@ -82,12 +77,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
       <button type="button" disabled={!available} onClick={() => selection.reviewOtherPending()}>{t('references.includeOthers')}</button>
     </div>}
     {selection.error && <p role="alert">{tr(selection.error)}</p>}
-    {error && <p role="alert">{tr(error)}</p>}
     {children}
-    <div className="attachments">
-      <button type="button" disabled={!available} onClick={() => void choose(false)}>{t('composer.attachFile')}</button>
-      <button type="button" disabled={!available} onClick={() => void choose(true)}>{t('composer.attachFolder')}</button>
-      <span className="composer-note">{t(dropUnavailable ? 'attachments.fallback' : 'attachments.hint')}</span>
-    </div>
+    {dropUnavailable && <p role="alert">{t('attachments.fallback')}</p>}
   </div>;
 }

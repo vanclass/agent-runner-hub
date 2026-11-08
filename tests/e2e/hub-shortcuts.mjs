@@ -22,13 +22,16 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.keyboard.press('Control+Enter');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
     await page.locator('.composer textarea').fill('default shortcut once');
+    await expect(page.getByRole('button', { name: 'Assign instruction', exact: true })).toBeEnabled();
     await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
     await page.keyboard.up('Enter');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page); await remap(page); await page.reload();
     await expect(page.locator('.spare-status')).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
     await page.locator('.composer textarea').fill('custom shortcut once');
+    await expect(page.getByRole('button', { name: 'Assign instruction', exact: true })).toBeEnabled();
     await page.keyboard.press('Control+Enter');
     await expect(page.locator('.composer textarea')).toHaveValue('custom shortcut once');
     await page.keyboard.press('Alt+Enter');

@@ -141,11 +141,9 @@
 .rename-row input { min-width: 0; width: 100%; height: 25px; border: 0; box-shadow: inset 0 0 0 1px var(--focus); border-radius: 3px; color: var(--text); background: var(--surface); padding: 0; }
 .workspace { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .workspace:has(.runner-terminal) .output { flex: 1 1 0; overflow: hidden; }
-.workspace:has(.runner-terminal) .composer-area { max-height: 38%; overflow-y: auto; }
 .workspace:has(.runner-terminal) .eyebrow { display: none; }
 .workspace:has(.runner-terminal) h1 { margin: 0; font-size: 18px; }
 .workspace:has(.runner-terminal) .output { padding-top: 8px; padding-bottom: 8px; }
-.workspace:has(.runner-terminal) .composer textarea { min-height: 44px; height: 44px; padding: 8px 12px; }
 .runner-work-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; font-size: 11px; }
 .runner-work-status p { margin: 0; }
 .workspace-context { flex: 0 1 auto; min-height: 0; max-height: 18%; overflow-y: auto; }
@@ -177,14 +175,16 @@
 .attachment-chip > [role=status] { color: var(--muted); }
 .attachment-chip img { width: 72px; height: 54px; object-fit: contain; }
 .attachment-chip button { border: 1px solid var(--border); border-radius: 4px; background: var(--inset); }
-.attachment-composer > .attachments { padding: 0 10px 8px; flex-wrap: wrap; align-items: center; }
-.attachment-composer .composer-actions { justify-content: flex-end; }
 .composer textarea { width: 100%; display: block; resize: none; min-height: 75px; padding: 16px; border: 0; background: transparent; color: var(--text); opacity: 1; }
 .composer textarea::placeholder { color: var(--disabled); opacity: 1; }
 .composer-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 0 10px 10px; }
-.attachments { display: flex; gap: 2px; }.attachments button { padding: 6px; border: 0; background: transparent; font-size: 11px; }
 .send-button { background: var(--disabled-bg); border: 1px solid var(--border); border-radius: 5px; padding: 7px 10px; font-size: 11px !important; }.send-button > span { margin-left: 12px; }
 .composer-note { margin: 9px 0 0; text-align: center; font-size: 10px; color: var(--muted); }
+/* 상단 여백이다. 늘리면 최대 입력 높이가 줄고, 줄이면 더 위까지 확장된다. */
+.runner-composer { --composer-top-gap: 16px; position: relative; padding: 0; z-index: 1; }
+.runner-composer-content { position: absolute; bottom: 0; left: 0; right: 0; padding: 0 28px 13px; overflow-y: auto; background: var(--surface); }
+.runner-composer .attachment-composer { max-height: none; overflow: visible; }
+.runner-composer textarea { min-height: 0; height: auto; line-height: 1.5; padding: 8px 12px; overflow-y: auto; }
 @media (max-width: 800px) {
   .toolbar { gap: 12px; padding: 0 12px; }
   .hub-preferences { gap: 6px; }
@@ -193,6 +193,7 @@
   .toolbar-location { display: none; }
   .context-settings { margin: 0 18px; }
   .output { padding: 16px 18px; }.composer-area { padding: 0 18px 12px; }
+  .runner-composer { padding: 0; }.runner-composer-content { padding: 0 18px 12px; }
   .settings-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .command-button { grid-column: 1 / -1; }
 }
@@ -200,7 +201,7 @@
   .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sidebar { width: 145px; }.toolbar { padding: 0 12px; gap: 8px; }.brand strong { font-size: 11px; }
   .brand-mark { display: none; }.theme-picker button { padding: 5px 6px; }
-  .attachments span { display: none; }.send-button { padding: 7px; }.send-button > span { margin-left: 3px; }
+  .send-button { padding: 7px; }.send-button > span { margin-left: 3px; }
 }
 @media (max-height: 650px) {
   .empty-workspace { padding: 10px 0; }
@@ -221,6 +222,7 @@
   .composer textarea { min-height: 54px; height: 54px; padding: 10px 12px; }
   .composer-actions { padding: 0 8px 8px; }
   .composer-area { padding-bottom: 8px; }
+  .runner-composer { padding: 0; }.runner-composer-content { padding-bottom: 8px; }
   .composer-note { margin-top: 6px; }
 }
 @media (max-height: 650px) {
@@ -229,8 +231,6 @@
   .workspace:has(.runner-terminal) .terminal-tools { padding-bottom: 4px; }
   .workspace:has(.runner-terminal) .terminal-tools button { padding: 3px 6px; }
   .workspace:has(.runner-terminal) .workspace-context { max-height: 10%; }
-  .workspace:has(.runner-terminal) .composer textarea { min-height: 32px; height: 32px; padding: 6px 10px; }
-  .workspace:has(.runner-terminal) .composer-actions { padding: 0 8px 4px; }
   .workspace:has(.runner-terminal) .composer-note { margin-top: 4px; }
 }
 /* 단축키 행의 간격이다. 늘리면 더 넓고, 줄이면 더 조밀해진다. */

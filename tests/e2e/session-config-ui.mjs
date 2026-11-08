@@ -1,7 +1,8 @@
+import { drop } from './composer-attachments.mjs';
 export function registerSessionConfigUI({ test, expect, transport, configure }) {
   const field = (page, name) => page.getByRole('combobox', { name: 'Requested ' + name, exact: true });
   const composer = page => page.getByRole('textbox', { name: 'Runner instructions', exact: true });
-  const send = page => page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  const send = page => composer(page).press('Enter');
   async function open(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options }); await configure(page);
     await expect(field(page, 'Model').getByRole('option', { name: 'm0', exact: true })).toBeAttached();
@@ -14,6 +15,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await open(page);
     await page.getByRole('button', { name: 'New Runner', exact: true }).click();
     await page.locator('.runner-row').first().locator('.nav-row').click();
+    await expect(field(page, 'Model')).toBeEnabled();
 
     await field(page, 'Account').selectOption(JSON.stringify({ agent_id: 'other', profile_name: 'first' }));
     await expect(field(page, 'Model').getByRole('option', { name: 'm2', exact: true })).toBeAttached();
@@ -56,9 +58,9 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     expect(result.other.filter(r => r.operation !== 'work.list')).toEqual([]); expect(result.writes).toEqual([]);
     await info.attach('tab-submission', { body: await page.screenshot(), contentType: 'image/png' });
   });
-  test('session submission verifies a no-op without Apply and rejects duplicate clicks', async ({ page }) => {
+  test('session submission verifies a no-op without Apply and rejects duplicate Enter', async ({ page }) => {
     await open(page); await composer(page).fill('once');
-    await page.getByRole('button', { name: 'Send instruction', exact: true }).evaluate(b => { b.click(); b.click(); });
+    await composer(page).evaluate(input => { for (let i = 0; i < 2; i++) input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
     await expect(composer(page)).toHaveValue('', { timeout: 30000 });
     const result = await page.evaluate(() => {
       const f = window.__nativeFixture.sessions.get('pty-1').feature;
@@ -165,7 +167,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
   }
   test('session reference preflight still verifies selected inventory before API work', async ({ page }) => {
     await open(page, { clipboard: true });
-    await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+    await drop(page, ['/fixture/image.png']);
     await expect(page.locator('.attachment-chip')).toContainText('Staged · unregistered');
     expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.register'))).toEqual([]);
     await composer(page).fill('with reference'); await send(page);
