@@ -1,6 +1,33 @@
 export function registerHubSelectionUI({ test, expect, transport, configure, create }) {
   const key = 'agent-runner-hub.preferences.v1';
   const requested = (page, field) => page.getByRole('combobox', { name: `Requested ${field}`, exact: true });
+  test('new unbound native session retains complete candidates without repeated inspection', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await page.addInitScript(() => {
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        const result = await invoke(command, args);
+        if (command === 'pty_open') window.__nativeFixture.sessions.get(result).feature.config.current.target = '';
+        if (command === 'runner_observe') result.observation.target = { binding_state: 'unset', owner: '', project: '' };
+        return result;
+      };
+    });
+    await configure(page);
+    await expect(requested(page, 'Account').getByRole('option', { name: 'codex / first', exact: true })).toBeAttached();
+    await expect(requested(page, 'Account')).toBeEnabled();
+    const count = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.length);
+    const settled = await count();
+    await page.waitForTimeout(1000);
+    expect(await count()).toBe(settled);
+    await requested(page, 'Project / Target').selectOption({ label: 'Exact' });
+    await requested(page, 'Account').selectOption({ label: 'codex / first' });
+    await expect(requested(page, 'Account')).toBeEnabled();
+    await requested(page, 'Model').selectOption({ label: 'm0' });
+    await requested(page, 'Run Mode').selectOption({ label: 'Issue Run' });
+    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
+      s.feature.requests.every(r => r.operation !== 'work.submit')
+      && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
+  });
   test('pending Hub initialization preserves the allocation policy edit', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
     await page.evaluate(() => {

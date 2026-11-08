@@ -91,6 +91,10 @@ export class HubSelections {
       }
       if (!edits.has('accountIdentity')) this.catalog = copy(catalog);
       if (initialize) {
+        if (!catalog.inspection.current.target) {
+          this.detail = msg('config.chooseTarget');
+          return;
+        }
         const available = catalog.inspection.availability;
         const current = configToEntryDefaults(catalog.inspection.current, catalog, this.observation(service));
         if (!current || !catalog.options.run_modes.includes('task-run')

@@ -150,6 +150,7 @@
     "next": "Next execution: {{model}} / {{effort}} / {{tier}}",
     "setupRequired": "Account setup is still required before running work.",
     "incomplete": "A complete, consistent candidate list is unavailable. Select another ready Runner or reopen the Hub to load choices again.",
+    "chooseTarget": "Choose settings from the verified candidates. This new Runner has no selected Target.",
     "rootHelp": "Choose an explicit absolute working directory for Direct modes. Runner validates access and Pure Direct policy during plan and apply.",
     "defaultsUnresolved": "Saved defaults lack a verified identity or combination: {{fields}}. Nothing was substituted.",
     "planResult": "Runner configuration plan",

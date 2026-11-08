@@ -32,7 +32,12 @@ export class RunnerSpare {
     }
     return this.current;
   }
-  get optionsSource() { return this.snapshot.state === 'ready' ? this.slot?.session : undefined; }
+  get optionsSource() {
+    const slot = this.slot;
+    // Read-only catalog ownership survives inspection's temporary assignment lock.
+    return slot?.launched && !slot.restarting && slot.session.control.snapshot.state === 'ready'
+      ? slot.session : undefined;
+  }
   setInstallation(installation: RunnerInstallation | null) {
     if (this.current.state === 'disposed') return;
     if (installation && this.current.installation?.root === installation.root

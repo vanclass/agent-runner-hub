@@ -34,6 +34,8 @@ The explicit native work-acceptance caller is `work_acceptance.rs::public_work_i
 
 Candidates remain private to the collection until a validated terminal null next_offset. Rejection, stale/state change, unavailable catalogs, bad/missing pages, identity mismatch or lost completion discards the entire collection. A later explicit refresh starts over; no partial pages or models are reused. Reading a destination account never switches the Runner account. Changing accounts invalidates the plan and requires that account's own catalog.
 
+A new Runner can return a complete catalog while its current Target is unbound. `HubSelections` retains those verified candidates for explicit settings selection without guessing a Target or saving incomplete current defaults. Catalog availability and complete default initialization are separate; the shared plan/apply and work-admission gates still apply.
+
 Native and frontend admission require options_revision capability support and a valid options digest on every inspection page, including a complete single page. Incomplete/unverifiable selections remain disabled. Missing or unsupported session configuration does not disable supported authenticated commands, references, images or structured interactions; terminal logs remain read-only.
 
 ## Draft, plan and apply
