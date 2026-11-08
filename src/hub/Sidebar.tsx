@@ -186,7 +186,5 @@ export function Sidebar({ domains, runners, domainDisplay, onReorder, selectedId
     </nav>
     {removing && <RunnerTabRemoval name={removing.name} onCancel={() => setRemoving(undefined)}
       onRemove={() => { onRemove(removing.id); setRemoving(undefined); }} />}
-    <div className="sidebar-footer"><span className="connection-dot" aria-hidden="true" />
-      {t('sidebar.processes', { count: runners.filter(runner => runner.status === 'running').length })}</div>
   </aside>;
 }
