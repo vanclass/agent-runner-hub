@@ -1,0 +1,101 @@
+# Native Tauri automation
+
+## Test build and driver boundary
+
+The project-owned WG1 entry is `npm run test:native:probe`, implemented by
+[`tools/native-probe/run.mjs`](../../tools/native-probe/run.mjs). It supplements the
+managed headless Playwright entry and existing Rust acceptance paths; it does not
+replace their fixtures, schedule suites or authorize desktop input.
+
+The probe reuses managed environment preparation, checkout build ownership, native
+staging and applied desktop features through [`build.mjs`](../../tools/native-probe/build.mjs).
+Only staged configuration receives [`tauri.test.json`](../../tests/native/webdriver/tauri.test.json),
+embedded frontend assets, isolated application directories and the nondefault
+`native-webdriver` Cargo feature. Original configuration, Cargo lock resolution
+behavior and ordinary build entry points remain unchanged. The staged lock is used
+with `--locked`; the existing native infrastructure resolves it per invocation.
+
+[`src-tauri/src/lib.rs`](../../src-tauri/src/lib.rs) registers the optional
+`tauri-plugin-wdio-webdriver` only for supported desktop test builds. Release builds
+reject the feature. Test startup requires an explicit nonzero port, application
+directory override and hidden, unfocused, unfocusable windows. Ordinary builds do
+not compile/register the optional server. The probe checks the ordinary active
+dependency graph and compiles the ordinary library without the feature.
+
+The published `@wdio/tauri-service` 1.5.1 embedded provider was evaluated against
+Tauri 2.12.2 / tauri-build 2.7.1. Its embedded Rust plugin 1.5.1 and standalone
+WebdriverIO 9.31.9 client are used directly: the probe owns process creation rather
+than handing it to the service launcher, whose environment merge/logging would
+require additional isolation. No frontend WDIO extension, `withGlobalTauri`,
+`wdio:default` permission grant or production IPC command is added. The embedded
+plugin's default permission set is empty; HTTP script execution is unauthenticated
+and is secured here by test-only compilation and local runtime isolation, not ACLs.
+
+## Windows process, window and observation
+
+[`owner.mjs`](../../tools/native-probe/owner.mjs) starts a hidden PowerShell adapter
+with an environment allowlist. Application/WebView profile, user directories and
+scratch are invocation-owned; inherited Runner credentials and WebView debugging
+arguments are excluded. The adapter launches the test executable and retains its
+original process handle. Window discovery additionally matches the test main-window
+title. It never adopts an existing Hub/Runner or changes a user-owned window.
+
+Before HTTP connection, the adapter verifies the exact owned process exposes only
+the selected `127.0.0.1` listener. Port reservation is released before launch; a race
+fails ownership verification instead of adopting another listener. Startup, driver
+connection and actual renderer readiness are separate checks.
+
+The main window starts hidden and unfocusable. After a hidden DOM observation/action,
+Windows `SetWindowPos` places only that HWND on the primary monitor at `HWND_BOTTOM`
+with `SWP_NOACTIVATE`, `SWP_SHOWWINDOW` and `SWP_NOOWNERZORDER`. The probe verifies
+visibility, stable HWND and that the foreground window is above it. Foreground PIDs
+are sampled from before process creation through teardown; checkpoints also record
+the foreground HWND. Sampling can miss shorter activation transients and is not a
+universal no-activation guarantee across hosts. No foreground restoration is attempted.
+
+[`probe.mjs`](../../tests/native/webdriver/probe.mjs) observes the actual native asset
+origin, Tauri runtime, installation dialog and fresh profile. A scripted DOM click
+runs the real React theme handler; DOM state, pressed state and persisted preference
+must agree. A renderer screenshot and visible DOM check follow nonactivating display.
+This establishes background DOM and displayed nonactivating observation for the
+exercised path. Scripted DOM events do not prove trusted keyboard/mouse input,
+terminal routing, clipboard, OS dialogs or focus-required feature acceptance.
+
+Session deletion precedes native close. The Windows adapter sends `WM_CLOSE` only
+to its process-owned main HWND, waits, and uses its retained process handle only if
+forced cleanup is necessary. Forced exit is not a passing probe. Listener release
+and removal of invocation profiles/staging are checked after process settlement.
+Unsettled ownership prevents data cleanup. No process-name/tree-wide cleanup is used.
+
+## Platform and follow-up boundaries
+
+Windows uses WebView2 and the installed MSVC/SDK/Rust preparation. The same optional
+embedded plugin supports macOS WKWebView without SafariDriver, external tauri-driver
+or a service key. The build adapter selects the native macOS triple and a test-only
+incognito store; the Rust test boundary remains shared. Xcode Command Line Tools
+and Rust are prerequisites. The Windows process/window adapter has no macOS equivalent
+here, and the executable entry rejects macOS native execution. macOS compilation,
+launch, persistence isolation, nonactivation and native acceptance are unverified.
+
+The evaluated bounded Windows alternative is existing Playwright 1.56.1 over an
+owned WebView2 CDP endpoint with a unique profile and verified loopback listener.
+It has lower protocol fidelity and no stronger nonactivation guarantee. It was not
+needed or implemented because the embedded provider exercised the required renderer.
+
+WG2 can extend the narrow process/driver boundary and add feature-specific assertions.
+Focus-required/native input needs its own evidence and existing authorization owner;
+this foundation adds no desktop authorization, universal scheduler or full shared suite.
+
+## Evidence and operation
+
+Use [`tools/native-probe/README.md`](../../tools/native-probe/README.md) for commands
+and artifact retention. Focused environment/failed-launch checks live in
+[`tests/native/native-probe.test.mjs`](../../tests/native/native-probe.test.mjs).
+Per-run renderer, visibility, foreground, listener and teardown observations belong
+to the invocation evidence and task report, not this specification.
+
+Provider source references: [published setup](https://unpkg.com/@wdio/tauri-service@1.5.1/docs/plugin-setup.md),
+[plugin manifest](https://docs.rs/crate/tauri-plugin-wdio-webdriver/1.5.1/source/Cargo.toml.orig),
+[loopback server](https://docs.rs/crate/tauri-plugin-wdio-webdriver/1.5.1/source/src/server/mod.rs),
+[service configuration](https://unpkg.com/@wdio/tauri-service@1.5.1/docs/configuration.md),
+[SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos).

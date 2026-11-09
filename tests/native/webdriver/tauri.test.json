@@ -1,0 +1,15 @@
+{
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "AgentRunnerHub native probe",
+      "width": 1000,
+      "height": 700,
+      "center": true,
+      "visible": false,
+      "focus": false,
+      "focusable": false
+    }]
+  },
+  "bundle": { "active": false }
+}

@@ -11,6 +11,7 @@
     "test:i18n": "node --test tests/i18n/catalog.test.mjs && node tools/i18n/check.mjs",
     "test:e2e": "playwright test --config .runner/web-app-testing/config.mjs",
     "test:e2e:prepare": "playwright install chromium && node .runner/web-app-testing/readiness.mjs",
+    "test:native:probe": "node tools/native-probe/run.mjs",
     "dev:tauri": "node .runner/web-app-tauri/dev.mjs"
   },
   "engines": {
@@ -20,6 +21,7 @@
     "typescript": "^5.9.2",
     "vite": "^7.0.0",
     "@playwright/test": "1.56.1",
+    "webdriverio": "9.31.9",
     "pngjs": "7.0.0",
     "@types/react": "18.3.24",
     "@types/react-dom": "18.3.7"

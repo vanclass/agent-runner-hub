@@ -1,0 +1,38 @@
+# Session Report
+
+## 1. Task Info
+- Task Number: 136
+- Task Title: WG1 isolated native Tauri automation feasibility
+- Task Title (KR): WG1 격리된 네이티브 Tauri 자동화 기반 검증
+- Summary: Evaluate the embedded WebDriver provider, add the minimum test-only native boundary and independently runnable Windows probe, and retain actual renderer, focus and cleanup evidence.
+- Summary (KR): 임베디드 WebDriver 호환성을 조사하고 테스트 전용 경계와 독립 Windows 프로브를 구현하여 렌더러, 포커스 및 정리 동작을 검증한다.
+
+## 2. Work Plan
+- Inspect existing managed Playwright, owned native build/staging, Rust acceptance, app startup and process ownership; reuse their applicable capabilities without changing generated infrastructure.
+- Verify provider dependencies, plugin permissions, Windows non-activating APIs and macOS configuration before selecting the smallest integration.
+- Add a dedicated test build and narrow owned-process/driver probe with isolated data, bounded readiness and safe teardown; preserve ordinary build behavior.
+- Run focused build/tests and one actual Windows renderer interaction, observing launch/interaction/teardown activation and local transport. Record unsupported capabilities and macOS execution as unverified.
+
+## 3. Work Summary
+- Implemented WG1 only: `npm run test:native:probe`, a project-owned build adapter reusing managed environment/staging/build leases, a narrow Windows process owner and a real-renderer DOM probe. Managed `.runner` infrastructure, existing Playwright fixtures, Rust acceptance paths and production configuration remain unchanged.
+- Evaluated published `@wdio/tauri-service` 1.5.1. Selected its embedded Rust provider `tauri-plugin-wdio-webdriver =1.5.1` with standalone `webdriverio 9.31.9` to retain process ownership and avoid the service launcher's inherited-environment merge/logging. Tauri 2.12.2 and tauri-build 2.7.1 compile with this provider. No WDIO frontend extension, global Tauri exposure or additional permission grant is needed for basic WebDriver DOM operations; the provider default capability is empty and does not authenticate HTTP.
+- Added an optional nondefault Cargo feature, release-build rejection and test-runtime startup checks for an explicit port, isolated app directories and hidden/unfocused/unfocusable windows. The provider is unauthenticated loopback HTTP, confined to the dedicated test build/process; runtime environment keys are allowlisted and no Runner authentication material is passed.
+- The Windows adapter retains the exact newly created process handle, binds its main HWND by PID and test title, verifies the owned loopback listener before connecting, shows only that HWND at HWND_BOTTOM with SWP_NOACTIVATE, and closes only its owned main window. No user-owned window activation/repositioning or process-name/tree-wide termination occurs. Original test-window dimensions are retained when centering on the primary monitor.
+- Promoted the verified boundary to `docs/implementation_specs/native_automation.md`, registered it in the existing index and added operator instructions. WG2 can extend the process/driver boundary; no scheduler, desktop authorization owner, complete shared framework or representative feature suite was added.
+- macOS configuration review confirms the same optional embedded WKWebView plugin and incognito test overlay/native target boundary without an external driver/key. The Windows owner has no macOS implementation here; native macOS build, execution, isolation and activation acceptance remain unverified. The researched Playwright/WebView2 CDP alternative was not needed or implemented because the preferred embedded provider worked.
+
+## 4. Validation Evidence
+- PASS: existing `node --test tests/native/hub-native.test.mjs` (5 checks) and new `node --test tests/native/native-probe.test.mjs` (2 checks). New checks exercise the credential/debug-argument allowlist and actual Windows failed-process-creation diagnostics without adopting another Hub.
+- PASS: final `npm run test:native:probe` built the current frontend with TypeScript/Vite, compiled the dedicated Windows test executable and ran ordinary `cargo check --lib --target x86_64-pc-windows-msvc --locked --features desktop-terminal,native-io`. The ordinary active Cargo dependency graph excludes the optional WebDriver plugin. Existing npm dependency versions were preserved; no full regression, installer/package acceptance or macOS test was run.
+- PASS actual host: final invocation `temp/native-probe/c53d8010-8b76-4216-8298-ac16ee152ca2/evidence.json`; independently created Hub PID 23244, stable main HWND 6622380, exclusively owned listener 127.0.0.1:3818. Real `http://tauri.localhost/` renderer reported Tauri internals and WebView2/Edge 157 user agent. The installation dialog was ready with no saved Runner installation; a scripted DOM click changed the actual React theme from light to black, with aria-pressed and persisted preference matching.
+- PASS window/observation: hidden creation, driver connection and hidden DOM interaction were verified separately. Nonactivating placement made the same HWND visible below foreground HWND 66490; visible DOM state and `renderer.png` were captured, and the screenshot was visually inspected. Foreground HWND remained 66490 at every checkpoint and teardown; 10 ms sampling observed no test-PID activation from before launch through exit. This is evidence for the exercised path, not a guarantee against shorter transients, other hosts or focus-required native input.
+- PASS cleanup: final owned Hub exited normally with code 0, no forced kill; listener release and successful deletion of invocation-owned native staging/application/WebView profiles were verified. No existing Hub/Runner process was attached to or terminated. Cargo cache remains intentionally reusable. Invocation JSON/screenshots are local reproduction evidence retained for at most seven days under the documented owner cleanup contract.
+- Initial actual-host attempt failed because PID-only enumeration selected another HWND after display and teardown raced its response deadline. It is retained as failed evidence at `temp/native-probe/a24a4fd2-7fb8-45f8-a649-583b49cd4291/evidence.json`; the earlier owned PID was subsequently confirmed absent by read-only lookup. Corrected title-bound identity, shutdown response budget, settlement-before-file-removal and geometry preservation; final native acceptance above passed. These reruns converged affected fixture contracts, not stability trials.
+- PASS source review: ordinary distribution keeps the optional feature disabled and release builds reject it; Windows/macOS target gating is explicit. No test frontend plugin/import, production listener/IPC command or public capability was added. LF/UTF-8 without BOM, Korean tuning comments, unchanged index bytes outside the insertion and `git diff --check` were verified. A failed-launch PowerShell cache residue was removed from its exact task-created path and the adapter CWD was confined to its invocation directory.
+
+## 5. User Verification Message
+- WG1 is implemented and actual-host Windows native renderer validation passed. Run `npm run test:native:probe`; commands and evidence retention are documented in `tools/native-probe/README.md`. No manual DevTools or user verification is required for the exercised probe. Background DOM and displayed nonactivating observation were demonstrated; physical/native input and macOS acceptance remain unverified and belong to later scoped validation.
+
+<!-- TASK_END_RUNTIME_METADATA_BEGIN -->
+artifact_ref_json: {"repository_namespace":"project-d095b183621fc82fa74029d3","task_number":"136","task_workload_id":"4b38e8593c754b2aae6bb65539ea88ce"}
+<!-- TASK_END_RUNTIME_METADATA_END -->

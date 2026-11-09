@@ -14,6 +14,8 @@
 
 ## 영역 등록부
 
+- Native automation test builds, owned Windows WebDriver probes and platform/focus boundaries: [Native Tauri automation](native_automation.md); entry `../../tools/native-probe/run.mjs`, renderer probe `../../tests/native/webdriver/probe.mjs`, focused checks `../../tests/native/native-probe.test.mjs`.
+
 - Mandatory installation setup, saved-path native verification, startup admission, toolbar app settings and native-runtime browsing diagnostics: [Installation startup gate](runner_terminals.md#installation-startup-gate); source owners `../../src/hub/AppSettings.tsx`, `../../src/hub/RunnerLocation.tsx`, `../../src/hub/runnerInstallation.ts`, `../../src/hub/Hub.tsx` and `../../src/hub/RunnerSessions.ts`; focused checks `../../tests/e2e/installation-setup.mjs`, registered by `../../tests/e2e/runners.spec.mjs`.
 
 - Hub shell UI, navigation, local Runner labels, application themes and responsive task panel: source owners `../../src/hub/Hub.tsx`, `../../src/hub/Sidebar.tsx`, `../../src/hub/Workspace.tsx`, `../../src/hub/TaskPanel.tsx`, `../../src/hub/taskPanel.css`, `../../src/hub/ThemePicker.tsx`, and `../../src/hub/hub.css`; representative checks `../../tests/e2e/hub.spec.mjs`, `../../tests/e2e/task-panel.mjs` and `../../tests/e2e/starter.spec.mjs`. Select this direct source/test route for shell behavior; settings ownership routes to [Runner session configuration](runner_session_config.md#ui-and-evidence-destinations), and running/completion indicators, unread state and tab closing route to [Runner terminal ownership](runner_terminals.md#tab-status-and-closing).
