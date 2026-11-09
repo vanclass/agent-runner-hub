@@ -39,8 +39,15 @@ export class HubSelections {
       if (!same(this.detail, detail)) { this.detail = detail; this.changed(); }
       return;
     }
-    if (service.busy || this.attempted === service) return;
-    void this.inspectOptions();
+    if (service.busy) return;
+    const catalog = service.catalog;
+    // Publication can lose readiness after inspection; reuse verified evidence, not a failed inspection.
+    const recovered = !this.catalog && catalog && same(catalog.account, this.defaults.accountIdentity)
+      && catalog.options.run_modes.includes('task-run')
+      && ['target', 'account', 'run_mode', 'model', 'service_tier'].every(key => catalog.inspection.availability[key] === true)
+      && configToEntryDefaults(catalog.inspection.current, catalog, this.observation(service));
+    if (this.attempted === service && !recovered) return;
+    void this.loadOptions(!!recovered);
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
     if (!this.editable) return;
@@ -69,7 +76,8 @@ export class HubSelections {
     }
     return false;
   }
-  async inspectOptions() {
+  inspectOptions() { return this.loadOptions(false); }
+  private async loadOptions(reuseCatalog: boolean) {
     if (!this.editable || this.loadingOptions) return;
     const before = this.defaults, initialize = !this.initialized, service = this.source();
     this.attempted = service;
@@ -77,7 +85,7 @@ export class HubSelections {
     this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
     try {
       if (!service?.supports('inspect') || service.busy) throw new HubError(msg('config.notReady'));
-      await service.inspect(before.accountIdentity);
+      if (!reuseCatalog) await service.inspect(before.accountIdentity);
       let catalog = service.catalog;
       if (!catalog && before.accountIdentity && this.defaults === before && this.source() === service) {
         // Keep an unsupported saved identity, but expose verified alternatives for an explicit edit.

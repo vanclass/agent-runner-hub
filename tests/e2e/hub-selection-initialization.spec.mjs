@@ -97,6 +97,46 @@ test('allocation-only preferences survive stale completion and automatically ins
   expect(result.commits).toHaveLength(1);
 });
 
+for (const unbound of [false, true]) test(`verified same-session readiness recovers retained catalog, unbound=${unbound}`, async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async unbound => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { HubSelections } = await import('/src/hub/HubSelections.ts');
+    const { service, fixture } = createConfigHarness();
+    const resources = performance.getEntriesByType('resource').map(entry => entry.name);
+    const { default: React } = await import(resources.find(url => /\/react\.js\?/.test(url)));
+    const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
+    const { HubSelectionSettings } = await import('/src/hub/SingleEntryComposer.tsx');
+    const host = document.createElement('div'); host.id = 'recovered-settings'; document.body.append(host);
+    const root = createRoot(host);
+    const render = () => root.render(React.createElement(HubSelectionSettings, { entry: selections }));
+    let observation, editable = true;
+    if (unbound) { fixture.current.target = ''; fixture.hold = true; }
+    const selections = new HubSelections(() => service, render, {}, () => {}, () => editable, () => observation);
+    selections.initialize();
+    if (unbound) { editable = false; fixture.hold = false; fixture.complete(); }
+    while (selections.loadingOptions) await new Promise(r => setTimeout(r, 5));
+    const initial = { defaults: selections.defaults, catalog: !!selections.catalog, verified: !!service.catalog, detail: selections.detail };
+    const requests = fixture.requests.length;
+    editable = true;
+    observation = { selection: { account: 'unrelated' } }; selections.initialize();
+    const unrelated = { ...selections.defaults };
+    observation = { selection: { account: fixture.current.account.profile_name }, target: { binding_state: 'unset', owner: '', project: '' } }; selections.initialize();
+    return { initial, unrelated, defaults: selections.defaults, catalog: !!selections.catalog, requests, after: fixture.requests.length };
+  }, unbound);
+  expect(result.initial).toMatchObject({ defaults: {}, catalog: false, verified: true, detail: { key: 'config.incomplete' } });
+  expect(result.unrelated).toEqual({});
+  expect(result.catalog).toBe(true);
+  if (unbound) expect(result.defaults).toEqual({});
+  else expect(result.defaults.model.model).toBe('m0');
+  expect(result.after).toBe(result.requests);
+  const settings = page.locator('#recovered-settings');
+  const account = settings.getByRole('combobox', { name: 'Requested Account', exact: true });
+  await expect(account).toBeEnabled();
+  await account.selectOption({ label: 'codex / first' });
+  await expect(account).toHaveValue(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
+});
+
 for (const available of [true, false]) {
   test('current account and non-first model initialize only with fresh observation: ' + available, async ({ page }) => {
     await page.goto('/');
