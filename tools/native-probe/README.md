@@ -73,7 +73,7 @@ node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/nati
 node tools/native-probe/hub.mjs --help
 node tools/native-probe/hub.mjs --case installation-entry
 node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
-node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --isolated-runner-root "D:/Dedicated Test Runner"
+node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "D:/Codex/codex_workspace"
 ```
 
 Repeat `--case` to compose only the required cases in one build; each still gets a
@@ -81,29 +81,35 @@ fresh owned process/profile. With no case selector, the three WG3 cases run.
 `--target-dir <absolute Cargo cache>` works with either native entry.
 Installation-entry checks mandatory setup, native rejection of a relative path,
 unchanged saved installation and retry availability. Configuration-selection uses
-the saved Test account's catalog to edit and persist a Hub draft without applying
+the ordinary authenticated account's catalog to edit and persist a Hub draft without applying
 it. Runner-read-only compares Hub selections and native inspection in the same
 observed session/generation and verifies unchanged native revision.
 
-## Isolated installed Runner prerequisites
+## Existing Runner installation prerequisites
 
-Supply `--isolated-runner-root` only for a dedicated, separately installed Runner
-workspace whose runtime and saved Test account have been prepared through its
-normal bootstrap and `/account` > Test account settings. Do not select a working
-user installation or session. The case verifies the path through the actual Hub
-installation form/native resolver, then consumes authenticated Session Config
-Test selection bound to that installation. Missing authentication/capability
+Supply `--runner-root` with the existing normally configured Runner workspace root.
+The fresh application profile needs its own installation
+selection; no user Hub profile is copied. The actual installation form/native
+resolver verifies the managed runtime before the Hub session owner launches a new
+Runner. Ordinary startup account authentication and `session_config.inspect` are
+required; no saved Test account or second installation is needed. Missing authentication/capability
 remains blocked; this command never provisions accounts, copies credentials,
 injects startup authentication, adopts existing processes or submits model work.
-An unavailable dedicated installation is an exact prerequisite, not permission to
-reuse the active Runner. Complete installation/UI, fixture and headless checks.
+Use the normally installed runtime, never an already-running Hub or Runner session.
+If startup authentication or inspection is unavailable, retain the exact blocked
+reason and complete independent installation/UI, fixture and headless checks.
 
-Read-only instrumentation forwards the original Tauri invoke unchanged and observes
-the Hub's `runner_observe` replies to identify its owned session. It does not replace
-responses. Only `session_config.inspect` is issued by the case. Evidence retains
+Read-only instrumentation forwards callbacks unchanged. Native Tauri has immutable
+`invoke`; its existing callback map exposes the Hub-created PTY event ID without
+retaining terminal bytes. The case observes that exact session with `runner_observe`.
+Synthetic fixtures use their writable invoke wrapper. Neither replaces responses.
+Only `session_config.inspect` feature requests are issued by the case. Evidence retains
 transport admission separately from the matching completed authoritative receipt;
 neither proves work admission or work start, which are explicitly unexercised.
 Account identity and credential paths are not copied into case observations.
+Configuration-selection chooses verified account/model/run-mode options and changes
+only the isolated Hub draft. Read-only comparison respects unbound UI selections
+and compares current and effective settings according to their separate contracts.
 
 ## Rust and focus-required paths
 

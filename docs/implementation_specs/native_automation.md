@@ -145,12 +145,19 @@ selection and authenticated read-only comparison live independently in
 [`runner-read-only.mjs`](../../tests/native/webdriver/runner-read-only.mjs).
 These use background presentation; adding feature cases introduces no executor branches.
 
-The Runner cases require an explicitly selected isolated installed Runner. The actual
-installation UI/native resolver verifies its managed runtime. The case observes the
-unmodified Hub IPC responses and uses the existing authenticated Test account selection
-contract, including installation binding and application response validators. Native
+The Runner cases reuse the normal installed Runner runtime, explicitly selected with
+`--runner-root` for the fresh Hub profile when needed. The actual installation UI/native
+resolver verifies its managed runtime. The existing session owner creates a new Runner;
+no running user session is adopted and no user profile or credentials are copied.
+Native instrumentation observes Hub-owned PTY event IDs through the existing callback
+map, forwards callbacks unchanged and retains no terminal bytes. Tauri's immutable
+invoke remains untouched; synthetic fixtures retain their writable wrapper.
+Cases observe unmodified Hub IPC responses and ordinary authenticated
+`session_config.inspect`, including installation binding and application response validators. Native
 inspection receipts correlate request ID, session and generation; transport submission
-alone cannot pass. Hub drafts are local preferences, not native configuration commits.
+alone cannot pass. Verified available account/model/run-mode choices change only Hub
+draft preferences. Unbound UI choices stay unbound; current configuration and effective
+selection have distinct comparisons. The Runner configuration revision must stay unchanged.
 Cases issue only read-only inspection and never submit work. Work admission/start and
 trusted physical input remain unexercised. Missing prerequisites/capabilities block;
 uncertain native effects remain unverified without replay or presentation escalation.

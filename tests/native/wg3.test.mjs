@@ -2,13 +2,35 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { outcome, BlockedPrerequisite, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
-import { readyInstalledHub, finalReceipt, testSelection, inspectRequest } from './webdriver/runner-flow.mjs';
+import { readyInstalledHub, ownedConnection, finalReceipt, inspection, inspectRequest,
+  watchObservations, stopWatching } from './webdriver/runner-flow.mjs';
 
 const connection = { session: 'owned-session', generation: 7,
   snapshot: { state: 'ready', features: { generation: 7, results: [], runnerRoot: 'C:/isolated' } } };
 const admission = { state: 'submitted', generation: 7, id: 42 };
 const completed = { id: 42, feature: 'session_config', operation: 'session_config.inspect', phase: 'completed', state: 'accepted' };
 const snapshot = results => ({ state: 'ready', features: { generation: 7, results } });
+
+test('immutable native invoke identifies owned PTY events and forwards callbacks unchanged', async () => {
+  const previous = globalThis.window, callbacks = new Map(), originalSet = callbacks.set;
+  const bridge = { callbacks };
+  Object.defineProperty(bridge, 'invoke', { value: async () => snapshot([]) });
+  globalThis.window = { __TAURI_INTERNALS__: bridge };
+  const browser = { execute: async fn => fn() };
+  try {
+    await watchObservations(browser);
+    let received;
+    callbacks.set(1, data => { received = data; });
+    const event = { message: { type: 'output', id: 'owned-pty', bytes: [1, 2] }, index: 0 };
+    callbacks.get(1)(event);
+    assert.equal(received, event);
+    assert.deepEqual(window.__wg3Observation.snapshots, { 'owned-pty': null });
+    callbacks.get(1)({ message: { type: 'exit', id: 'owned-pty' } });
+    assert.deepEqual(window.__wg3Observation.snapshots, {});
+    await stopWatching(browser);
+    assert.equal(callbacks.set, originalSet);
+  } finally { globalThis.window = previous; }
+});
 
 test('queued transport is not authoritative response; unrelated receipts cannot satisfy the request', () => {
   assert.equal(finalReceipt(snapshot([{ ...completed, phase: 'queued' }]), connection, admission), undefined);
@@ -29,9 +51,9 @@ test('stale generations and uncertain effects remain unverified, never accepted'
   assert.throws(() => finalReceipt(snapshot([]), connection, { state: 'not-sent', detail: 'closed' }), /not sent/);
 });
 
-test('absent isolated installation and unsupported macOS launch block before browser effects', async () => {
+test('unsupported macOS launch blocks before browser effects; fresh profile needs existing installation', async () => {
   const browser = new Proxy({}, { get() { throw new Error('Browser must remain untouched'); } });
-  await assert.rejects(readyInstalledHub(browser), BlockedPrerequisite);
+  await assert.rejects(readyInstalledHub({ options: {}, waitUntil: async () => {}, execute: async () => null }), /--runner-root/);
   await assert.rejects(readyInstalledHub(browser, '/isolated', 'darwin'), /unsupported on macOS/);
 });
 
@@ -47,25 +69,29 @@ function transport(result, sent = admission) {
   } };
 }
 
-test('Test selection rejection is a blocked prerequisite; native failure and malformed acceptance fail', async () => {
+test('ordinary inspection rejection blocks; native failure and malformed acceptance fail', async () => {
   for (const [result, expected] of [
-    [{ ...completed, state: 'rejected', code: 'TEST_AUTH_UNAVAILABLE' }, 'blocked'],
+    [{ ...completed, state: 'rejected', code: 'AUTH_UNAVAILABLE' }, 'blocked'],
     [{ ...completed, state: 'failure' }, 'failed'],
     [{ ...completed, reply: { authentication: 'available' } }, 'failed']
   ]) {
     const fixture = transport(result);
-    const error = await testSelection(fixture.browser, connection, 'C:/isolated').then(() => null, error => error);
+    const error = await inspection(fixture.browser, connection).then(() => null, error => error);
     assert.equal(outcome(error), expected);
     assert.deepEqual(fixture.calls, ['session_config.inspect', 'runner_observe']);
   }
 });
 
-test('real-shaped fixture response still needs the exact installation; fixture success is not native acceptance', async () => {
-  const reply = { api_version: 1, execution_context: 'test', authentication: 'available',
-    account: { agent_id: 'fixture', profile_name: 'Test' }, codex_home: 'C:/isolated/test', runner_root: 'C:/isolated' };
-  const fixture = transport({ ...completed, reply });
-  assert.equal((await testSelection(fixture.browser, connection, 'C:/isolated')).result.reply, reply);
-  await assert.rejects(testSelection(transport({ ...completed, reply }).browser, connection, 'C:/other'), /selected installation/);
+test('ordinary capability needs exact installation, without Test selection capability', async () => {
+  const state = { ...snapshot([]), observationSerial: 1, observationAgeMs: 0 };
+  state.features.runnerRoot = 'C:/regular';
+  state.features.sessionConfig = { operations: ['session_config.inspect'] };
+  const browser = { execute: async () => ({ session: 'owned-session', snapshot: state }),
+    waitUntil: async predicate => assert.ok(await predicate()) };
+  assert.equal((await ownedConnection(browser, 'C:/regular')).generation, 7);
+  await assert.rejects(ownedConnection(browser, 'C:/other'), /selected installation/);
+  state.features.sessionConfig.operations = [];
+  await assert.rejects(ownedConnection(browser, 'C:/regular'), BlockedPrerequisite);
 });
 
 test('response timeout is unverified and submits only once; effectful operations are rejected before IPC', async () => {
@@ -84,7 +110,7 @@ test('response timeout is unverified and submits only once; effectful operations
 });
 
 test('documented CLI help and invalid selectors terminate without building or opening a window', () => {
-  for (const args of [['--help'], ['--case', 'unknown'], ['--isolated-runner-root', 'relative']]) {
+  for (const args of [['--help'], ['--case', 'unknown'], ['--runner-root', 'relative'], ['--isolated-runner-root', 'C:/old']]) {
     const child = spawnSync(process.execPath, ['tools/native-probe/hub.mjs', ...args], { encoding: 'utf8', windowsHide: true });
     assert.equal(child.status, args[0] === '--help' ? 0 : 1);
     assert.doesNotMatch(child.stdout, /native probe|Native evidence/);

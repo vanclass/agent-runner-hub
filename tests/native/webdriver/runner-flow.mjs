@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { readyHub } from './probe.mjs';
-import { isTestSelection, isInspection, sameInstallation } from './config-contract.mjs';
+import { isInspection, sameInstallation } from './config-contract.mjs';
 
 export async function changeValue(browser, selector, value) {
   await browser.execute((selector, value) => {
@@ -19,8 +19,29 @@ export async function watchObservations(browser) {
   await browser.execute(() => {
     const bridge = window.__TAURI_INTERNALS__, original = bridge.invoke;
     const watch = { snapshots: {}, restore: () => { bridge.invoke = original; } };
+    if (Object.getOwnPropertyDescriptor(bridge, 'invoke')?.writable === false) {
+      const callbacks = bridge.callbacks, set = callbacks.set;
+      callbacks.set = function(id, callback) {
+        return set.call(this, id, data => {
+          const event = data?.message ?? data;
+          if (['output', 'exit'].includes(event?.type) && typeof event.id === 'string') {
+            if (event.type === 'output') watch.snapshots[event.id] ??= null;
+            else delete watch.snapshots[event.id];
+          }
+          return callback(data);
+        });
+      };
+      watch.restore = () => { callbacks.set = set; };
+      window.__wg3Observation = watch;
+      return;
+    }
     bridge.invoke = async function(command, args, ...rest) {
-      const result = await original.call(this, command, args, ...rest);
+      let result;
+      try { result = await original.call(this, command, args, ...rest); }
+      catch (error) {
+        if (command === 'pty_open') watch.launchFailure = String(error);
+        throw error;
+      }
       if (command === 'runner_observe') watch.snapshots[args.id] = result;
       return result;
     };
@@ -32,11 +53,12 @@ export async function stopWatching(browser) {
 }
 
 export async function readyInstalledHub(browser, runnerRoot, platform = process.platform) {
-  if (!runnerRoot) throw new BlockedPrerequisite(
-    'Select --isolated-runner-root with a dedicated installed Runner and saved /account > Test account settings; no user session is adopted.');
   if (platform !== 'win32') throw new BlockedPrerequisite(
     'Runner launch is unsupported on macOS by the existing native containment owner; native integration is unverified.');
   await readyHub(browser);
+  runnerRoot ??= await browser.execute(() => localStorage.getItem('agent-runner-hub.installation'));
+  if (!runnerRoot) throw new BlockedPrerequisite(
+    'Select --runner-root with your existing installed Runner; the fresh Hub profile has no saved installation.');
   await watchObservations(browser);
   await changeValue(browser, '.runner-location input', runnerRoot);
   await browser.execute(() => document.querySelector('.runner-location').requestSubmit());
@@ -53,23 +75,36 @@ export async function readyInstalledHub(browser, runnerRoot, platform = process.
   });
 }
 
-export async function ownedConnection(browser) {
+export async function ownedConnection(browser, runnerRoot) {
   let connection;
   await browser.waitUntil(async () => {
-    connection = await browser.execute(() => {
+    connection = await browser.execute(async () => {
       const entries = Object.entries(window.__wg3Observation.snapshots);
-      return entries.length === 1 ? { session: entries[0][0], snapshot: entries[0][1] } : null;
+      if (entries.length !== 1) return null;
+      const [session, observed] = entries[0];
+      return { session, snapshot: observed ?? await window.__TAURI_INTERNALS__.invoke('runner_observe', { id: session }) };
     });
     return connection && connection.snapshot.state !== 'connecting';
-  }, { timeout: startupMs, timeoutMsg: 'Owned Hub Runner observation did not settle' });
+  }, { timeout: startupMs, timeoutMsg: 'Owned Hub Runner observation did not settle' }).catch(async error => {
+    const diagnostic = await browser.execute(() => ({
+      launchFailure: window.__wg3Observation.launchFailure,
+      sessions: Object.entries(window.__wg3Observation.snapshots).map(([id, state]) =>
+        ({ id, state: state?.state, generation: state?.features?.generation })),
+      status: [...document.querySelectorAll('[role="status"], [role="alert"]')].map(node => node.textContent)
+    }));
+    if (diagnostic.launchFailure) throw new BlockedPrerequisite('Owned Runner launch failed: ' + diagnostic.launchFailure);
+    throw new UnverifiedObservation(error.message + ': ' + JSON.stringify(diagnostic));
+  });
   if (connection.snapshot.state !== 'ready') throw new BlockedPrerequisite(
-    'Owned Runner did not authenticate; configure the dedicated installation and saved Test account.');
+    'Owned Runner not ready: ' + connection.snapshot.state + '; ordinary startup account/authentication is required.');
   const { snapshot } = connection;
   assert.ok(snapshot.observationSerial > 0);
   assert.ok(snapshot.observationAgeMs >= 0);
   assert.ok(snapshot.features?.generation > 0);
-  if (!snapshot.features.sessionConfig?.test_account_selection) throw new BlockedPrerequisite(
-    'Unsupported capability: Runner must advertise Session Config Test account selection.');
+  if (runnerRoot) assert.ok(sameInstallation(snapshot.features.runnerRoot, runnerRoot),
+    'Owned session must use the selected installation');
+  if (!snapshot.features.sessionConfig?.operations?.includes('session_config.inspect')) throw new BlockedPrerequisite(
+    'Unsupported capability: ordinary session_config.inspect is required.');
   return { ...connection, generation: snapshot.features.generation };
 }
 
@@ -108,21 +143,11 @@ export async function inspectRequest(browser, connection, request) {
   });
   return { admission, result };
 }
-export async function testSelection(browser, connection, runnerRoot) {
-  const response = await inspectRequest(browser, connection,
-    { operation: 'session_config.inspect', api_version: 1, execution_context: 'test' });
-  const { result } = response;
-  if (result.state === 'rejected') throw new BlockedPrerequisite(
-    'Test account selection rejected: ' + result.code + '; configure /account > Test account settings in the isolated installation.');
-  assert.equal(result.state, 'accepted', 'Native Test selection failed');
-  assert.ok(isTestSelection(result.reply), 'Existing Test selection contract must validate');
-  assert.ok(sameInstallation(result.reply.runner_root, runnerRoot), 'Test account must belong to the selected installation');
-  assert.ok(sameInstallation(connection.snapshot.features.runnerRoot, runnerRoot));
-  return response;
-}
 export async function inspection(browser, connection) {
   const response = await inspectRequest(browser, connection,
     { operation: 'session_config.inspect', api_version: 1, offset: 0 });
+  if (response.result.state === 'rejected') throw new BlockedPrerequisite(
+    'Ordinary session_config.inspect rejected: ' + response.result.code);
   assert.equal(response.result.state, 'accepted');
   assert.ok(isInspection(response.result.reply));
   return response;
