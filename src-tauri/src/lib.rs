@@ -4,6 +4,9 @@ mod desktop_terminal;
 #[cfg(all(feature = "native-webdriver", not(debug_assertions)))]
 compile_error!("native-webdriver is restricted to dedicated debug test builds");
 
+#[cfg(all(feature = "native-webdriver", debug_assertions, target_os = "macos"))]
+mod native_automation_macos;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
@@ -28,6 +31,15 @@ pub fn run() {
     #[cfg(all(feature = "native-io", any(target_os = "windows", target_os = "macos")))]
     let builder = builder.plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init());
+    #[cfg(all(feature = "native-webdriver", debug_assertions, target_os = "macos"))]
+    {
+        builder.activate_ignoring_other_apps(false)
+            .build(context).expect("Native test application build failed")
+            .run(|app, event| {
+                if matches!(event, tauri::RunEvent::Ready) { native_automation_macos::ready(app); }
+            });
+    }
+    #[cfg(not(all(feature = "native-webdriver", debug_assertions, target_os = "macos")))]
     builder
         .run(context)
         .expect("Web App native runtime failed");

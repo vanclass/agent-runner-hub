@@ -1,0 +1,5 @@
+// 초기 준비 제한 시간이다. 늘리면 느린 호스트를 더 기다리고, 줄이면 실패를 빨리 알린다.
+export const startupMs = 60_000;
+// 명령과 종료 제한 시간이다. 늘리면 지연을 허용하고, 줄이면 정지를 빨리 감지한다.
+export const commandMs = 10_000;
+export const pollMs = 200;

@@ -12,6 +12,7 @@ From this checkout on Windows x64:
 npm ci
 npm run test:native:probe
 node --test tests/native/native-probe.test.mjs
+node --test tests/native/lifecycle.test.mjs tests/native/platforms.test.mjs
 ```
 
 The entry reuses installed Tauri environment preparation. Rust, MSVC, Windows SDK
@@ -23,7 +24,8 @@ Builds use the checkout lease; Ctrl+C requests cancellation and owned cleanup.
 Do not distribute the debug test executable or use it with production data.
 
 The entry prints an invocation directory under `temp/native-probe/`. It contains
-`evidence.json` and, after successful renderer capture, `renderer.png`. These are
+case-specific directories containing `evidence.json` and, after successful displayed
+renderer capture, `renderer.png`. These are
 local reproduction artifacts retained for up to seven days for review; remove only
 the selected settled invocation directory when no longer needed. The caller owns
 that retention cleanup; no global sweeper is installed. Temporary native staging
@@ -35,6 +37,26 @@ for the existing owner rather than attempting global process cleanup.
 
 [Native Tauri automation](../../docs/implementation_specs/native_automation.md)
 owns the provider choice, test boundary, Windows observation/focus limitations,
-macOS configuration and follow-up boundary. This entry does not run feature suites,
-start Runner sessions or exercise physical desktop input. macOS native execution
-is unavailable through the Windows process adapter.
+macOS adapter and follow-up boundary. The entry composes the renderer probe and an
+independent language-preference case under node:test. It does not start Runner
+sessions or exercise physical desktop input. The same entry selects the macOS
+adapter on that host; Xcode Command Line Tools including swiftc and lsof are required.
+Native macOS compilation, launch, focus behavior and cleanup are unverified here.
+
+## Add or select a case
+
+Export a `defineNativeCase` value from an application-owned module, then pass it
+to `nativeSuite([myCase], { root, target })` from a node:test entry. The existing
+`run.mjs` is the composition example. Use `node --test <your-entry.mjs>` for an
+independent selection; there is no persistent test registry or automatic method fallback.
+Use unique path-safe case IDs. `ready(browser)` owns bounded application readiness;
+`run(browser)` owns assertions through existing runtime/DOM entry points.
+For `presentation: 'nonactivating'`, provide `observe(browser)` for displayed checks.
+For `presentation: 'background'`, the window stays hidden and no capture/display is requested.
+The environment resets profiles between cases; do not depend on another case's state.
+
+Window operations belong to the platform adapter. macOS displayed cases start
+nonactivating at native Ready; Windows performs actions hidden before rear placement.
+The evidence records that distinction. Missing capabilities, blocked prerequisites
+and unverified observations are non-pass outcomes. Focus-required testing continues
+to use the existing authorized Computer Use path; these callbacks authorize no input.
