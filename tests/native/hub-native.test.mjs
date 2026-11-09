@@ -57,6 +57,25 @@ test('absolute explicit target overrides the default for both actions', async ()
   }
 });
 
+test('focused Rust selection reaches only Cargo test and preserves target options', async () => {
+  for (const [flag, value, expected] of [
+    ['--test-filter', 'session_config_tests', ['--lib', 'session_config_tests']],
+    ['--integration-test', 'control_handles', ['--test', 'control_handles']]
+  ]) {
+    const result = await invoke(['test', flag, value, '--target-dir', path.resolve('short cargo')]);
+    assert.equal(result.code, 0);
+    const tested = result.calls.find(call => call[1][0] === 'test');
+    assert.deepEqual(Array.from(tested[1].slice(-2)), expected);
+    assert.ok(!result.calls.find(call => call[1][0] === 'check')[1].includes(value));
+  }
+  for (const args of [['build', '--test-filter', 'x'], ['test', '--test-filter'],
+    ['test', '--integration-test', '--ignored'], ['test', '--test-filter', 'one', '--test-filter', 'two']]) {
+    const result = await invoke(args);
+    assert.equal(result.code, 1);
+    assert.equal(result.calls.length, 0);
+  }
+});
+
 test('invalid arguments fail before native work; help stays available', async () => {
   for (const args of [[], ['invalid'], ['build', '--target-dir'], ['test', '--target-dir', 'relative'],
     ['build', '--other', root], ['build', '--target-dir', root, 'extra']]) {

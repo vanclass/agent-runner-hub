@@ -17,7 +17,9 @@ node --test tests/native/lifecycle.test.mjs tests/native/platforms.test.mjs
 
 The entry reuses installed Tauri environment preparation. Rust, MSVC, Windows SDK
 and WebView2 must be available; missing privileged host prerequisites are reported
-rather than installed by the test. No Runner installation or credentials are needed.
+rather than installed by the test. The default WG2 probe and WG3 installation-entry
+case need no Runner installation or credentials. Runner-backed cases require the
+explicit isolated prerequisites below.
 The default Cargo cache is `local/native-probe/target`. A shorter explicit cache is
 available with `npm run test:native:probe -- --target-dir <absolute-directory>`.
 Builds use the checkout lease; Ctrl+C requests cancellation and owned cleanup.
@@ -37,11 +39,120 @@ for the existing owner rather than attempting global process cleanup.
 
 [Native Tauri automation](../../docs/implementation_specs/native_automation.md)
 owns the provider choice, test boundary, Windows observation/focus limitations,
-macOS adapter and follow-up boundary. The entry composes the renderer probe and an
+macOS adapter and integration boundary. The original entry composes the renderer probe and an
 independent language-preference case under node:test. It does not start Runner
 sessions or exercise physical desktop input. The same entry selects the macOS
 adapter on that host; Xcode Command Line Tools including swiftc and lsof are required.
 Native macOS compilation, launch, focus behavior and cleanup are unverified here.
+
+## Choose the evidence method
+
+Choose from the acceptance property before execution. A failed check does not
+authorize escalation to a displayed window or foreground control.
+
+| Property | Least disruptive supported path | Evidence boundary |
+| --- | --- | --- |
+| React state, simulated transport, response/error handling | Headless Playwright | Synthetic Runner packets; no native authentication or OS input |
+| Actual installation UI/resolver, native configuration and read-only response | WG3 background native cases | Real Tauri assets/IPC; Runner-backed claims require isolated prerequisites |
+| Displayed renderer/theme/language | WG2 nonactivating cases | Owned rear window and screenshot; no trusted keyboard/mouse claim |
+| Native correlation, handle isolation, cleanup/error contracts | Focused Rust/Node fixtures | Synthetic protocol children are not installed Runner acceptance |
+| Focus-dependent terminal input, clipboard or OS dialogs | Existing authorized Computer Use | Requires its own target identity, readiness, input and settlement evidence |
+
+Start with `npm ci` in this checkout. Browser preparation, if actually missing,
+uses `npm run test:e2e:prepare`; it never requires manual DevTools interaction.
+
+```text
+npm run test:e2e -- runners.spec.mjs --grep "WG3 simulated|installation setup:"
+npm run test:e2e -- session-config.spec.mjs hub-selection-initialization.spec.mjs
+node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/native/platforms.test.mjs tests/native/native-probe.test.mjs tests/native/hub-native.test.mjs
+```
+
+## Actual Hub cases and explicit selection
+
+```text
+node tools/native-probe/hub.mjs --help
+node tools/native-probe/hub.mjs --case installation-entry
+node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
+node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --isolated-runner-root "D:/Dedicated Test Runner"
+```
+
+Repeat `--case` to compose only the required cases in one build; each still gets a
+fresh owned process/profile. With no case selector, the three WG3 cases run.
+`--target-dir <absolute Cargo cache>` works with either native entry.
+Installation-entry checks mandatory setup, native rejection of a relative path,
+unchanged saved installation and retry availability. Configuration-selection uses
+the saved Test account's catalog to edit and persist a Hub draft without applying
+it. Runner-read-only compares Hub selections and native inspection in the same
+observed session/generation and verifies unchanged native revision.
+
+## Isolated installed Runner prerequisites
+
+Supply `--isolated-runner-root` only for a dedicated, separately installed Runner
+workspace whose runtime and saved Test account have been prepared through its
+normal bootstrap and `/account` > Test account settings. Do not select a working
+user installation or session. The case verifies the path through the actual Hub
+installation form/native resolver, then consumes authenticated Session Config
+Test selection bound to that installation. Missing authentication/capability
+remains blocked; this command never provisions accounts, copies credentials,
+injects startup authentication, adopts existing processes or submits model work.
+An unavailable dedicated installation is an exact prerequisite, not permission to
+reuse the active Runner. Complete installation/UI, fixture and headless checks.
+
+Read-only instrumentation forwards the original Tauri invoke unchanged and observes
+the Hub's `runner_observe` replies to identify its owned session. It does not replace
+responses. Only `session_config.inspect` is issued by the case. Evidence retains
+transport admission separately from the matching completed authoritative receipt;
+neither proves work admission or work start, which are explicitly unexercised.
+Account identity and credential paths are not copied into case observations.
+
+## Rust and focus-required paths
+
+```text
+node tools/hub-native.mjs --help
+node tools/hub-native.mjs test --test-filter session_config_tests
+node tools/hub-native.mjs test --integration-test control_handles
+```
+
+These reuse managed host preparation, staged source and checkout build ownership.
+The first selects library tests by Rust substring; the second selects one integration
+target. Both accept `--target-dir <absolute Cargo cache>`. They do not enable ignored
+installed-Runner tests or submit work. `control_handles` uses synthetic protocol
+children: its native handle/cleanup evidence is distinct from real Runner replies.
+
+The ignored exact native-handle roundtrip additionally needs a direct Python
+interpreter. After the integration build, run its exact Cargo-reported test executable
+with the standard Rust harness (PowerShell example); do not discover/adopt processes:
+
+```powershell
+$env:HUB_CONTROL_PYTHON = python -c "import sys; print(sys._base_executable)"
+& '<exact control_handles executable printed by Cargo>' exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty --exact --ignored --nocapture
+Remove-Item Env:HUB_CONTROL_PYTHON
+```
+
+Preserve/restore a pre-existing environment value when applicable. This ignored test
+authenticates only its synthetic protocol child, not an installed Runner or account.
+
+For focus-required checks, use the existing Runner Computer Use tools after their
+authorization and exact owned process/window readiness checks. There is no native
+CLI flag that grants foreground input. Record observed effects and settle input
+through that owner; do not use WebDriver focus/click fallbacks or manual DevTools.
+Keep such checks unverified if the required ownership/capability is unavailable.
+The tool sequence is `runner_computer_use.discover`, `acquire`, necessary `act`,
+then `release` and `status` to confirm settlement, using each live tool's schema
+and returned authorization/geometry. A pending desktop request uses that owner's
+`desktop_wait`; no shell command substitutes for its authorization.
+
+## Result interpretation
+
+Read each case's `evidence.json`, not just command exit status. The suite fails any
+non-pass case: `blocked` prerequisites, `unverified` observations/unknown transport
+effects and assertion `failed` outcomes remain distinct in evidence. Unsupported
+capability is a blocked reason, not a pass. Cleanup errors override success. A missing
+completed receipt is unverified, never permission to resubmit. Driver deletion,
+Hub close and Runner shutdown remain with their existing owners; no shared-process
+cleanup is permitted. Windows native evidence applies only to the executed paths.
+macOS source/fixture checks cannot prove native execution, focus or integration;
+the existing Runner launch owner rejects macOS detached-child containment.
 
 ## Add or select a case
 

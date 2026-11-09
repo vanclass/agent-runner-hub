@@ -1,0 +1,38 @@
+# Session Report
+
+## 1. Task Info
+- Task Number: 138
+- Task Title: WG3 actual Hub native integration and agent test procedures
+- Task Title (KR): WG3 실제 Hub 네이티브 통합 및 에이전트 테스트 절차
+- Summary: Extend WG2 with independent actual-Hub installation, configuration and read-only Runner cases; document least-disruptive execution and attributable evidence.
+- Summary (KR): WG2 환경에 독립적인 실제 Hub 설치, 설정 및 읽기 전용 Runner 사례를 추가하고 실행 절차와 증거 경계를 명시한다.
+
+## 2. Work Plan
+- Trace existing case composition, installation UI, authenticated observation and Test account selection contracts. Preserve lifecycle, driver, platform and production behavior.
+- Add independent feature cases through nativeSuite/defineNativeCase, with explicit selection and prerequisite/result classification. Use only verified isolated installed Runner prerequisites; never submit work for connectivity.
+- Document headless, background/native-window, Rust and focus-required procedures and evidence limits. Update the existing native automation specification.
+- Run focused fixtures, WG1/WG2 native regression, affected headless and Rust checks; exercise Windows actual-Hub cases. Record authentication/host-dependent checks as blocked or unverified when unavailable, and verify owned cleanup.
+
+## 3. Work Summary
+- Added explicit WG3 case composition in tools/native-probe/hub.mjs and independent installation-entry, configuration-selection and runner-read-only modules. Reused nativeSuite, defineNativeCase, application-owned response validators, actual installation UI/native resolver and existing read-only Session Config IPC. Common executor, driver, platform adapters and application source remain unchanged.
+- Runner cases require an explicitly selected dedicated installed Runner and authenticated saved Test account selection. Requests retain session/generation/request correlation, transport versus authoritative completion and unexercised work admission/start. No work submission, credential injection, process adoption or presentation escalation was added.
+- Added focused negative/correlation fixtures and headless execution of both feature assertion modules against existing synthetic transport. Extended the existing tools/hub-native.mjs command with library-filter and integration-target selection while preserving staging/build/process ownership.
+- Documented agent commands, method selection, focus-owner procedure, result interpretation and Windows/macOS evidence boundaries in tools/native-probe/README.md. Updated the existing native_automation.md specification and its root index route; no new feature specification was needed. The exact Workspace Project policy index for AgentRunnerHub was absent.
+- Implementation and independent validation are complete. Actual authenticated Hub-to-Runner acceptance remains blocked because no explicitly selected isolated installed Runner/Test-account prerequisite was supplied; no active/user-owned installation or credentials were substituted. macOS execution, focus-required behavior and actual Runner integration remain unverified.
+
+## 4. Validation Evidence
+- Windows actual native command: node tools/native-probe/hub.mjs --case installation-entry --case renderer-probe --case language-preference --case configuration-selection --case runner-read-only. Evidence: temp/native-probe/4cf64e15-8994-45ef-a980-2b5fe3353d55/<case>/evidence.json. Installation-entry and WG1/WG2 renderer/language cases passed; both real-Runner cases recorded blocked at readiness with the exact isolated-installation/Test-account prerequisite. The aggregate correctly exited 1 for non-pass cases.
+- Every native case recorded resourcesReleased=true, stopped=true, forced=false, exitCode=0, listenerReleased=true and activationObserved=false. Renderer/theme screenshot was inspected. Ordinary dependency-graph exclusion of WebDriver and ordinary native library compilation passed during the staged native build. No packaging/installer/full stability acceptance was attempted.
+- Focused Node checks passed: node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/native/platforms.test.mjs tests/native/native-probe.test.mjs (22 tests at that run); tests/native/hub-native.test.mjs command fixtures passed separately (6). Final changed WG3 checks passed again (7), including rejected Test prerequisites, malformed/failure responses, stale generations, unknown effects, unsent requests and no replay. Platform fixtures include macOS source/configuration boundaries only.
+- Headless: npm run test:e2e -- runners.spec.mjs --grep "WG3 simulated|installation setup:" passed 9 tests, artifact test-results/web-app/0bb2286b-c626-49d2-b1f9-6fdcef81b558. Final WG3 simulated rerun after response/observation assertions passed both cases, artifact test-results/web-app/e124a393-321d-4a6f-ac45-03bd7a1638ba. Synthetic transport does not prove actual Runner authentication or native input.
+- Headless regression: npm run test:e2e -- session-config.spec.mjs hub-selection-initialization.spec.mjs produced 40 passed and 1 failed, artifact test-results/web-app/80979a35-ebd7-45f2-9302-7c0e6631669a. Failure: unbound native startup preserves verified choices without choosing a target, tests/e2e/session-config.spec.mjs:22 expected accountIdentity but received undefined. Existing HubSelections.loadOptions returns before initializing defaults when current.target is empty. This direct service fixture imports no WG3 implementation and uses unchanged application/config fixtures in its own context; it is unrelated to the added native cases/CLI selection. Left its assertion and production behavior unchanged. This regression result is failed, not a passing aggregate.
+- Focused Rust: node tools/hub-native.mjs test --test-filter session_config_tests --target-dir <checkout>/local/native-probe/target passed 12 library tests. The --integration-test control_handles command passed 71 and left its prerequisite-gated handle roundtrip ignored. Then the exact Cargo-reported control_handles executable ran exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty --exact --ignored --nocapture with HUB_CONTROL_PYTHON resolved to the installed direct Python interpreter: 1 passed, owned synthetic child settled. Log: temp/wg3-rust-handles-138.log. This authenticates a synthetic native protocol child, not a real Runner account.
+- CLI help/invalid selectors and focused Rust argument forwarding passed without launching windows. UTF-8/no-BOM, LF preservation, Korean report text and git diff --check were checked locally. No Runner-owned report validation or completion commands were run. Missing prerequisites do not authorize actual authentication/model work, foreground control or macOS acceptance claims.
+
+## 5. User Verification Message
+- WG3 cases and agent procedures are implemented. Windows installation/UI and WG1/WG2 native checks passed with owned cleanup. Real authenticated Runner acceptance remains blocked pending an explicitly selected dedicated installed Runner with saved /account > Test account settings; resume using the documented --isolated-runner-root command when available. No credentials or model work are requested by the tests.
+- One existing headless unbound-default fixture still fails as detailed above; other selected headless and focused Rust checks passed. macOS native/focus/integration acceptance remains unverified. See tools/native-probe/README.md and this report's evidence for exact commands and limits.
+
+<!-- TASK_END_RUNTIME_METADATA_BEGIN -->
+artifact_ref_json: {"repository_namespace":"project-d095b183621fc82fa74029d3","task_number":"138","task_workload_id":"3c44c1f312bc4712b40f078385aaf6fb"}
+<!-- TASK_END_RUNTIME_METADATA_END -->

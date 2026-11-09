@@ -21,11 +21,13 @@ import { registerComposerAttachments, drop } from './composer-attachments.mjs';
 import { registerRunnerInteractions } from './runner-interactions.mjs';
 import { registerSlashCommands } from './slash-commands.mjs';
 import { registerWG2 } from './wg2.mjs';
+import { registerWG3 } from './wg3.mjs';
 import { registerAutoRecovery } from './runner-auto-recovery.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
 registerWG2({ test, expect, transport, configure });
+registerWG3({ test, expect, transport, configure });
 registerAutoRecovery({ test, expect, transport, configure, create: createPrepared });
 registerRunnerStatus({ test, expect, transport, configure, create: createWork });
 registerLogViewport({ test, expect, transport, configure, create });

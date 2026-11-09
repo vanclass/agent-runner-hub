@@ -14,7 +14,7 @@
 
 ## 영역 등록부
 
-- Reusable native test lifecycle, staged test builds, Windows/macOS process/window adapters and platform/focus boundaries: [Native Tauri automation](native_automation.md); entry `../../tools/native-probe/run.mjs`, cases `../../tests/native/webdriver/probe.mjs` and `../../tests/native/webdriver/language.mjs`, focused checks `../../tests/native/lifecycle.test.mjs`, `../../tests/native/platforms.test.mjs` and `../../tests/native/native-probe.test.mjs`.
+- Reusable native test lifecycle, staged test builds, Windows/macOS process/window adapters, actual Hub installation/configuration/read-only Runner cases and platform/focus boundaries: [Native Tauri automation](native_automation.md); entries `../../tools/native-probe/run.mjs` and `../../tools/native-probe/hub.mjs`, feature cases `../../tests/native/webdriver/`, focused checks `../../tests/native/wg3.test.mjs`, `../../tests/native/lifecycle.test.mjs`, `../../tests/native/platforms.test.mjs` and `../../tests/native/native-probe.test.mjs`. Agent execution procedure: `../../tools/native-probe/README.md`.
 
 - Mandatory installation setup, saved-path native verification, startup admission, toolbar app settings and native-runtime browsing diagnostics: [Installation startup gate](runner_terminals.md#installation-startup-gate); source owners `../../src/hub/AppSettings.tsx`, `../../src/hub/RunnerLocation.tsx`, `../../src/hub/runnerInstallation.ts`, `../../src/hub/Hub.tsx` and `../../src/hub/RunnerSessions.ts`; focused checks `../../tests/e2e/installation-setup.mjs`, registered by `../../tests/e2e/runners.spec.mjs`.
 

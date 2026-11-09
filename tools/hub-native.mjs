@@ -15,7 +15,7 @@ const events = ['SIGINT', 'SIGTERM', ...(process.platform === 'win32' ? ['SIGBRE
 const cancel = () => controller.abort(new Error('Hub native operation cancelled'));
 const stage = (name, hint) => console.log(`[Hub native] ${name}\n  ${hint}`);
 
-async function native(action, target, signal) {
+async function native(action, target, signal, testArgs = []) {
   await withBuildOwnership(root, path.join(root, '.runner/web-app-launch/cache'), signal, stage, async () => {
     stage('Checking native environment', 'Reusing the installed Tauri host preparation; Ctrl+C cancels.');
     let environment = await inspectNative(root, signal);
@@ -42,7 +42,7 @@ async function native(action, target, signal) {
       if (action === 'test') {
         for (const verb of ['check', 'test']) {
           const result = await command(environment.cargo, [verb, '--target', targetTriple, '--locked',
-            '--features', config.build.features.join(',')], backend, signal, { env, quiet: false });
+            '--features', config.build.features.join(','), ...(verb === 'test' ? testArgs : [])], backend, signal, { env, quiet: false });
           if (result.code !== 0) throw new Error(`cargo ${verb} failed`);
         }
       } else {
@@ -66,8 +66,19 @@ async function native(action, target, signal) {
 
 try {
   if (args.length === 1 && args[0] === '--help') {
+    console.log('Focused Rust selection for test: --test-filter <Rust substring> or --integration-test <target>. These do not run ignored installed-Runner acceptance.');
     console.log('node tools/hub-native.mjs <build|test> [--target-dir <absolute Cargo output directory>]\nDefaults to local/hub-native/target in this checkout.\nUses the installed Tauri staging, feature selection, host preparation and checkout lease.\nFor Windows linker path limits, explicitly select a short real path with --target-dir. No external fallback. build produces a debug executable without an installer.');
   } else {
+    // Focused selection affects Cargo test only; staging/build ownership is unchanged.
+    let testArgs = [];
+    const selection = args.findIndex(value => ['--test-filter', '--integration-test'].includes(value));
+    if (selection >= 0) {
+      const [flag, value] = args.slice(selection, selection + 2);
+      if (args[0] !== 'test' || selection % 2 !== 1 || !/^[A-Za-z0-9_:]+$/.test(value ?? ''))
+        throw new Error('Test selection requires a Rust filter or integration target; see --help.');
+      testArgs = flag === '--test-filter' ? ['--lib', value] : ['--test', value];
+      args.splice(selection, 2);
+    }
     if (!['build', 'test'].includes(args[0]) || !(args.length === 1 ||
         args.length === 3 && args[1] === '--target-dir' && path.isAbsolute(args[2]))) {
       throw new Error('Use --help or <build|test> [--target-dir <absolute directory>].');
@@ -78,7 +89,7 @@ try {
       if (await fs.realpath(target) !== target) throw new Error('Default Cargo output must remain in this checkout.');
     }
     for (const event of events) process.on(event, cancel);
-    await native(args[0], target, controller.signal);
+    await native(args[0], target, controller.signal, testArgs);
   }
 } catch (error) {
   console.error(error.message);

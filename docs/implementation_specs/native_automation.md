@@ -135,10 +135,30 @@ owned WebView2 CDP endpoint with a unique profile and verified loopback listener
 It has lower protocol fidelity and no stronger nonactivation guarantee. It was not
 needed or implemented because the embedded provider exercised the required renderer.
 
-WG2 supplies the reusable environment and independently composed renderer/language cases.
-Focus-required/native input needs its own evidence and existing authorization owner;
-this foundation adds no desktop authorization, fallback chain, selection registry or
-universal scheduler. Runner-integrated feature and operating-workflow acceptance remain WG3.
+## Actual Hub integration
+
+[`hub.mjs`](../../tools/native-probe/hub.mjs) composes explicitly selected native cases
+through the unchanged suite/environment. Installation rejection lives in
+[`installation.mjs`](../../tests/native/webdriver/installation.mjs); configuration draft
+selection and authenticated read-only comparison live independently in
+[`configuration.mjs`](../../tests/native/webdriver/configuration.mjs) and
+[`runner-read-only.mjs`](../../tests/native/webdriver/runner-read-only.mjs).
+These use background presentation; adding feature cases introduces no executor branches.
+
+The Runner cases require an explicitly selected isolated installed Runner. The actual
+installation UI/native resolver verifies its managed runtime. The case observes the
+unmodified Hub IPC responses and uses the existing authenticated Test account selection
+contract, including installation binding and application response validators. Native
+inspection receipts correlate request ID, session and generation; transport submission
+alone cannot pass. Hub drafts are local preferences, not native configuration commits.
+Cases issue only read-only inspection and never submit work. Work admission/start and
+trusted physical input remain unexercised. Missing prerequisites/capabilities block;
+uncertain native effects remain unverified without replay or presentation escalation.
+
+[`wg3.test.mjs`](../../tests/native/wg3.test.mjs) covers correlation and failure boundaries;
+[`wg3.mjs`](../../tests/e2e/wg3.mjs) executes feature assertions using synthetic browser
+transport. Neither is real Runner acceptance. macOS native/focus/integration acceptance
+remains unverified; its existing Runner containment rejection is preserved.
 
 ## Evidence and operation
 
