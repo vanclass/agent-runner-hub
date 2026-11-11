@@ -305,7 +305,7 @@
     "language": "Language"
   },
   "location": {
-    "nativeRequired": "Native browsing and verification require the Tauri desktop Hub. Select Tauri with node .runner/web-app-launch/target.mjs tauri, then open run.cmd on Windows. You can still type or paste a path here.",
+    "nativeRequired": "Native browsing and verification require the Tauri desktop Hub. Select Tauri with node .project-config/managed/web-app-launch/target.mjs tauri, then open run.cmd on Windows. You can still type or paste a path here.",
     "installation": "AgentRunner installation",
     "label": "AgentRunner location",
     "placeholder": "Local installation path",

@@ -1,5 +1,5 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
-import { selectFiles, selectFolder } from '../../.runner/web-app-desktop/io/nativeIO';
+import { selectFiles, selectFolder } from '../../.project-config/managed/web-app-desktop/io/nativeIO';
 import { commandNamed, controlTiming, clipboardMaxBytes, type RunnerControl } from './runnerControl';
 
 export type ReferenceRequest = { operation: 'references.register'; path: string }

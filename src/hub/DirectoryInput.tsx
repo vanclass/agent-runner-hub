@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { selectFolder } from '../../.runner/web-app-desktop/io/nativeIO';
+import { selectFolder } from '../../.project-config/managed/web-app-desktop/io/nativeIO';
 import { isTauri } from '@tauri-apps/api/core';
 import { errorText, HubError, msg, t, tr, type HubText } from './i18n';
 

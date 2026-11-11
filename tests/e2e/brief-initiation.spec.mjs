@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 test.beforeEach(async ({ page }) => { await page.goto('/'); });
 
 test('Brief initiation Run-text-only deadline retains pending evidence and prevents replay', async ({ page }) => {

@@ -2,7 +2,7 @@ import { msg, errorText, HubError } from './i18n';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { openPty, type Pty } from '../../.runner/web-app-desktop/terminal/bridge';
+import { openPty, type Pty } from '../../.project-config/managed/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
 import { RunnerControl, commandNamed, isRunnerCommand, type ControlSnapshot, type CommandAttempt } from './runnerControl';
 import { RunnerReferenceSelection } from './referenceSelection';

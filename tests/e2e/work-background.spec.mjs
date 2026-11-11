@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 async function owners(page, runMode = 'task-run') {
   await page.goto('/');

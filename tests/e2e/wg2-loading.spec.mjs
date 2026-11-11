@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 for (const restored of [false, true]) for (const fail of [false, true]) {
   test(`WG2 delayed authenticated automatic loading restored=${restored} failure=${fail}`, async ({ page }) => {
     await page.goto('/');

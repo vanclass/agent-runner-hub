@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test('test selection is read only and independent from a normal Hub account', async ({ page }) => {
   await page.goto('/');

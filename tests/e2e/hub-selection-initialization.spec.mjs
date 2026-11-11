@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 for (const recovery of ['replacement', 'readiness']) {
   test(`failed automatic inspection recovers on ${recovery} only`, async ({ page }) => {

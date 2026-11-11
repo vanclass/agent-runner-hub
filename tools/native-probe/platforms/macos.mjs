@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startProtocol } from '../protocol.mjs';
 import { BlockedPrerequisite } from '../case.mjs';
-import { command } from '../../../.runner/web-app-tauri/native/process.mjs';
+import { command } from '../../../.project-config/managed/web-app-tauri/native/process.mjs';
 
 export function isolatedEnvironment(attempt, port, presentation = 'background') {
   return { PATH: '/usr/bin:/bin:/usr/sbin:/sbin', LANG: 'en_US.UTF-8',

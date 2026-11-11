@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test('unbound native startup preserves verified choices without choosing a target', async ({ page }) => {
   await page.goto('/');

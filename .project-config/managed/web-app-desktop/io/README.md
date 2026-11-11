@@ -6,11 +6,11 @@
 
 ## Selection and usage
 
-Select Web App → Runtimes → Tauri 2 and Tools → Tauri Native I/O, then Review/Apply. It defaults to Off. Import the helpers from `.runner/web-app-desktop/io/nativeIO.ts` into application code; no application entry point is replaced.
+Select Web App → Runtimes → Tauri 2 and Tools → Tauri Native I/O, then Review/Apply. It defaults to Off. Import the helpers from `.project-config/managed/web-app-desktop/io/nativeIO.ts` into application code; no application entry point is replaced.
 
 ```ts
 import { clipboardImagePng, selectFiles, selectFolder, watchFileDrop }
-  from '../.runner/web-app-desktop/io/nativeIO';
+  from '../.project-config/managed/web-app-desktop/io/nativeIO';
 
 const files = await selectFiles(true); // string, string[] or null (cancelled)
 const folder = await selectFolder();

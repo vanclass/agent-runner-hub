@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test('late authoritative receipt resolves a delivery timeout only in the same live instance', async ({ page }) => {
   await page.goto('/');

@@ -21,8 +21,8 @@ pub fn staging_root(app_local_data: Result<PathBuf, String>) -> Result<PathBuf, 
 fn select_root(development: bool, manifest: &Path, profile: Option<(&Path, &Path)>,
     app_local_data: Result<PathBuf, String>) -> Result<PathBuf, String> {
     let checkout = if let Some((compiled, _)) = profile.filter(|(a, b)| a == b) {
-        let root = compiled.ancestors().nth(4).ok_or("Clipboard development profile is invalid")?;
-        if root.join(".runner/web-app-tauri/cache/webview2") != compiled {
+        let root = compiled.ancestors().nth(5).ok_or("Clipboard development profile is invalid")?;
+        if root.join(".project-config/managed/web-app-tauri/cache/webview2") != compiled {
             return Err("Clipboard development profile is not a supported launch context".into());
         }
         Some(root)
@@ -31,7 +31,7 @@ fn select_root(development: bool, manifest: &Path, profile: Option<(&Path, &Path
     } else { None };
     if let Some(root) = checkout {
         if !root.is_absolute() || !root.join(".git").exists()
-            || !root.join("src-tauri/Cargo.toml").is_file() || !root.join(".runner/project.json").is_file() {
+            || !root.join("src-tauri/Cargo.toml").is_file() || !root.join(".project-config/project.json").is_file() {
             return Err("Clipboard development checkout could not be verified".into());
         }
         return root.canonicalize().map(|root| root.join("local/runtime/clipboard"))
@@ -47,8 +47,8 @@ fn development_checkout(manifest: &Path) -> Result<&Path, String> {
     if manifest.file_name().is_none_or(|name| name != "src-tauri") {
         return Err("Clipboard development manifest is unsupported".into());
     }
-    if let Some(root) = manifest.ancestors().nth(6) {
-        if root.join(".runner/web-app-tauri/cache/dev").join(parent.file_name().unwrap()).join("src-tauri") == manifest {
+    if let Some(root) = manifest.ancestors().nth(7) {
+        if root.join(".project-config/managed/web-app-tauri/cache/dev").join(parent.file_name().unwrap()).join("src-tauri") == manifest {
             return Ok(root);
         }
     }

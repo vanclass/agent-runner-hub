@@ -305,7 +305,7 @@
     "language": "언어"
   },
   "location": {
-    "nativeRequired": "폴더 탐색과 검증에는 Tauri 데스크톱 Hub가 필요합니다. node .runner/web-app-launch/target.mjs tauri로 선택한 후 Windows에서 run.cmd를 여세요. 경로 직접 입력과 붙여넣기는 가능합니다.",
+    "nativeRequired": "폴더 탐색과 검증에는 Tauri 데스크톱 Hub가 필요합니다. node .project-config/managed/web-app-launch/target.mjs tauri로 선택한 후 Windows에서 run.cmd를 여세요. 경로 직접 입력과 붙여넣기는 가능합니다.",
     "installation": "AgentRunner 설치",
     "label": "AgentRunner 위치",
     "placeholder": "로컬 설치 경로",

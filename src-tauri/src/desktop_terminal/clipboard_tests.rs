@@ -1,7 +1,7 @@
 use super::*;
 
 fn root() -> PathBuf {
-    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().take(7)
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().take(8)
         .find(|path| path.join(".git").exists()).expect("checkout-local native fixture");
     checkout.join("temp").join(format!("clipboard-tests-{}", std::process::id()))
 }
@@ -35,10 +35,10 @@ fn development_and_installed_roots_do_not_depend_on_working_directory() {
     let fixture = root();
     let checkout = fixture.parent().unwrap().parent().unwrap();
     let expected = checkout.canonicalize().unwrap().join("local/runtime/clipboard");
-    for manifest in [checkout.join("src-tauri"), checkout.join(".runner/web-app-tauri/cache/dev/attempt/src-tauri")] {
+    for manifest in [checkout.join("src-tauri"), checkout.join(".project-config/managed/web-app-tauri/cache/dev/attempt/src-tauri")] {
         assert_eq!(select_root(true, &manifest, None, Err("unused".into())).unwrap(), expected);
     }
-    let profile = checkout.join(".runner/web-app-tauri/cache/webview2");
+    let profile = checkout.join(".project-config/managed/web-app-tauri/cache/webview2");
     let missing = fixture.join("no-checkout/src-tauri");
     assert_eq!(select_root(false, &missing, Some((&profile, &profile)), Err("unused".into())).unwrap(), expected);
     let data = fixture.join("private-app-data");

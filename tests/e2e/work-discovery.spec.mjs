@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test('promotion projection retains old discovery evidence, admits new events and cannot hide unsafe authority', async ({ page }) => {
   await setup(page);

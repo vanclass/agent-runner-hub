@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 const key = 'agent-runner-hub.preferences.v1';
 for (const draft of [{ allocationPolicy: 'reuse-idle' }, { root: 'C:/explicit' }]) {

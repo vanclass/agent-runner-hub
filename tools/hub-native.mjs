@@ -2,11 +2,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { withBuildOwnership } from '../.runner/web-app-tauri/ownership.mjs';
-import { npm } from '../.runner/web-app-tauri/project.mjs';
-import { inspectNative, prepareNative, targetTriple } from '../.runner/web-app-tauri/native/environment.mjs';
-import { stageBackend, ownedOverride, prepareCargo } from '../.runner/web-app-tauri/native/staging.mjs';
-import { command } from '../.runner/web-app-tauri/native/process.mjs';
+import { withBuildOwnership } from '../.project-config/managed/web-app-tauri/ownership.mjs';
+import { npm } from '../.project-config/managed/web-app-tauri/project.mjs';
+import { inspectNative, prepareNative, targetTriple } from '../.project-config/managed/web-app-tauri/native/environment.mjs';
+import { stageBackend, ownedOverride, prepareCargo } from '../.project-config/managed/web-app-tauri/native/staging.mjs';
+import { command } from '../.project-config/managed/web-app-tauri/native/process.mjs';
 
 const root = await fs.realpath(fileURLToPath(new URL('../', import.meta.url)));
 const args = process.argv.slice(2);
@@ -16,7 +16,7 @@ const cancel = () => controller.abort(new Error('Hub native operation cancelled'
 const stage = (name, hint) => console.log(`[Hub native] ${name}\n  ${hint}`);
 
 async function native(action, target, signal, testArgs = []) {
-  await withBuildOwnership(root, path.join(root, '.runner/web-app-launch/cache'), signal, stage, async () => {
+  await withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal, stage, async () => {
     stage('Checking native environment', 'Reusing the installed Tauri host preparation; Ctrl+C cancels.');
     let environment = await inspectNative(root, signal);
     environment = await prepareNative(root, environment, signal, stage, true);

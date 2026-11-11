@@ -623,23 +623,23 @@
               {
                 "path": [
                   "file",
-                  "9422829ffc7d1bdf7d09ca33fde29dd241367b71906101716f7e7beb7aebbd47"
-                ],
-                "value": "a199b83e25db2f7efcffa15500de3142cf41e674d679adf23c04c985da7df8fc"
-              },
-              {
-                "path": [
-                  "file",
-                  "e78a04f37f41c1341c910c298350e0c1383d951562a4dbb1c7c183566d68b185"
-                ],
-                "value": "0fd9e419ab1a30c277dfb11e6f6d0eba4e2742cb6137046b08748df77374ed86"
-              },
-              {
-                "path": [
-                  "file",
-                  "f74a2fc75512aec07eb085875b2dafdd2541d0ffbe7387b2df1b3c9002a52e58"
+                  "23a2c34f174fc053c675b4c952c36d87a8142a384035d2e1dd8b53a97b39d4ed"
                 ],
                 "value": "1eb24c74441432d3151e7ab4410fc6987bdec0a17a77a49a1b63e36e879afe3a"
+              },
+              {
+                "path": [
+                  "file",
+                  "8a3efef36a7f75ef6b95a8c0bb7e4b1ae56a2fef45a45c8ca0fff8cfcde5a04b"
+                ],
+                "value": "1ddfb6910f8ea0f28b9323ed20b2afea7a65a3345672f667ae276c843c447ee6"
+              },
+              {
+                "path": [
+                  "file",
+                  "98429c105f41c0d39aa014ecd4b8604f90ec857786c82bd637da7fdba1ae143c"
+                ],
+                "value": "0fd9e419ab1a30c277dfb11e6f6d0eba4e2742cb6137046b08748df77374ed86"
               }
             ],
             "group_id": "Tools",
@@ -649,7 +649,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/io/README.md",
+                  "path": ".project-config/managed/web-app-desktop/io/README.md",
                   "root": "project"
                 }
               },
@@ -657,7 +657,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/io/capability.json",
+                  "path": ".project-config/managed/web-app-desktop/io/capability.json",
                   "root": "project"
                 }
               },
@@ -665,7 +665,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/io/nativeIO.ts",
+                  "path": ".project-config/managed/web-app-desktop/io/nativeIO.ts",
                   "root": "project"
                 }
               },
@@ -708,7 +708,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "b9652ee91e4198ddffccbe846d005b0f037a6d5db1a6fe7e0dfb6bf778f62a01",
+              "digest": "e2effb73ed531450963d591fefaab0939e53844f64aa4a17676fdbb713ae717c",
               "identity": "WebApp.TauriNativeIO"
             }
           },

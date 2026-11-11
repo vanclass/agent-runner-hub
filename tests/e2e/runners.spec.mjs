@@ -1,4 +1,4 @@
-import { test, expect } from '../../.runner/web-app-testing/fixture.mjs';
+import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 import { PNG } from 'pngjs';
 import { createHash } from 'node:crypto';
 import { registerSessionConfigUI } from './session-config-ui.mjs';
@@ -292,6 +292,7 @@ async function transport(page, freshTarget, referenceOptions) {
       resumeStage: () => { stageGate = undefined; releaseStage(); },
       // Browser simulation only. The configured native content window emits by label.
       nativeEvent,
+      dragListeners: () => [...listeners].filter(([, item]) => item.event.startsWith('tauri://drag-')).map(([id]) => id),
       drop: paths => nativeEvent('tauri://drag-drop', { paths, position: { x: 0, y: 0 } }),
       pauseWrites: () => { writeGate = new Promise(resolve => { releaseWrite = resolve; }); },
       resumeWrites: () => { writeGate = undefined; releaseWrite(); },

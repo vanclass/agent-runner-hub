@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { watchFileDrop } from '../../.runner/web-app-desktop/io/nativeIO';
+import { watchFileDrop } from './composerFileDrop';
 import type { RunnerReferenceSelection, Candidate } from './referenceSelection';
 import { t, tr } from './i18n';
 

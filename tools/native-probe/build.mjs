@@ -1,15 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { withBuildOwnership } from '../../.runner/web-app-tauri/ownership.mjs';
-import { inspectNative, prepareNative, targetTriple } from '../../.runner/web-app-tauri/native/environment.mjs';
-import { stageBackend, ownedOverride, prepareCargo } from '../../.runner/web-app-tauri/native/staging.mjs';
-import { npm } from '../../.runner/web-app-tauri/project.mjs';
-import { command } from '../../.runner/web-app-tauri/native/process.mjs';
+import { withBuildOwnership } from '../../.project-config/managed/web-app-tauri/ownership.mjs';
+import { inspectNative, prepareNative, targetTriple } from '../../.project-config/managed/web-app-tauri/native/environment.mjs';
+import { stageBackend, ownedOverride, prepareCargo } from '../../.project-config/managed/web-app-tauri/native/staging.mjs';
+import { npm } from '../../.project-config/managed/web-app-tauri/project.mjs';
+import { command } from '../../.project-config/managed/web-app-tauri/native/process.mjs';
 
 // Reuse managed preparation/staging; only the application-owned test overlay differs.
 export async function buildProbe(root, attempt, target, signal) {
   let result;
-  await withBuildOwnership(root, path.join(root, '.runner/web-app-launch/cache'), signal,
+  await withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal,
     (name, hint) => console.log(`[native probe] ${name}: ${hint}`), async () => {
       let environment = await inspectNative(root, signal);
       environment = await prepareNative(root, environment, signal, console.log, true);
