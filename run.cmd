@@ -7,7 +7,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-node "%~dp0.runner\web-app-launch\entry.mjs" %*
+node "%~dp0.project-config\managed\web-app-launch\entry.mjs" %*
 set "launcher_exit=%errorlevel%"
 if not "%launcher_exit%"=="0" if not "%launcher_exit%"=="130" pause
 exit /b %launcher_exit%

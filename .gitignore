@@ -10,11 +10,11 @@ node_modules/
 dist/
 .astro/
 test-results/
-.runner/web-app-launch/cache/
+.project-config/managed/web-app-launch/cache/
 src-tauri/target/
 src-tauri/gen/
-.runner/web-app-tauri/cache/
-.runner/web-app-electron/cache/
-.runner/web-app-electron/node_modules/
-.runner/web-app-launch/settings.json
-tools/web_app_build_system/.local/
+.project-config/tools/web_app_build_system/.local/
+.project-config/managed/web-app-tauri/cache/
+.project-config/managed/web-app-electron/cache/
+.project-config/managed/web-app-electron/node_modules/
+.project-config/managed/web-app-launch/settings.json

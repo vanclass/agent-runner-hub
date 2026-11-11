@@ -11,7 +11,7 @@
             "receipts": [],
             "requires": [],
             "resource": {
-              "digest": "1ace11aa6b097871fffb8f762c9349f6922085efe7e288b9301f6d1cb42b6161",
+              "digest": "c43b999f5d368cc0322c6a18bcdeab7e0d31085d83b912d1c008b715d33313ef",
               "identity": "WebApp.ViteVanillaTS"
             }
           },
@@ -150,146 +150,146 @@
                 "path": [
                   "dependency_version"
                 ],
-                "value": "2c8df7cd02a13e16d81c00a1cd6128ba5021783afe4b50ddf0c54a206a875c80"
+                "value": "b04b7cda42c26d62e0dd12b7df6ba9f32c1f1029c254b4fa3893ced2fc250825"
               },
               {
                 "path": [
                   "resource_version"
                 ],
-                "value": "443dcb25031b36df8e374ab701a6fd9aedc273d4ce881f53fd7a6b3cbcb009ae"
+                "value": "9ab3ac790ce3938a4b5bedd647ac37a57fd914247094c756bdf8a5a86e1485b4"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "09c13482e1021cb829581993d5672eea38fa67c6316f5aabb433cadc9aedfa64"
+                  "041e5fa09b758dab60bd0f3783ee973f301b27b790edd5350c4ec83ad19483df"
                 ],
-                "value": "ee320bbf41eef75d5a7ac69f05ac18d7a2e07460e310409461e24e9e2dc1d440"
+                "value": "6e8210ddc543c45bbe0d94cfef072425aaf98e40221f9d50c7f4aa30cb514a78"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "2319a8710f00f88b6b5f4a6263c6c5d4d832ea1592b21f9082bea40fa74357a1"
-                ],
-                "value": "79d76ed910207201272c6f48f8f381630bcbb99d6dd6cb948cfe786b9b8618e7"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "254e2ca54b8aefb096963ac89c37e4e0bf93fa43390ee7c366a75a2653e1b60e"
-                ],
-                "value": "c8482a71d9e5cf6daeae5dd53b10c7b07a8b92f4e45f5a638b725501777b3517"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "313ab10674c9484b40e2a50ad011b5fa9a9563c74724a998bfc5618e9e35d784"
-                ],
-                "value": "ff2680c3b9d08ad069fd486d3cd211f466e5d8d886ec7026c328994c71b79102"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "3ccb8eb6afb23db6f1dd16bd139f5e5bee951b55c58cd423d33d4a8b5802a96b"
-                ],
-                "value": "f3632a6824a801c1b7efdf4c9605331c727d55ec9533ee7856fef1fa010e76e8"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "4028eaffc5935c406fb0cc5a03c5a41c6f9f979f4b348aa052af8eb399f7cb6d"
-                ],
-                "value": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "5460dfb0697548fce77d56b7c05f785e735bdce82b722bfdf1f3b941bf4c6c86"
-                ],
-                "value": "19f3b5a17620fcc3100206ad0272e015f044f5d49348d09d9bd09e261bafd725"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "592af73898614f50aa4e05cb011749685a8db453136da12515be90c95d1cae51"
-                ],
-                "value": "52f1565e00f7c4a45e7c9c7d9067a49e8a0ed44a349eb9782a4171c9b3ba08f4"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "5af9eb5757fed598ff7e28ee0b3afbfab558181f6278e813e7268c0d430f7cf1"
-                ],
-                "value": "5b7afec64c9ef4d48fa62667df0806b94114926e46467ababfcf94d970ed2f64"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "5bcc0a4aa87f21d0d433a0cb7becc282c4bfef25b5f0ff3b0ec3857a929513bd"
-                ],
-                "value": "85a5116cf2777b38207a1a886dc6577a165d96fdc83c8eb5ea718d2fb30328f8"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "6cbe82a59a40dfb4a3272abbe25ca74f228a05350b3116ea807f877235608120"
-                ],
-                "value": "0aa83e4c99606cc2db0b633c064c521b5a044f07124e376c49afe665b2e45405"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "7cd91d01b1443e1cf552c0abf91e34509d5fabe6ffaedf122cd891885007483e"
+                  "144624ba5ce456cb70204a2018b49380d37b3de60aef89cf06fa0883ed666b49"
                 ],
                 "value": "5a992421605aa4150a6eb6fc8ca9085496f70048630aba481e5097b4dfd27b61"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "91b7335348087b48d96cddc6cb390159b19b60ff701754cc5e778670cc969dc7"
+                  "1bc8f4b995433477cafa23db800ade01007c8f56d0cbe9f27e18e13fe2521b96"
                 ],
-                "value": "edb17e5e8b3eb82e1d4b7dd270e3b268908b1c75e8f95e94a6360c3ab48e5a4b"
+                "value": "7257b111423899cbbdfefe98541f5acaba74ddab1191f95c21549f2758256d71"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "9b00bfccb04a57b3783cf3e9f10c214883b4f5dea7bac6c91cdb6c1499ba5859"
-                ],
-                "value": "5f3fedf7244f777f262854072becba36cf0310ffa748be6928b92e8b32f73ff6"
-              },
-              {
-                "path": [
-                  "tauri_sha256",
-                  "adb854b8289d9c18085715684a98db4b442afe6afdc56a80fbe723aeef6670b6"
+                  "21fa8058883a0c7e865fdffbf9dcc4087902865ecf2b8c76f391a0b974c3e96b"
                 ],
                 "value": "c30d30c4f7bf46206afe926a628f972709e876c084ec9a74c790a47c99de9680"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "d5dd05dac2f9d22831babdcc1c373dfc40e2ec0f931043c7e88581311cdf1e11"
+                  "38b0aca8206ce8435d4a4c2530f900597523d129fd7dd62254882e08c2d5b0ef"
+                ],
+                "value": "ddca1ca8a19d90116ff3de12eb890b850490c1393da9bfb40cad35e47f26ffc4"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "3db1ce5188f7c4198b7a56f3230d395dac82d0f611d45a685fec5b3b2b0a4af3"
                 ],
                 "value": "8d2f87851e1287fc8fe4f388040f9b2e7491aa5ed256625dfa29350cbaf35965"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "d9c498860c589152c2a0bb85dce3188fc4dc503661abaab49149cb72c9a4b6fe"
+                  "4207a6b89cb81ee78804d17312b857ea7830953674c4abab6c12bcde3a704593"
                 ],
-                "value": "8387e79f4ef8a4af811baf09a3a7332cb76bc4e5216b666bd0a7d01c220c30b5"
+                "value": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "e0739ba45bd63b387d4444076cc633886cdd61f9f5cfeb7713e36390f42554ba"
+                  "46e0f8c33ff475df9d02b0204882fea26d161e7c91c7cbbb2b047687350b07e7"
                 ],
-                "value": "214d139bad849188376749f802266ed31dbdc902d3803e15ee4102a2ec9045e3"
+                "value": "0edee0c5366c5bc26362a743e0d09c26d55ce987a8a01662039b20c968e98898"
               },
               {
                 "path": [
                   "tauri_sha256",
-                  "f44070608895ee0d86b0636c43bbbdf0d0caf8c1b785ee3a0fb82213d8dc558e"
+                  "639c692f40bc93fa7da68fac38d96fbdf3f182fb5ae6b3bf4f0fb1b8a31928b2"
                 ],
-                "value": "168681fbc89170249a5835030cb527e180a047bbd025ae34df0bec80dd4bd466"
+                "value": "5f56656e0669b8be4d9f750e401867504da4b4889c78dff3e924cd05b665c28e"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "6df551d07e6ac859fdff7faec1e93eb7588d83835dc4e5a3b52223f777eaefff"
+                ],
+                "value": "ff2680c3b9d08ad069fd486d3cd211f466e5d8d886ec7026c328994c71b79102"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "73f55ca2249e87eeaa4b7c3371faa9c0e544abe5fa0b2b7104c5bb5c5c39cdf1"
+                ],
+                "value": "b1678ba0068b37727014e17364d0849f4380e07b323ec29b09fa6c90d9fa519d"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "79b3563c09bb08df24c10943252c9b47be4d4053fda53e8d930d47b7030dffd2"
+                ],
+                "value": "ee320bbf41eef75d5a7ac69f05ac18d7a2e07460e310409461e24e9e2dc1d440"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "80e762967bc3d8b6c6caa5203f3548bc95b780dc6831544172cd2a2c22728299"
+                ],
+                "value": "93e52909cb4a7789c193781fe933515c3619e21096d189c1f9df387547946a60"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "905098d3db8a9b72aa1af00153ed959f655d5ab29da8edd5873e07521bb014e8"
+                ],
+                "value": "d0a143be8ec51f90e3393314c098521e9cc098f85d92582f8862533ee924235e"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "9fee6f1a0b961584e912f7310c257d53381be9fd442ccff17f1abecd4e0a71a3"
+                ],
+                "value": "f3632a6824a801c1b7efdf4c9605331c727d55ec9533ee7856fef1fa010e76e8"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "bd556ae4be29230144f06ba2cdcfb03dcac85b09b7515c82701500c4d7d556be"
+                ],
+                "value": "2bf4a66cb482303e1b0f9c08820da0c0c830651694494da69d418d95ea39870f"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "d2772e839ad393eecde342abe413fe3e8e9e375d89777cb4f240830dea97b025"
+                ],
+                "value": "79dcdedc6b9b87463b950123fca8f5005a7a6ab2a5082218e5d33539dc0a6314"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "d4edf09451fd2dc7b8c5cc3e0671d96f5f5e9542701c339297a3567d77bc9624"
+                ],
+                "value": "c8482a71d9e5cf6daeae5dd53b10c7b07a8b92f4e45f5a638b725501777b3517"
+              },
+              {
+                "path": [
+                  "tauri_sha256",
+                  "e3b39c8f7161f0a72f71109c1ad6d78e37d5fa6ca2884af85bec0a7a3307b97d"
+                ],
+                "value": "edb17e5e8b3eb82e1d4b7dd270e3b268908b1c75e8f95e94a6360c3ab48e5a4b"
               }
             ],
             "group_id": "Runtimes",
@@ -299,7 +299,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/check.mjs",
+                  "path": ".project-config/managed/web-app-tauri/check.mjs",
                   "root": "project"
                 }
               },
@@ -307,7 +307,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/cli-package.json",
+                  "path": ".project-config/managed/web-app-tauri/cli-package.json",
                   "root": "project"
                 }
               },
@@ -315,7 +315,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/dev.mjs",
+                  "path": ".project-config/managed/web-app-tauri/dev.mjs",
                   "root": "project"
                 }
               },
@@ -323,7 +323,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/environment.mjs",
+                  "path": ".project-config/managed/web-app-tauri/environment.mjs",
                   "root": "project"
                 }
               },
@@ -331,7 +331,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/foundation.mjs",
+                  "path": ".project-config/managed/web-app-tauri/foundation.mjs",
                   "root": "project"
                 }
               },
@@ -339,7 +339,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/launch.mjs",
+                  "path": ".project-config/managed/web-app-tauri/launch.mjs",
                   "root": "project"
                 }
               },
@@ -347,7 +347,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/lease.mjs",
+                  "path": ".project-config/managed/web-app-tauri/lease.mjs",
                   "root": "project"
                 }
               },
@@ -355,7 +355,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/desktop.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/desktop.mjs",
                   "root": "project"
                 }
               },
@@ -363,7 +363,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/dev-server.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/dev-server.mjs",
                   "root": "project"
                 }
               },
@@ -371,7 +371,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/environment.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/environment.mjs",
                   "root": "project"
                 }
               },
@@ -379,7 +379,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/macos-environment.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/macos-environment.mjs",
                   "root": "project"
                 }
               },
@@ -387,7 +387,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/macos-products.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/macos-products.mjs",
                   "root": "project"
                 }
               },
@@ -395,7 +395,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/nsis.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/nsis.mjs",
                   "root": "project"
                 }
               },
@@ -403,7 +403,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/process.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/process.mjs",
                   "root": "project"
                 }
               },
@@ -411,7 +411,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/products.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/products.mjs",
                   "root": "project"
                 }
               },
@@ -419,7 +419,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/selection.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/selection.mjs",
                   "root": "project"
                 }
               },
@@ -427,7 +427,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/native/staging.mjs",
+                  "path": ".project-config/managed/web-app-tauri/native/staging.mjs",
                   "root": "project"
                 }
               },
@@ -435,7 +435,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/ownership.mjs",
+                  "path": ".project-config/managed/web-app-tauri/ownership.mjs",
                   "root": "project"
                 }
               },
@@ -443,7 +443,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-tauri/project.mjs",
+                  "path": ".project-config/managed/web-app-tauri/project.mjs",
                   "root": "project"
                 }
               },
@@ -457,12 +457,12 @@
                   "path": "package.json",
                   "root": "project"
                 },
-                "value": "node .runner/web-app-tauri/dev.mjs"
+                "value": "node .project-config/managed/web-app-tauri/dev.mjs"
               }
             ],
             "requires": [],
             "resource": {
-              "digest": "4835492ef589dc60d4ed5533428c2a8e845e85ab52fac971434757000fdec5cc",
+              "digest": "44c496be77b1351156afa14399999c854dab8d8f70b93f7d001bad1085008dc9",
               "identity": "WebApp.Tauri2"
             }
           },
@@ -472,16 +472,16 @@
               {
                 "path": [
                   "file",
-                  "1a8c538dfabdb2deb4dc9f6497ac5512968ff449e65feeb1e6fd863fd031bd11"
+                  "19a123f83e2e229b7f1b8ad135c958b879d1950c9e04c81e31dd951977a2c0bb"
                 ],
-                "value": "f0b01d5ab67ed9f3f013833105dd1998981cbf7c134640929960aae110bb7640"
+                "value": "efa7a8fd3d8ccfeb85cc1f3beb885d34fa89e4e4e6ceb0ce74026f877fc823c4"
               },
               {
                 "path": [
                   "file",
                   "cc0ad60f02c62cee29c07f15d6e7d39332ac4e281f8f993c85dfbaa069f6627c"
                 ],
-                "value": "887b90b89608b72498db20e91c5294080364d867d900cb58613debadc3e2253c"
+                "value": "dc8763ddac15b0069fef33d138e97157e523a0713725a95b1566adb1672573af"
               }
             ],
             "group_id": "Tools",
@@ -499,14 +499,14 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/ci/README.md",
+                  "path": ".project-config/managed/web-app-desktop/ci/README.md",
                   "root": "project"
                 }
               }
             ],
             "requires": [],
             "resource": {
-              "digest": "597125760f3f53f6fa70ca5a234837c109ca64054f08073f00d267d0952f71b8",
+              "digest": "4d270cece8ba1975ea11750047267873da1d8c28c47db5c50f34150f9d436f03",
               "identity": "WebApp.DesktopCI"
             }
           },
@@ -516,23 +516,23 @@
               {
                 "path": [
                   "file",
-                  "2e1dc51fb809a07661e0c09deab7d5d5ab3ef910e94835ffee8206f62a1fcd39"
+                  "1cd619603229d3485f383581149de3e439e528fffc5d3de12c835a66f0998a40"
                 ],
                 "value": "be6cf5f11724b070505f6cbf987e4978dd7181e5ee2a8b29ba7c02aa809e4258"
               },
               {
                 "path": [
                   "file",
-                  "614c83baec7d0091007e636a3f115d95365ac1cf0acf826c7c6ff2347d973d4f"
+                  "3771ab58a0facf3cefea3998a6db594e5a7df1ab9d87bc6aafaaa22edc7f669e"
                 ],
-                "value": "81b5a767ded3be318388bcf6bf6f419ae5a14645e0f7c48520970a79e837fee6"
+                "value": "e1e08dd8fe6e8c991a24c1696504a86914b9ab653d9d872435d33ce0a2df0ebb"
               },
               {
                 "path": [
                   "file",
-                  "cba365987cf62aa18f174226c467815264645afe0592027c597f03a77d40d7f8"
+                  "f7fd15767e1a8bb3094dfff5ee26676a2f1363e78ebc7238aacc4b7b50960d80"
                 ],
-                "value": "e1e08dd8fe6e8c991a24c1696504a86914b9ab653d9d872435d33ce0a2df0ebb"
+                "value": "5795dcb3b3021ba852a6389e018edd1e0c20dc9a17016a716a550ea2cd791ecc"
               }
             ],
             "group_id": "Tools",
@@ -542,7 +542,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/terminal/DesktopTerminal.tsx",
+                  "path": ".project-config/managed/web-app-desktop/terminal/DesktopTerminal.tsx",
                   "root": "project"
                 }
               },
@@ -550,7 +550,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/terminal/README.md",
+                  "path": ".project-config/managed/web-app-desktop/terminal/README.md",
                   "root": "project"
                 }
               },
@@ -558,7 +558,7 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".runner/web-app-desktop/terminal/bridge.ts",
+                  "path": ".project-config/managed/web-app-desktop/terminal/bridge.ts",
                   "root": "project"
                 }
               },
@@ -613,7 +613,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "518723e8ee1fb96b2f16a37fa7c02cb91357a066fb73ca5eb2c12b4128209a13",
+              "digest": "2ef8d57668c47718cd2edb8001acfd667bb42064334619f963fde36d8acc09d5",
               "identity": "WebApp.DesktopTerminal"
             }
           },
@@ -718,371 +718,763 @@
               {
                 "path": [
                   "build_system.sha256",
-                  "012878d136069d7749f54f9f6605485cdaf5060e6c9ec3d41d22bc3104429f49"
+                  "048a198fd788c50295c2a0bea5d486b535558c1069c5e3224573653ebdf6f689"
                 ],
-                "value": "63b2a4db3f0183ae9efa39876341ee57505552808c96c95796eca4d50bd48549"
+                "value": "2bf4a66cb482303e1b0f9c08820da0c0c830651694494da69d418d95ea39870f"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "069c6376a7080fd52ca0f645f2200899fa174ef190d858d82de97c703af7f39b"
-                ],
-                "value": "9ec15387316a643b90ba2eabf89ea0b02d265859975913364986ddfd1899cb06"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "0fce8be2b6df77188928d7ccd094de869adaffb37a2efd16eb735a730933b0a5"
-                ],
-                "value": "c52d2d4eb0d1c36018567b71ead32cbdf2702304e7bb9f02f0e5c18cceb2638d"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "12fbdf947442737ea0a700b42a9b7e1e18e7e4f444e6c852629844bf848674f8"
-                ],
-                "value": "6089c1b205c34de15af30603db4767862287aa2b2b17daa66bed99bfaeaddc99"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "180b9441daaa12a73d8fdb8c96158ff26c124f7c6d20dc084aef637792361564"
-                ],
-                "value": "84f0abc91471462c4fd09643fe4a578a7c20aca048618c0c2a1a137211636a91"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "1c516d9113a3bf81e1772a572f4ac91c3bb8dca01a61184ae9043a293aa429b5"
-                ],
-                "value": "214d139bad849188376749f802266ed31dbdc902d3803e15ee4102a2ec9045e3"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "1f855f515d53d263b8466a45666433476e9d6ac193a7178e0f4592b0785cd5df"
-                ],
-                "value": "66ff73f406683563799a91d5cf34dadf18411ebf1d2fef6b89d99d627b6d95e6"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "207b9e6b5241a1c3528df4ab4be7335f6441df6f863926895a7f74ada5e5bc69"
-                ],
-                "value": "be1bd8cca3f655ad9f3e0bdaa7c0ad5b6aa8d511bda9f7a091e7e137126e623d"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "265420d9e29f3d5c35af2dc254dd606951b19e4ae4bf83fe0067ac7a2c9dd93c"
-                ],
-                "value": "bee5df6190d5fa2e70d2c1de9ea697a9f125c7249f383901cc290b2980c55f1f"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "271a686bf2222539c907870fcc6c5107a279d52d23947fb1d3934ca7a1c65812"
-                ],
-                "value": "ec14165ef35ffdef05f51890aa96eafeb0388a7114ec18fada4fcb892d659ed2"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "2a6d960517d2fe9a4765f8b31e300cdda7b52f92ad6932e8c175c778498b1650"
-                ],
-                "value": "c30d30c4f7bf46206afe926a628f972709e876c084ec9a74c790a47c99de9680"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "2d5d9d022474ef9ee2e7aaf1cf4abf06f2322370ec2aee28395038e4eecbe36c"
-                ],
-                "value": "df47b5303887c88ee1cdeadd634f2d3231fd793e1a0058b015a6bba32c71c1c9"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "2dd13e72c63527aeda35e5a3e725be19367ed384e9e8e51b62dcea64b86fcc24"
-                ],
-                "value": "edb17e5e8b3eb82e1d4b7dd270e3b268908b1c75e8f95e94a6360c3ab48e5a4b"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "2e18d690834c68dea08fd976150a15fa00dfbe879cb396cc527a9ef851245533"
-                ],
-                "value": "027121a7f98c6781bcbfb9697362b284dbd0a842661fe2169ed0c8dd52007931"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "2e9a80763364b37de0c1623bea777b5901a60745b368b5803e899029d88d381c"
-                ],
-                "value": "f8b06b9f47fe315a7c0ff9fb518005d0033f3a05734e473bec3a04583cda65b5"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "2fc69f49a3b526edb0ae8db8e509468d4e4f0740e4e65c4cf1fe36d82b2ee4e5"
-                ],
-                "value": "3b0b2bd60b59aeb79a762a951b6d41b31addf7a45f58c55a927566e504cf1f8c"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "3624c48ec1f86eb26883354e22006f8f4d46d0e6581d4b9c52dbdc81cbf7f3d1"
-                ],
-                "value": "fd5ec071cddd49dafde61fd1098c895e733f102127178c3da698114367446f88"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "3ebfe5d78d606a9be5e66f8c3ba0029d054ec64705e6ae99f1246f5c8c09a479"
-                ],
-                "value": "ee219777e2bb531495e722e442d718241d127ec511408d2718c8204ea141d69e"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "3f889daf1be1f619bb531254d7474a4ba03300ec183ae6871e19419753ec9732"
-                ],
-                "value": "abffe58879a98507a38ee11699a5a50d7da49aa1ee1d1f965b48f8157d135747"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "4c6bc58f4131281e592308207fe7b6c33929246ae8e929da39922f3967ee00d3"
-                ],
-                "value": "e45abaeacd612aa772ba3b7c53f208b5364f444a0166ff8679e52adbfa1bb303"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "4d2a8eefdf2a9783512a35da4dc7676a66404b6f3826a8af9aad038722da6823"
-                ],
-                "value": "8b1b3a47e92a8b589a97c0a436e8c73336cee6b083c6c51697be1c6d39f61082"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "501a251a90c82c7cb270b7b9efe3f6d38fcef69c68e4d47afc85ab51c7420bff"
-                ],
-                "value": "a7e868f4c304e26bda44d611e10a48c4fa6d62d6996d3e67e47772ea1347eeca"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "5ae287b43d1a27d56e966824c69141098648047971a5ad96b124e7501c4ab035"
-                ],
-                "value": "5a992421605aa4150a6eb6fc8ca9085496f70048630aba481e5097b4dfd27b61"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "5cf84c049a9ffcf1191bd6f5c8af0b628c2848ca25843e1490af040c54bd63ab"
-                ],
-                "value": "f7191749f43462c44388c6a13a88504a8331f1ee017c7b23da9821de7362ae7d"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "5d1a8c1f0cf259b0ef0ad38234ee6760764b2eb416f063f62bb7e54bf84d03c7"
-                ],
-                "value": "b1a8d53dff744c723926e28e4a7daaa9c22aa0ae0a8cf330f008891ffb3189ee"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "5d855180b27184bef4bacf811bd8e9c83bbb2bbb4f43d794b20828729a58f53d"
-                ],
-                "value": "0d9b49e7887f0bae5846517d8c6b0e2fe8ca1d9dc4f42b4e8496319d6ed958fa"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "636b5fa742a7a5823a7c55c8cbbe0add485adeaaac0ccb92dea5e9a250441c50"
-                ],
-                "value": "5b7afec64c9ef4d48fa62667df0806b94114926e46467ababfcf94d970ed2f64"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "6f4cf9fb62901ff6c173451a27b0d3b7e71b23bf6e2aade7fbfeb9fbcd55f0b0"
-                ],
-                "value": "19f3b5a17620fcc3100206ad0272e015f044f5d49348d09d9bd09e261bafd725"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "8b58c49fd0b2f06ad5419291c9b668789901b193b50d150d12af3476ec8c7ac9"
-                ],
-                "value": "52f1565e00f7c4a45e7c9c7d9067a49e8a0ed44a349eb9782a4171c9b3ba08f4"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "9440bc54dc16f0ed1746d8af92c475df8ddc64086695673acca6c2c86c5a1644"
-                ],
-                "value": "069107122b43146683212843a8aa8186ba7a81801108529d23214432c89a2db4"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "9650c72cfca0bbb6406143927e5ef036dbda39b5ba21e383709a3e2bfba3b907"
-                ],
-                "value": "e7190dea5dc34bc0bb8cff97c7f5c107a5126bb190a9369458d6516de6331517"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "97d9cc8ab4a376d77779481e41611897ec845009996ecb424db0d49222ff3ba4"
-                ],
-                "value": "af016b3eec537036032834d18707329b736ba14682a6b858bb65a37f42a08dab"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "99a2d0087135c94c664b4743f06592fedc7e766cfe8cb58d017ce43230d733cd"
-                ],
-                "value": "ff2680c3b9d08ad069fd486d3cd211f466e5d8d886ec7026c328994c71b79102"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "9b669f5ad1cd898dfd7191bb53818be61331a01a8673f5d5418aa6709832cdcd"
-                ],
-                "value": "1ccd77d183111369bcb06b04e9bfcb5379712027b772fb28059f3afafa789d9c"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "a97ed56e5ae79708e7aa121649488191449bf62cc7ddca1dddb3530dc1f417b2"
-                ],
-                "value": "5e3e38a037b2c1db28ad76d016158dc9894b3c667273740c7a216c6cc1621f01"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "b5bfc7196fc638c11acf5ba5fefbee5514cc91dc69d919efc9e813022be21078"
-                ],
-                "value": "149baa7785af2f50d6a14ce0ed7a61ca2dbc1bb1c40f24eceea4c22eb197f65e"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "b818f7cb15d1448b9cb35d4fe2eaecb5011488f386e0626b4be655b4ee7896dd"
-                ],
-                "value": "8b1b3a47e92a8b589a97c0a436e8c73336cee6b083c6c51697be1c6d39f61082"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "be354022eee46c3e47dd846b5861d876b7e98e1037d2562ed9a974558726715f"
-                ],
-                "value": "85a0eeb7a151ed9f202f244b99b111eb868c3fd4ccc00fd7a8805dc062823c0d"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "bf6993436642e6efa2fd498bb4124f03eece97b754c30499ec9544ab75d605d9"
-                ],
-                "value": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "c2fe31749b10d86035877e22859c3510bc25fdc8721aeff7a0202a8ccafcae6d"
-                ],
-                "value": "f3632a6824a801c1b7efdf4c9605331c727d55ec9533ee7856fef1fa010e76e8"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "c87ccec6f94e22e8024257c47b353a5ca589c43db2629193b8ff4dd4b30b43f8"
-                ],
-                "value": "65a94e72cc083bcd4f244c8b99986b0de9daf8223bad100c8e5189a5b593eea1"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "c8bf521fe84b9679adcdfc1a55e621a2f21152d183e363c230dc5ef76fbd6198"
+                  "07195a2b59600c741b0162d392e46abff1acbd4739b5482ae324e0daf7e0d568"
                 ],
                 "value": "6f4fec48c5eb6aaab9f06c456969dbb4238e239fb2b8b57bb330f1b1d123795b"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "cb13e67e516248f78ad14d81ad95a8af5e7bc5f2b1deb81b34dd5b833f22a265"
+                  "0b6aba12ba60ff34a6c825f569acbcc803c51495cedc995102853da8d9e57dbd"
                 ],
-                "value": "467ca780255f3c03503311878dc1f370142f8f4889e728de6227ceb35d572bd8"
+                "value": "edb17e5e8b3eb82e1d4b7dd270e3b268908b1c75e8f95e94a6360c3ab48e5a4b"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "d58dc8e2ede77a8b944d7a281dbfaa846b0b33283f64ce3961c6f5a900d03a7a"
+                  "19cb6cb41461ad4a118e764e6de53d646339c1d99be1d07d585251533dc7f522"
                 ],
-                "value": "85a5116cf2777b38207a1a886dc6577a165d96fdc83c8eb5ea718d2fb30328f8"
+                "value": "84f0abc91471462c4fd09643fe4a578a7c20aca048618c0c2a1a137211636a91"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "d5c1da69f140e8ad1d75329e5d8f5f4259f3869eceafbe6fc514da0d50b2a415"
+                  "1b4f9fa4ca52f83fb74cd175d73d8d262fa1dfb41a731544d736d17c95160034"
                 ],
-                "value": "c37ca8f6b48aed1e14b21926a752b07a8a3c2e762867e80f1f7db0895adc7662"
+                "value": "3afb8cc5baa2185a9298203e22073d712b73041af8019790d6ede1ddcad83619"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "d7c3f47179ad57b92ff94246ece8487ff784b8dbb8ecf8bf995316177ef52c16"
+                  "1ecce885dba722081b038c5c2cb467d2e27417646da25624bcff37ea4f01655e"
+                ],
+                "value": "9ec15387316a643b90ba2eabf89ea0b02d265859975913364986ddfd1899cb06"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "209ca56d903920f41ac722b109c009122a5bb3c30e4b1e142784a5415d23f472"
                 ],
                 "value": "4c96ea08972bea296613db39559441621af7f5ce66cf93d43060276d510c2458"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "dab79b164ba77c1992cd1b1ce2170257e25cdc8f4be7f2b558fa4c6aa7c6cb33"
+                  "20e94cda1ab16e3c7d710b31d82dcc6ac824e5a0d6367478a229aa11ee0eb324"
                 ],
-                "value": "bc708d15967ae614a61f0df927a251e31e61fc2c999c273b449075fe7dec0572"
+                "value": "3b0b2bd60b59aeb79a762a951b6d41b31addf7a45f58c55a927566e504cf1f8c"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "db7141a54cb4efdb2ae549a8eb5b6360a6fbee28229b8967aac55348bf607b07"
-                ],
-                "value": "79d76ed910207201272c6f48f8f381630bcbb99d6dd6cb948cfe786b9b8618e7"
-              },
-              {
-                "path": [
-                  "build_system.sha256",
-                  "de5e93a805708eab22b948f7039f819c3ee174b485c52bd92f0471bece9a39e4"
+                  "289d1715a5382e5652eecbf621c738e2fe1d9631fb20c40d29f09758679c3a45"
                 ],
                 "value": "e8ac41a9b3a718b3e91af73c1e4e764226521d7ee6b028009fdce2942749096c"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "ea38c6f7f38abf8b6111c87f711988516610820c7506c7509f3a2ba7679cb7a7"
+                  "28cd535ebbf44a7507d1c128d14c4d4ff2cc3f2ae6eced3c4b7b2b2c97f7bbd6"
                 ],
-                "value": "8387e79f4ef8a4af811baf09a3a7332cb76bc4e5216b666bd0a7d01c220c30b5"
+                "value": "50419cd5efcf564d1cf38e890793554bd9c3e2f93c47e125068cfe23a4aae10c"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "ebe97edb2d7e3c90f5a0c779186a83cf221aa26d92b6d326d9497fa94a956ac9"
+                  "29e1fe732362e2d2de3f1e6ca9f108c3267c79b72332f52a5da6c2005b3d4b98"
+                ],
+                "value": "6089c1b205c34de15af30603db4767862287aa2b2b17daa66bed99bfaeaddc99"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "3629eb5cb226efde321c7f64e9015ae8b16f0a5ebb9847a5962d29774d848a0e"
+                ],
+                "value": "e45abaeacd612aa772ba3b7c53f208b5364f444a0166ff8679e52adbfa1bb303"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "3a08419dfbd42c82117ae065cb383d5aacc416d646e975635db89e824c169292"
+                ],
+                "value": "33c2d013fdd5e6a97f724b222ebf9df828a55190dbcb125988d7ccd8aa3d9040"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "3f09546a58a19951eb29e17b444987d037d07310a7f4de15ecdb45f48675633b"
+                ],
+                "value": "93e52909cb4a7789c193781fe933515c3619e21096d189c1f9df387547946a60"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "47e3bcf9fd618aad3e43a8177875835fbf63b057383cccbce8fc26323b426d38"
+                ],
+                "value": "0d9b49e7887f0bae5846517d8c6b0e2fe8ca1d9dc4f42b4e8496319d6ed958fa"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "4be730c0f2129a41c2bf888b9bcba179b51df6cd3ba58151872b28e0f04c0e4b"
+                ],
+                "value": "ee320bbf41eef75d5a7ac69f05ac18d7a2e07460e310409461e24e9e2dc1d440"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "4d2a8eefdf2a9783512a35da4dc7676a66404b6f3826a8af9aad038722da6823"
+                ],
+                "value": "947a5ffed848165d67fcd50486a0f940b33c4b3ba72cc53c44a9b612f3d751d4"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "5a57b9fc355c7441aa9602a342900720557e8f4501adbff0ed91af58afd23682"
+                ],
+                "value": "149baa7785af2f50d6a14ce0ed7a61ca2dbc1bb1c40f24eceea4c22eb197f65e"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "5d1a8c1f0cf259b0ef0ad38234ee6760764b2eb416f063f62bb7e54bf84d03c7"
+                ],
+                "value": "dc4139e57a00614c9783f84d8c3340c8a8eabdefa30d4ceed56f5bcf0e1654a3"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "64d62a59ecd5819ed2a1a2b4656d5479eb3e14d4dc67252fe8dd9c0fabf0cfa4"
+                ],
+                "value": "1ccd77d183111369bcb06b04e9bfcb5379712027b772fb28059f3afafa789d9c"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "656c25d6b5989ab9c01a9ee2db7c6027c7aa42825d225a5923b277e7669d5630"
+                ],
+                "value": "c52d2d4eb0d1c36018567b71ead32cbdf2702304e7bb9f02f0e5c18cceb2638d"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "674e98f6928cdce69d366ad432cb08b87dd2c665832444fd4cc82b96730274d1"
+                ],
+                "value": "c30d30c4f7bf46206afe926a628f972709e876c084ec9a74c790a47c99de9680"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "6951d48e3dbf64c8759ff941c8127fda70d131bf4e35c4be2606c4202f7bd62f"
+                ],
+                "value": "3091a879b9df3c43e610dbda2f78871b19320f66b90d3406aa41f88b4124f3dc"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "73817b7f93a28b2ba22b45f9a97137d20ca74c3eacd3441b23ad4200e6f89436"
+                ],
+                "value": "fd5ec071cddd49dafde61fd1098c895e733f102127178c3da698114367446f88"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "73cc0c9906fa3b4a65875ebd260d4ab59ef7622ab57a6906a3b190d65a349af3"
+                ],
+                "value": "65a94e72cc083bcd4f244c8b99986b0de9daf8223bad100c8e5189a5b593eea1"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "7dc3336889902ce480a8f4d344d05a2e75be29a959119ff374325240a3150a80"
+                ],
+                "value": "6e8210ddc543c45bbe0d94cfef072425aaf98e40221f9d50c7f4aa30cb514a78"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "83210d0cc80213135f0b3bb0571748dfde72b1a49731db90789fe325b6c9c1c8"
+                ],
+                "value": "ff2680c3b9d08ad069fd486d3cd211f466e5d8d886ec7026c328994c71b79102"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "99510a207ab187e4c30da89709d1f9c2cd04a8f1d3cb05fb24f10007518d27a2"
+                ],
+                "value": "5f56656e0669b8be4d9f750e401867504da4b4889c78dff3e924cd05b665c28e"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "9bace8dedff27a227fd8ed75053e927cf91efdbc3ee37665ea3b89680adde38d"
+                ],
+                "value": "bf1f088b1bbb90a84626b3b8ee3401ca72d240949e44ba47bea6e9db09ae7aef"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "a159146568df3178ccb6ea3ab26db004be02720d3978bb1431f735e9d8342a2e"
+                ],
+                "value": "5a992421605aa4150a6eb6fc8ca9085496f70048630aba481e5097b4dfd27b61"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "a8916ef96791242a983b8507e9dabdb595b06203a0f1b5cbe11c0faf72caf405"
+                ],
+                "value": "027121a7f98c6781bcbfb9697362b284dbd0a842661fe2169ed0c8dd52007931"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "b234f515d381d9fd2aa68d1e8fbc57370b755e727f63531224cd06de06d4e858"
                 ],
                 "value": "8d2f87851e1287fc8fe4f388040f9b2e7491aa5ed256625dfa29350cbaf35965"
               },
               {
                 "path": [
                   "build_system.sha256",
-                  "faf69f71d0cb65527488d7fa92331e566752fb75b4b08a01e1d3c920b51704c7"
+                  "b5221fe66c4926812c26fd6ce268e8763f949186b6e8ae1bdf16af1565b2c98d"
                 ],
-                "value": "ee320bbf41eef75d5a7ac69f05ac18d7a2e07460e310409461e24e9e2dc1d440"
+                "value": "f7191749f43462c44388c6a13a88504a8331f1ee017c7b23da9821de7362ae7d"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "b818f7cb15d1448b9cb35d4fe2eaecb5011488f386e0626b4be655b4ee7896dd"
+                ],
+                "value": "947a5ffed848165d67fcd50486a0f940b33c4b3ba72cc53c44a9b612f3d751d4"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "b9849d83f667594d8e453630c26a5c391779439b741728f403afb0b61185bdad"
+                ],
+                "value": "f3632a6824a801c1b7efdf4c9605331c727d55ec9533ee7856fef1fa010e76e8"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "be7e48323e5298a74c80b164be463a927f09aa793d5e9890d175dfffa424f449"
+                ],
+                "value": "069107122b43146683212843a8aa8186ba7a81801108529d23214432c89a2db4"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "c288f434b5f8ac72d31b73c2f631c0d3a1d5ed91837fc65249261a1531344142"
+                ],
+                "value": "7257b111423899cbbdfefe98541f5acaba74ddab1191f95c21549f2758256d71"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "c3430667f678157d570723c2a292a81435fa628ad414a3c39109be7afafbca4f"
+                ],
+                "value": "b46b1999c7d2faa13ac0725052af0f081701ba054e3b22a268003f445fa8c544"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "c5ed1afbc95ac0955c65d09fdd442f5361922df5aaa320d10293e679671f74c1"
+                ],
+                "value": "8e672669d1c77e2d964ea397db73d2dbe72485f4e2b5ff3853672618e8a9801f"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "c7eadfd947fcb6477074a10a1a65ed1d02f31fb1aac222b5a01c3095c40ac3c0"
+                ],
+                "value": "0b3e2236e1f8d02dc0da7daba9571fc3f1a4e13dcb569c4707b593ffc65ff1aa"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "c7f6a90d96dfde88d5c50c994666fb94f819e39c8131eb7afa40cdfe1f87bf48"
+                ],
+                "value": "16ed602f862dcfe181c066a71daa9ed8b4f14fca688fd66b13e369da57293a5d"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "c9ab0cf6490c9db82596c2b6df50acbd702cc16dc2503d1713c0cffdbe8a0946"
+                ],
+                "value": "bc708d15967ae614a61f0df927a251e31e61fc2c999c273b449075fe7dec0572"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "d3b483f5d7462db71abac5a00f1fa2097d8da134379efc9604921c94219204cb"
+                ],
+                "value": "767196873d5e4749c8ca6b51f237be82eceff181358657d2fb5025af7864b88f"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "d6cdfc1e25d7a050e8eef3ca015975b9d397118acfd9b4c401e7a40404a92db3"
+                ],
+                "value": "d0a143be8ec51f90e3393314c098521e9cc098f85d92582f8862533ee924235e"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "dca2a767d175fe0bf98af66dfab869da7c6a0a588bd299855bd0af0e3d3ffa24"
+                ],
+                "value": "63b2a4db3f0183ae9efa39876341ee57505552808c96c95796eca4d50bd48549"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "e3012809b42158961f53709b41fc56b1254878bdd706d8a5aff77505dc97c4e0"
+                ],
+                "value": "c37ca8f6b48aed1e14b21926a752b07a8a3c2e762867e80f1f7db0895adc7662"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "e4e921ae76bcde3b49f7d0385621715f1e1d8e406caad3f98389bfffcc3fd341"
+                ],
+                "value": "66ff73f406683563799a91d5cf34dadf18411ebf1d2fef6b89d99d627b6d95e6"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "eaa242d829ec6c1d5d127a9d0cdaea53b490e22d743a14d7c42dab97005d5da8"
+                ],
+                "value": "af016b3eec537036032834d18707329b736ba14682a6b858bb65a37f42a08dab"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "f31c7079eb22ed4b03f410e2bb5d3133c426bb415801cdc7d122ffb107bab2b8"
+                ],
+                "value": "ec14165ef35ffdef05f51890aa96eafeb0388a7114ec18fada4fcb892d659ed2"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "f91e0b94a88a9fae53be7a07b89bbfa232eabc2fa973c32f4d43dad7cec96d13"
+                ],
+                "value": "abffe58879a98507a38ee11699a5a50d7da49aa1ee1d1f965b48f8157d135747"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "f9b275f5a3aa0faf5f7fe1e9501f619b4f9f1143ef910b27bdf37be0a2773ab3"
+                ],
+                "value": "df47b5303887c88ee1cdeadd634f2d3231fd793e1a0058b015a6bba32c71c1c9"
+              },
+              {
+                "path": [
+                  "build_system.sha256",
+                  "fc741e8cd1327681c6e829d2a0b60ca6977ade4a67e69917af0612ba0d9f721e"
+                ],
+                "value": "ddca1ca8a19d90116ff3de12eb890b850490c1393da9bfb40cad35e47f26ffc4"
               }
             ],
             "group_id": "Tools",
             "option_id": "WebAppBuildSystem",
             "receipts": [
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/README.md",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/config.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/electron-package.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/package.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/release-binding.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/archive.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/environment.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/gradle.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/probe.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/products.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/sdk.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/staging.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/toolchain.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/android/verifier.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/astro-contract.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/astro-output.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/astro-react.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/astro-tailwind.json",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/astro.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/electron.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/electron/environment.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/electron/products.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/entry.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/environment.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/execution.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/foundation.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/lease.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/menu.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/desktop.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/dev-server.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/environment.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/macos-environment.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/macos-products.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/nsis.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/process.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/products.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/selection.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/native/staging.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/output.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/ownership.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/project.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/release-evidence.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/runtime-selection.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/targets.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/tauri.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/web.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/windows-console.cs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
+                  "path": ".project-config/tools/web_app_build_system/targets.json",
+                  "root": "project"
+                }
+              },
               {
                 "kind": "exclusive_path",
                 "scope": "file",
@@ -1106,403 +1498,11 @@
                   "path": "build.sh",
                   "root": "project"
                 }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/README.md",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/config.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/electron-package.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/package.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/release-binding.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/archive.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/gradle.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/probe.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/products.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/sdk.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/staging.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/toolchain.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/android/verifier.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/astro-contract.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/astro-output.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/astro-react.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/astro-tailwind.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/astro.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/electron.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/electron/environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/electron/products.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/entry.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/execution.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/foundation.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/lease.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/menu.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/desktop.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/dev-server.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/macos-environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/macos-products.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/nsis.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/process.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/products.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/selection.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/native/staging.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/output.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/ownership.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/project.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/release-evidence.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/runtime-selection.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/targets.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/tauri.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/web.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/src/windows-console.cs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": "tools/web_app_build_system/targets.json",
-                  "root": "project"
-                }
               }
             ],
             "requires": [],
             "resource": {
-              "digest": "726918667a39852d0abe0720bfd8e53967baa16b6b331fea54be5ecc982de894",
+              "digest": "a4d507b1269d45c91e30504fa7fab45af82b4ffa721e8ec0bbdbb9c56455460f",
               "identity": "WebApp.WebAppBuildSystem"
             }
           }
@@ -1514,7 +1514,7 @@
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/astro-contract.mjs",
+              "path": ".project-config/managed/web-app-launch/astro-contract.mjs",
               "root": "project"
             }
           },
@@ -1523,7 +1523,7 @@
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/astro-react.json",
+              "path": ".project-config/managed/web-app-launch/astro-react.json",
               "root": "project"
             }
           },
@@ -1532,34 +1532,34 @@
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/astro-tailwind.json",
+              "path": ".project-config/managed/web-app-launch/astro-tailwind.json",
               "root": "project"
             }
           },
           {
-            "after": "e7190dea5dc34bc0bb8cff97c7f5c107a5126bb190a9369458d6516de6331517",
+            "after": "bf1f088b1bbb90a84626b3b8ee3401ca72d240949e44ba47bea6e9db09ae7aef",
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/astro.mjs",
+              "path": ".project-config/managed/web-app-launch/astro.mjs",
               "root": "project"
             }
           },
           {
-            "after": "52f1565e00f7c4a45e7c9c7d9067a49e8a0ed44a349eb9782a4171c9b3ba08f4",
+            "after": "d0a143be8ec51f90e3393314c098521e9cc098f85d92582f8862533ee924235e",
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/build.mjs",
+              "path": ".project-config/managed/web-app-launch/build.mjs",
               "root": "project"
             }
           },
           {
-            "after": "1d38274ed8126898204821cbdca88e18fd5d14ddee0ff0cb9288da799eb9e158",
+            "after": "c64e5ef1689e90b50a5de8729f1a8adbcaede07543be5943953b9db43edbb371",
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/entry.mjs",
+              "path": ".project-config/managed/web-app-launch/entry.mjs",
               "root": "project"
             }
           },
@@ -1568,7 +1568,7 @@
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/foundation.mjs",
+              "path": ".project-config/managed/web-app-launch/foundation.mjs",
               "root": "project"
             }
           },
@@ -1577,16 +1577,16 @@
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/lease.mjs",
+              "path": ".project-config/managed/web-app-launch/lease.mjs",
               "root": "project"
             }
           },
           {
-            "after": "8387e79f4ef8a4af811baf09a3a7332cb76bc4e5216b666bd0a7d01c220c30b5",
+            "after": "93e52909cb4a7789c193781fe933515c3619e21096d189c1f9df387547946a60",
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/ownership.mjs",
+              "path": ".project-config/managed/web-app-launch/ownership.mjs",
               "root": "project"
             }
           },
@@ -1595,16 +1595,16 @@
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/preview.mjs",
+              "path": ".project-config/managed/web-app-launch/preview.mjs",
               "root": "project"
             }
           },
           {
-            "after": "ee219777e2bb531495e722e442d718241d127ec511408d2718c8204ea141d69e",
+            "after": "33c2d013fdd5e6a97f724b222ebf9df828a55190dbcb125988d7ccd8aa3d9040",
             "before": "",
             "key": "launcher.sha256",
             "target": {
-              "path": ".runner/web-app-launch/target.mjs",
+              "path": ".project-config/managed/web-app-launch/target.mjs",
               "root": "project"
             }
           },
@@ -1613,16 +1613,16 @@
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/astro.mjs",
+              "path": ".project-config/managed/web-app-testing/astro.mjs",
               "root": "project"
             }
           },
           {
-            "after": "a0b04270376602081a0614f31c493847bff692cfb8a4aa0cd8f6264b2f5033cf",
+            "after": "dc350237eec4dbe6e0214bfde317ab005d6777c097ed5a3b26e4e7851a294f06",
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/config.mjs",
+              "path": ".project-config/managed/web-app-testing/config.mjs",
               "root": "project"
             }
           },
@@ -1631,16 +1631,16 @@
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/fixture.mjs",
+              "path": ".project-config/managed/web-app-testing/fixture.mjs",
               "root": "project"
             }
           },
           {
-            "after": "9911a5a05fdbfa5eafc6950bc17df3f5fbaaa2ab97f7ef858f609844cb2d09e0",
+            "after": "475d0aa160f726f30e4292585260a20fbcbc6a416edbb91617a5f506f07a969c",
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/production.mjs",
+              "path": ".project-config/managed/web-app-testing/production.mjs",
               "root": "project"
             }
           },
@@ -1649,7 +1649,7 @@
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/readiness.mjs",
+              "path": ".project-config/managed/web-app-testing/readiness.mjs",
               "root": "project"
             }
           },
@@ -1658,21 +1658,21 @@
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/reporter.mjs",
+              "path": ".project-config/managed/web-app-testing/reporter.mjs",
               "root": "project"
             }
           },
           {
-            "after": "7791e062e01e6414e72eeb3fe01ddf7835d66940399326d53203a75b60785462",
+            "after": "8db7b8722cecd0eb2618b864c32c65c9a9ea2117d0279c78626d93362c673a0e",
             "before": "",
             "key": "testing.sha256",
             "target": {
-              "path": ".runner/web-app-testing/setup.mjs",
+              "path": ".project-config/managed/web-app-testing/setup.mjs",
               "root": "project"
             }
           },
           {
-            "after": "2e1d2e0f6fc57f0ac3a134b343be0df884f551531d2fae6a2a68961705eca90e",
+            "after": "eeca867674b115e0c313699aec4df8c9ed664c077982f210134b72a8c652af63",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1690,7 +1690,7 @@
             }
           },
           {
-            "after": "c2cc8e7ca74bccba3889c29e2289adc04572601c601d994652cb5bee256da85b",
+            "after": "1b3da75b9c94a1ae6ef860a9a295f1f2c1d013b65bb8398ca32165adc32c98ce",
             "before": "",
             "key": "launcher.sha256",
             "target": {
@@ -1704,7 +1704,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/astro-contract.mjs",
+              "path": ".project-config/managed/web-app-launch/astro-contract.mjs",
               "root": "project"
             }
           },
@@ -1712,7 +1712,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/astro-react.json",
+              "path": ".project-config/managed/web-app-launch/astro-react.json",
               "root": "project"
             }
           },
@@ -1720,7 +1720,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/astro-tailwind.json",
+              "path": ".project-config/managed/web-app-launch/astro-tailwind.json",
               "root": "project"
             }
           },
@@ -1728,7 +1728,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/astro.mjs",
+              "path": ".project-config/managed/web-app-launch/astro.mjs",
               "root": "project"
             }
           },
@@ -1736,7 +1736,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/build.mjs",
+              "path": ".project-config/managed/web-app-launch/build.mjs",
               "root": "project"
             }
           },
@@ -1744,7 +1744,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/entry.mjs",
+              "path": ".project-config/managed/web-app-launch/entry.mjs",
               "root": "project"
             }
           },
@@ -1752,7 +1752,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/foundation.mjs",
+              "path": ".project-config/managed/web-app-launch/foundation.mjs",
               "root": "project"
             }
           },
@@ -1760,7 +1760,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/lease.mjs",
+              "path": ".project-config/managed/web-app-launch/lease.mjs",
               "root": "project"
             }
           },
@@ -1768,7 +1768,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/ownership.mjs",
+              "path": ".project-config/managed/web-app-launch/ownership.mjs",
               "root": "project"
             }
           },
@@ -1776,7 +1776,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/preview.mjs",
+              "path": ".project-config/managed/web-app-launch/preview.mjs",
               "root": "project"
             }
           },
@@ -1784,7 +1784,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-launch/target.mjs",
+              "path": ".project-config/managed/web-app-launch/target.mjs",
               "root": "project"
             }
           },
@@ -1792,7 +1792,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/astro.mjs",
+              "path": ".project-config/managed/web-app-testing/astro.mjs",
               "root": "project"
             }
           },
@@ -1800,7 +1800,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/config.mjs",
+              "path": ".project-config/managed/web-app-testing/config.mjs",
               "root": "project"
             }
           },
@@ -1808,7 +1808,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/fixture.mjs",
+              "path": ".project-config/managed/web-app-testing/fixture.mjs",
               "root": "project"
             }
           },
@@ -1816,7 +1816,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/production.mjs",
+              "path": ".project-config/managed/web-app-testing/production.mjs",
               "root": "project"
             }
           },
@@ -1824,7 +1824,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/readiness.mjs",
+              "path": ".project-config/managed/web-app-testing/readiness.mjs",
               "root": "project"
             }
           },
@@ -1832,7 +1832,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/reporter.mjs",
+              "path": ".project-config/managed/web-app-testing/reporter.mjs",
               "root": "project"
             }
           },
@@ -1840,7 +1840,7 @@
             "kind": "exclusive_path",
             "scope": "file",
             "target": {
-              "path": ".runner/web-app-testing/setup.mjs",
+              "path": ".project-config/managed/web-app-testing/setup.mjs",
               "root": "project"
             }
           },
@@ -1914,7 +1914,7 @@
               "path": "package.json",
               "root": "project"
             },
-            "value": "playwright test --config .runner/web-app-testing/config.mjs"
+            "value": "playwright test --config .project-config/managed/web-app-testing/config.mjs"
           },
           {
             "keys": [
@@ -1926,11 +1926,11 @@
               "path": "package.json",
               "root": "project"
             },
-            "value": "playwright install chromium && node .runner/web-app-testing/readiness.mjs"
+            "value": "playwright install chromium && node .project-config/managed/web-app-testing/readiness.mjs"
           },
           {
             "entries": [
-              "tools/web_app_build_system/.local/"
+              ".project-config/tools/web_app_build_system/.local/"
             ],
             "group_id": "6-WebApp.5-Tools.17-WebAppBuildSystem.20-web_app_build_system",
             "kind": "scm_ignore_group",
@@ -1946,13 +1946,13 @@
               "dist/",
               ".astro/",
               "test-results/",
-              ".runner/web-app-launch/cache/",
+              ".project-config/managed/web-app-launch/cache/",
               "src-tauri/target/",
               "src-tauri/gen/",
-              ".runner/web-app-tauri/cache/",
-              ".runner/web-app-electron/cache/",
-              ".runner/web-app-electron/node_modules/",
-              ".runner/web-app-launch/settings.json"
+              ".project-config/managed/web-app-tauri/cache/",
+              ".project-config/managed/web-app-electron/cache/",
+              ".project-config/managed/web-app-electron/node_modules/",
+              ".project-config/managed/web-app-launch/settings.json"
             ],
             "group_id": "6-WebApp.7-web_app",
             "kind": "scm_ignore_group",
@@ -1966,7 +1966,7 @@
             "entries": [
               "src-tauri/target/",
               "src-tauri/gen/",
-              ".runner/web-app-tauri/cache/"
+              ".project-config/managed/web-app-tauri/cache/"
             ],
             "group_id": "6-WebApp.8-Runtimes.6-Tauri2.13-web_app_tauri",
             "kind": "scm_ignore_group",
@@ -1978,7 +1978,7 @@
           }
         ],
         "resource": {
-          "digest": "f5a58e4ba78effd234668f2a2038ce213b78d13ec587306053e0bb8d3c4d1a6d",
+          "digest": "0032c96db8e2535437137c5186452e68fce9c23d6ccbe3bab96e79828301c4f3",
           "identity": "WebApp"
         }
       }

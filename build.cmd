@@ -13,16 +13,16 @@ if not exist "%CSC%" (
   exit /b 1
 )
 :allocate_console
-set "CONSOLE_DIR=%~dp0tools\web_app_build_system\.local\console-%RANDOM%-%RANDOM%"
+set "CONSOLE_DIR=%~dp0.project-config\tools\web_app_build_system\.local\console-%RANDOM%-%RANDOM%"
 if exist "%CONSOLE_DIR%" goto allocate_console
 mkdir "%CONSOLE_DIR%"
 if errorlevel 1 exit /b 1
-"%CSC%" /nologo /target:exe /out:"%CONSOLE_DIR%\console.exe" "%~dp0tools\web_app_build_system\src\windows-console.cs"
+"%CSC%" /nologo /target:exe /out:"%CONSOLE_DIR%\console.exe" "%~dp0.project-config\tools\web_app_build_system\src\windows-console.cs"
 if errorlevel 1 (
   rmdir "%CONSOLE_DIR%"
   exit /b 1
 )
-"%CONSOLE_DIR%\console.exe" "%~dp0tools\web_app_build_system\src\entry.mjs" %*
+"%CONSOLE_DIR%\console.exe" "%~dp0.project-config\tools\web_app_build_system\src\entry.mjs" %*
 set "BUILD_EXIT=%errorlevel%"
 del /q "%CONSOLE_DIR%\console.exe"
 rmdir "%CONSOLE_DIR%"

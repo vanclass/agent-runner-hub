@@ -9,10 +9,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:i18n": "node --test tests/i18n/catalog.test.mjs && node tools/i18n/check.mjs",
-    "test:e2e": "playwright test --config .runner/web-app-testing/config.mjs",
-    "test:e2e:prepare": "playwright install chromium && node .runner/web-app-testing/readiness.mjs",
+    "test:e2e": "playwright test --config .project-config/managed/web-app-testing/config.mjs",
+    "test:e2e:prepare": "playwright install chromium && node .project-config/managed/web-app-testing/readiness.mjs",
     "test:native:probe": "node tools/native-probe/run.mjs",
-    "dev:tauri": "node .runner/web-app-tauri/dev.mjs"
+    "dev:tauri": "node .project-config/managed/web-app-tauri/dev.mjs"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

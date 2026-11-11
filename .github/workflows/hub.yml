@@ -1,0 +1,41 @@
+name: Hub development checks
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  hub:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute native macOS containment feasibility fixtures
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: python3 tests/native/macos_containment.py temp/macos-containment-${{ matrix.target }}
+      - name: Retain native containment evidence, including failed experiments
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-containment-${{ matrix.target }}
+          path: temp/macos-containment-${{ matrix.target }}/
+          if-no-files-found: error
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check English and Korean catalogs
+        run: npm run test:i18n
