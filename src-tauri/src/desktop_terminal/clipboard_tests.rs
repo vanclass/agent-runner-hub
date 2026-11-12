@@ -1,9 +1,28 @@
 use super::*;
 
 fn root() -> PathBuf {
-    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().take(8)
-        .find(|path| path.join(".git").exists()).expect("checkout-local native fixture");
-    checkout.join("temp").join(format!("clipboard-tests-{}", std::process::id()))
+    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
+        .join("temp").join(format!("clipboard-tests-{}", std::process::id()))
+}
+
+struct CheckoutFixture(PathBuf);
+
+impl CheckoutFixture {
+    fn new() -> Self {
+        let fixture = Self(root().join(random_name().unwrap()));
+        fs::create_dir_all(fixture.0.join("src-tauri")).unwrap();
+        fs::create_dir_all(fixture.0.join(".project-config")).unwrap();
+        fs::write(fixture.0.join(".git"), "gitdir: fixture").unwrap();
+        fs::write(fixture.0.join("src-tauri/Cargo.toml"), "[package]\nname = \"fixture\"\n").unwrap();
+        fs::write(fixture.0.join(".project-config/project.json"), "{}").unwrap();
+        fixture
+    }
+}
+
+impl Drop for CheckoutFixture {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.0).expect("remove test-owned checkout");
+    }
 }
 
 fn png() -> Vec<u8> {
@@ -32,8 +51,9 @@ fn assert_staged_name(path: &Path) {
 
 #[test]
 fn development_and_installed_roots_do_not_depend_on_working_directory() {
-    let fixture = root();
-    let checkout = fixture.parent().unwrap().parent().unwrap();
+    let owned = CheckoutFixture::new();
+    let checkout = &owned.0;
+    let fixture = checkout.join("temp");
     let expected = checkout.canonicalize().unwrap().join("local/runtime/clipboard");
     for manifest in [checkout.join("src-tauri"), checkout.join(".project-config/managed/web-app-tauri/cache/dev/attempt/src-tauri")] {
         assert_eq!(select_root(true, &manifest, None, Err("unused".into())).unwrap(), expected);
@@ -64,8 +84,9 @@ fn validates_pixels_before_creating_any_file() {
 
 #[test]
 fn selected_roots_contain_created_pngs_and_survive_session_cleanup() {
-    let fixture = root();
-    let checkout = fixture.parent().unwrap().parent().unwrap();
+    let owned = CheckoutFixture::new();
+    let checkout = &owned.0;
+    let fixture = checkout.join("temp");
     let development = select_root(true, &checkout.join("src-tauri"), None, Err("unused".into())).unwrap();
     let installed = select_root(false, Path::new("absent-checkout"), None, Ok(fixture.join("app-data"))).unwrap();
     for root in [development, installed] {
