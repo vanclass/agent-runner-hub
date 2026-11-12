@@ -156,7 +156,7 @@
                 "path": [
                   "resource_version"
                 ],
-                "value": "9ab3ac790ce3938a4b5bedd647ac37a57fd914247094c756bdf8a5a86e1485b4"
+                "value": "2392b6f10863be8fb64aee718bb3708bf0b0be41b18662f9f87b0e8f1eaaae16"
               },
               {
                 "path": [
@@ -212,7 +212,7 @@
                   "tauri_sha256",
                   "46e0f8c33ff475df9d02b0204882fea26d161e7c91c7cbbb2b047687350b07e7"
                 ],
-                "value": "0edee0c5366c5bc26362a743e0d09c26d55ce987a8a01662039b20c968e98898"
+                "value": "6e5cd2ccce15f8fa4a74f3f69f06de758ed37539b24cb351a13f11015d33d6a0"
               },
               {
                 "path": [
@@ -462,7 +462,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "44c496be77b1351156afa14399999c854dab8d8f70b93f7d001bad1085008dc9",
+              "digest": "fa99c40f4607a779b2fe1c488f3ba09fc477fc52bce06cad37c3636c8054ce29",
               "identity": "WebApp.Tauri2"
             }
           },

@@ -13,8 +13,8 @@ test-results/
 .project-config/managed/web-app-launch/cache/
 src-tauri/target/
 src-tauri/gen/
-.project-config/tools/web_app_build_system/.local/
 .project-config/managed/web-app-tauri/cache/
 .project-config/managed/web-app-electron/cache/
 .project-config/managed/web-app-electron/node_modules/
 .project-config/managed/web-app-launch/settings.json
+.project-config/tools/web_app_build_system/.local/

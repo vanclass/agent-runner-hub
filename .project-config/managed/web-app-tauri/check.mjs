@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { withBuildOwnership } from './ownership.mjs';
@@ -21,12 +22,19 @@ try {
     const cache = path.join(root, '.project-config/managed/web-app-tauri/cache/check');
     await fs.mkdir(cache, { recursive: true });
     if (await fs.realpath(cache) !== cache) throw new Error('Rust check cache must be checkout-local');
-    const attempt = path.join(cache, randomUUID());
-    await fs.mkdir(attempt);
+    const attempt = process.platform === 'win32'
+      ? await fs.mkdtemp(path.join(await fs.realpath(tmpdir()), 'ar-tauri-check-'))
+      : path.join(cache, randomUUID());
+    if (process.platform !== 'win32') await fs.mkdir(attempt);
     try {
+      const target = path.join(attempt, 'cargo');
+      if (process.platform === 'win32' && target.length > 80) {
+        throw new Error('Windows Tauri Cargo target exceeds 80 characters: ' + target
+          + '. Use a shorter Windows TEMP directory and retry.');
+      }
       const backend = path.join(attempt, 'src-tauri');
       const config = await stageBackend(root, backend);
-      const env = await prepareCargo(environment, backend, path.join(attempt, 'cargo'), controller.signal, command);
+      const env = await prepareCargo(environment, backend, target, controller.signal, command);
       for (const action of ['check', 'test']) {
         stage('Running cargo ' + action, 'Checking the selected desktop features on ' + targetTriple + '; Ctrl+C cancels.');
         const result = await command(environment.cargo, [action, '--manifest-path', path.join(backend, 'Cargo.toml'),
