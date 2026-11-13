@@ -27,6 +27,34 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
           .toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
       });
     }
+    for (const runResult of ['invoke-only', 'status-only']) for (const body of ['', 'retained Brief']) {
+      test(`Brief Run ${path} ${runResult} ${body ? 'with Brief' : 'Run only'} leaves ordinary work usable`, async ({ page }) => {
+        await ready(page, tab, { runResult });
+        const run = page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true });
+        await input(page).fill(body); await run.fill('retained Run'); await run.press('Control+Enter');
+        if (!tab) await page.keyboard.press('Control+Home');
+        await expect(page.getByRole('status').filter({ hasText: 'Brief → Run unavailable' }).first()).toBeVisible({ timeout: 35000 });
+        await expect(input(page)).toHaveValue(body); await expect(run).toHaveValue('retained Run');
+        await page.keyboard.press('Control+Enter');
+        if (!tab) {
+          await page.getByRole('button', { name: 'Release unsent assignment', exact: true }).click();
+          await page.getByRole('button', { name: 'Verified idle Runner 1', exact: true }).click();
+        }
+        await expect(input(page)).toBeEnabled({ timeout: 35000 });
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests)).toEqual([]);
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? [])).toEqual([]);
+        const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
+        await expect(mode).toBeEnabled({ timeout: 35000 }); await mode.selectOption(JSON.stringify('task-run'));
+        await input(page).fill('ordinary work after unsupported Run'); await input(page).press('Enter');
+        await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
+          .filter(r => r.operation === 'work.submit'))).toMatchObject([{ instruction: 'ordinary work after unsupported Run' }]);
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe('task-run');
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests)).toEqual([]);
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? [])).toEqual([]);
+        expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+      });
+    }
     test(`Brief Run ${path} preserves exact multiline body and waits for committed start`, async ({ page }, info) => {
       await ready(page, tab, { runResult: 'pending' });
       const body = '  한글 🌍\n    indented\t \n/run remains Brief text  \n\n';

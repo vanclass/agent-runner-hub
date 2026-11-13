@@ -8,7 +8,8 @@ export class RunFixture {
   run?: RunObservation;
   constructor(private features: FeatureSnapshot, mode = 'started') {
     this.mode = mode;
-    if (mode !== 'unsupported') features.run = { version: 1, operations: ['run.invoke', 'run.status'] };
+    if (mode !== 'unsupported') features.run = { version: 1, operations: mode === 'invoke-only'
+      ? ['run.invoke'] : mode === 'status-only' ? ['run.status'] : ['run.invoke', 'run.status'] };
   }
   async submit(request: RunRequest) {
     this.requests.push(structuredClone(request));

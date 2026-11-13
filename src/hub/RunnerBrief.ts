@@ -56,14 +56,14 @@ export class RunnerBrief {
     });
   }
   private current(identity: ConfigIdentity) {
-    return same(identity, this.port.identity()) && this.snapshot?.state === 'ready'
-      && supportsRun(this.snapshot.features?.run, 'run.status');
+    return same(identity, this.port.identity()) && this.snapshot?.state === 'ready';
   }
   private async initiation(identity: ConfigIdentity, original: number, evidence: Partial<BriefResult>): Promise<BriefResult['status']> {
     // This deadline bounds missing initiation evidence, never the IssueRun lifecycle.
     const deadline = performance.now() + this.port.completionMs;
     evidence.outcome = 'pending'; this.detail = msg('brief.pending'); this.changed();
-    while (this.current(identity) && performance.now() < deadline) {
+    while (this.current(identity) && supportsRun(this.snapshot?.features?.run, 'run.status')
+      && performance.now() < deadline) {
       const admission = await this.port.run(identity.session,
         { operation: 'run.status', api_version: 1, invocation_request_id: original });
       evidence.statusRequest = admission;
@@ -90,7 +90,7 @@ export class RunnerBrief {
     this.result = undefined;
     if (!identity || !this.port.available(lease) || snapshot?.observation?.run_mode !== 'issue-run'
       || body.length > 0 && (snapshot.features?.brief?.version !== 1 || !snapshot.features.brief.operations.includes('brief.stage'))
-      || !supportsRun(snapshot.features?.run)) {
+      || !supportsRun(snapshot.features?.run, 'run.invoke') || !supportsRun(snapshot.features?.run, 'run.status')) {
       this.detail = msg('brief.unavailable'); this.changed();
       return this.result = { brief: true, staged: false, status: 'rejected' };
     }
@@ -107,6 +107,8 @@ export class RunnerBrief {
       if (status === 'completed') {
         if (staged) { this.detail = msg('brief.staged'); this.changed(); }
         if (!this.current(identity)) status = 'unknown';
+        else if (!supportsRun(this.snapshot?.features?.run, 'run.invoke')
+          || !supportsRun(this.snapshot?.features?.run, 'run.status')) status = 'rejected';
         else {
           this.detail = msg(staged ? 'brief.requesting' : 'brief.runRequesting'); this.changed();
           runRequest = await this.port.run(identity.session,

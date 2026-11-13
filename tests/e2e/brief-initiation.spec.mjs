@@ -36,6 +36,54 @@ test('Brief initiation Run-text-only deadline retains pending evidence and preve
   expect(result.result.stagingRequest).toBeUndefined();
 });
 
+for (const capability of ['invoke-only', 'status-only']) for (const body of ['', 'retained Brief']) {
+  test(`Brief initiation ${capability} preflight with ${body ? 'Brief' : 'Run only'} has no effects`, async ({ page }) => {
+    const observed = await page.evaluate(async ({ capability, body }) => {
+      const { RunnerBrief } = await import('/src/hub/RunnerBrief.ts');
+      const { RunFixture } = await import('/tests/fixtures/run.ts');
+      const features = { generation: 1, brief: { version: 1, operations: ['brief.stage'] }, results: [] };
+      const fixture = new RunFixture(features, capability);
+      let staged = 0;
+      const brief = new RunnerBrief({ identity: () => ({ session: 'original', generation: 1 }),
+        available: () => true, completionMs: 65000, pollMs: 500,
+        stage: async () => { staged++; throw Error('unexpected staging'); },
+        run: (session, request) => fixture.submit(request) }, () => {});
+      brief.observe({ state: 'ready', features, results: [], observation: { run_mode: 'issue-run' } });
+      const result = await brief.submit(body, undefined, 'retained Run');
+      const retry = await brief.submit(body, undefined, 'retained Run');
+      return { result, retry, blocked: brief.blocked, busy: brief.busy, staged, requests: fixture.requests };
+    }, { capability, body });
+    expect(observed).toMatchObject({ result: { status: 'rejected', staged: false },
+      retry: { status: 'rejected', staged: false }, blocked: false, busy: false, staged: 0, requests: [] });
+    expect(observed.result.stagingRequest).toBeUndefined();
+    expect(observed.result.runRequest).toBeUndefined();
+  });
+}
+
+test('Brief receipt retains committed staging when Run status disappears before invocation', async ({ page }) => {
+  const observed = await page.evaluate(async () => {
+    const { RunnerBrief } = await import('/src/hub/RunnerBrief.ts');
+    const { RunFixture } = await import('/tests/fixtures/run.ts');
+    const features = { generation: 1, brief: { version: 1, operations: ['brief.stage'] }, results: [] };
+    const fixture = new RunFixture(features);
+    let staged = 0;
+    const brief = new RunnerBrief({ identity: () => ({ session: 'original', generation: 1 }),
+      available: () => true, completionMs: 65000, pollMs: 500,
+      stage: async () => {
+        staged++; features.run.operations = ['run.invoke'];
+        features.results.push({ id: 7, feature: 'brief', operation: 'brief.stage', state: 'accepted', phase: 'completed',
+          reply: { staging_status: 'staged', owner: 'brief_staging', count: 1, outcome_unknown: false } });
+        return { state: 'submitted', id: 7, generation: 1 };
+      }, run: (session, request) => fixture.submit(request) }, () => {});
+    brief.observe({ state: 'ready', features, results: [], observation: { run_mode: 'issue-run' } });
+    const result = await brief.submit('committed Brief'); await brief.submit('must not restage');
+    return { result, blocked: brief.blocked, staged, requests: fixture.requests };
+  });
+  expect(observed).toMatchObject({ result: { status: 'rejected', staged: true }, blocked: true, staged: 1, requests: [] });
+  expect(observed.result.stagingRequest).toMatchObject({ state: 'submitted', id: 7, generation: 1 });
+  expect(observed.result.runRequest).toBeUndefined();
+});
+
 for (const fault of ['disconnected', 'generation', 'capability', 'lost-completion']) {
   test(`Brief initiation ${fault} preserves uncertainty without replay`, async ({ page }) => {
     await page.clock.install();
