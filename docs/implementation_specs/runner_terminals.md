@@ -4,6 +4,8 @@
 
 `src/hub/RunnerSessions.ts` owns each Runner's terminal, PTY connection, input ordering, output parser, scrollback, draft, and observed process state. `Hub.tsx` owns selection and composes the views. A keyed `Workspace.tsx` can unmount: `RunnerTerminal.tsx` only detaches its geometry observer. Selecting the tab reattaches the same xterm element and fits that existing terminal. Inactive terminals continue parsing and acknowledging output; selection never launches or closes a process.
 
+Single Entry uses its central output for [Hub event history](hub_logs.md). This is a distinct Hub-lifetime recorder and app-local store, not a Runner terminal buffer or workspace-restoration payload. Switching Runner views leaves capture active; process and command authority remains with the existing session/control owners.
+
 Names are local display labels. The row identity and its current native PTY identity remain stable when renamed. Rows retain creation order, and Single Entry remains above their independently scrolling list. Tab metadata survives reopening through the Hub-owned workspace boundary below; terminal buffers, drafts and execution attempts remain process-local.
 
 Composer drafts and pending submission belong to the session snapshot. Switching views during configuration or work admission preserves its disabled/busy state and cannot submit the same draft again. Foreground replies belong to the separate session-bound structured interaction owner. A verified work start clears only the originating draft; unknown delivery retains it and prevents replay.

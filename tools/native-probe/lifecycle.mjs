@@ -38,6 +38,27 @@ export async function executeCase(spec, environment, resources) {
     resources.signal.throwIfAborted();
     evidence.stage = 'assertions';
     evidence.observations = await testCase.run(browser);
+    if (testCase.afterRestart) {
+      await browser.deleteSession(); browser = undefined;
+      evidence.firstTeardown = await owner.stop();
+      noActivation(evidence.firstTeardown);
+      assert.equal(evidence.firstTeardown.stopped, true);
+      assert.equal(evidence.firstTeardown.forced, false);
+      assert.equal(evidence.firstTeardown.exitCode, 0);
+      owner = await resources.start();
+      evidence.restartPid = owner.pid;
+      evidence.stages.firstInitial = evidence.stages.initial;
+      evidence.stages.initial = await until(async () => {
+        const state = await owner.request('snapshot');
+        return state.hwnd ? state : null;
+      }, resources.signal);
+      noActivation(evidence.stages.initial);
+      await until(async () => (await owner.request('listener')).listeners.length, resources.signal);
+      browser = await resources.connect();
+      noActivation(await owner.request('snapshot'));
+      await testCase.ready(browser);
+      evidence.restartObservations = await testCase.afterRestart(browser, evidence.observations);
+    }
     evidence.stages.afterActions = await owner.request('snapshot');
     noActivation(evidence.stages.afterActions);
     resources.signal.throwIfAborted();

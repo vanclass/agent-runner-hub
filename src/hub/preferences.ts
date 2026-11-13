@@ -1,12 +1,13 @@
 import type { EntryDefaults } from './singleEntry';
 import type { DomainDisplay } from './RunnerNavigation';
+import { defaultRetentionDays, validRetentionDays } from './HubLog';
 import { msg, errorText, type HubText } from './i18n';
 import { projectShortcuts, restoreShortcuts, type ShortcutMap } from './shortcuts';
 
 export type HubLanguage = 'en' | 'ko';
 export type HubTheme = 'light' | 'black';
 export type HubPreferencesValue = { version: 1; language: HubLanguage; theme: HubTheme; singleEntry: EntryDefaults;
-  runnerSelections?: Record<string, EntryDefaults>; confirmRunnerRemoval: boolean; shortcuts?: ShortcutMap; domainDisplay?: DomainDisplay };
+  runnerSelections?: Record<string, EntryDefaults>; confirmRunnerRemoval: boolean; shortcuts?: ShortcutMap; domainDisplay?: DomainDisplay; hubLogRetentionDays?: number };
 export const hubPreferencesKey = 'agent-runner-hub.preferences.v1';
 export const defaultHubPreferences = (): HubPreferencesValue => ({ version: 1, language: 'en', theme: 'light', singleEntry: {}, confirmRunnerRemoval: true });
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -81,7 +82,8 @@ export class HubPreferences {
       this.committed = raw;
       if (raw === null) return;
       const value: unknown = JSON.parse(raw);
-      if (!object(value) || !keys(value, ['version', 'language', 'theme', 'singleEntry', 'runnerSelections', 'confirmRunnerRemoval', 'shortcuts', 'domainDisplay']) || value.version !== 1
+      if (!object(value) || !keys(value, ['version', 'language', 'theme', 'singleEntry', 'runnerSelections', 'confirmRunnerRemoval', 'shortcuts', 'domainDisplay', 'hubLogRetentionDays']) || value.version !== 1
+        || (value.hubLogRetentionDays !== undefined && !validRetentionDays(value.hubLogRetentionDays))
         || (value.domainDisplay !== undefined && !['unified', 'run-mode'].includes(String(value.domainDisplay)))
         || (value.confirmRunnerRemoval !== undefined && typeof value.confirmRunnerRemoval !== 'boolean')
         || (value.language !== 'en' && value.language !== 'ko') || (value.theme !== 'light' && value.theme !== 'black')) {
@@ -93,6 +95,7 @@ export class HubPreferences {
       if (value.runnerSelections !== undefined && !runnerSelections) { this.retainOriginal(); return; }
       const shortcuts = value.shortcuts === undefined ? undefined : restoreShortcuts(value.shortcuts);
       this.value = { version: 1, language: value.language as HubLanguage, theme: value.theme as HubTheme, singleEntry,
+        ...(value.hubLogRetentionDays !== undefined ? { hubLogRetentionDays: value.hubLogRetentionDays as number } : {}),
         ...(value.domainDisplay ? { domainDisplay: value.domainDisplay as DomainDisplay } : {}),
         confirmRunnerRemoval: value.confirmRunnerRemoval !== false,
         ...(runnerSelections ? { runnerSelections } : {}), ...(shortcuts ? { shortcuts } : {}) };
@@ -110,7 +113,9 @@ export class HubPreferences {
     delete runnerSelections[id];
     this.update({ runnerSelections });
   }
-  update(change: Partial<Pick<HubPreferencesValue, 'language' | 'theme' | 'singleEntry' | 'runnerSelections' | 'confirmRunnerRemoval' | 'shortcuts' | 'domainDisplay'>>) {
+  get logRetentionDays() { return this.value.hubLogRetentionDays ?? defaultRetentionDays; }
+  update(change: Partial<Pick<HubPreferencesValue, 'language' | 'theme' | 'singleEntry' | 'runnerSelections' | 'confirmRunnerRemoval' | 'shortcuts' | 'domainDisplay' | 'hubLogRetentionDays'>>) {
+    if (change.hubLogRetentionDays !== undefined && !validRetentionDays(change.hubLogRetentionDays)) return;
     if (change.domainDisplay !== undefined && !['unified', 'run-mode'].includes(change.domainDisplay)) return;
     const singleEntry = projectEntryDefaults(change.singleEntry ?? this.value.singleEntry);
     if (!singleEntry) return;

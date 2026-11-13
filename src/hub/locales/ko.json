@@ -1,4 +1,13 @@
 {
+  "hubLog": {
+    "label": "허브 로그",
+    "retention": "허브 로그 보관 일수",
+    "older": "이전 기록 더 보기",
+    "loading": "허브 기록을 복원하는 중…",
+    "empty": "보관된 허브 사건이 없습니다.",
+    "unsaved": "저장이 확인되지 않았습니다. 이 사건을 유지하려면 창을 열어 두세요.",
+    "storageFailed": "허브 로그 저장소를 사용할 수 없습니다({{code}}). 기존 기록은 유지됩니다. 재시작 전에 앱 로컬 저장소를 확인하세요."
+  },
   "interaction": {
     "label": "Runner 상호작용",
     "commandResult": "명령 결과",

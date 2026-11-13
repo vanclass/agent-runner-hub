@@ -29,12 +29,12 @@ test('a missing runtime Korean key falls back to English without breaking other 
   await page.locator('[data-runner-id="first"] .nav-row').click();
   await page.evaluate(async () => {
     const { i18n } = await import('/src/hub/i18n.ts');
-    delete i18n.getResourceBundle('ko', 'translation').composer.send;
+    delete i18n.getResourceBundle('ko', 'translation').workspace.previewDisconnected;
   });
   await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeVisible();
+  await expect(page.locator('.empty-note')).toHaveText('No connected process for this preview row.');
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toBeVisible();
 });
 
@@ -89,7 +89,7 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await expect(page.getByRole('textbox', { name, exact: true })).toBeDisabled();
     for (const width of [1400, 1000, 760, 626]) {
       await page.setViewportSize({ width, height: width === 626 ? 450 : 700 });
-      await expect(page.getByRole('button', { name: language === 'en' ? 'Send instruction' : '지시문 전송', exact: true })).toBeInViewport();
+      await expect(page.getByRole('textbox', { name, exact: true })).toBeInViewport();
       await expect(page.locator('.app-settings-trigger')).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect((await page.locator('.output').boundingBox()).height).toBeGreaterThan(90);

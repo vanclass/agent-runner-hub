@@ -8,7 +8,7 @@ import type { HubLanguage } from './preferences';
 import type { DomainDisplay } from './RunnerNavigation';
 import type { EntryDefaults } from './singleEntry';
 
-export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, allocationPolicy, reuseEditable, onAllocationPolicy, onTheme, onLanguage, onVerified, onClose, onShortcuts, domainDisplay, onDomainDisplay }: {
+export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, allocationPolicy, reuseEditable, onAllocationPolicy, onTheme, onLanguage, onVerified, onClose, onShortcuts, domainDisplay, onDomainDisplay, retentionDays, onRetentionDays }: {
   required: boolean; installation: RunnerInstallation | null; theme: 'light' | 'black';
   onTheme: (theme: 'light' | 'black') => void; onLanguage: (language: HubLanguage) => void;
   onVerified: (installation: RunnerInstallation) => void; onClose: () => void;
@@ -17,6 +17,7 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
   allocationPolicy: EntryDefaults['allocationPolicy']; reuseEditable: boolean;
   onAllocationPolicy: (value: NonNullable<EntryDefaults['allocationPolicy']>) => void;
   domainDisplay: DomainDisplay; onDomainDisplay: (value: DomainDisplay) => void;
+  retentionDays: number; onRetentionDays: (value: number) => void;
 }) {
   const { t } = useHubTranslation();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -45,6 +46,14 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
       <LanguagePicker onChange={onLanguage} />
       <ThemePicker theme={theme} onChange={onTheme} />
     </div>
+    <label className="domain-preference">{t('hubLog.retention')}
+      <input type="number" min="1" max="4294967295" step="1" defaultValue={retentionDays}
+        onBlur={event => {
+          const value = event.currentTarget.valueAsNumber;
+          if (event.currentTarget.checkValidity() && Number.isInteger(value)) onRetentionDays(value);
+          event.currentTarget.value = String(Number.isInteger(value) && value >= 1 && value <= 4294967295 ? value : retentionDays);
+        }} required />
+    </label>
     <label className="domain-preference">{t('sidebar.domainDisplay')}
       <select value={domainDisplay} onChange={event => onDomainDisplay(event.target.value as DomainDisplay)}>
         <option value="unified">{t('sidebar.unified')}</option>

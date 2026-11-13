@@ -2,6 +2,8 @@ import { useHubTranslation, t, tr } from './i18n';
 import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
+import { HubLogView } from './HubLogView';
+import type { HubLog } from './HubLog';
 import { RunnerComposer } from './RunnerComposer';
 import { RunnerInteractionPanel } from './RunnerInteractionPanel';
 import { RunnerImagePreviews } from './RunnerImagePreviews';
@@ -14,10 +16,11 @@ const recoveryKeys = {
   interaction_required: 'recovery.auto.interaction_required', unverified: 'recovery.auto.unverified', partial: 'recovery.auto.partial',
 } as const;
 
-export function Workspace({ runner, session, theme, installation, entry, onSelectRunner }: {
+export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
+  hubLog: HubLog;
 }) {
   useHubTranslation();
   const singleEntry = !runner;
@@ -31,6 +34,7 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
         {session?.control.recovery.outcome && session.control.recovery.saved?.code
           ? ` · ${session.control.recovery.saved.code}` : ''}</span></div>
       {runner?.detail && <p role="alert" className="runner-error">{tr(runner.detail)}</p>}
+      {singleEntry && <HubLogView log={hubLog} />}
       {session ? <RunnerTerminal session={session} theme={theme} /> : !singleEntry && <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">›_</div>
         <h2>{t('workspace.connection')}</h2>

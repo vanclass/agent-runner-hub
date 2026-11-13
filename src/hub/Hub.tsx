@@ -3,6 +3,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { RunnerSessions } from './RunnerSessions';
 import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
+import { HubLog } from './HubLog';
+import { createHubLogCapture } from './HubLogCapture';
 import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
@@ -25,6 +27,10 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     singleEntry => preferences.update({ singleEntry }), preferences.value.runnerSelections,
     (id, value) => preferences.saveRunner(id, value)));
   const liveRunners = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot);
+  const [hubLog] = useState(() => new HubLog(preferences.logRetentionDays));
+  const [retentionDays, setRetentionDays] = useState(preferences.logRetentionDays);
+  const [captureLog] = useState(() => createHubLogCapture(hubLog));
+  useEffect(() => captureLog(sessions), [captureLog, sessions]);
   const [domainDisplay, setDomainDisplay] = useState<DomainDisplay>(preferences.value.domainDisplay ?? 'unified');
   const allRunners = [...fixtures, ...liveRunners];
   const domains = sessions.navigation.project(allRunners, domainDisplay);
@@ -110,7 +116,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected}
         session={sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined)}
-        theme={theme} installation={installation}
+        theme={theme} installation={installation} hubLog={hubLog}
         entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
         control={sessions.get(selectedId ?? undefined)?.control}
@@ -121,6 +127,11 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       return preferences.issue;
     }} />}
     {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
+      retentionDays={retentionDays} onRetentionDays={value => {
+        preferences.update({ hubLogRetentionDays: value });
+        setRetentionDays(preferences.logRetentionDays);
+        if (!preferences.issue) void hubLog.retention(preferences.logRetentionDays);
+      }}
       domainDisplay={domainDisplay} onDomainDisplay={value => {
         preferences.update({ domainDisplay: value }); setDomainDisplay(value);
       }}

@@ -50,6 +50,23 @@ test('independent cases compose through the same lifecycle with no feature dispa
       'snapshot', 'show', id + ':observe', 'capture', 'snapshot', 'deleteSession', 'stop', 'release', 'record']);
   }
 });
+test('restart keeps profile resources until both independently owned processes settle', async () => {
+  const f = fixture();
+  const first = spec('restart', f.calls);
+  const result = await executeCase({ ...first, async afterRestart(browser, prior) {
+    assert.equal(browser, f.browser);
+    assert.deepEqual(prior, { assertion: 'restart' });
+    assert.equal(f.calls.filter(call => call === 'start').length, 2);
+    assert.equal(f.calls.filter(call => call === 'stop').length, 1);
+    assert.ok(!f.calls.includes('release'));
+    return { restored: true };
+  } }, {}, f.resources);
+  assert.equal(result.outcome, 'passed');
+  assert.deepEqual(result.restartObservations, { restored: true });
+  assert.equal(f.calls.filter(call => call === 'stop').length, 2);
+  assert.equal(f.calls.filter(call => call === 'release').length, 1);
+});
+
 test('background mode never shows a native window', async () => {
   const f = fixture();
   const result = await executeCase(spec('background', f.calls), {}, f.resources);

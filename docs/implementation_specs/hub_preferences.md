@@ -18,6 +18,8 @@ The optional `shortcuts` projection stores an additional Single Entry assignment
 
 App Settings also stores the optional unified/by-mode `domainDisplay` choice. Its history, tab affinity and display-order ownership are separate from requested execution settings: see [Runner navigation presentation](runner_navigation.md). Absent v1 values select unified display; malformed values retain the original preference record under the same protection boundary.
 
+The optional `hubLogRetentionDays` value is a positive integral day count, bounded by the native command's unsigned day representation. Missing values use `HubLog.ts`'s required thirty-day default without rewriting the saved record. App Settings validates the input and commits on leaving the field. Restart restores the saved value; failed preference writes remain visibly unsaved and do not apply a new cleanup policy. Log serialization, capture lifetime and age cleanup belong to [Hub event history](hub_logs.md), independently of preference and workspace writes.
+
 `RunnerWorkspace.ts` and `RunnerLocation.tsx` retain their independent workspace and installation keys, validation, write and recovery contracts. The preference projection includes no authentication material, PTY identity, terminal contents, drafts, instruction bodies, reference state or uncertain execution outcomes.
 
 ## Single Entry boundary and reuse

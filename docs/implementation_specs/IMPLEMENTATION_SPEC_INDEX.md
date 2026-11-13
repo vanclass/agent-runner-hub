@@ -14,6 +14,8 @@
 
 ## 영역 등록부
 
+- Hub event capture independent of selected views, durable app-local restore/append/retention and Single Entry log presentation: [Hub event history](hub_logs.md); owners `../../src/hub/HubLog.ts`, `../../src/hub/HubLogCapture.ts`, `../../src/hub/HubLogView.tsx` and `../../src-tauri/src/hub_log.rs`; focused evidence `../../tests/e2e/hub-log.spec.mjs`, `../../src-tauri/src/hub_log/tests.rs` and `../../tests/native/webdriver/hub-log.mjs`. Retention preference ownership routes to [Hub preferences](hub_preferences.md#independent-preference-storage).
+
 - Reusable native test lifecycle, staged test builds, Windows/macOS process/window adapters, actual Hub installation/configuration/read-only Runner cases and platform/focus boundaries: [Native Tauri automation](native_automation.md); entries `../../tools/native-probe/run.mjs` and `../../tools/native-probe/hub.mjs`, feature cases `../../tests/native/webdriver/`, focused checks `../../tests/native/wg3.test.mjs`, `../../tests/native/lifecycle.test.mjs`, `../../tests/native/platforms.test.mjs` and `../../tests/native/native-probe.test.mjs`. Agent execution procedure: `../../tools/native-probe/README.md`.
 
 - Mandatory installation setup, saved-path native verification, startup admission, toolbar app settings and native-runtime browsing diagnostics: [Installation startup gate](runner_terminals.md#installation-startup-gate); source owners `../../src/hub/AppSettings.tsx`, `../../src/hub/RunnerLocation.tsx`, `../../src/hub/runnerInstallation.ts`, `../../src/hub/Hub.tsx` and `../../src/hub/RunnerSessions.ts`; focused checks `../../tests/e2e/installation-setup.mjs`, registered by `../../tests/e2e/runners.spec.mjs`.
