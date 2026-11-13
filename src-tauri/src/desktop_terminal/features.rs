@@ -94,7 +94,7 @@ impl Features {
         Request::SessionConfig(_) => self.session_config.as_ref().is_some_and(|cap| cap.supports(request)),
         Request::Work(r) => self.work.as_ref().is_some_and(|cap| cap.operations.iter().any(|op| op == r.operation())),
         Request::Brief(_) => self.brief.is_some(),
-        Request::Run(r) => self.run.is_some() && match r {
+        Request::Run(r) => self.run.as_ref().is_some_and(|cap| cap.operations.iter().any(|op| op == r.operation())) && match r {
             run::Request::Invoke { .. } => true,
             run::Request::Status { invocation_request_id, .. } => self.results.iter().any(|result|
                 result.id == *invocation_request_id && result.operation == "run.invoke"),

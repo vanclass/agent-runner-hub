@@ -10,7 +10,7 @@ import type { WorkAttempt } from './runnerWork';
 export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfigService, work: RunnerWork,
   defaults: EntryDefaults, instruction: string, admit: () => Promise<symbol | void>,
   deliver?: (lease?: symbol) => Promise<T>): Promise<T> {
-  if (!work.supported || work.blocked || work.busy) throw new HubError(msg('work.unavailable'));
+  if (!work.supports('work.submit', defaults.runMode) || work.blocked || work.busy) throw new HubError(msg('work.unavailable'));
   if (config.busy || config.uncertain) throw new HubError(msg('config.partial'));
   config.resetDraft();
   await config.inspect(defaults.accountIdentity);

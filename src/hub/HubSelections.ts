@@ -5,6 +5,7 @@ import type { RunnerConfigService } from './RunnerConfigService';
 import { copy, same, type ConfigCatalog } from './runnerConfigContract';
 import { configToEntryDefaults } from './runnerConfigDefaults';
 import type { RunnerObservation } from './runnerControl';
+import { runModes } from './runnerWork';
 
 /** Saved requests win; only new selections adopt verified current Runner defaults. */
 export class HubSelections {
@@ -66,7 +67,7 @@ export class HubSelections {
     if (!options) return false;
     if (key === 'accountIdentity') return options.accounts.some(a => same(a, value));
     if (key === 'target') return options.targets.some(t => same({ binding_state: 'bound', owner: t.owner, project: t.project }, value));
-    if (key === 'runMode') return options.run_modes.includes(String(value));
+    if (key === 'runMode') return runModes.includes(value as typeof runModes[number]) && options.run_modes.includes(String(value));
     if (key === 'model') {
       const model = value as NonNullable<EntryDefaults['model']>;
       return same(this.defaults.accountIdentity, catalog.inspection.model_options_account)

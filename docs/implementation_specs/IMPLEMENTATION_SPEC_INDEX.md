@@ -40,6 +40,8 @@
 
 - Execution-mode sidebar domains, persisted presentation history/affinity, tab drag ordering and flattened navigation: [Runner navigation presentation](runner_navigation.md); owners `../../src/hub/RunnerNavigation.ts`, `../../src/hub/RunnerWorkspace.ts`, `../../src/hub/RunnerSessions.ts`, `../../src/hub/Sidebar.tsx` and `../../src/hub/Hub.tsx`; focused checks `../../tests/e2e/navigation.spec.mjs` and `../../tests/e2e/runner-navigation.mjs` registered by `../../tests/e2e/runners.spec.mjs`. Select for domain display, observed-mode persistence or tab display-order changes.
 
+- Forward-compatible mode admission, subagent registered-role interaction/result consumption and mixed known/unknown presentation: [Runner terminal work](runner_terminals.md#single-entry-assignment) and [navigation storage](runner_navigation.md#ownership-and-storage); focused checks `../../tests/e2e/mode-compatibility.spec.mjs`, `../../tests/e2e/runner-interactions.mjs`, `../../src-tauri/src/desktop_terminal/work_tests.rs` and `../../src-tauri/src/desktop_terminal/run_tests.rs`. Installed-Runner acceptance case: `../../tests/native/webdriver/subagent.mjs` through `../../tools/native-probe/hub.mjs --case subagent-run`.
+
 ## 신규 domain 등록 조건
 
 - 반복 작업에서 책임 경계나 현재 동작을 다시 추론해야 하는 안정된 기능 영역이어야 한다.

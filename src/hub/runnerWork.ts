@@ -1,7 +1,7 @@
 import { HubError, msg } from './i18n';
 import { copy, record, same, type ConfigIdentity, type FeatureAdmission, type FeatureResult, type FeatureSnapshot } from './runnerConfigContract';
 
-export const runModes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'] as const;
+export const runModes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run', 'subagent-run'] as const;
 // Hub delivery/start grace beyond the native FIFO deadline; all work waits share it.
 const deliveryTimeoutMs = 90000;
 export type WorkRequest = { operation: 'work.submit'; api_version: 1; instruction: string }
@@ -14,7 +14,8 @@ export type WorkObservation = {
   state: 'dispatching' | 'instruction_admitted' | 'execution_started' | 'active' | 'suspended' | 'incomplete'
     | 'succeeded' | 'failed' | 'interrupted' | 'unknown' | 'rejected';
   admission: 'pending' | 'admitted' | 'rejected' | 'unknown';
-  work_id: { kind: string; id: string } | null; execution_id: string;
+  work_id: { kind: string; id: string; role_id?: string; workload_name?: string; original_session_id?: string } | null; execution_id: string;
+  result?: unknown;
   event_id: number; started_event_id: number; terminal: boolean;
   outcome: 'pending' | 'succeeded' | 'failed' | 'interrupted' | 'incomplete' | 'unknown' | 'rejected';
   code: string; owner: string; owner_revision: number;
@@ -42,25 +43,34 @@ function isPage(v: unknown, after: number, limit: number): v is WorkPage {
     || Number(v.latest_event_id) < after) return false;
   let previous = after;
   for (const work of v.works) {
-    if (!isWork(work) || !work.observation_id || work.event_id <= previous || work.event_id > Number(v.latest_event_id)) return false;
+    if (!validWork(work, undefined, true) || !work.observation_id || work.event_id <= previous || work.event_id > Number(v.latest_event_id)) return false;
     previous = work.event_id;
   }
   return v.has_more ? v.works.length > 0 && v.next_after_event_id === previous && previous < Number(v.latest_event_id)
     : v.next_after_event_id === v.latest_event_id && Number(v.next_after_event_id) >= previous;
 }
 export function isWork(value: unknown, original?: number): value is WorkObservation {
+  return validWork(value, original, false);
+}
+function validWork(value: unknown, original?: number, allowUnknown = false): value is WorkObservation {
   if (!record(value) || original !== undefined && value.submission_request_id !== original || !validIdentity(value)
     || !Number.isSafeInteger(value.event_id)
     || Number(value.event_id) < 1 || !Number.isSafeInteger(value.started_event_id) || Number(value.started_event_id) < 0
     || Number(value.started_event_id) > Number(value.event_id) || !Number.isSafeInteger(value.owner_revision)
-    || Number(value.owner_revision) < 0 || !runModes.includes(value.run_mode as typeof runModes[number])) return false;
+    || Number(value.owner_revision) < 0 || typeof value.run_mode !== 'string' || !value.run_mode
+    || !allowUnknown && !runModes.includes(value.run_mode as typeof runModes[number])) return false;
   return ['dispatching', 'instruction_admitted', 'execution_started', 'active', 'suspended', 'incomplete', 'succeeded',
     'failed', 'interrupted', 'unknown', 'rejected'].includes(String(value.state))
     && ['pending', 'admitted', 'rejected', 'unknown'].includes(String(value.admission))
     && ['pending', 'succeeded', 'failed', 'interrupted', 'incomplete', 'unknown', 'rejected'].includes(String(value.outcome))
     && typeof value.terminal === 'boolean' && ['code', 'owner', 'execution_id'].every(k => typeof value[k] === 'string')
-    && (value.work_id === null || record(value.work_id) && ['direct_turn', 'task', 'issue'].includes(String(value.work_id.kind))
-      && typeof value.work_id.id === 'string' && !!value.work_id.id)
+    && (value.work_id === null || record(value.work_id) && (allowUnknown && !runModes.includes(value.run_mode as typeof runModes[number])
+      || ['direct_turn', 'task', 'issue', 'subagent_turn'].includes(String(value.work_id.kind)))
+      && typeof value.work_id.kind === 'string' && !!value.work_id.kind
+      && typeof value.work_id.id === 'string' && !!value.work_id.id
+      && ['role_id', 'workload_name', 'original_session_id'].every(k => (value.work_id as Record<string, unknown>)[k] === undefined
+        || typeof (value.work_id as Record<string, unknown>)[k] === 'string'))
+    && (value.result === undefined || value.result === null || record(value.result))
     && (!value.started_event_id || value.admission === 'admitted') && (!value.terminal || value.outcome !== 'pending');
 }
 
@@ -71,6 +81,7 @@ export class RunnerWork {
   progress?: FeatureResult;
   private snapshot?: FeatureSnapshot;
   private identity?: ConfigIdentity;
+  private runMode?: string;
   private closed = false;
   private poll?: ReturnType<typeof setTimeout>;
   private discoveryPaused = false;
@@ -143,18 +154,22 @@ export class RunnerWork {
     return this.attempts.some(a => !a.notSent && (a.uncertain || !a.work?.terminal || a.work.outcome === 'unknown'));
   }
   get supported() {
+    return this.supports('work.submit');
+  }
+  supports(operation: WorkRequest['operation'], mode = this.runMode) {
     const cap = this.capability;
     return !this.closed && cap?.version === 1
       && Array.isArray(cap.operations) && Array.isArray(cap.run_modes)
-      && ['work.submit', 'work.status', 'work.list', 'work.observe'].every(op => cap.operations.includes(op))
-      && cap.run_modes.length === runModes.length && runModes.every(mode => cap.run_modes.includes(mode))
+      && cap.operations.includes(operation)
+      && (mode ? runModes.includes(mode as typeof runModes[number]) && cap.run_modes.includes(mode)
+        : runModes.some(mode => cap.run_modes.includes(mode)))
       && cap.origins?.length === 2 && ['api', 'terminal'].every(origin => cap.origins.includes(origin))
       && positive(cap.max_page_size) && cap.max_page_size <= 100;
   }
   get discoverySupported() {
-    return this.supported && !this.discoveryDisabled;
+    return this.supports('work.list') && !this.discoveryDisabled;
   }
-  observe(session: string, state: string, snapshot?: FeatureSnapshot) {
+  observe(session: string, state: string, snapshot?: FeatureSnapshot, runMode?: string) {
     if (this.closed) return;
     const identity = state === 'ready' && snapshot && positive(snapshot.generation)
       ? { session, generation: snapshot.generation } : undefined;
@@ -162,6 +177,7 @@ export class RunnerWork {
       || snapshot && snapshot.generation !== this.identity.generation)) { this.close(); return; }
     if (identity) this.identity = identity;
     this.snapshot = snapshot;
+    if (runMode !== undefined) this.runMode = runMode;
     this.capability = state === 'ready' ? snapshot?.work ?? undefined : undefined;
     if (this.identity && snapshot?.generation === this.identity.generation)
       for (const result of snapshot.results) this.consume(result);
@@ -177,7 +193,7 @@ export class RunnerWork {
     this.poll = setTimeout(() => {
       this.poll = undefined;
       const operation = this.discoverySupported ? 'work.list' : 'work.status';
-      if (this.supported && this.transport.available(operation) && !this.busy) {
+      if (this.supports(operation) && this.transport.available(operation) && !this.busy) {
         const read = operation === 'work.list'
           ? this.request({ operation, api_version: 1, after_event_id: this.afterEventId, limit: this.capability!.max_page_size! })
           : this.refreshStatus();
@@ -224,7 +240,7 @@ export class RunnerWork {
       return;
     }
     if (request.after_event_id !== this.afterEventId) return;
-    for (const work of reply.works) this.upsert(work);
+    for (const work of reply.works) if (isWork(work)) this.upsert(work);
     this.afterEventId = reply.next_after_event_id;
     this.more = reply.has_more; this.discoveryFailed = false;
   }
@@ -273,8 +289,9 @@ export class RunnerWork {
   }
   private request(request: WorkRequest, attempt?: WorkAttempt, attachmentLease?: symbol): Promise<FeatureResult> {
     const identity = this.transport.identity();
-    if (!this.supported || !identity || !same(identity, this.identity) || !this.transport.available(request.operation, attachmentLease) || this.waiting
-      || ['work.list', 'work.observe'].includes(request.operation) && !this.discoverySupported)
+    if (!this.supports(request.operation) || !identity || !same(identity, this.identity)
+      || !this.transport.available(request.operation, attachmentLease) || this.waiting
+      || request.operation === 'work.list' && !this.discoverySupported)
       throw new HubError(msg('work.unavailable'));
     return new Promise(resolve => {
       const unknown = (id = this.waiting?.id ?? 0): FeatureResult => ({ id, feature: 'work', operation: request.operation,
@@ -343,7 +360,7 @@ export class RunnerWork {
   private async refresh(attempt: WorkAttempt) {
     if (attempt.notSent || attempt.work?.terminal || this.busy || this.closed) return;
     if (!same(attempt.identity, this.transport.identity()) || !same(attempt.identity, this.identity)) return;
-    if (this.discoverySupported && attempt.work?.observation_id) {
+    if (this.supports('work.observe') && attempt.work?.observation_id) {
       await this.request({ operation: 'work.observe', api_version: 1, observation_id: attempt.work.observation_id });
     } else if (attempt.submissionId) {
       await this.request({ operation: 'work.status', api_version: 1, submission_request_id: attempt.submissionId });

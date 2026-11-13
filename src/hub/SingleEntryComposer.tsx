@@ -6,6 +6,7 @@ import { DirectoryInput } from './DirectoryInput';
 import { ComposerAttachments } from './ComposerAttachments';
 import { instructionKey } from './instructionKey';
 import { runModeLabel } from './runModeLabel';
+import { runModes } from './runnerWork';
 
 export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
@@ -33,7 +34,8 @@ export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
       {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
     </section>
     <section className="settings-group execution-settings"><h2>{t('panel.execution')}</h2>
-    {select('runMode', t('fields.runMode'), options?.run_modes.map(value => ({ value, label: runModeLabel(value) })) ?? [])}
+    {select('runMode', t('fields.runMode'), options?.run_modes.filter(value => runModes.includes(value as typeof runModes[number]))
+      .map(value => ({ value, label: runModeLabel(value) })) ?? [])}
     {!['pure-direct-run', 'direct-run'].includes(defaults.runMode ?? '') &&
       select('target', t('fields.target'), options?.targets.map(v => ({
         value: { binding_state: 'bound', owner: v.owner, project: v.project }, label: v.project || v.id })) ?? [])}

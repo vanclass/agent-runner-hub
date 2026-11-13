@@ -1,4 +1,17 @@
 use super::*;
+#[test]
+fn extended_run_modes_admit_only_advertised_operations() {
+    let mut p = ready(); let mut cap = capability();
+    cap["run_modes"] = json!(["issue-run", "subagent-run", "future-run"]);
+    cap["operations"] = json!(["run.invoke"]);
+    p.snapshot.features.discover(&json!({"run":cap}));
+    assert!(p.feature_request(invoke(), "key").is_ok());
+    assert!(p.feature_request(status(2), "key").is_err());
+    cap["operations"] = json!(["run.status"]);
+    p.snapshot.features.discover(&json!({"run":cap}));
+    assert!(p.feature_request(status(2), "key").is_ok());
+    assert!(p.feature_request(invoke(), "key").is_err());
+}
 fn capability() -> Value {
     json!({"version":1,"operations":["run.invoke","run.status"],"run_modes":["issue-run"],
         "observation_lifetime":"process_session","automatic_retry":false,"receipt":"request_accepted"})

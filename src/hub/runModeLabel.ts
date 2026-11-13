@@ -5,6 +5,7 @@ export function runModeLabel(mode: string): string {
     case 'direct-run': return 'Direct Run';
     case 'task-run': return 'Task Run';
     case 'issue-run': return 'Issue Run';
+    case 'subagent-run': return 'Subagent Run';
     default: return mode;
   }
 }

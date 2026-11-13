@@ -41,12 +41,12 @@ impl Request {
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Capability { pub version: u32, pub operations: Vec<String> }
+pub struct Capability { pub version: u32, pub operations: Vec<String>, pub run_modes: Vec<String> }
 impl Capability {
     pub fn read(value: &Value) -> Option<Self> {
         let cap: Self = serde_json::from_value(value.clone()).ok()?;
-        (cap.version == 1 && ["run.invoke", "run.status"].iter().all(|op| cap.operations.iter().any(|s| s == op))
-            && value["run_modes"] == serde_json::json!(["issue-run"])
+        (cap.version == 1 && cap.operations.iter().any(|op| matches!(op.as_str(), "run.invoke" | "run.status"))
+            && cap.run_modes.iter().any(|mode| mode == "issue-run")
             && value["observation_lifetime"] == "process_session" && value["automatic_retry"] == false
             && value["receipt"] == "request_accepted").then_some(cap)
     }

@@ -264,7 +264,7 @@ test('work discovery unsupported operations preserve API tracking and exact-sess
   });
   await page.clock.runFor(4800);
   expect(await page.evaluate(() => window.__discovery.fixture.requests.filter(r => r.operation === 'work.submit'))).toHaveLength(1);
-  expect(await page.evaluate(() => window.__discovery.fixture.requests.some(r => r.operation === 'work.status'))).toBe(true);
+  expect(await page.evaluate(() => window.__discovery.fixture.requests.some(r => r.operation === 'work.observe'))).toBe(true);
   await page.evaluate(() => {
     const { fixture, work } = window.__discovery; work.observe('owned', 'disconnected', structuredClone(fixture.features));
   });
@@ -274,9 +274,19 @@ test('work discovery unsupported operations preserve API tracking and exact-sess
   expect(await page.evaluate(() => ({ activity: window.__discovery.work.activity, unread: window.__discovery.work.unread })))
     .toEqual({ activity: 'unknown', unread: false });
 });
-for (const changes of [{ operations: ['work.submit', 'work.status'] }, { operations: ['work.submit', 'work.list', 'work.observe'] },
-  { operations: ['work.status', 'work.list', 'work.observe'] }, { operations: ['work.submit', 'work.status', 'work.list'] },
-  { operations: ['work.submit', 'work.status', 'work.observe'] }, { origins: undefined }, { origins: ['api', 'api'] },
+for (const operation of ['work.submit', 'work.status', 'work.list', 'work.observe']) {
+test(`missing ${operation} disables only that work action`, async ({ page }) => {
+  const operations = ['work.submit', 'work.status', 'work.list', 'work.observe'].filter(op => op !== operation);
+  await setup(page, { operations });
+  const result = await page.evaluate(() => {
+    const { fixture, work } = window.__discovery; fixture.changed();
+    const support = Object.fromEntries(['work.submit', 'work.status', 'work.list', 'work.observe'].map(op => [op, work.supports(op)]));
+    work.close(); return support;
+  });
+  expect(result).toEqual(Object.fromEntries(['work.submit', 'work.status', 'work.list', 'work.observe'].map(op => [op, op !== operation])));
+});
+}
+for (const changes of [{ origins: undefined }, { origins: ['api', 'api'] },
   { origins: ['terminal'] }, { max_page_size: undefined }, { max_page_size: 0 }, { max_page_size: 101 }, { max_page_size: 1.5 }]) {
 test(`incomplete Work capability stays unavailable: ${JSON.stringify(changes, (_, v) => v === undefined ? 'missing' : v)}`, async ({ page }) => {
   await setup(page, changes);

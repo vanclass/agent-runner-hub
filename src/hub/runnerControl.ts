@@ -156,7 +156,7 @@ export class RunnerControl {
       if (!this.tabClosing) this.interaction.observe(this.id, snapshot.state, snapshot.features);
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
-      this.work.observe(this.id, snapshot.state, snapshot.features);
+      this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
       this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
         !this.assignmentLocked && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
           && !snapshot.observation?.attention.foreground_interaction_active

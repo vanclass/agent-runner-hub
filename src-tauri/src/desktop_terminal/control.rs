@@ -225,6 +225,11 @@ impl Protocol {
         if self.snapshot.state != "ready" || !self.snapshot.features.supports(&request) {
             return Err("Unsupported or unavailable native feature");
         }
+        if matches!(&request, features::Request::Work(_)) && self.snapshot.observation.as_ref().is_none_or(|view|
+            !work::RUN_MODES.contains(&view.run_mode.as_str()) || self.snapshot.features.work.as_ref()
+                .is_none_or(|cap| !cap.run_modes.contains(&view.run_mode))) {
+            return Err("Unsupported work mode");
+        }
         let bytes = self.request_fields(None, None, Some(request.fields()), key)?;
         let pending = self.pending.get_mut(&self.next).unwrap();
         pending.kind = RequestKind::Feature;

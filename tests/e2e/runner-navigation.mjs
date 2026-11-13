@@ -53,7 +53,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     const text = page.locator('.composer textarea');
     await text.fill('move this existing Runner');
     const before = await page.evaluate(() => ({ native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed }));
-    await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+    await text.press('Enter');
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
       .filter(r => r.operation === 'work.submit').length), { timeout: 35000 }).toBe(1);
     await expect(domain(page, 'issue-run').locator('.runner-row.active')).toHaveAttribute('data-runner-id', id);

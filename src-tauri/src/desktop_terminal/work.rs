@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
-pub const RUN_MODES: [&str; 4] = ["pure-direct-run", "direct-run", "task-run", "issue-run"];
+pub const RUN_MODES: [&str; 5] = ["pure-direct-run", "direct-run", "task-run", "issue-run", "subagent-run"];
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "operation", deny_unknown_fields)]
 pub enum Request {
@@ -73,13 +73,18 @@ impl Capability {
         let discovery = cap.origins.len() == 2 && ["api", "terminal"].iter().all(|origin|
             cap.origins.iter().any(|s| s == origin)) && (1..=100).contains(&cap.max_page_size);
         cap.operations.retain(|op| matches!(op.as_str(), "work.submit" | "work.status" | "work.list" | "work.observe"));
-        (cap.version == 1 && discovery && ["work.submit", "work.status", "work.list", "work.observe"].iter().all(|op| cap.operations.iter().any(|s| s == op))
-            && cap.run_modes.len() == RUN_MODES.len() && RUN_MODES.iter().all(|mode| cap.run_modes.iter().any(|s| s == mode))
+        (cap.version == 1 && discovery && !cap.operations.is_empty()
+            && RUN_MODES.iter().any(|mode| cap.run_modes.iter().any(|s| s == mode))
             && value["observation_lifetime"] == "process_session" && value["automatic_retry"] == false).then_some(cap)
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct WorkIdentity { pub kind: String, pub id: String }
+pub struct WorkIdentity {
+    pub kind: String, pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")] pub role_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")] pub workload_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")] pub original_session_id: Option<String>,
+}
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Observation {
     pub observation_id: String,
@@ -88,6 +93,7 @@ pub struct Observation {
     pub run_mode: String, pub state: String, pub admission: String,
     pub work_id: Option<WorkIdentity>, pub execution_id: String, pub event_id: u64, pub started_event_id: u64,
     pub terminal: bool, pub outcome: String, pub code: String, pub owner: String, pub owner_revision: u64,
+    #[serde(skip_serializing_if = "Option::is_none")] pub result: Option<Value>,
 }
 fn identifier(value: &str) -> bool {
     value.len() <= 256 && !value.chars().any(char::is_control)
@@ -106,21 +112,28 @@ fn valid_code(value: &str) -> bool {
 }
 impl Observation {
     fn valid(&self) -> bool {
+        RUN_MODES.contains(&self.run_mode.as_str()) && self.valid_envelope()
+    }
+    fn valid_envelope(&self) -> bool {
         let identity = match (self.observation_id.as_str(), self.origin.as_str(), self.submission_request_id) {
             (observation, "api", Some(id)) => id > 0 && id <= MAX_EVENT && observation == format!("api:{id}"),
             (observation, "terminal", None) => observation.starts_with("terminal:") && observation_identity(observation),
             _ => false,
         };
         identity && self.event_id > 0 && self.event_id <= MAX_EVENT && self.owner_revision <= MAX_EVENT
-            && self.started_event_id <= self.event_id && RUN_MODES.contains(&self.run_mode.as_str())
+            && self.started_event_id <= self.event_id && !self.run_mode.is_empty() && identifier(&self.run_mode)
             && ["dispatching", "instruction_admitted", "execution_started", "active", "suspended", "incomplete",
                 "succeeded", "failed", "interrupted", "unknown", "rejected"].contains(&self.state.as_str())
             && ["pending", "admitted", "rejected", "unknown"].contains(&self.admission.as_str())
             && ["pending", "succeeded", "failed", "interrupted", "incomplete", "unknown", "rejected"].contains(&self.outcome.as_str())
             && (self.code.is_empty() || valid_code(&self.code)) && identifier(&self.execution_id) && identifier(&self.owner)
-            && self.work_id.as_ref().is_none_or(|work| ["direct_turn", "task", "issue"].contains(&work.kind.as_str())
-                && !work.id.is_empty() && identifier(&work.id))
+            && self.work_id.as_ref().is_none_or(|work| (!RUN_MODES.contains(&self.run_mode.as_str())
+                || ["direct_turn", "task", "issue", "subagent_turn"].contains(&work.kind.as_str()))
+                && !work.kind.is_empty() && identifier(&work.kind) && !work.id.is_empty() && identifier(&work.id)
+                && [&work.role_id, &work.workload_name, &work.original_session_id].iter()
+                    .all(|value| value.as_ref().is_none_or(|text| identifier(text))))
             && (self.started_event_id == 0 || self.admission == "admitted")
+            && self.result.as_ref().is_none_or(|result| result.is_object())
             && (!self.terminal || self.outcome != "pending")
     }
 }
@@ -144,7 +157,7 @@ impl Response {
         let valid = works.len() <= limit as usize && works.iter().all(|work| {
             let ordered = work.event_id > previous && work.event_id <= latest;
             previous = work.event_id;
-            ordered && work.valid()
+            ordered && work.valid_envelope()
         });
         if !valid || latest > MAX_EVENT || latest < after || next < previous
             || (more && (works.is_empty() || next != previous || next >= latest)) || (!more && next != latest) {

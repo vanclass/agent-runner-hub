@@ -37,7 +37,7 @@ export class ConfigFixture {
       reasoning_efforts: ['medium', 'high'], service_tiers: i % 2 ? ['default'] : ['default', 'fast'] }));
     const targets = [{ id: 'workspace', owner: 'Workspace', project: '' }, { id: 'project:Exact', owner: 'Project', project: 'Exact' }];
     const options = { targets: targets.slice(offset, offset + 2), accounts: this.accounts.slice(offset, offset + 2),
-      models: models.slice(offset, offset + 2), run_modes: ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'] };
+      models: models.slice(offset, offset + 2), run_modes: ['pure-direct-run', 'direct-run', 'task-run', 'issue-run', 'subagent-run'] };
     return { api_version: 1, revision: this.revision, options_revision: 'b'.repeat(64), current: copy(this.current),
       effective: { account: this.current.account.profile_name, model: 'running-model', reasoning_effort: 'medium', service_tier: 'default',
         source: 'execution', next_model: this.current.model.id, next_reasoning_effort: this.current.model.reasoning_effort,

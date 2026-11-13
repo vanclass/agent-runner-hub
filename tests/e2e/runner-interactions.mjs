@@ -44,6 +44,38 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
     if (kind === 'none') await expect(panel(page)).toHaveCount(0);
     else await expect(panel(page).getByRole('heading', { level: 4 })).toBeVisible();
   }
+  test('subagent registered role selection delivers instruction and renders canonical result', async ({ page }) => {
+    await ready(page);
+    await page.evaluate(() => {
+      const f = window.__interactionFixture;
+      f.view.prompt = 'Registered role';
+      f.view.choices = [{ choice_id: 'interpreter', label: 'Interpreter', description: 'Registered Runner role', enabled: true, disabled_reason: '' }];
+    });
+    await panel(page).getByRole('button', { name: 'Interpreter', exact: true }).click();
+    await expect(panel(page)).toContainText('Input accepted.');
+    await page.evaluate(() => {
+      const s = window.__nativeFixture.sessions.get('pty-1');
+      s.control.observation.attention.foreground_interaction_active = false; s.control.results = [];
+    });
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('subagent-run'));
+    const input = page.getByRole('textbox', { name: 'Runner instructions', exact: true });
+    await expect(input).toBeEnabled(); await input.fill('exact subagent instruction'); await input.press('Enter');
+    await expect.poll(() => page.evaluate(() => {
+      const s = window.__nativeFixture.sessions.get('pty-1');
+      return { mode: s.feature.config.current.run_mode, requests: s.feature.requests,
+        result: s.feature.features.results.filter(r => r.feature === 'work'), status: document.querySelector('.runner-work-status')?.textContent };
+    }), { timeout: 30000 }).toMatchObject({ status: expect.stringContaining('Verified start event') });
+    await page.evaluate(() => {
+      const f = window.__nativeFixture.sessions.get('pty-1').feature;
+      f.mode = 'dispatch'; Object.assign(f.work, { state: 'succeeded', terminal: true, outcome: 'succeeded',
+        event_id: f.work.event_id + 1, result: { answer: 'accepted subagent answer' },
+        work_id: { ...f.work.work_id, role_id: 'interpreter' } });
+      f.observations.set(f.work.observation_id, structuredClone(f.work));
+    });
+    await expect(page.locator('.runner-work-status pre')).toContainText('accepted subagent answer');
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit')))
+      .toEqual([{ operation: 'work.submit', api_version: 1, instruction: 'exact subagent instruction' }]);
+  });
   for (const height of [550, 800]) test(`automatic observation keeps workspace stable at ${height}`, async ({ page }, info) => {
     await ready(page, 'none', generatedFixture());
     await expect(page.locator('.generated-image-preview img')).toBeVisible();

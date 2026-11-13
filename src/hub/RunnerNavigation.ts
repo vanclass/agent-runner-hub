@@ -4,9 +4,9 @@ import { runModes, type RunnerWork } from './runnerWork';
 export type RunMode = typeof runModes[number];
 export type DomainDisplay = 'unified' | 'run-mode';
 export type NavigationPresentation = {
-  executedModes: RunMode[];
+  executedModes: string[];
   order: string[];
-  affinities: Record<string, RunMode>;
+  affinities: Record<string, string>;
 };
 export type RunnerDomain = { id: 'runner' | RunMode; runners: readonly RunnerView[] };
 export const emptyPresentation = (): NavigationPresentation => ({ executedModes: [], order: [], affinities: {} });
@@ -46,7 +46,10 @@ export class RunnerNavigation {
       return rank(a.id) - rank(b.id) || a.createdOrder - b.createdOrder;
     });
     if (display === 'unified') return [{ id: 'runner', runners: ordered }];
-    const placement = (runner: RunnerView) => this.value.affinities[runner.id] ?? 'task-run';
+    const placement = (runner: RunnerView) => {
+      const mode = this.value.affinities[runner.id];
+      return runModes.includes(mode as RunMode) ? mode : 'task-run';
+    };
     const modes = runModes.filter(mode => this.value.executedModes.includes(mode)
       || ordered.some(runner => placement(runner) === mode));
     return modes.map(mode => ({ id: mode, runners: ordered.filter(runner => {

@@ -12,8 +12,8 @@ export type RunObservation = {
   outcome: string; owner_status: string; outcome_unknown: boolean;
   user_input_required?: boolean; code?: string;
 };
-export function supportsRun(cap?: RunCapability | null) {
-  return cap?.version === 1 && ['run.invoke', 'run.status'].every(op => cap.operations.includes(op));
+export function supportsRun(cap?: RunCapability | null, operation: RunRequest['operation'] = 'run.invoke') {
+  return cap?.version === 1 && cap.operations.includes(operation);
 }
 export function isRunObservation(v: unknown, original: number): v is RunObservation {
   if (!record(v) || v.invocation_request_id !== original || !Number.isSafeInteger(original) || original < 1

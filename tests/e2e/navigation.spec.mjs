@@ -117,7 +117,7 @@ for (const origin of ['api', 'terminal']) {
       }
       work.close(); return { checks };
     }, origin);
-    const modes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'];
+    const modes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run', 'subagent-run'];
     for (const [index, check] of result.checks.entries()) {
       expect(check.unconfirmed.executedModes).toEqual(modes.slice(0, index));
       expect(check.admissionOnly).toEqual(check.unconfirmed);
@@ -145,7 +145,7 @@ test('navigation storage validates optional v1 metadata and retains malformed or
       draft: 'must not store', token: 'must not store' };
     const refused = workspace.save(loaded, metadata);
     const noLeak = localStorage.getItem(key) === old;
-    const invalid = JSON.stringify({ version: 1, tabs: [tab], presentation: { executedModes: ['unsupported'], affinities: {}, order: [] } });
+    const invalid = JSON.stringify({ version: 1, tabs: [tab], presentation: { executedModes: [42], affinities: {}, order: [] } });
     localStorage.setItem(key, invalid); const malformed = new RunnerWorkspace(); malformed.load();
     const protectedWrite = malformed.save([]), retained = localStorage.getItem(key) === invalid;
     localStorage.setItem(key, old); const failing = new RunnerWorkspace(); failing.load();

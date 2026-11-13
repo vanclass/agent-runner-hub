@@ -1,5 +1,35 @@
 use super::*;
 
+#[test]
+fn extended_modes_and_partial_operations_preserve_work_admission() {
+    let mut p = ready(); let mut capability = cap();
+    capability["run_modes"] = json!(["task-run", "subagent-run", "future-run"]);
+    capability["operations"] = json!(["work.status", "work.list"]);
+    p.snapshot.observation.as_mut().unwrap().run_mode = "task-run".into();
+    p.snapshot.features.discover(&json!({"work": capability}));
+    assert!(p.feature_request(submit(), "key").is_err());
+    assert!(p.feature_request(status(9), "key").is_ok());
+    p.snapshot.observation.as_mut().unwrap().run_mode = "future-run".into();
+    assert!(p.feature_request(status(9), "key").is_err());
+}
+
+#[test]
+fn mixed_page_preserves_subagent_result_but_rejects_unknown_identity_conflicts() {
+    let mut known = terminal_evidence(1);
+    known["run_mode"] = json!("subagent-run");
+    known["work_id"] = json!({"kind":"subagent_turn","id":"subagent-1","role_id":"researcher"});
+    known["result"] = json!({"answer":"accepted canonical result"});
+    let mut unknown = terminal_evidence(2); unknown["observation_id"] = json!("terminal:2");
+    unknown["run_mode"] = json!("future-run"); unknown["work_id"] = json!({"kind":"future","id":"opaque"});
+    let mut page = packet(2, "accepted", "completed");
+    page["works"] = json!([known, unknown]); page["has_more"] = json!(false);
+    page["latest_event_id"] = json!(2); page["next_after_event_id"] = json!(2);
+    let result = list(0, 2).response(&page, 2).unwrap();
+    assert!(serde_json::to_string(&result).unwrap().contains("accepted canonical result"));
+    page["works"][1]["observation_id"] = json!("api:9");
+    assert!(list(0, 2).response(&page, 2).is_err());
+}
+
 fn cap() -> Value {
     json!({"version":1,"operations":["work.submit","work.status","work.list","work.observe"],"run_modes":work::RUN_MODES,
         "origins":["api","terminal"],"max_page_size":100,
@@ -151,7 +181,9 @@ fn current_work_requires_discovery_operations_origins_and_page_bound() {
     for operation in ["work.submit", "work.status", "work.list", "work.observe"] {
         let mut bad = cap(); bad["operations"].as_array_mut().unwrap().retain(|op| op != operation);
         p.snapshot.features.discover(&json!({"work":bad}));
-        assert!(!p.snapshot.features.supports(&submit()));
+        assert_eq!(p.snapshot.features.supports(&submit()), operation != "work.submit");
+        assert_eq!(p.snapshot.features.supports(&status(2)), operation != "work.status");
+        assert_eq!(p.snapshot.features.supports(&list(0, 2)), operation != "work.list");
     }
     for field in ["origins", "max_page_size"] {
         let mut bad = cap(); bad.as_object_mut().unwrap().remove(field);

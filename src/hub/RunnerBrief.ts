@@ -57,7 +57,7 @@ export class RunnerBrief {
   }
   private current(identity: ConfigIdentity) {
     return same(identity, this.port.identity()) && this.snapshot?.state === 'ready'
-      && supportsRun(this.snapshot.features?.run);
+      && supportsRun(this.snapshot.features?.run, 'run.status');
   }
   private async initiation(identity: ConfigIdentity, original: number, evidence: Partial<BriefResult>): Promise<BriefResult['status']> {
     // This deadline bounds missing initiation evidence, never the IssueRun lifecycle.

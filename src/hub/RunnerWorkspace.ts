@@ -1,6 +1,5 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { emptyPresentation, type NavigationPresentation } from './RunnerNavigation';
-import { runModes } from './runnerWork';
 import { recoveryRecord, type RecoveryRecord } from './RunnerRecovery';
 export type VerifiedContext = {
   target: { binding_state: string; owner: string; project: string };
@@ -47,15 +46,15 @@ function record(value: unknown): RunnerTabRecord | undefined {
 function presentation(value: unknown, tabs: readonly RunnerTabRecord[]): NavigationPresentation | undefined {
   if (!object(value) || Object.keys(value).some(k => !['executedModes', 'order', 'affinities'].includes(k))
     || !Array.isArray(value.executedModes) || !Array.isArray(value.order) || !object(value.affinities)
-    || value.executedModes.some(m => !runModes.includes(m))
+    || value.executedModes.some(m => !text(m) || !m)
     || new Set(value.executedModes).size !== value.executedModes.length
     || value.order.some(id => typeof id !== 'string' || !uuid.test(id))
     || new Set(value.order).size !== value.order.length) return;
   const ids = new Set(tabs.map(tab => tab.id));
   const affinities: NavigationPresentation['affinities'] = {};
   for (const [id, mode] of Object.entries(value.affinities)) {
-    if (!uuid.test(id) || !runModes.includes(mode as typeof runModes[number])) return;
-    if (ids.has(id)) affinities[id] = mode as typeof runModes[number];
+    if (!uuid.test(id) || !text(mode) || !mode) return;
+    if (ids.has(id)) affinities[id] = mode;
   }
   return { executedModes: [...value.executedModes], order: value.order.filter(id => ids.has(id)), affinities };
 }
