@@ -37,8 +37,7 @@ export function RunnerWorkStatus({ work }: { work: RunnerWork }) {
     {current?.work_id?.kind === 'subagent_turn' && <p>{current.work_id.role_id} · {current.work_id.id}</p>}
     {current?.work_id?.kind === 'subagent_turn' && current.result !== undefined && current.result !== null
       && <pre>{JSON.stringify(current.result, null, 2)}</pre>}
-    <button type="button" disabled={!(work.supports('work.observe') || work.supports('work.status')) || work.busy || current?.terminal
-      || !(work.discoverySupported && attempt.observationId || attempt.submissionId)}
+    <button type="button" disabled={!work.refreshSupported || work.busy}
       onClick={() => { setError(''); void work.refreshStatus().catch(reason => setError(errorText(reason))); }}>{t('work.refresh')}</button>
     {error && <p role="alert">{tr(error)}</p>}
   </section>;

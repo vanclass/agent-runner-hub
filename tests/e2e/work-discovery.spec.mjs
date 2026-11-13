@@ -24,8 +24,12 @@ test('promotion projection retains old discovery evidence, admits new events and
   });
 });
 
-async function setup(page, changes = {}) {
+async function setup(page, changes = {}, renderStatus = false) {
   await page.goto('/');
+  if (renderStatus) {
+    await page.getByRole('button', { name: 'App settings', exact: true }).waitFor();
+    await page.evaluate(() => { window.__workResources = performance.getEntriesByType('resource').map(entry => entry.name); });
+  }
   await page.clock.install();
   await page.evaluate(async changes => {
     const { RunnerWork } = await import('/src/hub/runnerWork.ts');
@@ -37,7 +41,7 @@ async function setup(page, changes = {}) {
       submit: (session, request) => {
         if (session !== identity.session) throw new Error('crossed session');
         return fixture.submit(request);
-      } }, () => {});
+      } }, () => window.__discovery?.render?.());
     Object.assign(fixture.features.work, changes);
     fixture.changed = () => work.observe('owned', 'ready', structuredClone(fixture.features));
     window.__discovery = { fixture, work, identity, terminalWork, available: value => { available = value; } };
@@ -274,6 +278,85 @@ test('work discovery unsupported operations preserve API tracking and exact-sess
   expect(await page.evaluate(() => ({ activity: window.__discovery.work.activity, unread: window.__discovery.work.unread })))
     .toEqual({ activity: 'unknown', unread: false });
 });
+test('terminal Refresh observes retained work after list rejection without status support', async ({ page }) => {
+  await setup(page, { operations: ['work.list', 'work.observe'] }, true);
+  await page.evaluate(async () => {
+    const { fixture, work, terminalWork } = window.__discovery;
+    fixture.observations.set('terminal:1', terminalWork(1, 1)); fixture.changed(); await work.refreshInventory();
+    const send = fixture.submit.bind(fixture);
+    fixture.submit = async request => {
+      const admission = await send(request);
+      if (request.operation === 'work.list') {
+        Object.assign(fixture.features.results.at(-1), { state: 'rejected', code: 'UNSUPPORTED_OPERATION', reply: {} });
+        fixture.changed();
+      }
+      return admission;
+    };
+    try { await work.refreshInventory(); } catch { /* Expected list rejection preserves retained work. */ }
+    const resources = window.__workResources;
+    const { default: React } = await import(resources.find(url => /\/react\.js\?/.test(url)));
+    const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
+    const { RunnerWorkStatus } = await import('/src/hub/RunnerWorkStatus.tsx');
+    document.querySelector('dialog')?.close();
+    const host = document.createElement('div'); document.body.append(host);
+    const root = createRoot(host);
+    window.__discovery.render = () => root.render(React.createElement(RunnerWorkStatus, { work }));
+    window.__discovery.render();
+  });
+  const refresh = page.locator('.runner-work-status button');
+  await expect(refresh).toBeEnabled();
+  expect(await page.evaluate(() => window.__discovery.work.discoverySupported)).toBe(false);
+  await page.evaluate(() => {
+    const { fixture, terminalWork } = window.__discovery;
+    fixture.observations.set('terminal:1', terminalWork(1, 3,
+      { started_event_id: 1, state: 'succeeded', terminal: true, outcome: 'succeeded' }));
+  });
+  await refresh.click();
+  await expect(page.locator('.runner-work-status [role="status"]')).toHaveText('Succeeded');
+  await expect(refresh).toBeDisabled();
+  expect(await page.evaluate(() => window.__discovery.fixture.requests.map(r => r.operation)))
+    .toEqual(['work.list', 'work.list', 'work.observe']);
+  expect(await page.evaluate(() => window.__discovery.fixture.requests.at(-1)))
+    .toEqual({ operation: 'work.observe', api_version: 1, observation_id: 'terminal:1' });
+  await page.clock.runFor(10000);
+  expect(await page.evaluate(() => window.__discovery.fixture.requests.length)).toBe(3);
+});
+
+for (const rejectList of [false, true]) {
+test(`API observation completes without status and ${rejectList ? 'rejected' : 'missing'} list support`, async ({ page }) => {
+  await setup(page, { operations: ['work.submit', 'work.observe', ...(rejectList ? ['work.list'] : [])] });
+  await page.evaluate(async rejectList => {
+    const { fixture, work } = window.__discovery;
+    const send = fixture.submit.bind(fixture);
+    fixture.submit = async request => {
+      const admission = await send(request);
+      if (request.operation === 'work.list') {
+        Object.assign(fixture.features.results.at(-1), { state: 'rejected', code: 'UNSUPPORTED_OPERATION', reply: {} });
+        fixture.changed();
+      }
+      return admission;
+    };
+    fixture.changed(); await work.submit('one retained API instruction');
+    if (rejectList) try { await work.refreshInventory(); } catch { /* Expected rejection. */ }
+    fixture.mode = 'succeeded';
+  }, rejectList);
+  await page.clock.runFor(6000);
+  expect(await page.evaluate(() => {
+    const { fixture, work } = window.__discovery;
+    return { state: work.current.work.state, terminal: work.current.work.terminal, activity: work.activity,
+      count: work.attempts.length, uncertain: work.current.uncertain,
+      submits: fixture.requests.filter(r => r.operation === 'work.submit'),
+      reads: fixture.requests.filter(r => r.operation !== 'work.submit' && r.operation !== 'work.list') };
+  })).toMatchObject({ state: 'succeeded', terminal: true, activity: 'completed', count: 1, uncertain: false,
+    submits: [{ operation: 'work.submit', api_version: 1, instruction: 'one retained API instruction' }],
+    reads: [{ operation: 'work.observe', api_version: 1, observation_id: 'api:1001' },
+      { operation: 'work.observe', api_version: 1, observation_id: 'api:1001' }] });
+  const count = await page.evaluate(() => window.__discovery.fixture.requests.length);
+  await page.clock.runFor(10000);
+  expect(await page.evaluate(() => window.__discovery.fixture.requests.length)).toBe(count);
+});
+}
+
 for (const operation of ['work.submit', 'work.status', 'work.list', 'work.observe']) {
 test(`missing ${operation} disables only that work action`, async ({ page }) => {
   const operations = ['work.submit', 'work.status', 'work.list', 'work.observe'].filter(op => op !== operation);

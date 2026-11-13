@@ -189,13 +189,14 @@ export class RunnerWork {
   }
   private scheduleStatus() {
     if (this.closed || this.discoveryPaused || this.poll || !this.discoverySupported
-      && !this.attempts.some(a => a.submissionId && !a.notSent && !a.work?.terminal)) return;
+      && !this.refreshSupported) return;
     this.poll = setTimeout(() => {
       this.poll = undefined;
-      const operation = this.discoverySupported ? 'work.list' : 'work.status';
-      if (this.supports(operation) && this.transport.available(operation) && !this.busy) {
-        const read = operation === 'work.list'
-          ? this.request({ operation, api_version: 1, after_event_id: this.afterEventId, limit: this.capability!.max_page_size! })
+      const discovery = this.discoverySupported;
+      const operation = discovery ? 'work.list' : this.refreshRequest(this.current)?.operation;
+      if (!this.busy && operation && this.transport.available(operation)) {
+        const read = discovery
+          ? this.request({ operation: 'work.list', api_version: 1, after_event_id: this.afterEventId, limit: this.capability!.max_page_size! })
           : this.refreshStatus();
         void read.catch(() => {}).finally(() => this.scheduleStatus());
       } else this.scheduleStatus();
@@ -357,14 +358,21 @@ export class RunnerWork {
   async refreshStatus() {
     if (this.current) await this.refresh(this.current);
   }
-  private async refresh(attempt: WorkAttempt) {
-    if (attempt.notSent || attempt.work?.terminal || this.busy || this.closed) return;
+  get refreshSupported() {
+    return !!this.refreshRequest(this.current);
+  }
+  private refreshRequest(attempt?: WorkAttempt): WorkRequest | undefined {
+    if (!attempt || attempt.notSent || attempt.work?.terminal || this.closed) return;
     if (!same(attempt.identity, this.transport.identity()) || !same(attempt.identity, this.identity)) return;
-    if (this.supports('work.observe') && attempt.work?.observation_id) {
-      await this.request({ operation: 'work.observe', api_version: 1, observation_id: attempt.work.observation_id });
-    } else if (attempt.submissionId) {
-      await this.request({ operation: 'work.status', api_version: 1, submission_request_id: attempt.submissionId });
-    }
+    if (this.supports('work.observe') && attempt.observationId)
+      return { operation: 'work.observe', api_version: 1, observation_id: attempt.observationId };
+    if (this.supports('work.status') && attempt.submissionId)
+      return { operation: 'work.status', api_version: 1, submission_request_id: attempt.submissionId };
+  }
+  private async refresh(attempt: WorkAttempt) {
+    if (this.busy) return;
+    const request = this.refreshRequest(attempt);
+    if (request) await this.request(request);
   }
   close() {
     if (this.closed) return;
