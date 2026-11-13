@@ -145,7 +145,7 @@ export class SingleEntry {
         this.observe();
         return;
       }
-      if (!session.control.work.supported) throw new HubError(msg('work.unavailable'));
+      if (!briefRun && !session.control.work.supported) throw new HubError(msg('work.unavailable'));
       const destination = session;
       this.attachments.bind(destination.control);
       const previous = session.control.work.current;

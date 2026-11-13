@@ -27,6 +27,48 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
           .toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
       });
     }
+    for (const body of ['', 'Brief without work submission']) {
+      test(`Brief Run ${path} without work.submit ${body ? 'with Brief' : 'Run only'}`, async ({ page }) => {
+        await ready(page, tab, { workOperations: ['work.list', 'work.observe', 'work.status'], runResult: 'pending',
+          ...(body ? {} : { brief: 'unsupported' }) });
+        const run = page.getByRole('textbox', { name: 'Run instructions (optional)', exact: true });
+        await input(page).fill(body); await run.fill('Run without work submission'); await run.press('Control+Enter');
+        await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
+          .filter(r => r.operation === 'run.status').length), { timeout: 35000 }).toBeGreaterThan(0);
+        if (!tab) await page.keyboard.press('Control+Home');
+        await expect(input(page)).toBeDisabled(); await expect(input(page)).toHaveValue(body);
+        await expect(run).toHaveValue('Run without work submission');
+        await page.keyboard.press('Control+Enter');
+        await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });
+        await expect(page.getByRole('status').filter({ hasText: 'IssueRun start confirmed by committed Runner authority' }).first()).toBeVisible();
+        if (!tab) await page.keyboard.press('Control+Home');
+        await expect(input(page)).toHaveValue(''); await expect(run).toHaveValue('');
+        await expect(input(page)).toBeEnabled();
+        const evidence = await page.evaluate(() => {
+          const n = window.__nativeFixture, s = n.sessions.get('pty-1');
+          return { runs: s.run.requests, staging: s.briefRequests ?? [], work: s.feature.requests,
+            mode: s.feature.config.current.run_mode, writes: n.writes, commands: n.commands };
+        });
+        expect(evidence.runs.filter(r => r.operation === 'run.invoke'))
+          .toEqual([{ operation: 'run.invoke', api_version: 1, text: 'Run without work submission' }]);
+        expect(evidence.runs.filter(r => r.operation === 'run.status').every(r => r.invocation_request_id === 8001)).toBe(true);
+        expect(evidence.staging).toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
+        expect(evidence.mode).toBe('issue-run');
+        expect(evidence.work.filter(r => r.operation === 'work.submit')).toEqual([]);
+        expect(evidence.writes).toEqual([]); expect(evidence.commands).toEqual([]);
+        await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled({ timeout: 35000 });
+        await input(page).fill('ordinary Send remains unavailable'); await input(page).press('Enter');
+        if (!tab) await page.keyboard.press('Control+Home');
+        await expect(page.getByRole(tab ? 'alert' : 'status')
+          .filter({ hasText: 'Work is unavailable, busy or owns unfinished work' }).first()).toBeVisible();
+        await expect(input(page)).toHaveValue('ordinary Send remains unavailable');
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
+          .filter(r => r.operation === 'work.submit'))).toEqual([]);
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
+          .filter(r => r.operation === 'run.invoke'))).toHaveLength(1);
+        expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
+      });
+    }
     for (const runResult of ['invoke-only', 'status-only']) for (const body of ['', 'retained Brief']) {
       test(`Brief Run ${path} ${runResult} ${body ? 'with Brief' : 'Run only'} leaves ordinary work usable`, async ({ page }) => {
         await ready(page, tab, { runResult });
