@@ -1,7 +1,7 @@
 import { drop } from './composer-attachments.mjs';
 export function registerSessionConfigUI({ test, expect, transport, configure }) {
   const field = (page, name) => page.getByRole('combobox', { name: 'Requested ' + name, exact: true });
-  const composer = page => page.getByRole('textbox', { name: 'Runner instructions', exact: true });
+  const composer = page => page.locator('textarea[data-instruction]');
   const send = page => composer(page).press('Enter');
   async function open(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options }); await configure(page);
@@ -86,7 +86,9 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
         }
       }, fault);
       await composer(page).fill('keep me'); await send(page);
-      await expect(page.locator('.composer-area [role=alert]')).toBeVisible();
+      await page.keyboard.press('Control+Home');
+      await expect(page.locator('.hub-log-records')).toContainText('runner/', { timeout: 30000 });
+      await page.keyboard.press('Control+End');
       await expect(composer(page)).toHaveValue('keep me');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       if (['partial', 'final-inspection'].includes(fault)) {
@@ -122,24 +124,27 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
       .some(r => r.operation === 'session_config.apply'))).toBe(true);
     await page.evaluate(() => { const n = window.__nativeFixture; n.exit('pty-1', 0, n.sessions.get('pty-1').control); });
-    await expect(page.getByText('Process exited (0)', { exact: true })).toBeVisible();
+    await expect(composer(page)).toBeDisabled();
+    await expect(page.getByText('Process exited (0)', { exact: true })).toHaveCount(0);
     await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.complete());
     await expect(composer(page)).toHaveValue('never replay');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
   });
-  test('session foreground replies use PTY without configuration, work or reference admission', async ({ page }) => {
+  test('session foreground ownership gates the composer without configuration, work or PTY admission', async ({ page }) => {
     await open(page);
+    await composer(page).fill('foreground answer');
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true; });
     await page.waitForFunction(() => JSON.parse(window.__nativeFixture.observed.get('pty-1')).observation.attention.foreground_interaction_active);
     const before = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.length);
-    await composer(page).fill('foreground answer'); await send(page);
-    await expect(composer(page)).toHaveValue('');
+    await expect(composer(page)).toBeDisabled();
+    await composer(page).dispatchEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true });
+    await expect(composer(page)).toHaveValue('foreground answer');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.length)).toBe(before);
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toEqual([]);
-    expect(await page.evaluate(() => window.__nativeFixture.writes.length)).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     await page.locator('.xterm-helper-textarea').press('ArrowDown');
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(1);
+    expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = false; });
     await page.waitForFunction(() => !JSON.parse(window.__nativeFixture.observed.get('pty-1')).observation.attention.foreground_interaction_active);
     await page.waitForTimeout(600);
@@ -160,7 +165,9 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
           operation: 'references.register', state: 'outcome-unknown' });
       }, fault);
       await composer(page).fill('references unsent'); await send(page);
-      await expect(page.locator('.composer-area > [role=alert]')).toBeVisible({ timeout: 30000 });
+      await page.keyboard.press('Control+Home');
+      await expect(page.locator('.hub-log-records')).toContainText('runner/', { timeout: 30000 });
+      await page.keyboard.press('Control+End');
       await expect(composer(page)).toHaveValue('references unsent');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     });

@@ -110,9 +110,9 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await drop(page, ['/fixture/image.png']); await paste(page, 'Single Entry instructions');
     expect(await requests(page)).toEqual([]);
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('allocate attachments once');
-    await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+    await page.locator('textarea[data-instruction]').press('Enter');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await expect(page.locator('.control-status')).toContainText('Runner verified start');
+    await expect(page.locator('.hub-log-records')).toContainText('work.started');
     const sent = await requests(page);
     expect(sent.filter(r => r.request.operation === 'references.register').map(r => r.id)).toEqual(['pty-2', 'pty-2']);
     await page.locator('.runner-row').first().locator('.nav-row').click();

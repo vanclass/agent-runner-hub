@@ -45,8 +45,8 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
         await page.waitForTimeout(650);
         const input = page.getByRole('textbox', { name: path === 'Runner' ? 'Runner instructions' : 'Single Entry instructions', exact: true });
         if (path === 'Single Entry') await entry(page, text); else await input.fill(text);
-        const button = page.getByRole('button', { name: path === 'Runner' ? 'Send instruction' : 'Assign instruction', exact: true });
-        await button.click();
+        const button = input;
+        await input.press('Enter');
         if (path === 'Single Entry') {
           await expect(page.getByRole('main', { name: 'Runner workspace', exact: true })).toBeVisible();
           await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
@@ -67,16 +67,22 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
           await page.waitForTimeout(650);
         }
         await expect(input).toHaveValue(fault === 'completed' ? '' : text);
-        if (fault === 'not-sent') await expect(page.getByRole('status').filter({ hasText: /unsent/i })).toBeVisible();
+        if (fault === 'not-sent') {
+          await page.keyboard.press('Control+Home');
+          await expect(page.locator('.hub-log-records')).toContainText('runtime.entry.unsent');
+          if (path === 'Runner') await page.keyboard.press('Control+End');
+        }
         if (['outcome-unknown', 'transport-error', 'queued', 'disconnect'].includes(fault)) {
-          await expect(input).toBeDisabled(); await expect(button).toBeDisabled();
+          await expect(input).toBeDisabled();
+          if (path === 'Single Entry') await expect(button).toBeDisabled();
           await input.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true });
-          await button.dispatchEvent('click');
+          if (path === 'Single Entry') await button.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true });
           await page.waitForTimeout(600);
         } else if (fault !== 'completed') {
           if (path === 'Runner') await expect(input).toBeEnabled();
           else {
-            await expect(page.getByRole('button', { name: 'Move unsent instruction to Runner' })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Move unsent instruction to Runner' })).toHaveCount(0);
+            await expect(input).toBeEnabled();
             await expect(page.getByRole('alert').filter({ hasText: 'automatic retry' })).toHaveCount(0);
           }
         }
@@ -93,7 +99,7 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
             result.state = 'rejected'; result.phase = 'completed';
           });
           if (path === 'Runner') await expect(input).toBeEnabled();
-          else await expect(page.getByRole('button', { name: 'Move unsent instruction to Runner' })).toBeVisible();
+          else await expect(input).toBeEnabled();
           await expect(input).toHaveValue(text);
         }
       });

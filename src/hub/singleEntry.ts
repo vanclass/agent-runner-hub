@@ -38,7 +38,6 @@ export function idleReason(session: RunnerSession, allowReferences = false) {
 
 export class SingleEntry {
   draft = '';
-  runDraft = '';
   readonly selections: HubSelections;
   attachments: RunnerReferenceSelection;
   get defaults() { return this.selections.defaults; }
@@ -48,8 +47,8 @@ export class SingleEntry {
   phase: EntryPhase = 'editing';
   detail: HubText = '';
   runnerId?: string;
-  evidence: HubText[] = [];
-  private active?: { session: RunnerSession; token: symbol; attempt?: WorkAttempt; command?: CommandAttempt };
+  private submissionToken?: symbol;
+  private active?: { session: RunnerSession; token: symbol; text: string; attempt?: WorkAttempt; command?: CommandAttempt };
   constructor(private readonly list: () => readonly RunnerSession[],
     private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
@@ -75,16 +74,15 @@ export class SingleEntry {
     this.changed();
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) { this.selections.setDefault(key, value); }
-  setRunDraft(value: string) { if (this.editable) { this.runDraft = value; this.changed(); } }
   inspectOptions() { return this.selections.inspectOptions(); }
   async submit(location?: string, focus: (id: string) => void = () => {}, briefRun = false) {
-    if (!this.editable || this.loadingOptions || !(briefRun ? this.draft.length || this.runDraft.length : this.draft.trim())) return;
+    if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
     if (briefRun && this.defaults.runMode !== 'issue-run') return;
-    const text = this.draft, runText = this.runDraft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
+    const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
+    this.submissionToken = token;
     this.phase = 'preparing';
     this.detail = msg('runtime.entry.checking');
-    this.evidence = [];
     this.runnerId = undefined;
     this.changed();
     let attempted = false;
@@ -108,19 +106,15 @@ export class SingleEntry {
         }
       }
       let launched: Promise<void> | undefined;
-      let promoted = false;
       if (!session) {
         if (!location) throw new HubError(msg('runtime.entry.noEligible'));
         const created = this.create(location, token);
         session = created.session;
         launched = created.launched;
-        promoted = created.promoted === true;
       }
-      this.active = { session, token };
+      this.active = { session, token, text };
       this.runnerId = session.view.id;
       focus(this.runnerId);
-      this.evidence.push(msg(promoted ? 'work.promoted' : launched ? 'runtime.entry.created' : 'runtime.entry.reused',
-        { name: session.view.name, id: session.view.id, order: session.view.createdOrder }));
       this.detail = msg('work.configuring', { name: session.view.name });
       this.changed();
       await launched;
@@ -167,15 +161,15 @@ export class SingleEntry {
         attempted = true;
         this.changed();
         return this.attachments.deliveryLease;
-      }, briefRun ? lease => destination.control.brief.submit(text, lease, runText) : undefined);
+      }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined);
       if (briefRun) {
         const result = await submission as BriefResult;
         attempted = result.staged || result.status === 'unknown';
         this.detail = destination.control.brief.detail;
-        this.evidence.push(this.detail);
         this.phase = result.status === 'completed' ? 'delivered' : attempted ? 'unknown' : 'incomplete';
         if (result.status === 'completed') {
-          this.draft = ''; this.runDraft = ''; this.attachments.finishSubmission(true);
+          if (this.draft === text) this.draft = '';
+          this.attachments.finishSubmission(true);
           this.attachments = new RunnerReferenceSelection(undefined, this.changed);
           session.release(token); this.active = undefined;
         }
@@ -194,12 +188,11 @@ export class SingleEntry {
       } else if (attempt.work?.started_event_id) {
         this.phase = 'delivered';
         this.detail = msg('work.started', { name: session.view.name, event: attempt.work.started_event_id });
-        this.draft = '';
+        if (this.draft === text) this.draft = '';
         this.attachments.finishSubmission(true);
         this.attachments = new RunnerReferenceSelection(undefined, this.changed);
         session.release(token);
         this.active = undefined;
-        this.evidence.push(this.detail);
       } else {
         this.phase = 'unknown';
         this.detail = msg('work.retained', { state: attempt.work?.state || 'unknown' });
@@ -208,63 +201,58 @@ export class SingleEntry {
       this.phase = attempted ? 'unknown' : 'incomplete';
       this.detail = errorText(reason);
     } finally {
-      if (!attempted) this.attachments.finishSubmission(false);
-      if (this.active) this.active.session.control.assignmentLocked = false;
+      if (!attempted && this.submissionToken === token) this.settleUnsent(token);
+      if (this.active?.token === token) this.active.session.control.assignmentLocked = false;
       this.changed();
     }
   }
-  releaseUnsent(transfer = false) {
-    if (this.phase !== 'incomplete') return;
+  private settleUnsent(token: symbol) {
+    if (this.submissionToken !== token || this.active && this.active.token !== token) return;
+    const active = this.active;
+    this.active = undefined;
     this.attachments.finishSubmission(false);
     if (!this.attachments.unbind()) {
-      this.detail = msg('runtime.references.unresolved'); this.changed(); return;
-    }
-    if (transfer && this.attachments.candidates.some(item => !item.submitted && item.phase !== 'cancelled')) {
-      this.detail = msg('runtime.references.finishEditing'); this.changed(); return;
-    }
-    if (this.active) {
-      const { session, token } = this.active;
-      session.release(token);
-      if (transfer && !session.view.draft && !session.runDraft) {
-        session.setDraft(this.draft); session.setRunDraft(this.runDraft);
-        this.draft = ''; this.runDraft = '';
-      }
-      this.active = undefined;
+      this.active = active;
+      this.detail = msg('runtime.references.unresolved'); return;
     }
     this.phase = 'editing';
-    this.detail = transfer ? msg('runtime.entry.transferred') : msg('runtime.entry.released');
+    active?.session.release(token);
     this.changed();
   }
   observe() {
+    if (this.phase === 'incomplete' && this.active) this.settleUnsent(this.active.token);
     const active = this.active, attempt = active?.attempt;
     const command = active?.command;
     if (active && command && ['writing', 'unknown'].includes(this.phase)) {
       if (command.state === 'unknown') this.phase = 'unknown';
       if (command.state !== 'completed') return;
-      this.attachments.finishSubmission(false);
       if (command.result?.state === 'accepted') {
-        this.phase = 'delivered'; this.draft = '';
-        active.session.release(active.token); this.active = undefined;
+        this.active = undefined;
+        this.phase = 'delivered';
+        if (this.draft === active.text) this.draft = '';
+        this.attachments.finishSubmission(false);
+        active.session.release(active.token);
       } else {
         this.phase = 'incomplete';
         this.detail = msg('work.rejected', { code: command.result?.code || '' });
+        this.settleUnsent(active.token);
       }
       this.changed(); return;
     }
     if (this.phase !== 'unknown' || !active || !attempt) return;
     if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id)) {
-      this.attachments.finishSubmission(false);
       this.phase = 'incomplete';
       this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
+      this.settleUnsent(active.token);
       return;
     }
     if (!attempt.work?.started_event_id) return;
     this.active = undefined;
-    this.phase = 'delivered'; this.draft = '';
+    this.phase = 'delivered';
+    if (this.draft === active.text) this.draft = '';
     this.attachments.finishSubmission(true);
     this.attachments = new RunnerReferenceSelection(undefined, this.changed);
     this.detail = msg('work.started', { name: active.session.view.name, event: attempt.work.started_event_id });
-    this.evidence.push(this.detail);
     active.session.release(active.token);
   }
 }

@@ -22,7 +22,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.keyboard.press('Control+Enter');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
     await page.locator('.composer textarea').fill('default shortcut once');
-    await expect(page.getByRole('button', { name: 'Assign instruction', exact: true })).toBeEnabled();
+    await expect(page.locator('textarea[data-instruction]')).toBeEnabled();
     await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
     await page.keyboard.up('Enter');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
@@ -31,7 +31,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await expect(page.locator('.spare-status')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
     await page.locator('.composer textarea').fill('custom shortcut once');
-    await expect(page.getByRole('button', { name: 'Assign instruction', exact: true })).toBeEnabled();
+    await expect(page.locator('textarea[data-instruction]')).toBeEnabled();
     await page.keyboard.press('Control+Enter');
     await expect(page.locator('.composer textarea')).toHaveValue('custom shortcut once');
     await page.keyboard.press('Alt+Enter');
@@ -114,7 +114,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
       reference_id: 'a'.repeat(32), display_index: 1, display_name: 'unconfirmed', kind: 'file' }));
     await page.locator('.composer textarea').fill('preflight shortcut'); await page.keyboard.press('Enter');
     await home(page);
-    await expect(page.getByRole('button', { name: 'Release unsent assignment' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Release unsent assignment' })).toHaveCount(0);
     await expect(page.locator('.composer textarea')).toHaveValue('preflight shortcut');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
   });

@@ -49,12 +49,12 @@ export function registerWG2({ test, expect, transport, configure }) {
     await expect(page.getByText('Runner control channel is not ready', { exact: false })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Refresh available choices' })).toHaveCount(0);
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('unresolved account');
-    await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+    await page.locator('textarea[data-instruction]').press('Enter');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Release unsent assignment', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Release unsent assignment', exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests).filter(r => r.operation === 'work.submit').length)).toBe(0);
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await expect(policy).toHaveValue('reuse-same-mode'); await expect(policy).toBeDisabled();
+    await expect(policy).toHaveValue('reuse-same-mode'); await expect(policy).toBeEnabled();
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
     await expect(page.getByRole('combobox', { name: '러너 배정 방식', exact: true }).locator('option')).toHaveText(['항상 새 러너 생성', '동일 실행 모드에서 유휴 러너 재사용', '실행 모드 무관하게 유휴 러너 재사용']);
     await info.attach(`${theme}-korean-locked`, { body: await page.screenshot(), contentType: 'image/png' });

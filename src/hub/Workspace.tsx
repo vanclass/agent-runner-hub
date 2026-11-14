@@ -1,4 +1,4 @@
-import { useHubTranslation, t, tr } from './i18n';
+import { useHubTranslation, t } from './i18n';
 import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
 import { RunnerTerminal } from './RunnerTerminal';
@@ -10,11 +10,6 @@ import { RunnerImagePreviews } from './RunnerImagePreviews';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer } from './SingleEntryComposer';
-const recoveryKeys = {
-  waiting: 'recovery.auto.waiting', recovering: 'recovery.auto.recovering', recovered: 'recovery.auto.recovered',
-  absent: 'recovery.auto.absent', blocked: 'recovery.auto.blocked', identity_conflict: 'recovery.auto.identity_conflict',
-  interaction_required: 'recovery.auto.interaction_required', unverified: 'recovery.auto.unverified', partial: 'recovery.auto.partial',
-} as const;
 
 export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
@@ -26,14 +21,6 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
   const singleEntry = !runner;
   return <main className="workspace" aria-label={singleEntry ? t('workspace.singleLabel') : t('workspace.runnerLabel')}>
     <section className="output" aria-label={t('workspace.outputLabel')}>
-      <div className="output-label"><span>{t('workspace.output')}</span><span className="quiet-status" role="status">{session
-        ? session.control.recovery.outcome ? t(recoveryKeys[session.control.recovery.outcome])
-          : runner?.status === 'starting' ? t('workspace.starting')
-          : runner?.status === 'running' ? t('workspace.running') : runner?.status === 'failed' ? t('workspace.failed')
-            : t('workspace.exited', { code: runner?.exitCode ?? t('common.unknown') }) : t('common.notConnected')}
-        {session?.control.recovery.outcome && session.control.recovery.saved?.code
-          ? ` · ${session.control.recovery.saved.code}` : ''}</span></div>
-      {runner?.detail && <p role="alert" className="runner-error">{tr(runner.detail)}</p>}
       {singleEntry && <HubLogView log={hubLog} />}
       {session ? <RunnerTerminal session={session} theme={theme} /> : !singleEntry && <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">›_</div>

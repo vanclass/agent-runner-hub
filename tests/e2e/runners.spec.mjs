@@ -694,7 +694,7 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
   await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('confirmed after restart');
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
   const current = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current);
   expect(current.account).toEqual(saved.singleEntry.accountIdentity);
@@ -885,8 +885,8 @@ test('generated image previews render verified delivery, select, enlarge, refres
 
 async function create(page) {
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
-  await expect(page.getByText('Process running', { exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
+  await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
+  await expect(page.locator('textarea[data-instruction]')).toBeEnabled();
 }
 async function foreground(page, id, active) {
   await page.evaluate(({ id, active }) => {
@@ -1045,7 +1045,7 @@ test('workspace isolates malformed records, duplicate identities and launch fail
   await expect(page.getByRole('region', { name: 'Runner interaction', exact: true })).toContainText('Runner is disconnected');
   await expect(page.locator('.runner-recovery')).toHaveCount(0);
   await page.locator('.runner-row').nth(2).locator('.nav-row').click();
-  await expect(page.getByText('Process running', { exact: true })).toBeVisible();
+  await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
   await expect(page.getByRole('alert').filter({ hasText: 'invalid or duplicate' })).toBeVisible();
 });
 
@@ -1114,9 +1114,9 @@ test('workspace drops an uncertain Single Entry submission on reopening', async 
   await transport(page); await configure(page); await create(page);
   await entry(page, '/status WG6 uncertain instruction');
   await page.evaluate(() => window.__nativeFixture.failWrite());
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('alert').filter({ hasText: 'automatic retry and reassignment are blocked' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'actual=unknown' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.workspace.v1'))).not.toContain('WG6 uncertain instruction');
   await page.reload();
   await expect(page.locator('.runner-row')).toHaveCount(1);
@@ -1134,9 +1134,9 @@ test('Single Entry creates when no eligible idle Runner exists', async ({ page }
   });
   await entry(page);
   await page.evaluate(() => window.__nativeFixture.readyNew());
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
   expect((await page.evaluate(() => window.__nativeFixture.commands)).map(w => w.id)).toEqual(['pty-2']);
 });
@@ -1165,38 +1165,39 @@ for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'fo
       else await expect.poll(() => page.evaluate(() => window.__nativeFixture.observedStale)).toBeTruthy();
     }
     await entry(page);
-    await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+    await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
     expect((await page.evaluate(() => window.__nativeFixture.commands)).map(w => w.id)).toEqual(['pty-2']);
   });
 }
 
-test('Single Entry preserves configuration confirmation and can transfer its known-unsent draft', async ({ page }) => {
+test('Single Entry preserves configuration confirmation and releases its known-unsent reservation', async ({ page }) => {
   await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
   await entry(page, 'held instruction');
   await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.planStatus = 'confirmation_required'; });
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.locator('.control-status')).toContainText('Hub cannot approve it');
+  await expect(page.locator('.hub-log-records')).toContainText('config.confirmation');
   expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests)).toEqual([]);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toHaveValue('held instruction');
-  await page.getByRole('button', { name: 'Move unsent instruction to Runner' }).click();
-  await page.getByRole('button', { name: 'Open assigned Runner' }).click();
-  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('held instruction');
+  await expect(page.getByRole('button', { name: 'Move unsent instruction to Runner' })).toHaveCount(0);
+  await page.keyboard.press('Control+End');
+  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
+  await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
 });
 
 test('Single Entry command uncertainty blocks replay or reassignment', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   await entry(page); await page.evaluate(() => window.__nativeFixture.failWrite());
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('alert')).toContainText('automatic retry and reassignment are blocked');
-  await page.getByRole('button', { name: 'Open assigned Runner' }).click();
+  await expect(page.locator('.hub-log-records')).toContainText('actual=unknown');
+  await page.keyboard.press('Control+End');
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('/status');
-  await expect(page.getByRole('button', { name: 'Assign instruction' })).toBeDisabled();
+  await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toHaveLength(1);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
@@ -1208,7 +1209,7 @@ test('Single Entry launch failure retains its draft without retry', async ({ pag
   await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.state = 'disconnected'; });
   await expect(page.getByRole('status').filter({ hasText: 'Spare unavailable:' })).toBeVisible();
   await page.evaluate(() => window.__nativeFixture.failNext());
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'fixture process launch failed' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions' })).toHaveValue('/status');
@@ -1218,7 +1219,7 @@ test('Single Entry launch failure retains its draft without retry', async ({ pag
 
 test('Single Entry process exit during readiness leaves the instruction unsent', async ({ page }) => {
   await transport(page); await configure(page); await create(page); await entry(page);
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
   await page.evaluate(() => window.__nativeFixture.exit('pty-1', 7));
   await expect(page.getByRole('status').filter({ hasText: /Runner process exited|Instruction unsent/ })).toBeVisible();
@@ -1228,11 +1229,11 @@ test('Single Entry process exit during readiness leaves the instruction unsent',
 
 test('Single Entry excludes delivered terminal input from explicit idle reuse', async ({ page }) => {
   await transport(page); await configure(page); await create(page); await create(page); await entry(page);
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   await page.getByRole('textbox', { name: 'Single Entry instructions' }).fill('/status');
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.map(w => w.id))).toEqual(['pty-1', 'pty-2']);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
@@ -1242,9 +1243,9 @@ test('Single Entry uses authenticated command control on VT terminals', async ({
   await transport(page); await configure(page); await create(page);
   await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\x1b[?9001l'));
   await entry(page, '/status');
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(writes).toHaveLength(0);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/status' }]);
@@ -1254,11 +1255,10 @@ test('Single Entry creates its first Runner and rapid concurrent calls deliver o
   await transport(page); await configure(page);
   await page.evaluate(() => window.__nativeFixture.readyNew());
   await page.getByRole('textbox', { name: 'Single Entry instructions' }).fill('/status');
-  await page.getByRole('button', { name: 'Assign instruction' }).evaluate(button => {
-    for (let i = 0; i < 4; i++) button.click();
-  });
+  await page.locator('textarea[data-instruction]').focus();
+  await page.keyboard.down('Enter'); await page.keyboard.down('Enter'); await page.keyboard.up('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
   expect(await page.evaluate(() => window.__nativeFixture.commands)).toHaveLength(1);
@@ -1269,9 +1269,9 @@ test('terminal color, cursor, device and focus replies preserve idle input owner
   await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\x1b]10;?\x07\x1b[5n\x1b[6n\x1b[c\x1b[?1004h'));
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
   await entry(page);
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(records(writes, 'pty-1')).toEqual([]);
@@ -1284,9 +1284,9 @@ test('blocked terminal typing leaves idle assignment available without user byte
   await page.locator('.xterm-helper-textarea').press('x');
   await foreground(page, 'pty-1', false);
   await entry(page); await page.evaluate(() => window.__nativeFixture.readyNew());
-  await page.getByRole('button', { name: 'Assign instruction' }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(records(writes, 'pty-1').some(record => record.char === 47)).toBe(false);
   expect(writes).toEqual([]);
@@ -1316,9 +1316,9 @@ test('Single Entry skips a Runner with prepared references and verifies the chos
   await drop(page, ['/fixture/image.png']);
   await expect(page.getByText(/Registered · completed Runner receipt/)).toBeVisible();
   await create(page); await entry(page);
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.commands.map(item => item.id))).toEqual(['pty-2']);
   expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(item => item.request.operation === 'references.list').map(item => item.id))).toEqual(['pty-2']);
   expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.length)).toBe(1);
@@ -1329,7 +1329,7 @@ test('Single Entry leaves an instruction unsent when a fresh inventory reveals t
   await transport(page, undefined, {}); await configure(page); await create(page);
   await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').items.push({ reference_id: 'a'.repeat(32),
     display_index: 1, display_name: 'terminal-only.txt', kind: 'file', image_detail: null, media_kind: null }));
-  await entry(page); await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+  await entry(page); await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
   await expect(page.getByRole('status').filter({ hasText: 'Runner pending references are present or unverified' })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
@@ -1340,14 +1340,15 @@ test('Single Entry reserves authenticated command admission once across tabs', a
   await transport(page); await configure(page); await create(page); await create(page);
   await entry(page, '/status');
   await page.evaluate(() => window.__nativeFixture.pauseWrites());
-  await page.getByRole('button', { name: 'Assign instruction', exact: true }).evaluate(button => { button.click(); button.click(); });
+  await page.locator('textarea[data-instruction]').focus();
+  await page.keyboard.down('Enter'); await page.keyboard.down('Enter'); await page.keyboard.up('Enter');
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.length)).toBe(1);
   await page.locator('.runner-row').first().locator('.nav-row').click();
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toBeDisabled();
   await page.evaluate(() => window.__nativeFixture.resumeWrites());
-  await expect(page.getByRole('status').filter({ hasText: 'Command submitted through authenticated control' })).toBeVisible();
+  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toHaveValue('');
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(writes).toHaveLength(0);
@@ -1375,7 +1376,8 @@ test('process exit retains final output without restoring command controls', asy
     n.emit('pty-1', '\r\nfinal output\r\n');
     n.exit('pty-1', 0, { ...n.sessions.get('pty-1').control, state: 'disconnected' });
   });
-  await expect(page.getByText('Process exited (0)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Process exited (0)', { exact: true })).toHaveCount(0);
+  await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
   await expect(page.locator('.xterm-rows')).toContainText('final output');
   await expect(page.locator('.task-panel .command-button, .task-panel .shortcut-bar')).toHaveCount(0);
 });
@@ -1457,7 +1459,7 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.resizes.length)).toBeGreaterThan(1);
-  await expect(page.getByText('Process running', { exact: true })).toBeVisible();
+  await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
   expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
   await testInfo.attach('persistent-black-terminal', { body: await page.screenshot(), contentType: 'image/png' });
@@ -1502,9 +1504,9 @@ test('configuration failure, launch failure and unexpected exit stay local to th
   await expect(page.locator('.runner-row').last().locator('.status-dot.failed')).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('fixture process launch failed');
   await page.locator(`[data-runner-id="${firstId}"] .nav-row`).click();
-  await expect(page.getByText('Process running', { exact: true })).toBeVisible();
+  await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
   await page.evaluate(() => window.__nativeFixture.exit('pty-1', 23));
-  await expect(page.getByText('Process exited (23)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Process exited (23)', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-2']);
 });

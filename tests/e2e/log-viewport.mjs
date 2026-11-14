@@ -61,14 +61,15 @@ export function registerLogViewport({ test, expect, transport, configure, create
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('representative DirectRun');
-    await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+    await page.locator('textarea[data-instruction]').press('Enter');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Succeeded');
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\r\nLOG-BEGIN\r\n' +
       Array.from({ length: 600 }, (_, i) => `line ${i} DirectRun output\r\n`).join('') + '\x1b[32mLOG-END\x1b[0m\r\n'));
     await expect(page.locator('.xterm-rows')).toContainText('LOG-END');
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
-    await expect(page.getByText('Process exited (1)', { exact: true })).toBeVisible();
+    await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
+    await expect(page.getByText('Process exited (1)', { exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 1100, height: 550 });
     for (const height of [550, 800]) {
       await page.setViewportSize({ width: 1100, height });

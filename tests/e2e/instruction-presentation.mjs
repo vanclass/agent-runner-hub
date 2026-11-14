@@ -1,13 +1,17 @@
 const instruction = '개구리 이미지를 보여줄래?';
+import { drop } from './composer-attachments.mjs';
 export function registerInstructionPresentation({ test, expect, transport, configure, create }) {
   const entries = page => page.locator('.runner-instruction');
   const composer = page => page.getByRole('textbox', { name: 'Runner instructions', exact: true });
-  const send = page => page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+  const send = async page => {
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
+    await composer(page).press('Enter');
+  };
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options }); await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
-    await page.getByRole('button', { name: 'task-run', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
   }
   for (const route of ['tab', 'Single Entry']) {
     test(`instruction presentation ${route} retains exact text once across discovery tabs and rerenders`, async ({ page }, info) => {
@@ -15,7 +19,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
       if (route === 'tab') { await create(page); await composer(page).fill(instruction); await send(page); }
       else {
         await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(instruction);
-        await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+        await page.locator('textarea[data-instruction]').press('Enter');
       }
       await expect(entries(page)).toHaveCount(1, { timeout: 35000 });
       expect(await entries(page).locator('pre').textContent()).toBe(instruction);
@@ -55,7 +59,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
   });
   test('instruction presentation counts reference receipts independently of repeated files output', async ({ page }) => {
     await ready(page); await create(page);
-    await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+    await drop(page, ['/fixture/image.png']);
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', '/files\r\n'.repeat(7)));
     await composer(page).fill(instruction); await send(page);
     await expect(entries(page)).toContainText('Verified start event', { timeout: 35000 });
@@ -149,7 +153,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
       if (outcome === 'outcome-unknown') {
         await expect(composer(page)).toBeDisabled();
         await composer(page).dispatchEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true });
-        await page.getByRole('button', { name: 'Send instruction', exact: true }).dispatchEvent('click');
+        await composer(page).dispatchEvent('keydown', { key: 'Enter', code: 'Enter', repeat: true, bubbles: true });
       } else await expect(composer(page)).toBeEnabled();
       await page.waitForTimeout(650);
       await expect(composer(page)).toHaveValue(outcome === 'accepted' ? '' : '/files');
@@ -157,7 +161,8 @@ export function registerInstructionPresentation({ test, expect, transport, confi
       const afterWrites = await page.evaluate(() => window.__nativeFixture.writes
         .map(w => new TextDecoder().decode(new Uint8Array(w.bytes))));
       expect(afterWrites).toEqual(before.writes);
-      expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests))).toEqual([]);
+      expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+        .flatMap(s => s.feature.requests).filter(r => r.operation !== 'work.list'))).toEqual([]);
       expect(await page.evaluate(() => window.__nativeFixture.referenceRequests)).toEqual([]); await expect(entries(page)).toHaveCount(0);
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()]
         .flatMap(s => s.control.references.results))).toEqual([]);

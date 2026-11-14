@@ -95,7 +95,6 @@
     "reuseSameMode": "Reuse idle Runner in the same Run Mode",
     "reuseIdle": "Reuse any idle Runner",
     "allocationHelp": "Always create a new Runner by default. Reuse checks the exact visible Runner again before assignment.",
-    "promoted": "Created {{name}}.",
     "configuring": "Allocated {{name}} · verifying requested settings…",
     "observing": "{{name}} · submitted once; waiting for Runner admission and start evidence…",
     "started": "{{name}} · Runner verified start (event {{event}}). Full output is in its tab.",
@@ -259,7 +258,6 @@
       "deliveryFailure": "Delivery outcome unknown: {{diagnostic}}. Not retried."
     },
     "input": {
-      "waiting": "Input is unavailable. Terminal logs are read-only; supported replies use Runner interaction controls."
     },
     "entry": {
       "freshUnavailable": "Fresh authenticated observation unavailable",
@@ -273,10 +271,6 @@
       "noEligible": "No eligible Runner. Verify an installation to create one. Instruction unsent.",
       "launchFailed": "Runner launch failed. Instruction unsent.",
       "settingsIncomplete": "Effective Runner settings are incomplete. Instruction unsent.",
-      "transferred": "Unsent instruction transferred to the Runner composer.",
-      "released": "Unsent assignment released. Draft retained.",
-      "reused": "Reused {{name}} ({{id}}), creation order {{order}}",
-      "created": "Created {{name}} ({{id}}), creation order {{order}}",
       "unsent": "{{reason}}. Instruction unsent."
     },
     "workspace": {
@@ -335,7 +329,6 @@
   },
   "brief": {
     "input": "Brief",
-    "runInput": "Run instructions (optional)",
     "runRequesting": "Requesting Run…",
     "runConfirmed": "IssueRun start confirmed by committed Runner authority. Execution remains with Runner.",
     "runUnconfirmed": "Run initiation unconfirmed. Draft and original assignment retained; inspect Runner without replay.",
@@ -357,11 +350,7 @@
   "composer": {
     "label": "Instruction composer",
     "runnerInstructions": "Runner instructions",
-    "placeholder": "Write an instruction…",
-    "verifying": "Verifying attachments and sending this input. Use Runner interaction controls for supported prompts…",
-    "uncertain": "Delivery is uncertain. Draft retained; check the final Runner receipt. Hub will not replay it.",
-    "reserved": "Single Entry holds this Runner. Review the assignment in Single Entry before using this composer.",
-    "appends": "Enter applies the requested settings, then submits one instruction to this Runner."
+    "placeholder": "Write an instruction…"
   },
   "terminal": {
     "label": "Runner terminal",
@@ -388,20 +377,14 @@
     "singleLabel": "Single Entry workspace",
     "runnerLabel": "Runner workspace",
     "outputLabel": "Output viewport",
-    "output": "OUTPUT",
-    "starting": "Starting Runner process…",
-    "running": "Process running",
-    "failed": "Launch failed",
     "connection": "Ready for a connection.",
     "noStream": "This Runner has no connected output stream.",
     "previewDisconnected": "No connected process for this preview row.",
-    "attachmentsUnavailable": "No connected process. Attachments are unavailable.",
-    "exited": "Process exited ({{code}})"
+    "attachmentsUnavailable": "No connected process. Attachments are unavailable."
   },
   "common": {
     "singleEntry": "Single Entry",
-    "notConnected": "Not connected",
-    "unknown": "unknown"
+    "notConnected": "Not connected"
   },
   "fields": {
     "model": "Model",
@@ -425,8 +408,7 @@
     "unified": "Unified",
     "byMode": "By execution mode",
     "rowHint": "{{name}} · {{status}}. Double-click or press F2 to rename.",
-    "renameNamed": "Rename {{name}}",
-    "processes": "{{count}} processes running"
+    "renameNamed": "Rename {{name}}"
   },
   "entry": {
     "defaultsLabel": "Single Entry defaults",
@@ -434,28 +416,12 @@
     "useRunner": "Use Runner's verified setting",
     "defaultsHelp": "Requested settings are saved locally, then resolved and applied through the allocated Runner’s authenticated API before submission. Supported confirmations use Hub interaction controls.",
     "instructions": "Single Entry instructions",
-    "placeholder": "Assign an instruction to an eligible Runner…",
-    "assigning": "Assigning…",
-    "assign": "Assign instruction",
-    "openAssigned": "Open assigned Runner",
-    "release": "Release unsent assignment",
-    "move": "Move unsent instruction to Runner",
-    "unknown": "Instruction retained for inspection. Delivery may have occurred; automatic retry and reassignment are blocked.",
-    "evidence": "Assignment evidence",
+    "placeholder": "Write an instruction…",
     "field": "Requested {{field}}",
     "restored": "Restored defaults are requests only. They are checked again against fresh settings in the assigned Runner before sending."
   },
   "recovery": {
     "auto": {
-      "waiting": "Waiting to recover this tab’s previous work…",
-      "recovering": "Recovering this tab’s exact previous work…",
-      "recovered": "Previous work recovered. Execution has not been resumed.",
-      "absent": "Previous work was not found. Check Runner diagnostics.",
-      "blocked": "Recovery blocked. Resolve the reported Runner ownership condition.",
-      "identity_conflict": "Recovery identity conflict. Inspect Runner diagnostics; no substitute was selected.",
-      "interaction_required": "Recovery needs your decision. Use /recover in this Runner.",
-      "unverified": "Recovery unverified. Check the exact reference and Runner diagnostics.",
-      "partial": "Recovery outcome uncertain. Inspect canonical Runner state before any manual recovery."
     }
   },
   "references": {

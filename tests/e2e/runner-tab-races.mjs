@@ -183,11 +183,18 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
       window.__oldId = created.session.view.id; owner.close(window.__oldId);
     });
     await expect.poll(() => page.evaluate(() => window.__original.reusableIdle)).toBe(true);
-    const result = await page.evaluate(async () => {
+    await page.evaluate(async () => {
       const owner = window.__owner; owner.entry.setDraft('/status'); await owner.entry.submit('/fixture/install');
-      const result = { phase: owner.entry.phase, same: owner.get(owner.entry.runnerId) === window.__original,
+      const result = window.__nativeFixture.sessions.get('pty-1').control.results.find(r => r.command === '/status');
+      Object.assign(result, { state: 'accepted', phase: 'completed' });
+      await window.__original.control.fresh();
+    });
+    await expect.poll(() => page.evaluate(() => window.__owner.entry.phase)).toBe('delivered');
+    const result = await page.evaluate(async () => {
+      const owner = window.__owner;
+      const evidence = { phase: owner.entry.phase, same: owner.get(owner.entry.runnerId) === window.__original,
         newId: owner.entry.runnerId !== window.__oldId, count: window.__nativeFixture.count() };
-      await owner.dispose(); return result;
+      await owner.dispose(); return evidence;
     });
     expect(result).toEqual({ phase: 'delivered', same: true, newId: true, count: 1 });
   });
@@ -208,13 +215,14 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
       await expect(page.locator('.termination-failures')).toBeVisible({ timeout: 15000 });
       const before = await page.evaluate(() => window.__nativeFixture.count());
       await page.locator('.termination-failures button').click();
-      await expect(page.getByRole('alert').filter({ hasText: mode === 'failed' ? 'fixture exact termination failed' : 'unconfirmed' })).toBeVisible();
+      await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
+      await expect(page.locator('.runner-error, .output-label')).toHaveCount(0);
       await page.getByRole('textbox', { name: 'Search terminal', exact: true }).fill('ORIGINAL_SCROLLBACK');
       await page.getByRole('button', { name: 'Previous', exact: true }).click();
       await expect(page.locator('.xterm-rows')).toContainText('ORIGINAL_SCROLLBACK');
       expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(before);
       await page.locator('.runner-row .nav-row').click();
-      await expect(page.getByText('Process running', { exact: true })).toBeVisible();
+      await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
       await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
       await expect(page.locator('.termination-failures')).toHaveCount(0);
       await expect(page.locator('.runner-row .nav-row')).toHaveAttribute('aria-current', 'page');

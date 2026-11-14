@@ -35,6 +35,8 @@ export function createHubLogCapture(log: HubLog) {
       message(`${id}:detail`, 'runner', view.detail, id);
       if (!session) continue;
       const snapshot = session.control.snapshot;
+      message(`${id}:brief`, 'delivery', session.control.brief.detail, id,
+        session.control.brief.result?.status ?? (session.control.brief.busy ? 'pending' : 'reported'));
       const target = snapshot.observation?.target;
       const destination = target ? token(`${target.owner}/${target.project}`) : '';
       observe(`${id}:connection`, { component: 'connection', operation: 'observe', runner: token(id), target: destination,

@@ -95,7 +95,6 @@
     "reuseSameMode": "동일 실행 모드에서 유휴 러너 재사용",
     "reuseIdle": "실행 모드 무관하게 유휴 러너 재사용",
     "allocationHelp": "기본값은 항상 새 Runner 할당입니다. 재사용을 선택하면 해당 표시 세션을 할당 전에 다시 검증합니다.",
-    "promoted": "{{name}} 생성됨.",
     "configuring": "{{name}} 할당됨 · 요청한 설정 검증 중…",
     "observing": "{{name}} · 한 번 제출했으며 Runner 접수와 시작 근거를 기다리는 중…",
     "started": "{{name}} · Runner 시작 확인 (이벤트 {{event}}). 전체 출력은 해당 탭에 표시됩니다.",
@@ -259,7 +258,6 @@
       "deliveryFailure": "전달 결과가 불확실합니다: {{diagnostic}}. 재시도하지 않았습니다."
     },
     "input": {
-      "waiting": "입력할 수 없습니다. 터미널 로그는 읽기 전용이며 지원되는 응답은 Runner 상호작용 제어를 사용합니다."
     },
     "entry": {
       "freshUnavailable": "최신 인증된 관측값을 사용할 수 없습니다",
@@ -273,10 +271,6 @@
       "noEligible": "배정 가능한 Runner가 없습니다. 새로 만들려면 설치를 검증하세요. 지시문은 전송하지 않았습니다.",
       "launchFailed": "Runner를 시작하지 못했습니다. 지시문은 전송하지 않았습니다.",
       "settingsIncomplete": "적용된 Runner 설정이 불완전합니다. 지시문은 전송하지 않았습니다.",
-      "transferred": "미전송 지시문을 Runner 입력창으로 옮겼습니다.",
-      "released": "미전송 배정을 해제했습니다. 초안은 유지했습니다.",
-      "reused": "재사용: {{name}} ({{id}}), 생성 순서 {{order}}",
-      "created": "생성: {{name}} ({{id}}), 생성 순서 {{order}}",
       "unsent": "{{reason}}. 지시문은 전송하지 않았습니다."
     },
     "workspace": {
@@ -335,7 +329,6 @@
   },
   "brief": {
     "input": "브리프",
-    "runInput": "실행 지시문 (선택)",
     "runRequesting": "실행 요청 중…",
     "runConfirmed": "Runner의 커밋된 권한으로 IssueRun 시작이 확인되었습니다. 이후 실행은 Runner가 관리합니다.",
     "runUnconfirmed": "실행 시작이 확인되지 않았습니다. 초안과 원래 할당을 유지합니다. 재전송 없이 Runner를 확인하세요.",
@@ -357,11 +350,7 @@
   "composer": {
     "label": "지시문 입력창",
     "runnerInstructions": "Runner 지시문",
-    "placeholder": "지시문 작성…",
-    "verifying": "첨부를 검증하고 입력을 전송하는 중입니다. 지원되는 프롬프트는 Runner 상호작용 제어를 사용하세요…",
-    "uncertain": "전달 결과가 불확실합니다. 초안을 유지했습니다. 최종 Runner 응답을 확인하세요. Hub는 재전송하지 않습니다.",
-    "reserved": "Single Entry가 이 Runner를 사용 중입니다. 이 입력창을 사용하기 전에 Single Entry에서 배정을 확인하세요.",
-    "appends": "Enter를 누르면 요청한 설정을 적용한 뒤 이 Runner에 지시문을 한 번 제출합니다."
+    "placeholder": "지시문 작성…"
   },
   "terminal": {
     "label": "Runner 터미널",
@@ -388,20 +377,14 @@
     "singleLabel": "Single Entry 작업 공간",
     "runnerLabel": "Runner 작업 공간",
     "outputLabel": "출력 영역",
-    "output": "출력",
-    "starting": "Runner 프로세스를 시작하는 중…",
-    "running": "프로세스 실행 중",
-    "failed": "시작 실패",
     "connection": "연결할 준비가 되었습니다.",
     "noStream": "이 Runner에 연결된 출력 스트림이 없습니다.",
     "previewDisconnected": "이 미리 보기 항목에는 연결된 프로세스가 없습니다.",
-    "attachmentsUnavailable": "연결된 프로세스가 없습니다. 첨부를 사용할 수 없습니다.",
-    "exited": "프로세스 종료 ({{code}})"
+    "attachmentsUnavailable": "연결된 프로세스가 없습니다. 첨부를 사용할 수 없습니다."
   },
   "common": {
     "singleEntry": "Single Entry",
-    "notConnected": "연결되지 않음",
-    "unknown": "알 수 없음"
+    "notConnected": "연결되지 않음"
   },
   "fields": {
     "model": "모델",
@@ -425,8 +408,7 @@
     "unified": "통합",
     "byMode": "실행 모드별",
     "rowHint": "{{name}} · {{status}}. 두 번 클릭하거나 F2를 눌러 이름을 변경하세요.",
-    "renameNamed": "{{name}} 이름 변경",
-    "processes": "프로세스 {{count}}개 실행 중"
+    "renameNamed": "{{name}} 이름 변경"
   },
   "entry": {
     "defaultsLabel": "Single Entry 기본 설정",
@@ -434,28 +416,12 @@
     "useRunner": "Runner의 검증된 설정 사용",
     "defaultsHelp": "요청한 설정을 로컬에 저장한 뒤 할당된 Runner의 인증 API로 검증하고 적용한 후 작업을 제출합니다. 지원되는 확인 절차는 Hub 상호작용 제어를 사용합니다.",
     "instructions": "Single Entry 지시문",
-    "placeholder": "배정 가능한 Runner에 지시문 배정…",
-    "assigning": "배정 중…",
-    "assign": "지시문 배정",
-    "openAssigned": "배정된 Runner 열기",
-    "release": "미전송 배정 해제",
-    "move": "미전송 지시문을 Runner로 이동",
-    "unknown": "확인을 위해 지시문을 유지했습니다. 이미 전달되었을 수 있어 자동 재시도와 재배정을 차단했습니다.",
-    "evidence": "배정 근거",
+    "placeholder": "지시문 작성…",
     "field": "요청 {{field}}",
     "restored": "복원된 기본 설정은 요청값입니다. 전송 전에 배정된 Runner의 최신 설정과 다시 대조합니다."
   },
   "recovery": {
     "auto": {
-      "waiting": "이 탭의 이전 작업 복구를 기다리는 중…",
-      "recovering": "이 탭의 정확한 이전 작업을 복구하는 중…",
-      "recovered": "이전 작업을 복구했습니다. 실행을 재개하지 않았습니다.",
-      "absent": "이전 작업을 찾지 못했습니다. Runner 진단을 확인하세요.",
-      "blocked": "복구가 차단되었습니다. Runner의 소유권 조건을 해결하세요.",
-      "identity_conflict": "복구 식별자가 충돌합니다. 대체 작업을 선택하지 않았습니다. Runner 진단을 확인하세요.",
-      "interaction_required": "복구에 사용자 결정이 필요합니다. 이 Runner에서 /recover를 사용하세요.",
-      "unverified": "복구가 검증되지 않았습니다. 정확한 참조와 Runner 진단을 확인하세요.",
-      "partial": "복구 결과가 불확실합니다. 수동 복구 전에 Runner의 공식 상태를 확인하세요."
     }
   },
   "references": {

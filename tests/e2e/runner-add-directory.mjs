@@ -71,7 +71,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
     await add(page).click();
     await expect(page.locator('.runner-row')).toHaveCount(2);
-    await expect(page.getByText('Process running', { exact: true })).toBeVisible();
+    await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
     await expect(page.locator('.runner-domain .add-runner')).toBeVisible();
   });

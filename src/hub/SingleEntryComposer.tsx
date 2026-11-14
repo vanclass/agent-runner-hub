@@ -84,28 +84,11 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
 }) {
   return <section className="composer-area" aria-label={t('composer.label')}>
     <ComposerAttachments selection={entry.attachments} disabled={entry.pending || entry.phase === 'unknown'}>
-      <textarea data-instruction="true" aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
+      <textarea data-instruction="true" aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable} readOnly={entry.loadingOptions}
         onKeyDown={event => instructionKey(event, briefRun => {
           if (!briefRun || entry.defaults.runMode === 'issue-run') void entry.submit(location, onSelectRunner, briefRun);
         })}
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
-      {entry.defaults.runMode === 'issue-run' && <textarea aria-label={t('brief.runInput')} rows={2}
-        value={entry.runDraft} disabled={!entry.editable} placeholder={t('brief.runInput')}
-        onChange={event => entry.setRunDraft(event.target.value)}
-        onKeyDown={event => instructionKey(event, briefRun => { void entry.submit(location, onSelectRunner, briefRun); })} />}
-      <div className="composer-actions">
-        <button className="send-button" type="button" disabled={!entry.editable || !entry.draft.trim()}
-          onClick={() => void entry.submit(location, onSelectRunner)}>{entry.pending ? t('entry.assigning') : t('entry.assign')}</button>
-      </div>
     </ComposerAttachments>
-    {entry.progress && <p role="status" className="control-status">{tr(entry.progress)}</p>}
-    {entry.runnerId && <button type="button" onClick={() => onSelectRunner(entry.runnerId!)}>{t('entry.openAssigned')}</button>}
-    {entry.phase === 'incomplete' && <div className="composer-actions">
-      <button type="button" onClick={() => entry.releaseUnsent()}>{t('entry.release')}</button>
-      {entry.runnerId && <button type="button" onClick={() => entry.releaseUnsent(true)}>{t('entry.move')}</button>}
-    </div>}
-    {entry.phase === 'unknown' && <p role="alert">{t('entry.unknown')}</p>}
-    {entry.evidence.length > 0 && <details><summary>{t('entry.evidence')}</summary>
-      <ul>{entry.evidence.map((line, index) => <li key={index}>{tr(line)}</li>)}</ul></details>}
   </section>;
 }

@@ -26,7 +26,6 @@ export class RunnerSession {
   private submittedAttempt?: { attempt: WorkAttempt; draft: string };
   private submittedCommand?: { attempt: CommandAttempt; draft: string };
   searchQuery = '';
-  runDraft = '';
   readonly fit = new FitAddon();
   readonly search = new SearchAddon();
   readonly input: RunnerInput;
@@ -160,14 +159,14 @@ export class RunnerSession {
     return !this.disposed && !this.view.closing && !this.reservation && !this.control.config.busy && !this.control.config.uncertain
       && !this.control.work.blocked && !this.control.work.busy
       && !this.view.submitting && !this.references.prepared
-      && !this.view.draft && !this.runDraft && this.view.status === 'running' && this.input.canSubmit;
+      && !this.view.draft && this.view.status === 'running' && this.input.canSubmit;
   }
   get assignmentReserved() { return !!this.reservation; }
   private get idleForClose() { return this.safeIdle(); }
   private safeIdle(preserveDraft = false) {
     const control = this.control, snapshot = control.snapshot, observation = snapshot.observation;
     if (this.disposed || this.nativeState !== 'open' || !this.pty || !this.input.canSubmit || this.view.status !== 'running' || !control.observationFresh || !observation
-      || this.reservation || this.deliveryUnknown || this.view.submitting || !preserveDraft && (this.view.draft || this.runDraft)
+      || this.reservation || this.deliveryUnknown || this.view.submitting || !preserveDraft && this.view.draft
       || control.pending || control.config.busy || control.config.uncertain || control.work.busy || control.work.blocked
       || !this.references.capable || this.references.prepared) return false;
     if (control.config.plan || Object.entries(control.config.draft).some(([key, value]) =>
@@ -210,7 +209,7 @@ export class RunnerSession {
   reserve(token: symbol) {
     if (this.disposed || this.view.closing || this.reservation || this.control.config.busy || this.control.config.uncertain
       || this.control.work.blocked || this.control.work.busy
-      || this.view.submitting || this.view.draft || this.runDraft || this.references.prepared) return false;
+      || this.view.submitting || this.view.draft || this.references.prepared) return false;
     this.reservation = token;
     this.control.assignmentLocked = true;
     this.changed();
@@ -242,7 +241,7 @@ export class RunnerSession {
     }
   }
   ownsAssignment(token: symbol, attachmentLease?: symbol) {
-    return this.reservation === token && !this.disposed && !this.view.closing && !this.view.draft && !this.runDraft
+    return this.reservation === token && !this.disposed && !this.view.closing && !this.view.draft
       && !this.view.submitting && (!this.references.prepared || this.control.ownsAttachments(attachmentLease)) && this.view.status === 'running'
       && this.input.canSubmit && !this.control.config.uncertain && !this.control.work.blocked;
   }
@@ -304,11 +303,6 @@ export class RunnerSession {
   }
   rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) { if (!this.view.submitting && !this.view.closing) this.update({ draft }); }
-  setRunDraft(text: string) {
-    if (!this.view.submitting && !this.view.closing && !this.submissionUncertain && !this.reservation) {
-      this.runDraft = text; this.update({});
-    }
-  }
   private observeSubmission() {
     const command = this.submittedCommand;
     if (command && command.attempt.state === 'completed') {
@@ -334,7 +328,7 @@ export class RunnerSession {
   }
   private retainSubmission(attempt: WorkAttempt, draft: string) {
     if (attempt.work?.started_event_id) {
-      this.update({ draft: '' });
+      if (this.view.draft === draft) this.update({ draft: '' });
       this.references.finishSubmission(true);
     } else if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected')) {
       this.references.finishSubmission(false);
@@ -364,9 +358,12 @@ export class RunnerSession {
         await this.control.fresh(); ready();
         this.references.assertReadyForDelivery();
         return this.references.deliveryLease;
-      }, briefRun ? lease => this.control.brief.submit(draft, lease, this.runDraft) : undefined);
+      }, briefRun ? lease => this.control.brief.submit(draft, lease) : undefined);
       if ('brief' in result) {
-        if (result.status === 'completed') { this.runDraft = ''; this.update({ draft: '' }); this.references.finishSubmission(true); }
+        if (result.status === 'completed') {
+          if (this.view.draft === draft) this.update({ draft: '' });
+          this.references.finishSubmission(true);
+        }
         else if (result.staged || result.status === 'unknown') this.deliveryUnknown = true;
         else this.references.finishSubmission(false);
       }
@@ -377,6 +374,7 @@ export class RunnerSession {
     }
   }
   async submit(briefRun = false) {
+    try {
     if (this.view.closing) throw new HubError(msg('tabs.closing'));
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
     if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
@@ -386,7 +384,7 @@ export class RunnerSession {
     if (briefRun && (this.hubSelections?.defaults.runMode !== 'issue-run' || this.foregroundInteraction)) return;
     const draft = this.view.draft ?? '';
     const ordinary = briefRun || !isRunnerCommand(draft);
-    if (!(briefRun ? draft.length || this.runDraft.length : draft.trim())) return;
+    if (!draft.trim()) return;
     if ((!ordinary || this.foregroundInteraction) && this.references.candidates.some(item =>
       !item.submitted && !['cancelled', 'removed'].includes(this.references.state(item))))
       throw new HubError(msg('attachments.instructionOnly'));
@@ -410,11 +408,13 @@ export class RunnerSession {
         : attempt.admission.state === 'not-sent' ? msg('runtime.entry.unsent', { reason: attempt.admission.detail })
         : msg('runtime.session.deliveryFailure', { diagnostic: attempt.admission.detail }) });
       this.observeSubmission();
-    } catch (reason) {
-      throw reason;
     } finally {
       if (ordinary && !this.deliveryUnknown) this.references.finishSubmission(delivered);
       this.update({ submitting: false });
+    }
+    } catch (reason) {
+      this.error(reason);
+      throw reason;
     }
   }
   closeTab() { return this.closing ??= this.settleClose(); }
@@ -625,7 +625,6 @@ export class RunnerSessions {
     if (!owns()) return 'removed';
     const replacement = new RunnerSession(tab, this.changed, !hidden && (interrupted || session.restored));
     replacement.setDraft(session.view.draft ?? '');
-    replacement.setRunDraft(session.runDraft);
     if (hidden) {
       this.retired.set(id, { session: replacement, root, state: 'restarting' });
       replacement.retireTab(); replacement.hide();

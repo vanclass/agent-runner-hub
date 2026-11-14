@@ -81,6 +81,7 @@ export class HubSelections {
   private async loadOptions(reuseCatalog: boolean) {
     if (!this.editable || this.loadingOptions) return;
     const before = this.defaults, initialize = !this.initialized, service = this.source();
+    if (service?.busy) { this.attempted = undefined; return; }
     this.attempted = service;
     const edits = this.inspectionEdits = new Set<keyof EntryDefaults>();
     this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();

@@ -8,6 +8,8 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
     await expect(page.getByRole('button', { name: 'Include other pending references', exact: true })).toBeEnabled();
     expect(await requests(page)).toEqual([]);
     await page.getByRole('button', { name: 'Include other pending references', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
+    await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).press('Enter');
     await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
     expect(await page.evaluate(() => window.__nativeFixture.deliveredSets[0].ids.length)).toBe(4);
@@ -18,13 +20,12 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
     await paste(page, 'Single Entry instructions');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('retain exact destination');
-    await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+    await page.locator('textarea[data-instruction]').press('Enter');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Release unsent assignment', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Release unsent assignment', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Assign instruction', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Release unsent assignment', exact: true })).toHaveCount(0);
+    await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
     await expect(page.locator('.attachment-chip')).toHaveCount(1);
-    expect((await requests(page)).map(r => r.id)).toEqual(['pty-2']);
+    await expect.poll(async () => (await requests(page)).map(r => r.id)).toEqual(['pty-2']);
     expect(await page.evaluate(() => window.__nativeFixture.deliveredSets)).toEqual([]);
   });
   test('attachment outcomes late registration stays on original session and is never replayed', async ({ page }) => {
@@ -52,7 +53,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
       await paste(page, entry ? 'Single Entry instructions' : 'Runner instructions');
       const input = page.getByRole('textbox', { name: entry ? 'Single Entry instructions' : 'Runner instructions', exact: true });
       await input.fill('one uncertain instruction');
-      if (entry) await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
+      if (entry) await page.locator('textarea[data-instruction]').press('Enter');
       else await input.press('Enter');
       if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
       await expect(input).toHaveValue('one uncertain instruction');
@@ -60,7 +61,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
       await expect.poll(() => page.evaluate(id => window.__nativeFixture.deliveredSets.filter(d => d.id === id).length, id)).toBe(1);
       await expect(page.locator('.attachment-chip')).toHaveCount(1);
       await page.evaluate(id => { window.__nativeFixture.sessions.get(id).feature.mode = 'started'; }, id);
-      if (entry) await page.getByRole('button', { name: 'Open assigned Runner', exact: true }).click();
+      if (entry) await page.keyboard.press('Control+End');
       await page.getByRole('button', { name: 'Refresh work status', exact: true }).click();
       if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
       await expect(input).toHaveValue(''); await expect(page.locator('.attachment-chip')).toHaveCount(0);
