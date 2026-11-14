@@ -101,7 +101,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
         await expect(mode).toBeEnabled({ timeout: 35000 }); await mode.selectOption(JSON.stringify('task-run'));
         await input(page).fill('ordinary work after unsupported Run'); await input(page).press('Enter');
-        await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+        await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
           .filter(r => r.operation === 'work.submit'))).toMatchObject([{ instruction: 'ordinary work after unsupported Run' }]);
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe('task-run');
@@ -195,7 +195,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit'))).toEqual([]);
       await input(page).press('Enter');
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+      await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit')))
         .toMatchObject([{ instruction: 'first\nsecond' }]);
       expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);

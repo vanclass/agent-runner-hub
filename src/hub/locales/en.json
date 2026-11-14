@@ -9,23 +9,8 @@
     "storageFailed": "Hub log storage is unavailable ({{code}}). Existing history is preserved. Check app-local storage before restarting."
   },
   "interaction": {
-    "label": "Runner interaction",
-    "commandResult": "Command result",
-    "unsupported": "Structured input is unsupported for this Runner or foreground owner. Terminal logs are read-only.",
-    "observing": "Observing authenticated foreground state…",
-    "pending": "Waiting for the authenticated interaction receipt…",
-    "disconnected": "Runner is disconnected. Input is unavailable.",
-    "unavailable": "Foreground state is unavailable. Input is blocked.",
-    "accepted": "Input accepted. The initiating command still owns the final result.",
-    "cancelled": "Cancellation input accepted. Check the initiating command for its final result.",
-    "rejected": "Input rejected ({{code}}). Observing the current interaction again.",
-    "unknown": "Input or effects are uncertain. Input will not be replayed; check the final command result.",
-    "ownerChanged": "The Runner session changed. Previous interaction controls were retired.",
-    "usePanel": "Use the Runner interaction controls for foreground replies.",
-    "commandSubmitted": "Command submitted through authenticated control. Check its final receipt.",
-    "submit": "Submit response",
-    "back": "Back",
-    "cancel": "Cancel"
+    "foregroundBlocked": "Runner requires foreground attention. Structured interaction support in Hub is deferred.",
+    "commandSubmitted": "Command submitted through authenticated control. Check its final receipt."
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -101,27 +86,7 @@
     "retained": "Runner work: {{state}}. Ownership retained; do not resend. Continue in the owning Runner tab.",
     "rejected": "Instruction unsent or admission rejected: {{code}}. Draft retained.",
     "unavailable": "Work is unavailable, busy or owns unfinished work. Verify that Runner supports submit, status and API/terminal discovery, or review the existing work. Instruction was not resubmitted.",
-    "refresh": "Refresh work status",
-    "status": "Runner work",
-    "instructions": "Submitted instructions",
-    "startEvidence": "Verified start event: {{event}}",
-    "noStart": "Start unconfirmed",
-    "queued": "Queued · admission and start unconfirmed",
-    "unknown": "Outcome unknown · never replay automatically",
-    "notSent": "Not sent · draft retained",
-    "states": {
-      "dispatching": "Dispatch received",
-      "instruction_admitted": "Admitted · start unconfirmed",
-      "execution_started": "Started",
-      "active": "Active",
-      "suspended": "Suspended",
-      "incomplete": "Incomplete",
-      "succeeded": "Succeeded",
-      "failed": "Failed",
-      "interrupted": "Interrupted",
-      "unknown": "Unknown",
-      "rejected": "Rejected"
-    }
+    "status": "Runner work"
   },
   "config": {
     "appliedLabel": "Applied",
@@ -353,11 +318,7 @@
     "placeholder": "Write an instruction…"
   },
   "terminal": {
-    "label": "Runner terminal",
-    "searchLabel": "Search terminal",
-    "search": "Search ",
-    "previous": "Previous",
-    "next": "Next"
+    "label": "Runner terminal"
   },
   "images": {
     "label": "Generated images",

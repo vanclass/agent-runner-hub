@@ -88,7 +88,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await page.getByRole('button', { name: 'Move attachment /fixture/folder earlier', exact: true }).click();
     await page.evaluate(() => window.__nativeFixture.missingImage(true));
     await send(page);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     const result = await page.evaluate(() => ({ staged: window.__nativeFixture.staged, reads: window.__nativeFixture.clipboardReads,
       refs: window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.register'),
       deliveries: window.__nativeFixture.deliveredSets }));
@@ -173,7 +173,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await expect(page.locator('.attachment-chip img')).toBeVisible();
     await page.evaluate(() => navigator.clipboard.writeText('clipboard changed'));
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).press('Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     expect(await page.evaluate(() => window.__nativeFixture.staged.length)).toBe(1);
   });
 }

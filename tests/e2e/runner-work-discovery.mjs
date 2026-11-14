@@ -77,7 +77,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
       }, { once: true });
     });
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     await home(page);
     await page.evaluate(() => {
       const fixture = window.__nativeFixture.sessions.get('pty-1').feature;

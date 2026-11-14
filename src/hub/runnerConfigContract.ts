@@ -2,7 +2,8 @@ import type { RunnerObservation } from './runnerControl';
 import type { WorkCapability, WorkRequest } from './runnerWork';
 import type { RecoveryRequest } from './RunnerRecovery';
 import type { RunCapability, RunRequest } from './runnerRunContract';
-import type { InteractionCapability, InteractionRequest } from './RunnerInteraction';
+type InteractionCapability = { version: 1; operations: string[]; dispatch_boundary: 'foreground_input'; automatic_replay: false; lifetime: 'current_owner' };
+type InteractionRequest = { operation: 'interaction.observe' | 'interaction.respond' };
 
 export type ConfigAccount = { agent_id: string; profile_name: string };
 export type ConfigModel = { id: string; reasoning_effort: string };

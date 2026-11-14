@@ -11,7 +11,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
     await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).press('Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     expect(await page.evaluate(() => window.__nativeFixture.deliveredSets[0].ids.length)).toBe(4);
   });
   test('attachment outcomes Single Entry unknown admission cannot release or rebind its selection', async ({ page }) => {
@@ -62,7 +62,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
       await expect(page.locator('.attachment-chip')).toHaveCount(1);
       await page.evaluate(id => { window.__nativeFixture.sessions.get(id).feature.mode = 'started'; }, id);
       if (entry) await page.keyboard.press('Control+End');
-      await page.getByRole('button', { name: 'Refresh work status', exact: true }).click();
+      // Canonical Work observation reconciles late starts without a manual refresh action.
       if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
       await expect(input).toHaveValue(''); await expect(page.locator('.attachment-chip')).toHaveCount(0);
       expect(await page.evaluate(id => window.__nativeFixture.deliveredSets.filter(d => d.id === id).length, id)).toBe(1);

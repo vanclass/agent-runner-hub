@@ -46,7 +46,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await expect(page.locator('.spare-status')).toHaveCount(0);
     await page.getByLabel('Single Entry instructions', { exact: true }).fill('same append order');
     await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     await expect(page.locator('.runner-name')).toHaveText(['Runner 1', 'Runner 2', 'Runner 3']);
     await expect(page.locator('.runner-domain .add-runner')).toBeVisible();
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs);

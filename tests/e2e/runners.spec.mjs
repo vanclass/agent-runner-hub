@@ -695,7 +695,7 @@ test('Single Entry preferences restore all safe selections and revalidate them b
   await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('confirmed after restart');
   await page.locator('textarea[data-instruction]').press('Enter');
-  await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+  await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
   const current = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current);
   expect(current.account).toEqual(saved.singleEntry.accountIdentity);
   expect(current.run_mode).toBe(saved.singleEntry.runMode);
@@ -928,7 +928,7 @@ test('unsupported foreground blocks composer replies and preserves the draft wit
   await transport(page, undefined, { auto: true }); await configure(page); await create(page);
   await page.getByLabel('Runner instructions', { exact: true }).fill('One uncertain ordinary delivery');
   await foreground(page, 'pty-1', true);
-  await expect(page.getByLabel('Runner interaction', { exact: true })).toContainText('unsupported');
+  await expect(page.getByLabel('Runner interaction', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Runner instructions', { exact: true })).toHaveValue('One uncertain ordinary delivery');
   await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toHaveLength(0);
@@ -1042,7 +1042,7 @@ test('workspace isolates malformed records, duplicate identities and launch fail
   await expect(page.getByRole('alert').filter({ hasText: 'fixture process launch failed' })).toBeVisible();
   await page.locator('.runner-row').nth(1).locator('.nav-row').click();
   await expect(page.getByRole('alert').filter({ hasText: 'Wrong configured installation' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Runner interaction', exact: true })).toContainText('Runner is disconnected');
+  await expect(page.getByRole('region', { name: 'Runner interaction', exact: true })).toHaveCount(0);
   await expect(page.locator('.runner-recovery')).toHaveCount(0);
   await page.locator('.runner-row').nth(2).locator('.nav-row').click();
   await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();

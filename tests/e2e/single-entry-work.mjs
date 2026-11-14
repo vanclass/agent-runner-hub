@@ -47,7 +47,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.keyboard.down('Enter'); await page.keyboard.down('Enter'); await page.keyboard.up('Enter');
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
     await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toHaveCount(0);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event: 3', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
     await home(page);
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('');
@@ -76,7 +76,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.locator('textarea[data-instruction]').fill('reuse once');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 1');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page);
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
@@ -85,7 +85,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.locator('textarea[data-instruction]').fill('always new');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 2');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     const newSubmission = await page.evaluate(() => [...window.__nativeFixture.sessions]
       .filter(([, s]) => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === 'always new'))
       .map(([id, s]) => ({ id, count: s.feature.requests.filter(r => r.operation === 'work.submit').length })));
@@ -133,7 +133,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
   test('work Single Entry ignores terminal success text until canonical start arrives', async ({ page }) => {
     await ready(page, { workMode: 'admitted' });
     await page.locator('textarea[data-instruction]').fill('one waiting instruction'); await assign(page);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Admitted · start unconfirmed', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: 'instruction_admitted' })]));
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', 'TASK COMPLETE: synthetic terminal text\r\n'));
     await home(page);
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('one waiting instruction');
@@ -148,8 +148,8 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.fault = 'completion-unknown'; });
     await page.locator('textarea[data-instruction]').fill('start known');
     await assign(page);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Outcome unknown', { timeout: 35000 });
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event: 3');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: 'unknown' })]));
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     await home(page);
     await expect(page.locator('.hub-log-records').filter({ hasText: 'work.started' })).toBeVisible();
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('');
@@ -162,8 +162,8 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.locator('textarea[data-instruction]').fill('uncertain once'); await assign(page);
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length), { timeout: 35000 }).toBe(1);
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
-    await expect(page.locator('.runner-instruction pre')).toHaveText('uncertain once');
-    await expect(page.locator('.runner-instruction')).toContainText('Outcome unknown');
+    await expect(page.locator('.runner-instruction')).toHaveCount(0);
+    await expect(page.locator('.runner-instruction')).toHaveCount(0);
     await home(page);
     await expect(page.locator('.hub-log-records').filter({ hasText: 'actual=unknown' })).toBeVisible();
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('uncertain once');
@@ -210,7 +210,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
       await page.locator('textarea[data-instruction]').fill('configured once');
       await assign(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+      await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
       const result = await page.evaluate(() => ({ current: window.__nativeFixture.sessions.get('pty-1').feature.config.current,
         requests: window.__nativeFixture.sessions.get('pty-1').feature.config.requests,
         safe: JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry }));
@@ -237,7 +237,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.reload();
       await expect(page.locator('.spare-status')).toHaveCount(0);
       await page.locator('textarea[data-instruction]').fill('mode once'); await assign(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+      await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe(mode);
     });
   }
@@ -271,7 +271,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     test('work Single Entry retains ' + mode + ' without replay', async ({ page }) => {
       await ready(page, { workMode: mode });
       await page.locator('textarea[data-instruction]').fill('once'); await assign(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText(mode === 'rejected' ? 'Rejected' : 'Outcome unknown', { timeout: 35000 });
+      await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: mode === 'rejected' ? 'rejected' : 'unknown' })]));
       await home(page);
       await expect(page.locator('textarea[data-instruction]')).toHaveValue('once');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
@@ -282,7 +282,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await ready(page, { workMode: 'rejected' });
     const input = page.locator('textarea[data-instruction]');
     await input.fill('retained original'); await input.press('Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Rejected', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: 'rejected' })]));
     await expect(input).toBeEnabled(); await input.click();
     await expect(input).toBeFocused(); await input.fill('independent tab draft');
     await home(page);

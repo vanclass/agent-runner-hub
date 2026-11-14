@@ -5,7 +5,6 @@ import { RunnerImages } from './runnerImages';
 import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
 import { RunnerBrief } from './RunnerBrief';
-import { RunnerInteraction } from './RunnerInteraction';
 import { RunnerRecovery } from './RunnerRecovery';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
@@ -52,7 +51,6 @@ export type CommandAttempt = { admission: FeatureAdmission; result?: ControlResu
   state: 'pending' | 'completed' | 'not-sent' | 'unknown' };
 
 export class RunnerControl {
-  readonly interaction: RunnerInteraction;
   readonly images: RunnerImages;
   readonly config: RunnerConfigService;
   readonly work: RunnerWork;
@@ -92,9 +90,6 @@ export class RunnerControl {
       observeMs: controlTiming.refreshMs,
       submit: request => invoke<FeatureAdmission>('runner_feature', { id: this.id, request: { feature: 'recovery', request } }),
     }, changed);
-    this.interaction = new RunnerInteraction((id, request) => invoke<FeatureAdmission>('runner_feature', {
-      id, request: { feature: 'interaction', request },
-    }), changed, controlTiming.completionMs);
     this.brief = new RunnerBrief({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
@@ -153,7 +148,6 @@ export class RunnerControl {
       this.snapshot = snapshot;
       this.receivedAt = performance.now();
       this.observeCommand();
-      if (!this.tabClosing) this.interaction.observe(this.id, snapshot.state, snapshot.features);
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
       this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
@@ -182,7 +176,7 @@ export class RunnerControl {
     return this.recovery.busy || this.otherControlBusyWithoutRecovery;
   }
   private get otherControlBusyWithoutRecovery() {
-    return this.interaction.writing || this.interaction.view?.state === 'active'
+    return !!this.snapshot.observation?.attention.foreground_interaction_active
       || this.sending || this.commandUnresolved || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
@@ -279,7 +273,6 @@ export class RunnerControl {
     finally { this.referenceAdmissions--; this.changed(); }
   }
   stop(detail: HubText = msg('runtime.control.processExited'), finalSnapshot?: ControlSnapshot) {
-    this.interaction.close();
     this.stopped = true;
     this.images.stop();
     this.sending = false;

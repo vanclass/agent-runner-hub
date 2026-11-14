@@ -1,7 +1,6 @@
 import { msg, errorText, HubError } from './i18n';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { SearchAddon } from '@xterm/addon-search';
 import { openPty, type Pty } from '../../.project-config/managed/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
 import { RunnerControl, commandNamed, isRunnerCommand, type ControlSnapshot, type CommandAttempt } from './runnerControl';
@@ -25,9 +24,7 @@ export class RunnerSession {
   hubSelections?: HubSelections;
   private submittedAttempt?: { attempt: WorkAttempt; draft: string };
   private submittedCommand?: { attempt: CommandAttempt; draft: string };
-  searchQuery = '';
   readonly fit = new FitAddon();
-  readonly search = new SearchAddon();
   readonly input: RunnerInput;
   readonly control: RunnerControl;
   readonly references: RunnerReferenceSelection;
@@ -69,7 +66,6 @@ export class RunnerSession {
       snapshot.state, snapshot.observation, this.control.work.activity, this.references.prepared]), observedAt: receivedAt };
   }
   retireTab() {
-    this.control.interaction.retire();
     this.control.tabClosing = true;
     this.control.work.suspendDiscovery();
     this.hubSelections = undefined;
@@ -95,7 +91,6 @@ export class RunnerSession {
     this.presentationRetired = true;
     this.tabRecord = undefined;
     this.previousContext = undefined;
-    this.searchQuery = '';
     this.control.tabClosing = false;
     this.update({ closing: false });
   }
@@ -117,7 +112,6 @@ export class RunnerSession {
       this.control.recovery.legacy();
     this.references = new RunnerReferenceSelection(this.control, () => { if (!this.disposed) this.changed(); });
     this.terminal.loadAddon(this.fit);
-    this.terminal.loadAddon(this.search);
     this.input = new RunnerInput(this.terminal, text => this.queue(new TextEncoder().encode(text)),
       () => this.protocolChanged());
     this.terminal.onWriteParsed(() => this.protocolChanged());
@@ -143,8 +137,7 @@ export class RunnerSession {
   }
   private error(reason: unknown) { if (!this.disposed) this.update({ detail: errorText(reason) }); }
   get foregroundInteraction() {
-    return this.control.interaction.view?.state === 'active' || this.control.interaction.writing
-      || this.control.observationFresh && (!!this.control.snapshot.observation?.attention.foreground_interaction_active
+    return this.control.observationFresh && (!!this.control.snapshot.observation?.attention.foreground_interaction_active
       || this.control.config.progress?.state === 'pending-interaction'
       || this.control.work.progress?.state === 'pending-interaction'
       || this.control.snapshot.results.some(r => r.state === 'pending-interaction')
@@ -379,7 +372,7 @@ export class RunnerSession {
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
     if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
     if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
-    if (this.foregroundInteraction) throw new HubError(msg('interaction.usePanel'));
+    if (this.foregroundInteraction) throw new HubError(msg('interaction.foregroundBlocked'));
     if (this.submissionUncertain) throw new HubError(msg('runtime.session.previousUnknown'));
     if (briefRun && (this.hubSelections?.defaults.runMode !== 'issue-run' || this.foregroundInteraction)) return;
     const draft = this.view.draft ?? '';
@@ -394,7 +387,7 @@ export class RunnerSession {
     this.update({ submitting: true });
     try {
       if (ordinary) await this.control.fresh();
-      if (this.foregroundInteraction) throw new HubError(msg('interaction.usePanel'));
+      if (this.foregroundInteraction) throw new HubError(msg('interaction.foregroundBlocked'));
       if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
       if (ordinary && !this.foregroundInteraction) {
         await this.submitInstruction(draft, defaults, briefRun);
@@ -420,7 +413,6 @@ export class RunnerSession {
   closeTab() { return this.closing ??= this.settleClose(); }
   private async settleClose() {
     if (this.disposed) return this.nativeSettled;
-    this.control.interaction.close();
     this.control.tabClosing = true;
     this.update({ closing: true });
     try {

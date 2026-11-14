@@ -192,7 +192,8 @@ export class RunnerWork {
       && !this.refreshSupported) return;
     this.poll = setTimeout(() => {
       this.poll = undefined;
-      const discovery = this.discoverySupported;
+      // A retained attachment lease may pause discovery while the original submission still needs reconciliation.
+      const discovery = this.discoverySupported && this.transport.available('work.list');
       const operation = discovery ? 'work.list' : this.refreshRequest(this.current)?.operation;
       if (!this.busy && operation && this.transport.available(operation)) {
         const read = discovery

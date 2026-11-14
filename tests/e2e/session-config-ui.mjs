@@ -105,12 +105,12 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     test('session submission retains ' + mode + ' without replay and reconciles late start', async ({ page }) => {
       await open(page, { workMode: mode });
       await composer(page).fill('retained once'); await send(page);
-      await expect(page.getByLabel('Runner work', { exact: true })).toContainText(mode === 'rejected' ? 'Rejected' : 'Outcome unknown', { timeout: 30000 });
+      await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: mode === 'rejected' ? 'rejected' : 'unknown' })]));
       await expect(composer(page)).toHaveValue('retained once');
       if (mode === 'unknown') {
         await expect(composer(page)).toBeDisabled();
         await page.evaluate(() => { const f = window.__nativeFixture.sessions.get('pty-1').feature; f.mode = 'started'; });
-        await page.getByRole('button', { name: 'Refresh work status', exact: true }).click();
+        // Canonical Work observation reconciles late starts without a manual refresh action.
         await expect(composer(page)).toHaveValue('');
       }
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit'))).toHaveLength(1);

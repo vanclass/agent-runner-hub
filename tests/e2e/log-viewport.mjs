@@ -38,7 +38,7 @@ export function registerLogViewport({ test, expect, transport, configure, create
     await input.fill('one\ntwo\nthree\nfour\nfive'); await input.press('Enter');
     await expect(input).toHaveValue('', { timeout: 35000 });
     expect(Math.abs((await geometry()).input.height - base.input.height)).toBeLessThanOrEqual(1);
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
   });
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`quiet Single Entry ${language}/${theme}`, async ({ page }, info) => {
@@ -55,19 +55,21 @@ export function registerLogViewport({ test, expect, transport, configure, create
       await info.attach(`single-${language}-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
     });
   }
-  test('completed log viewport retains searchable scrollback after exit and tab switching', async ({ page }, info) => {
+  test('completed log viewport retains scrollback after exit and tab switching', async ({ page }, info) => {
     await transport(page, undefined, { work: true, auto: true, workMode: 'succeeded' }); await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('representative DirectRun');
     await page.locator('textarea[data-instruction]').press('Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Succeeded');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: 'succeeded' })]));
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\r\nLOG-BEGIN\r\n' +
       Array.from({ length: 600 }, (_, i) => `line ${i} DirectRun output\r\n`).join('') + '\x1b[32mLOG-END\x1b[0m\r\n'));
     await expect(page.locator('.xterm-rows')).toContainText('LOG-END');
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
+    await expect(page.locator('.workspace > *')).toHaveCount(3);
+    await expect(page.locator('.runner-interaction, .runner-work-status, .runner-instructions, .terminal-tools')).toHaveCount(0);
     await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
     await expect(page.getByText('Process exited (1)', { exact: true })).toHaveCount(0);
     await page.setViewportSize({ width: 1100, height: 550 });
@@ -77,12 +79,7 @@ export function registerLogViewport({ test, expect, transport, configure, create
       console.log('log viewport', height, box.height);
       expect(box.height).toBeGreaterThan(height === 550 ? 140 : 300);
       expect(await page.locator('.workspace').evaluate(n => n.scrollHeight - n.clientHeight)).toBeLessThan(2);
-      const search = page.getByRole('textbox', { name: 'Search terminal', exact: true });
-      for (const marker of ['LOG-BEGIN', 'line 300', 'LOG-END']) {
-        await search.fill(marker);
-        await page.getByRole('button', { name: 'Previous', exact: true }).click();
-        await expect(page.locator('.xterm-rows')).toContainText(marker);
-      }
+      await expect(page.locator('.terminal-tools')).toHaveCount(0);
       await page.locator('.terminal-host').hover();
       for (let i = 0; i < 220; i++) await page.mouse.wheel(0, -1000);
       await expect(page.locator('.xterm-rows')).toContainText('LOG-BEGIN');
@@ -93,7 +90,6 @@ export function registerLogViewport({ test, expect, transport, configure, create
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await expect(page.locator('.workspace-header, .workspace-symbol, .spare-status, .sidebar-empty')).toHaveCount(0);
     await page.locator('.runner-row .nav-row').first().click();
-    await expect(page.getByRole('textbox', { name: 'Search terminal', exact: true })).toHaveValue('LOG-END');
     await expect(page.locator('.xterm-rows')).toContainText('LOG-END');
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   });

@@ -25,7 +25,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await expect(page.locator('textarea[data-instruction]')).toBeEnabled();
     await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
     await page.keyboard.up('Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page); await remap(page); await page.reload();
     await expect(page.locator('.spare-status')).toHaveCount(0);
@@ -35,7 +35,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.keyboard.press('Control+Enter');
     await expect(page.locator('.composer textarea')).toHaveValue('custom shortcut once');
     await page.keyboard.press('Alt+Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     const requests = await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests).filter(r => r.operation === 'work.submit'));
     expect(requests.filter(r => r.instruction === 'custom shortcut once')).toHaveLength(1);
   });
@@ -102,7 +102,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
   test('shortcuts never replay pending assignments', async ({ page }) => {
     await ready(page, { workMode: 'admitted' });
     await page.locator('.composer textarea').fill('pending shortcut'); await page.keyboard.press('Enter');
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('start unconfirmed', { timeout: 35000 });
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: 'instruction_admitted' })]));
     await home(page);
     await page.locator('.composer textarea').evaluate(node => node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);

@@ -25,21 +25,14 @@
 .send-button:not(:disabled) { color: var(--accent); }
 .runner-location { display: grid; gap: 14px; margin: 24px 0; }
 .runner-location label { display: flex; flex-direction: column; gap: 8px; color: var(--text); font-size: 13px; font-weight: 600; }
-.runner-location input, .terminal-tools input { width: 100%; min-width: 0; background: var(--inset); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; }
+.runner-location input { width: 100%; min-width: 0; background: var(--inset); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; }
 .runner-location button { align-self: end; }
 .runner-location p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .runner-location [role='alert'], .runner-error { color: var(--attention); overflow-wrap: anywhere; }
 .runner-terminal { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; margin-top: 10px; overflow: hidden; }
 .terminal-tools { display: flex; align-items: center; flex-shrink: 0; gap: 6px; padding-bottom: 8px; font-size: 10px; }
-.terminal-tools label { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
-.terminal-tools input { padding: 3px; }
 .terminal-host { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .terminal-host .xterm { height: 100%; }
-/* 지시문 표시 영역의 최대 높이다. 늘리면 지시문이 넓어지고, 줄이면 터미널 공간이 넓어진다. */
-.runner-instructions { flex: 0 1 auto; max-height: 35%; overflow-y: auto; }
-.runner-instruction { border-bottom: 1px solid var(--border); }
-.runner-instruction pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-.runner-instruction p { color: var(--muted); font-size: smaller; }
 .hub button:focus-visible, .hub input:focus-visible, .hub select:focus-visible, .hub textarea:focus-visible {
   outline: 2px solid var(--focus); outline-offset: 2px;
 }
@@ -144,8 +137,6 @@
 .workspace:has(.runner-terminal) .eyebrow { display: none; }
 .workspace:has(.runner-terminal) h1 { margin: 0; font-size: 18px; }
 .workspace:has(.runner-terminal) .output { padding-top: 8px; padding-bottom: 8px; }
-.runner-work-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; font-size: 11px; }
-.runner-work-status p { margin: 0; }
 .workspace-context { flex: 0 1 auto; min-height: 0; max-height: 18%; overflow-y: auto; }
 .context-settings, .composer-area { flex-shrink: 0; }
 .context-settings { margin: 0 28px; padding-bottom: 17px; border-bottom: 1px solid var(--border); }
@@ -228,8 +219,6 @@
 @media (max-height: 650px) {
   .workspace:has(.runner-terminal) .output { padding: 4px 18px; }
   .workspace:has(.runner-terminal) .runner-terminal { margin-top: 4px; }
-  .workspace:has(.runner-terminal) .terminal-tools { padding-bottom: 4px; }
-  .workspace:has(.runner-terminal) .terminal-tools button { padding: 3px 6px; }
   .workspace:has(.runner-terminal) .workspace-context { max-height: 10%; }
   .workspace:has(.runner-terminal) .composer-note { margin-top: 4px; }
 }

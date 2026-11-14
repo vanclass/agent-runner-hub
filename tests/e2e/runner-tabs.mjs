@@ -13,14 +13,14 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
   }
   async function assign(page) {
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('observe exactly this work');
-    await page.getByRole('button', { name: 'Assign instruction', exact: true }).click();
-    await expect(page.getByLabel('Runner work', { exact: true })).toContainText('Verified start event', { timeout: 35000 });
+    await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).press('Enter');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
   }
   for (const language of ['en', 'ko']) for (const [outcome, state, label] of [
     ['succeeded', 'idle', ['Verified idle', '검증된 유휴 상태']], ['failed', 'idle', ['Verified idle', '검증된 유휴 상태']],
     ['interrupted', 'idle', ['Verified idle', '검증된 유휴 상태']],
   ]) {
-    test(`runner tabs background ${outcome} unread and exact status stop ${language}`, async ({ page }, info) => {
+    test(`runner tabs background ${outcome} unread and continued discovery without replay ${language}`, async ({ page }, info) => {
       await ready(page); await assign(page); await create(page);
       await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
@@ -37,9 +37,9 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       expect(await positions()).toEqual(beforeUnread);
       await expect(neighbor.locator('.unread-completion')).toHaveCount(0);
       await expect(neighbor.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
-      const before = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length);
+      const before = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length);
       await page.waitForTimeout(1700);
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length)).toBe(before);
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(before);
       await info.attach(`tab-${outcome}-${language}`, { body: await page.screenshot({ path: info.outputPath('tab-status.png') }), contentType: 'image/png' });
       await page.locator('.app-settings-trigger').click();
       await page.getByRole('combobox', { name: language === 'en' ? 'Language' : '언어', exact: true }).selectOption(language === 'en' ? 'ko' : 'en');

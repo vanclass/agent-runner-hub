@@ -217,8 +217,6 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
       await page.locator('.termination-failures button').click();
       await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
       await expect(page.locator('.runner-error, .output-label')).toHaveCount(0);
-      await page.getByRole('textbox', { name: 'Search terminal', exact: true }).fill('ORIGINAL_SCROLLBACK');
-      await page.getByRole('button', { name: 'Previous', exact: true }).click();
       await expect(page.locator('.xterm-rows')).toContainText('ORIGINAL_SCROLLBACK');
       expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(before);
       await page.locator('.runner-row .nav-row').click();

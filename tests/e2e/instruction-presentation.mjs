@@ -7,62 +7,18 @@ export function registerInstructionPresentation({ test, expect, transport, confi
     await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
     await composer(page).press('Enter');
   };
-  const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options }); await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
   }
-  for (const route of ['tab', 'Single Entry']) {
-    test(`instruction presentation ${route} retains exact text once across discovery tabs and rerenders`, async ({ page }, info) => {
-      await ready(page);
-      if (route === 'tab') { await create(page); await composer(page).fill(instruction); await send(page); }
-      else {
-        await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(instruction);
-        await page.locator('textarea[data-instruction]').press('Enter');
-      }
-      await expect(entries(page)).toHaveCount(1, { timeout: 35000 });
-      expect(await entries(page).locator('pre').textContent()).toBe(instruction);
-      await expect(entries(page)).toContainText('Verified start event', { timeout: 35000 }); await expect(composer(page)).toHaveValue('');
-      await page.getByRole('button', { name: 'Refresh work status', exact: true }).click();
-      await home(page); await create(page); await expect(entries(page)).toHaveCount(0);
-      await page.locator('.runner-row .nav-row').first().click();
-      await page.locator('.app-settings-trigger').click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko'); await page.keyboard.press('Escape');
-      await expect(entries(page)).toHaveCount(1); expect(await entries(page).locator('pre').textContent()).toBe(instruction);
-      const evidence = await page.evaluate(() => {
-        const n = window.__nativeFixture, f = n.sessions.get('pty-1').feature;
-        return { submits: f.requests.filter(r => r.operation === 'work.submit'), writes: n.writes, commands: n.commands,
-          registrations: n.referenceRequests.filter(r => r.request.operation === 'references.register'), stored: Object.values(localStorage).join('\n') };
-      });
-      expect(evidence.submits).toEqual([{ operation: 'work.submit', api_version: 1, instruction }]);
-      expect(evidence.writes).toEqual([]); expect(evidence.commands).toEqual([]); expect(evidence.registrations).toEqual([]);
-      expect(evidence.stored).not.toContain(instruction);
-      await info.attach('visible-instruction', { body: await page.screenshot(), contentType: 'image/png' });
-      await page.reload(); await expect(page.locator('.runner-row')).toHaveCount(2);
-      await page.locator('.runner-row .nav-row').first().click(); await expect(entries(page)).toHaveCount(0);
-    });
-  }
-  test('instruction presentation distinguishes repeated text submitted under new identities', async ({ page }) => {
-    await ready(page, { workMode: 'succeeded' }); await create(page);
-    for (let count = 1; count <= 2; count++) {
-      await composer(page).fill(instruction); await send(page);
-      await expect(composer(page)).toHaveValue('', { timeout: 35000 });
-      await expect(entries(page)).toHaveCount(count);
-      await expect(entries(page).last()).toContainText('Succeeded');
-    }
-    expect(await entries(page).locator('pre').allTextContents()).toEqual([instruction, instruction]);
-    const originalIds = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.features.results
-      .filter(r => r.operation === 'work.submit').map(r => r.id));
-    expect(new Set(originalIds).size).toBe(2);
-    expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-  });
   test('instruction presentation counts reference receipts independently of repeated files output', async ({ page }) => {
     await ready(page); await create(page);
     await drop(page, ['/fixture/image.png']);
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', '/files\r\n'.repeat(7)));
     await composer(page).fill(instruction); await send(page);
-    await expect(entries(page)).toContainText('Verified start event', { timeout: 35000 });
+    await expect(composer(page)).toHaveValue('', { timeout: 35000 });
+    await expect(entries(page)).toHaveCount(0);
     const evidence = await page.evaluate(() => {
       const n = window.__nativeFixture, s = n.sessions.get('pty-1');
       return { requests: n.referenceRequests.filter(r => r.request.operation === 'references.register'),
@@ -76,28 +32,6 @@ export function registerInstructionPresentation({ test, expect, transport, confi
     expect(evidence.writes).toEqual([]); expect(evidence.commands).toEqual([]);
     expect((await page.locator('.xterm-rows').innerText()).match(/\/files/g)).toHaveLength(7);
   });
-  for (const mode of ['rejected', 'unknown', 'not-sent', 'admitted', 'queued']) {
-    test(`instruction presentation preserves ${mode} and updates the original entry`, async ({ page }) => {
-      await ready(page, { workMode: ['not-sent', 'queued'].includes(mode) ? 'started' : mode }); await create(page);
-      await page.evaluate(mode => { const f = window.__nativeFixture.sessions.get('pty-1').feature;
-        if (mode === 'not-sent') f.fault = 'not-sent'; if (mode === 'queued') f.holdSubmit = true; }, mode);
-      const original = '  ' + instruction + '\n안녕 🌍\n';
-      await composer(page).fill(original); await send(page); await expect(entries(page)).toHaveCount(1, { timeout: 35000 });
-      expect(await entries(page).locator('pre').textContent()).toBe(original);
-      await expect(entries(page)).toContainText(mode === 'queued' ? 'Queued' : mode === 'admitted' ? 'Admitted · start unconfirmed'
-        : mode === 'unknown' ? 'Outcome unknown' : mode === 'rejected' ? 'Rejected' : 'Not sent');
-      await expect(entries(page)).toContainText('Start unconfirmed'); await expect(composer(page)).toHaveValue(original);
-      if (['queued', 'admitted', 'unknown'].includes(mode)) {
-        await page.evaluate(mode => { const f = window.__nativeFixture.sessions.get('pty-1').feature;
-          f.mode = 'started'; if (mode === 'queued') f.releaseSubmit(); }, mode);
-        if (mode === 'unknown') await page.getByRole('button', { name: 'Refresh work status', exact: true }).click();
-        await expect(composer(page)).toHaveValue('', { timeout: 30000 }); await expect(entries(page)).toContainText('Verified start event');
-      }
-      await expect(entries(page)).toHaveCount(1); expect(await entries(page).locator('pre').textContent()).toBe(original);
-      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
-      expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-    });
-  }
   for (const outcome of ['accepted', 'rejected', 'outcome-unknown']) {
     test(`instruction presentation keeps seven pre-readiness output lines separate from authenticated /files ${outcome}`, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true });

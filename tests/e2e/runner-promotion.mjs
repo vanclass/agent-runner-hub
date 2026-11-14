@@ -1,5 +1,5 @@
 export function registerRunnerPromotion({ test, expect, transport, configure, create, generatedFixture }) {
-  test('promotion completed work and images give way to new tab results', async ({ page }) => {
+  test('tab replacement scopes completed work and images to its native owner', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true, ...generatedFixture() });
     await configure(page);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
@@ -7,10 +7,11 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     await create(page);
     await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await expect(page.locator('.generated-image-preview img')).toBeVisible();
-    await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('old tab work');
-    await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-    await expect(page.locator('.runner-work-status')).toContainText('Verified start event', { timeout: 35000 });
-    await expect(page.locator('.runner-instruction pre')).toHaveText('old tab work');
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
+    await page.locator('textarea[data-instruction]').fill('old tab work');
+    await page.locator('textarea[data-instruction]').press('Enter');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
+    await expect(page.locator('.runner-instruction')).toHaveCount(0);
     await expect(page.locator('.config-receipt')).not.toHaveCount(0);
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.mode = 'succeeded'; });
@@ -23,30 +24,34 @@ export function registerRunnerPromotion({ test, expect, transport, configure, cr
     expect(next.id).not.toBe(old.id); expect(next.createdOrder).toBeGreaterThan(old.createdOrder);
     const navigation = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation);
     expect(navigation.executedModes).not.toEqual([]);
-    expect(navigation.affinities).not.toHaveProperty(next.id);
+    expect(navigation.affinities[next.id]).toBe('issue-run');
     expect(navigation.affinities).not.toHaveProperty(old.id);
     await expect(page.locator('.runner-work-status, .config-receipt, .unread-completion, .status-dot.completed')).toHaveCount(0);
     await expect(page.locator('.runner-instruction')).toHaveCount(0);
     await expect(page.locator('.generated-images summary')).toHaveCount(0);
-    await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
-    await expect(page.locator('.generated-images')).toContainText('ownership by this new tab could not be verified');
-    await expect(page.locator('.generated-image-preview')).toHaveCount(0);
-    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
-    await page.evaluate(() => {
-      const n = window.__nativeFixture.sessions.get('pty-1'); n.feature.mode = 'started';
+    const nativeId = (await page.locator('.xterm-rows').innerText()).match(/pty-\d+/)[0];
+    if (nativeId === 'pty-1') {
+      await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'unavailable');
+      await expect(page.locator('.generated-images')).toContainText('ownership by this new tab could not be verified');
+      await expect(page.locator('.generated-image-preview')).toHaveCount(0);
+    } else {
+      await expect(page.locator('.generated-images')).toHaveAttribute('data-state', 'available');
+      await expect(page.locator('.generated-image-preview img')).toBeVisible();
+    }
+    await page.evaluate(id => {
+      const n = window.__nativeFixture.sessions.get(id); n.feature.mode = 'started';
       n.images.push({ ...n.images[0], imageId: 'f'.repeat(32), sourceSequence: 3 });
-    });
-    await expect(page.getByRole('button', { name: 'Refresh images', exact: true })).toBeDisabled();
-    await expect(page.locator('.generated-image-preview')).toHaveCount(0);
+    }, nativeId);
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).focus();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
+    await expect(page.locator('.config-progress[aria-busy="true"]')).toHaveCount(0);
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('new tab work');
-    await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
-    await expect(page.locator('.runner-work-status')).toContainText('Verified start event', { timeout: 35000 });
-    await expect(page.locator('.config-receipt')).not.toHaveCount(0);
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(2);
-    await expect(page.locator('.runner-instruction')).toHaveCount(1);
-    await expect(page.locator('.runner-instruction pre')).toHaveText('new tab work');
+    await page.locator('textarea[data-instruction]').press('Enter');
+    await expect(page.locator('textarea[data-instruction]')).toHaveValue('', { timeout: 35000 });
+    expect(await page.evaluate(id => window.__nativeFixture.sessions.get(id).feature.work.run_mode, nativeId)).toBe('task-run');
+    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests).filter(r => r.operation === 'work.submit').length)).toBe(2);
+    await expect(page.locator('.runner-instruction')).toHaveCount(0);
   });
   for (const delayed of ['list', 'read', 'failure', 'unavailable']) {
     test(`promotion retains authority and fences old image ${delayed}`, async ({ page }) => {

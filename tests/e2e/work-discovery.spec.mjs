@@ -24,12 +24,8 @@ test('promotion projection retains old discovery evidence, admits new events and
   });
 });
 
-async function setup(page, changes = {}, renderStatus = false) {
+async function setup(page, changes = {}) {
   await page.goto('/');
-  if (renderStatus) {
-    await page.getByRole('button', { name: 'App settings', exact: true }).waitFor();
-    await page.evaluate(() => { window.__workResources = performance.getEntriesByType('resource').map(entry => entry.name); });
-  }
   await page.clock.install();
   await page.evaluate(async changes => {
     const { RunnerWork } = await import('/src/hub/runnerWork.ts');
@@ -278,8 +274,8 @@ test('work discovery unsupported operations preserve API tracking and exact-sess
   expect(await page.evaluate(() => ({ activity: window.__discovery.work.activity, unread: window.__discovery.work.unread })))
     .toEqual({ activity: 'unknown', unread: false });
 });
-test('terminal Refresh observes retained work after list rejection without status support', async ({ page }) => {
-  await setup(page, { operations: ['work.list', 'work.observe'] }, true);
+test('internal reconciliation observes retained work after list rejection without status support', async ({ page }) => {
+  await setup(page, { operations: ['work.list', 'work.observe'] });
   await page.evaluate(async () => {
     const { fixture, work, terminalWork } = window.__discovery;
     fixture.observations.set('terminal:1', terminalWork(1, 1)); fixture.changed(); await work.refreshInventory();
@@ -293,27 +289,15 @@ test('terminal Refresh observes retained work after list rejection without statu
       return admission;
     };
     try { await work.refreshInventory(); } catch { /* Expected list rejection preserves retained work. */ }
-    const resources = window.__workResources;
-    const { default: React } = await import(resources.find(url => /\/react\.js\?/.test(url)));
-    const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
-    const { RunnerWorkStatus } = await import('/src/hub/RunnerWorkStatus.tsx');
-    document.querySelector('dialog')?.close();
-    const host = document.createElement('div'); document.body.append(host);
-    const root = createRoot(host);
-    window.__discovery.render = () => root.render(React.createElement(RunnerWorkStatus, { work }));
-    window.__discovery.render();
   });
-  const refresh = page.locator('.runner-work-status button');
-  await expect(refresh).toBeEnabled();
   expect(await page.evaluate(() => window.__discovery.work.discoverySupported)).toBe(false);
   await page.evaluate(() => {
     const { fixture, terminalWork } = window.__discovery;
     fixture.observations.set('terminal:1', terminalWork(1, 3,
       { started_event_id: 1, state: 'succeeded', terminal: true, outcome: 'succeeded' }));
   });
-  await refresh.click();
-  await expect(page.locator('.runner-work-status [role="status"]')).toHaveText('Succeeded');
-  await expect(refresh).toBeDisabled();
+  await page.evaluate(() => window.__discovery.work.refreshStatus());
+  expect(await page.evaluate(() => window.__discovery.work.current.work.state)).toBe('succeeded');
   expect(await page.evaluate(() => window.__discovery.fixture.requests.map(r => r.operation)))
     .toEqual(['work.list', 'work.list', 'work.observe']);
   expect(await page.evaluate(() => window.__discovery.fixture.requests.at(-1)))

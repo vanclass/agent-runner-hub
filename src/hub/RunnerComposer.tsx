@@ -2,7 +2,6 @@ import { useHubTranslation, t } from './i18n';
 import { useLayoutEffect, useRef } from 'react';
 import type { RunnerSession } from './RunnerSessions';
 import { ComposerAttachments } from './ComposerAttachments';
-import { RunnerWorkStatus } from './RunnerWorkStatus';
 import { instructionKey } from './instructionKey';
 
 export function RunnerComposer({ session }: { session: RunnerSession }) {
@@ -38,7 +37,6 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   }
   return <section ref={host} className="composer-area runner-composer" aria-label={t('composer.label')}>
     <div className="runner-composer-content">
-    <RunnerWorkStatus work={session.control.work} />
     <ComposerAttachments selection={session.references} disabled={!!session.view.closing || pending || session.assignmentReserved || session.submissionUncertain}>
       <textarea data-instruction="true" aria-label={t(session.hubSelections?.defaults.runMode === 'issue-run' ? 'brief.input' : 'composer.runnerInstructions')} value={text} rows={3} disabled={!available || pending}
         onKeyDown={event => instructionKey(event, briefRun => {

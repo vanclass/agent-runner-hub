@@ -9,23 +9,8 @@
     "storageFailed": "허브 로그 저장소를 사용할 수 없습니다({{code}}). 기존 기록은 유지됩니다. 재시작 전에 앱 로컬 저장소를 확인하세요."
   },
   "interaction": {
-    "label": "Runner 상호작용",
-    "commandResult": "명령 결과",
-    "unsupported": "이 Runner 또는 포그라운드 소유자는 구조화 입력을 지원하지 않습니다. 터미널 로그는 읽기 전용입니다.",
-    "observing": "인증된 포그라운드 상태를 확인하는 중…",
-    "pending": "인증된 상호작용 응답을 기다리는 중…",
-    "disconnected": "Runner 연결이 끊겼습니다. 입력할 수 없습니다.",
-    "unavailable": "포그라운드 상태를 확인할 수 없어 입력을 차단했습니다.",
-    "accepted": "입력이 수락되었습니다. 최종 결과는 시작 명령이 결정합니다.",
-    "cancelled": "취소 입력이 수락되었습니다. 시작 명령의 최종 결과를 확인하세요.",
-    "rejected": "입력이 거부되었습니다({{code}}). 현재 상호작용을 다시 확인합니다.",
-    "unknown": "입력 또는 효과가 불확실합니다. 입력을 재전송하지 않습니다. 명령의 최종 결과를 확인하세요.",
-    "ownerChanged": "Runner 세션이 변경되어 이전 상호작용 제어를 종료했습니다.",
-    "usePanel": "포그라운드 응답은 Runner 상호작용 제어를 사용하세요.",
-    "commandSubmitted": "인증된 제어로 명령을 제출했습니다. 최종 응답을 확인하세요.",
-    "submit": "응답 제출",
-    "back": "뒤로",
-    "cancel": "취소"
+    "foregroundBlocked": "Runner에 포그라운드 처리가 필요합니다. Hub의 구조화된 상호작용 지원은 추후 제공됩니다.",
+    "commandSubmitted": "인증된 제어로 명령을 제출했습니다. 최종 응답을 확인하세요."
   },
   "shortcuts": {
     "title": "단축키 설정",
@@ -101,27 +86,7 @@
     "retained": "Runner 작업 상태: {{state}}. 소유권을 유지하며 재전송하지 않습니다. 해당 Runner 탭에서 계속 진행하세요.",
     "rejected": "지시문 미전송 또는 접수 거부: {{code}}. 초안을 유지합니다.",
     "unavailable": "작업을 사용할 수 없거나 처리 중 또는 미완료 작업을 소유하고 있습니다. Runner의 제출·상태 조회·API/터미널 작업 검색 지원을 확인하거나 기존 작업을 검토하세요. 지시문을 재제출하지 않았습니다.",
-    "refresh": "작업 상태 새로 고침",
-    "status": "Runner 작업",
-    "instructions": "제출한 지시문",
-    "startEvidence": "확인된 시작 이벤트: {{event}}",
-    "noStart": "시작 미확인",
-    "queued": "대기 중 · 접수 및 시작 미확인",
-    "unknown": "결과 불확실 · 자동 재전송 금지",
-    "notSent": "전송 안 됨 · 초안 유지",
-    "states": {
-      "dispatching": "전달 접수됨",
-      "instruction_admitted": "접수됨 · 시작 미확인",
-      "execution_started": "시작됨",
-      "active": "실행 중",
-      "suspended": "일시 중단",
-      "incomplete": "미완료",
-      "succeeded": "성공",
-      "failed": "실패",
-      "interrupted": "중단됨",
-      "unknown": "불확실",
-      "rejected": "거부됨"
-    }
+    "status": "Runner 작업"
   },
   "config": {
     "appliedLabel": "적용됨",
@@ -353,11 +318,7 @@
     "placeholder": "지시문 작성…"
   },
   "terminal": {
-    "label": "Runner 터미널",
-    "searchLabel": "터미널 검색",
-    "search": "검색 ",
-    "previous": "이전",
-    "next": "다음"
+    "label": "Runner 터미널"
   },
   "images": {
     "label": "생성 이미지",
