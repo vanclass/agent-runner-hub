@@ -1,4 +1,4 @@
-import { useHubTranslation, t, tr } from './i18n';
+import { useHubTranslation, t } from './i18n';
 import type { SingleEntry, EntryDefaults } from './singleEntry';
 import type { HubSelections } from './HubSelections';
 import { same } from './runnerConfigContract';
@@ -28,7 +28,6 @@ export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
   };
   const model = models?.find(m => m.id === defaults.model?.model);
   return <section>
-    <p role="status">{entry.detail ? tr(entry.detail) : ''}</p>
     <div className="settings-grid">
     <section className="settings-group account-settings"><h2>{t('fields.account')}</h2>
       {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}

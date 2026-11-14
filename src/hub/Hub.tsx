@@ -116,7 +116,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected}
         session={sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined)}
-        theme={theme} installation={installation} hubLog={hubLog}
+        theme={theme} installation={installation} hubLog={hubLog} selections={sessions.getSelections(selectedId ?? undefined)}
         entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
         control={sessions.get(selectedId ?? undefined)?.control}

@@ -15,7 +15,8 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
     const fit = () => {
       const style = getComputedStyle(input);
       const base = parseFloat(style.lineHeight) * input.rows + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      const limit = Math.max(base, workspace.clientHeight - parseFloat(getComputedStyle(slot).getPropertyValue('--composer-top-gap')));
+      const footer = workspace.querySelector<HTMLElement>('.hub-activity')?.offsetHeight ?? 0;
+      const limit = Math.max(base, workspace.clientHeight - footer - parseFloat(getComputedStyle(slot).getPropertyValue('--composer-top-gap')));
       input.style.height = '0px';
       const chrome = content.scrollHeight - input.offsetHeight;
       const height = Math.min(Math.max(base, input.scrollHeight), Math.max(base, limit - chrome));

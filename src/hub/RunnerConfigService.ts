@@ -27,11 +27,15 @@ export class RunnerConfigService {
   error: HubText = '';
   readonly applications: ConfigApplication[] = [];
   private presentationOffset = 0;
+  private presentationReceiptOffset = 0;
   private previousProgress: FeatureResult | undefined | null = null;
   get presentedApplications() { return this.applications.slice(this.presentationOffset); }
   get presentedError() { return this.progress === this.previousProgress ? '' : this.error; }
+  get presentedProgress() { return this.progress === this.previousProgress ? undefined : this.progress; }
+  get presentedRequests() { return [...this.receipts.values()].slice(this.presentationReceiptOffset); }
   beginPresentation() {
     this.presentationOffset = this.applications.length;
+    this.presentationReceiptOffset = this.receipts.size;
     this.previousProgress = this.progress;
   }
   private identity?: ConfigIdentity;

@@ -6,6 +6,7 @@ for (const recovery of ['replacement', 'readiness']) {
     const result = await page.evaluate(async recovery => {
       const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
       const { HubSelections } = await import('/src/hub/HubSelections.ts');
+      const { hubActivityKey } = await import('/src/hub/HubActivity.tsx');
       const first = createConfigHarness(), next = createConfigHarness();
       let source = first.service;
       const choices = new HubSelections(() => source, () => {}, { runMode: 'issue-run' });
@@ -17,10 +18,11 @@ for (const recovery of ['replacement', 'readiness']) {
       if (recovery === 'readiness') { source = undefined; choices.initialize(); }
       source = recovery === 'replacement' ? next.service : first.service;
       first.fixture.fault = ''; choices.initialize(); await settle();
-      return { failed, unchanged, catalog: !!choices.catalog, defaults: choices.defaults };
+      return { failed, unchanged, catalog: !!choices.catalog, defaults: choices.defaults, activity: hubActivityKey(choices) };
     }, recovery);
     expect(result.failed).toBeGreaterThan(0); expect(result.unchanged).toBe(result.failed);
     expect(result.catalog).toBe(true); expect(result.defaults).toEqual({ runMode: 'issue-run' });
+    expect(result.activity).toBeUndefined();
   });
 }
 

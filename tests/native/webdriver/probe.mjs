@@ -28,7 +28,15 @@ export async function observeHub(browser) {
     pressed: document.querySelectorAll('.app-settings .theme-picker button')[1].getAttribute('aria-pressed'),
     persistedTheme: JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).theme }));
   assert.deepEqual(changed, { theme: 'black', pressed: 'true', persistedTheme: 'black' });
-  return { initial, changed, interaction: 'scripted DOM click; no physical/native input' };
+  const activity = await browser.execute(() => {
+    const line = document.querySelector('.hub-activity'), previous = line.previousElementSibling;
+    return { text: line.textContent, height: line.getBoundingClientRect().height,
+      whiteSpace: getComputedStyle(line).whiteSpace, previous: previous.className,
+      belowComposer: line.getBoundingClientRect().top === previous.getBoundingClientRect().bottom,
+      detailedPanels: document.querySelectorAll('.config-evidence, .config-plan, .config-receipt').length };
+  });
+  assert.deepEqual(activity, { text: '', height: 22, whiteSpace: 'nowrap', previous: 'composer-area', belowComposer: true, detailedPanels: 0 });
+  return { initial, changed, activity, interaction: 'scripted DOM click; no physical/native input' };
 }
 
 export const rendererProbe = defineNativeCase({

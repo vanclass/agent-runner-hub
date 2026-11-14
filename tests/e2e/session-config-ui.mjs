@@ -33,10 +33,20 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
       const f = window.__nativeFixture.sessions.get('pty-1').feature;
       f.config.holdOperation = 'session_config.apply';
     });
+    const geometry = await page.locator('.workspace').evaluate(node =>
+      [...node.children].map(child => ({ cls: child.className, y: child.getBoundingClientRect().y, height: child.getBoundingClientRect().height })));
     await composer(page).fill('exact once\n안녕 🌍'); await send(page);
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
       .some(r => r.operation === 'session_config.apply'))).toBe(true);
+    await expect(page.locator('.hub-activity')).not.toContainText('Settings application verified.');
+    expect(await page.locator('.workspace').evaluate(node =>
+      [...node.children].map(child => ({ cls: child.className, y: child.getBoundingClientRect().y, height: child.getBoundingClientRect().height })))).toEqual(geometry);
+    expect(await page.locator('.hub-activity').evaluate(node => ({
+      previous: node.previousElementSibling.className, whiteSpace: getComputedStyle(node).whiteSpace,
+      height: node.getBoundingClientRect().height, messages: node.querySelectorAll('.hub-activity-message').length
+    }))).toEqual({ previous: 'composer-area runner-composer', whiteSpace: 'nowrap', height: 22, messages: 1 });
     await page.locator('.runner-row').nth(1).locator('.nav-row').click();
+    await expect(page.locator('.hub-activity')).toBeEmpty();
     await composer(page).fill('independent draft');
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-2').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     await page.evaluate(() => {
@@ -90,10 +100,20 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
       await expect(page.locator('.hub-log-records')).toContainText('runner/', { timeout: 30000 });
       await page.keyboard.press('Control+End');
       await expect(composer(page)).toHaveValue('keep me');
+      if (['invalid', 'confirmation_required'].includes(fault)) {
+        await expect(page.locator('.hub-activity')).toContainText(fault === 'invalid'
+          ? 'The settings request was rejected.' : 'Runner needs user confirmation.');
+        await expect(page.locator('.config-plan, .config-evidence, .config-receipt')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toHaveCount(0);
+        await expect(page.locator('.task-panel .shortcut-bar, .task-panel .command-button')).toHaveCount(0);
+        expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
+        expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
+          .some(r => r.operation === 'session_config.plan'))).toBe(true);
+      }
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       if (['partial', 'final-inspection'].includes(fault)) {
-        await expect(page.locator('.config-receipt')).toContainText('Some settings committed');
-        await expect(page.locator('.config-receipt')).toContainText('Owner-confirmed commit');
+        await expect(page.locator('.hub-activity')).toContainText('Only some settings were applied.');
+        await expect(page.locator('.config-receipt, .config-evidence')).toHaveCount(0);
       }
       if (['invalid', 'confirmation_required', 'root', 'unsupported'].includes(fault))
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);

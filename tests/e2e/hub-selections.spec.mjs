@@ -1,6 +1,69 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 const key = 'agent-runner-hub.preferences.v1';
+test('configuration receipts retain refusal across inspection and respect promotion baseline', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { hubActivityKey } = await import('/src/hub/HubActivity.tsx');
+    const { service, fixture } = createConfigHarness();
+    await service.inspect(); service.setDraft({ run_mode: 'issue-run' });
+    fixture.planStatus = 'invalid'; await service.createPlan(); await service.inspect();
+    const retained = hubActivityKey(undefined, service), receipts = service.presentedRequests.length;
+    service.beginPresentation();
+    return { retained, receipts, next: hubActivityKey(undefined, service), internal: !!service.getReceipt(fixture.features.results.find(r => r.operation === 'session_config.plan').id) };
+  });
+  expect(result.retained).toBe('activity.rejected'); expect(result.receipts).toBeGreaterThan(0);
+  expect(result.next).toBeUndefined(); expect(result.internal).toBe(true);
+});
+test('Hub Activity keeps one line and leaves unchanged announcements untouched', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const resources = performance.getEntriesByType('resource').map(entry => entry.name);
+    const { default: React } = await import(resources.find(url => /\/react\.js\?/.test(url)));
+    const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
+    const { HubActivity } = await import('/src/hub/HubActivity.tsx');
+    const host = document.createElement('div'); host.style.width = '220px'; document.body.append(host);
+    const root = createRoot(host), props = { selections: { loadingOptions: true } };
+    const render = async p => { root.render(React.createElement(HubActivity, p)); await new Promise(r => setTimeout(r, 30)); };
+    await render(props);
+    const line = host.firstElementChild, height = line.getBoundingClientRect().height;
+    const observer = new MutationObserver(() => {}); observer.observe(line, { subtree: true, childList: true, characterData: true });
+    await render(props); const unchanged = observer.takeRecords().length;
+    await render({ selections: { detail: 'RAW_DIAGNOSTIC_CODE' } });
+    const failure = line.textContent, stableHeight = line.getBoundingClientRect().height === height;
+    const wrap = getComputedStyle(line).whiteSpace;
+    await render({}); const idle = line.textContent, idleHeight = line.getBoundingClientRect().height;
+    observer.disconnect(); root.unmount(); host.remove();
+    return { unchanged, failure, stableHeight, wrap, idle, height, idleHeight };
+  });
+  expect(result).toEqual({ unchanged: 0, failure: 'HubCould not inspect Runner settings.', stableHeight: true,
+    wrap: 'nowrap', idle: '', height: 22, idleHeight: 22 });
+});
+test('Hub Activity projects every category without diagnostics or admission success', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { hubActivityKey: key } = await import('/src/hub/HubActivity.tsx');
+    const base = { busy: false, activity: 'idle', presentedApplications: [], presentedError: '' };
+    const active = Object.fromEntries(['inspecting', 'catalog', 'planning', 'applying', 'verifying'].map(activity =>
+      [activity, key({ loadingOptions: true }, { ...base, busy: true, activity })]));
+    const requests = Object.fromEntries(['sending', 'queued', 'pending-interaction'].map(state =>
+      [state, key(undefined, { ...base, busy: true, activity: 'applying', presentedProgress: { state } })]));
+    const application = (receipt, result, verification = 'verified') => key({ detail: 'RAW_DIAGNOSTIC' },
+      { ...base, presentedApplications: [{ receipt, result, verification }] });
+    return { active, requests, idle: key(), options: key({ loadingOptions: true }),
+      outcomes: ['not-sent', 'rejected', 'failure'].map(state => application({ state })),
+      unknown: application({}, undefined, 'unknown'), partial: application({}, { apply_status: 'partial' }, 'unavailable'),
+      unavailable: application({}, { apply_status: 'applied' }, 'unavailable'),
+      success: application({}, { apply_status: 'applied' }), accepted: application({ state: 'accepted' }),
+      errors: ['chooseTarget', 'defaultsUnresolved', 'incomplete', 'unsupported', 'requestFailed'].map(k => key({ detail: { key: 'config.' + k } })) };
+  });
+  expect(result.active).toEqual(Object.fromEntries(['inspecting', 'catalog', 'planning', 'applying', 'verifying'].map(k => [k, 'activity.' + k])));
+  expect(result.requests).toEqual({ sending: 'activity.sending', queued: 'activity.queued', 'pending-interaction': 'activity.interaction' });
+  expect(result).toMatchObject({ options: 'activity.options', outcomes: ['activity.notSent', 'activity.rejected', 'activity.failure'], unknown: 'activity.unknown', partial: 'activity.partial', unavailable: 'activity.finalUnavailable', success: 'activity.success', accepted: 'activity.verifying' });
+  expect(result.idle).toBeUndefined();
+  expect(result.errors).toEqual(['chooseTarget', 'defaultsUnresolved', 'incomplete', 'unsupported', 'inspectionFailed'].map(k => 'activity.' + k));
+});
 for (const draft of [{ allocationPolicy: 'reuse-idle' }, { root: 'C:/explicit' }]) {
   test('current non-execution draft can initialize: ' + JSON.stringify(draft), async ({ page }) => {
     await page.goto('/');

@@ -4,7 +4,6 @@ import type { RunnerControl } from './runnerControl';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntrySettings, HubSelectionSettings } from './SingleEntryComposer';
 import type { HubSelections } from './HubSelections';
-import { RunnerConfigPanel } from './RunnerConfigPanel';
 import './taskPanel.css';
 
 /** Presentation only: preferences and each Runner retain their own settings state. */
@@ -31,7 +30,7 @@ export function TaskPanel({ entry, control, scope, selections }: {
     </button>
     <div id="task-panel-body" className="task-panel-body" hidden={collapsed}>
       <div key={scope}>
-        {control ? <>{selections && <HubSelectionSettings entry={selections} />}<RunnerConfigPanel control={control} /></>
+        {control ? selections && <HubSelectionSettings entry={selections} />
           : scope === 'single-entry' ? <SingleEntrySettings entry={entry} /> : <p>{t('common.notConnected')}</p>}
       </div>
     </div>

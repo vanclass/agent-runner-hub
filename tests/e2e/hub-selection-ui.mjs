@@ -15,6 +15,8 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await configure(page);
     await expect(requested(page, 'Account').getByRole('option', { name: 'codex / first', exact: true })).toBeAttached();
     await expect(requested(page, 'Account')).toBeEnabled();
+    await expect(page.locator('.hub-activity')).toContainText('Select a project or target.');
+    await expect(page.locator('.task-panel [role="status"]')).toHaveCount(0);
     const count = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.length);
     const settled = await count();
     await page.waitForTimeout(1000);

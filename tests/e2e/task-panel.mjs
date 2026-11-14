@@ -1,3 +1,4 @@
+import { drop } from './composer-attachments.mjs';
 export function registerTaskPanel({ test, expect, transport, configure, create, generatedFixture }) {
   test('task panel preserves a restored unavailable mode visibly after catalog inspection', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
@@ -75,7 +76,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       expect(await panel.locator('.settings-group').evaluateAll(nodes => nodes.map(n => n.className)))
         .toEqual(['settings-group account-settings', 'settings-group execution-settings', 'settings-group model-settings']);
       expect(await mode.locator('option:not([value=""])').allTextContents())
-        .toEqual(['Pure Direct Run', 'Direct Run', 'Task Run', 'Issue Run']);
+        .toEqual(['Pure Direct Run', 'Direct Run', 'Task Run', 'Issue Run', 'Subagent Run']);
       for (const value of ['pure-direct-run', 'direct-run', 'task-run', 'issue-run']) {
         await mode.selectOption(JSON.stringify(value));
         const direct = value.includes('direct-run');
@@ -140,7 +141,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
   test('task panel keeps a crowded Runner composer reachable at narrow native-scale dimensions', async ({ page }) => {
     await transport(page, undefined, { auto: true, clipboard: true, ...generatedFixture() });
     await configure(page); await create(page);
-    await page.getByRole('button', { name: 'Attach file', exact: true }).click();
+    await drop(page, ['C:/fixture/file.txt']);
     await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
     for (const size of [{ width: 626, height: 450 }, { width: 608, height: 416 }]) {
@@ -148,28 +149,27 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       const composer = page.getByRole('textbox', { name: 'Runner instructions', exact: true });
       await composer.focus(); await composer.fill('local draft only');
       await expect(composer).toBeInViewport();
-      await page.getByRole('button', { name: 'Send instruction', exact: true }).scrollIntoViewIfNeeded();
-      await expect(page.getByRole('button', { name: 'Send instruction', exact: true })).toBeInViewport();
-      await expect(page.locator('.workspace .composer-area')).toHaveCSS('overflow-y', 'auto');
+      await expect(page.locator('.hub-activity')).toBeInViewport();
+      await expect(page.locator('.runner-composer-content')).toHaveCSS('overflow-y', 'auto');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
   });
   for (const status of ['invalid', 'confirmation_required']) {
     test(`task panel blocks work for ${status} plans without command controls`, async ({ page }) => {
-      await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+      await transport(page, undefined, { auto: true, work: true }); await configure(page);
+      await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+      await create(page);
       await page.evaluate(status => {
         for (const s of window.__nativeFixture.sessions.values()) s.feature.config.planStatus = status;
       }, status);
-      await page.getByRole('combobox', { name: 'Requested Model', exact: true }).focus();
-      await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
-      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
+      await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).selectOption({ label: 'Exact' });
       await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('unsent');
-      await page.getByRole('button', { name: 'Send instruction', exact: true }).click();
+      await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).press('Enter');
+      await expect(page.locator('.hub-activity')).toContainText(status === 'invalid' ? 'The settings request was rejected.' : 'Runner needs user confirmation.');
+      await expect(page.locator('.config-plan, .config-evidence, .config-receipt, .task-panel .command-button')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Apply reviewed plan', exact: true })).toHaveCount(0);
-      await expect(page.locator('.config-plan')).toContainText(status === 'invalid' ? 'CONFIG_MODEL_INVALID' : 'release_context_in_runner_terminal');
       await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('unsent');
-      await expect(page.locator('.task-panel .shortcut-bar, .task-panel .command-button')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.filter(r => r.operation.endsWith('.apply')))).toEqual([]);

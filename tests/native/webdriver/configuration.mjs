@@ -7,7 +7,18 @@ import { changeValue, readyInstalledHub, ownedConnection, inspection,
 
 export function configurationSelection(runnerRoot) {
   return defineNativeCase({
-    id: 'configuration-selection', presentation: 'background',
+    id: 'configuration-selection', presentation: 'nonactivating',
+    async observe(browser) {
+      const activity = await browser.execute(() => {
+        const line = document.querySelector('.hub-activity');
+        return { height: line.getBoundingClientRect().height, wrap: getComputedStyle(line).whiteSpace,
+          belowComposer: Math.abs(line.getBoundingClientRect().top - line.previousElementSibling.getBoundingClientRect().bottom) < 1,
+          settingsOpen: !!document.querySelector('.app-settings[open]'),
+          detailedPanels: document.querySelectorAll('.config-evidence, .config-plan, .config-receipt').length };
+      });
+      assert.deepEqual(activity, { height: 22, wrap: 'nowrap', belowComposer: true, settingsOpen: false, detailedPanels: 0 });
+      return activity;
+    },
     ready: browser => readyInstalledHub(browser, runnerRoot),
     async run(browser) {
       try {

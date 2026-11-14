@@ -9,12 +9,15 @@ import { RunnerImagePreviews } from './RunnerImagePreviews';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer } from './SingleEntryComposer';
+import { HubActivity } from './HubActivity';
+import type { HubSelections } from './HubSelections';
 
-export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog }: {
+export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog, selections }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
   hubLog: HubLog;
+  selections?: HubSelections;
 }) {
   useHubTranslation();
   const singleEntry = !runner;
@@ -35,5 +38,6 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
       location={installation?.root} onSelectRunner={onSelectRunner} /> : <section className="composer-area" aria-label={t('composer.label')}>
         <div className="composer"><textarea aria-label={t('composer.runnerInstructions')} disabled rows={3} />
         </div><p className="composer-note">{t('workspace.attachmentsUnavailable')}</p></section>}
+    <HubActivity selections={singleEntry ? entry.selections : selections} config={singleEntry ? undefined : session?.control.config} />
   </main>;
 }
