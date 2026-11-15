@@ -26,17 +26,64 @@ async function mount(page, count = 450) {
     window.detachLog = () => root.render(null);
     window.appendLog = async (n = 1, fields = {}) => { for (let i = 0; i < n; i++) await log.record({ ...event, ...fields }); };
     window.diskBytes = () => JSON.stringify(disk.slice(0, count));
+    window.logState = () => ({ pending: log.pending.length, saved: log.history.length, issue: log.issue });
+    window.delayLog = async () => {
+      const invoke = window.__TAURI_INTERNALS__.invoke;
+      let release;
+      const blocked = new Promise(resolve => { release = resolve; });
+      window.__TAURI_INTERNALS__.invoke = async (...args) => { await blocked; return invoke(...args); };
+      window.releaseLog = async () => { release(); await log.settled(); };
+      void log.record({ ...event, runner: 'Delayed event' });
+    };
+    window.unavailableLog = async () => {
+      window.__TAURI_INTERNALS__.invoke = async () => ({ records: structuredClone(disk), issue: 'HUB_LOG_UNAVAILABLE' });
+      await log.record({ ...event, runner: 'Unresolved event' });
+    };
     window.failLog = async () => { window.__TAURI_INTERNALS__.invoke = async () => { throw 'HUB_LOG_WRITE_FAILED'; }; await log.record(event); };
   }, count);
   await expect(page.locator('.hub-log-row')).toHaveCount(Math.min(count, 200));
 }
 const bottom = page => page.locator('.hub-log-records').evaluate(n => n.scrollHeight - n.scrollTop - n.clientHeight <= 2);
+test('delayed save renders once only after confirmation and survives unrelated updates', async ({ page }) => {
+  await mount(page, 2);
+  const rows = page.locator('.hub-log-records .hub-log-row');
+  const saved = await rows.allTextContents();
+  await page.evaluate(() => window.delayLog());
+  expect(await page.evaluate(() => window.logState())).toEqual({ pending: 1, saved: 2, issue: '' });
+  await expect(rows).toHaveCount(2); expect(await rows.allTextContents()).toEqual(saved);
+  await expect(page.locator('.hub-log-pending, .hub-log [role="alert"]')).toHaveCount(0);
+  await expect(page.locator('.hub-log')).not.toContainText('Not confirmed saved');
+  await expect(page.locator('.hub-log')).not.toContainText('Delayed event');
+  await page.evaluate(() => window.releaseLog());
+  await expect(rows).toHaveCount(3);
+  await expect(rows.filter({ hasText: 'Delayed event' })).toHaveCount(1);
+  expect(await page.evaluate(() => window.logState())).toEqual({ pending: 0, saved: 3, issue: '' });
+  await page.evaluate(async () => {
+    const { initializeHubLanguage } = await import('/src/hub/i18n.ts');
+    initializeHubLanguage('ko'); window.renderLog();
+  });
+  await expect(rows.filter({ hasText: 'Delayed event' })).toHaveCount(1);
+  await page.evaluate(() => window.appendLog());
+  await expect(rows).toHaveCount(4);
+  await expect(rows.filter({ hasText: 'Delayed event' })).toHaveCount(1);
+});
 test('empty history keeps its empty state and follows its first arriving record', async ({ page }) => {
   await mount(page, 0);
   await expect(page.locator('.hub-log-records')).toContainText('No retained Hub events.');
   await page.evaluate(() => window.appendLog());
   await expect(page.locator('.hub-log-row')).toHaveCount(1);
   expect(await bottom(page)).toBe(true);
+});
+test('unavailable save outcome keeps prior history and external actionable error', async ({ page }) => {
+  await mount(page, 2);
+  const saved = await page.locator('.hub-log-row').allTextContents();
+  await page.evaluate(() => window.unavailableLog());
+  await expect(page.locator('.hub-log > [role="alert"]')).toContainText('HUB_LOG_UNAVAILABLE');
+  await expect(page.locator('.hub-log > [role="alert"]')).toContainText('Check app-local storage before restarting');
+  expect(await page.locator('.hub-log-row').allTextContents()).toEqual(saved);
+  expect(await page.evaluate(() => window.logState())).toEqual({ pending: 1, saved: 2, issue: 'HUB_LOG_UNAVAILABLE' });
+  await expect(page.locator('.hub-log')).not.toContainText('Unresolved event');
+  await expect(page.locator('.hub-log-pending, .hub-log-records [role="alert"]')).toHaveCount(0);
 });
 const anchor = page => page.locator('.hub-log-records').evaluate(n => {
   const row = [...n.querySelectorAll('[data-sequence]')].find(r => r.getBoundingClientRect().bottom > n.getBoundingClientRect().top);
@@ -56,7 +103,7 @@ test('bottom following, historical anchor over multiple appends and expansion, r
   await page.evaluate(() => window.renderLog()); await expect(page.locator('.hub-log-row')).toHaveCount(200); expect(await bottom(page)).toBe(true);
   expect(await page.evaluate(() => window.diskBytes() === window.originalBytes)).toBe(true);
 });
-test('localized outcomes, exact local timestamp dates, safe legacy fallback, narrow wrapping and unsaved warning', async ({ page }) => {
+test('localized outcomes, exact local timestamp dates, safe legacy fallback, narrow wrapping and storage error', async ({ page }) => {
   await mount(page);
   const result = await page.evaluate(async () => {
     const { formatHubRecord, formatHubTimestamp } = await import('/src/hub/HubLog.ts');
@@ -94,6 +141,9 @@ test('localized outcomes, exact local timestamp dates, safe legacy fallback, nar
   await page.setViewportSize({ width: 360, height: 640 }); await expect(page.locator('.hub-log-row')).toHaveCount(201);
   const style = await page.locator('.hub-log-row').last().evaluate(n => ({ overflow: n.scrollWidth > n.clientWidth, height: n.clientHeight, color: getComputedStyle(n.querySelector('.hub-log-message')).color, category: getComputedStyle(n.querySelector('.hub-log-category')).color }));
   expect(style.overflow).toBe(false); expect(style.height).toBeGreaterThan(36); expect(style.color).not.toBe(style.category);
+  const saved = await page.locator('.hub-log-row').allTextContents();
   await page.evaluate(() => window.failLog()); await expect(page.locator('.hub-log [role="alert"]')).toContainText('HUB_LOG_WRITE_FAILED');
-  await expect(page.locator('.hub-log-pending')).toContainText('Not confirmed saved');
+  await expect(page.locator('.hub-log-records [role="alert"], .hub-log-pending')).toHaveCount(0);
+  expect(await page.locator('.hub-log-row').allTextContents()).toEqual(saved);
+  expect((await page.evaluate(() => window.logState())).pending).toBe(1);
 });

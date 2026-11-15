@@ -48,9 +48,6 @@ export function HubLogView({ log }: { log: HubLog }) {
         </div>;
       })}
       {!log.loading && !records.length && <p>{t('hubLog.empty')}</p>}
-      {log.pending.length > 0 && <div className="hub-log-pending"><p>{t('hubLog.unsaved')}</p>
-        {log.pending.map((event, index) => <p key={index}>{formatHubRecord(event).message}</p>)}
-      </div>}
     </div>
   </section>;
 }

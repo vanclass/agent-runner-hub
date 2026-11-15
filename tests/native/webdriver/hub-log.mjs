@@ -23,6 +23,15 @@ export function hubLogCase(runnerRoot) {
         && !!document.querySelector('.app-settings[open], .shell-body')), { timeout: browser.options.waitforTimeout });
     },
     async run(browser) {
+      await browser.execute(() => {
+        window.__hubPendingSeen = false;
+        new MutationObserver(mutations => {
+          for (const mutation of mutations) for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1 && (node.matches('.hub-log-pending') || node.querySelector('.hub-log-pending')))
+              window.__hubPendingSeen = true;
+          }
+        }).observe(document.body, { childList: true, subtree: true });
+      });
       await readyInstalledHub(browser, runnerRoot);
       await browser.execute(async () => {
         // Safe fixture history belongs only to the suite's isolated app-local profile.
@@ -89,6 +98,8 @@ export function hubLogCase(runnerRoot) {
         'agent-runner-hub.preferences.v1'))?.hubLogRetentionDays === 7), { timeout: browser.options.waitforTimeout });
       await browser.execute(() => document.querySelector('.settings-close').click());
       const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
+      assert.equal(await browser.execute(() => window.__hubPendingSeen), false, 'Startup and spare events must not insert temporary pending messages');
+      assert.equal(await browser.execute(() => !!document.querySelector('.hub-log-records .hub-log-pending, .hub-log-records [role="alert"]')), false);
       disk = await read(browser); assert.equal(disk.issue, null);
       assert.ok(lines.length > 0); assert.ok(disk.records.length >= lines.length);
       await stopWatching(browser);

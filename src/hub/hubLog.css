@@ -2,7 +2,7 @@
 .hub-log-row { display: grid; grid-template-columns: 19ch 8ch minmax(0, 1fr); gap: 0 12px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.5; margin-bottom: 6px; }
 .hub-log-time { color: var(--muted); }
 .hub-log-category { color: var(--text); }
-.hub-log-message, .hub-log-pending { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.hub-log-message { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .hub-log-message.success { color: var(--running); }
 .hub-log-message.warning { color: var(--attention); }
 .hub-log-message.failure { color: #b42318; }
@@ -11,4 +11,4 @@
   .hub-log-row { grid-template-columns: 10ch 7ch minmax(0, 1fr); gap: 0 6px; }
   .hub-log-time { white-space: normal; }
 }
-.hub-log [role='alert'], .hub-log-pending { color: var(--attention); }
+.hub-log [role='alert'] { color: var(--attention); }
