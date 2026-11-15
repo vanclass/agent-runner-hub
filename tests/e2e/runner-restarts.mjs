@@ -330,6 +330,10 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   for (const failure of ['cleanup', 'launch', 'post-open']) {
     test(`global restart speculative owner retains ${failure} failure resources without success`, async ({ page }) => {
       await owner(page, 0);
+      await page.evaluate(() => {
+        window.__restartEvents = [];
+        window.__restartOwner.subscribeLifecycle(event => window.__restartEvents.push(event.operation));
+      });
       await page.evaluate(() => window.__restartOwner.setInstallation({ root: '/fixture/install', python: '/fixture/python' }));
       await expect.poll(() => page.evaluate(() => window.__restartOwner.spareSnapshot.state)).toBe('ready');
       await page.evaluate(failure => {
@@ -345,6 +349,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
       }, failure);
       await expect.poll(async () => (await snapshot(page)).failed).toBe(1);
       expect((await snapshot(page)).restarted).toBe(0);
+      expect(await page.evaluate(() => window.__restartEvents)).toEqual(['spare-prepared', 'spare-failed']);
       expect(await page.evaluate(() => window.__restartOwner.failures.length)).toBe(failure === 'cleanup' ? 1 : 2);
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(failure === 'cleanup' ? [] : ['pty-1']);
       const shutdown = await page.evaluate(async () => {

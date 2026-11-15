@@ -323,6 +323,12 @@ test('hidden spare parses output and promotes the original PTY without a workspa
     const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
     const { resolveRunnerInstallation } = await import('/src/hub/runnerInstallation.ts');
     window.__spares = new RunnerSessions();
+    const { HubLog } = await import('/src/hub/HubLog.ts');
+    const { createHubLogCapture } = await import('/src/hub/HubLogCapture.ts');
+    window.__spareEvents = [];
+    const log = new HubLog(30);
+    log.record = async event => { window.__spareEvents.push(event); };
+    window.__stopSpareCapture = createHubLogCapture(log)(window.__spares);
     window.__spares.setInstallation(await resolveRunnerInstallation('/fixture/install'));
   });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
@@ -354,6 +360,12 @@ async function spareOwner(page) {
   await page.evaluate(async () => {
     const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
     window.__spares = new RunnerSessions();
+    const { HubLog } = await import('/src/hub/HubLog.ts');
+    const { createHubLogCapture } = await import('/src/hub/HubLogCapture.ts');
+    window.__spareEvents = [];
+    const log = new HubLog(30);
+    log.record = async event => { window.__spareEvents.push(event); };
+    window.__stopSpareCapture = createHubLogCapture(log)(window.__spares);
   });
 }
 async function prepareSpare(page, root = '/fixture/install') {
@@ -383,6 +395,10 @@ test('spare promotion assigns workspace order and replenishes once while other s
   });
   expect(first).toEqual({ id: 'pty-3', order: 2, name: 'Runner 2', refused: true, identical: true, total: 3 });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
+  expect(await page.evaluate(() => window.__spareEvents.filter(e => e.operation.startsWith('spare-'))
+    .map(e => [e.operation, e.runner]))).toEqual([
+    ['spare-prepared', ''], ['spare-promoted', 'Runner 2'], ['spare-prepared', ''],
+  ]);
   await page.evaluate(() => { window.__secondSpare = window.__spares.promoteSpare(); });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
   const state = await page.evaluate(async () => {
@@ -478,6 +494,7 @@ test('spare waits for authenticated observation and terminal protocol, drains qu
   })).toBe(true);
   await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 0; });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
+  expect(await page.evaluate(() => window.__spareEvents.map(e => e.operation))).toEqual(['spare-prepared']);
   const protocol = await page.evaluate(() => {
     const session = window.__spares.promoteSpare();
     return { id: session.control.sessionId, available: session.assignmentAvailable, win32: session.input.win32 };
@@ -512,6 +529,7 @@ test('spare timeout, launch failure and disconnection remain bounded and actiona
   expect(await page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('unavailable');
   await page.clock.fastForward(60000);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(3);
+  expect(await page.evaluate(() => window.__spareEvents.filter(e => e.operation === 'spare-failed').length)).toBe(3);
   await page.evaluate(() => window.__spares.dispose());
 });
 

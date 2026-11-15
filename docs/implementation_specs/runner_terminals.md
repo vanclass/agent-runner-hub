@@ -48,7 +48,7 @@ Installation changes and Hub disposal invalidate the spare generation, stop obse
 
 The green centered plus is an action at the end of the Runner list, including the empty list; it has no workspace record. Each allocation appends one real tab in creation order before that action and selects it. Manual activation is guarded against concurrent clicks until launch settles. A failed fresh launch retains its explicit failed tab and diagnostic, without automatic retry. The same list preserves rename, middle-click close and unread work indicators.
 
-Single Entry omits the central heading, badge and decorative starting prompt. Sidebar domains and their add actions follow [Runner navigation presentation](runner_navigation.md), independently of process allocation. Normal spare preparation/readiness stays internal; allocation errors and assignment results remain in their existing action-owned surfaces.
+Single Entry omits the central heading, badge and decorative starting prompt. Sidebar domains and their add actions follow [Runner navigation presentation](runner_navigation.md), independently of process allocation. Spare preparation has no separate status surface; verified preparation, promotion and failure are recorded in [Hub event history](hub_logs.md). Allocation errors and assignment results remain in their existing action-owned surfaces.
 
 ## Durable workspace and recovery
 

@@ -10,9 +10,16 @@ function code(value: HubText | undefined): string {
   const nested = Object.values(value.values ?? {}).filter(item => item && typeof item === 'object') as HubText[];
   return [value.key, diagnosticCode(value.values?.code), ...nested.map(code)].filter(Boolean).join('/').slice(0, 256);
 }
-type Source = Pick<RunnerSessions, 'subscribe' | 'getSnapshot' | 'get' | 'entry' | 'spareSnapshot' | 'workspace' | 'failures'>;
+type Source = Pick<RunnerSessions, 'subscribe' | 'subscribeLifecycle' | 'getSnapshot' | 'get' | 'getFailure' | 'failures'>;
 export function createHubLogCapture(log: HubLog) {
   const previous = new Map<string, string>();
+  const seen = new Set<string>();
+  const instances = new WeakMap<object, number>();
+  let nextInstance = 0;
+  const identity = (value: object) => {
+    if (!instances.has(value)) instances.set(value, ++nextInstance);
+    return instances.get(value)!;
+  };
   return (source: Source) => {
   const observe = (stream: string, event: HubEvent) => {
     const signature = JSON.stringify(event);
@@ -20,43 +27,56 @@ export function createHubLogCapture(log: HubLog) {
     previous.set(stream, signature);
     void log.record(event);
   };
-  const message = (stream: string, component: string, value: HubText | undefined, runner = '', actual = 'reported') => {
-    if (!value) { previous.delete(stream); return; }
-    const diagnostic = code(value);
-    observe(stream, { component, operation: diagnostic, runner: token(runner), target: '', expected: 'completed',
-      actual, code: diagnostic, nextAction: 'inspect-operation-status' });
+  const once = (stream: string, event: HubEvent) => {
+    if (seen.has(stream)) return;
+    seen.add(stream);
+    void log.record(event);
   };
   const refresh = () => {
-    message('entry', 'assignment', source.entry.progress, source.entry.runnerId, source.entry.phase);
-    message('spare', 'allocation', source.spareSnapshot.detail);
-    message('workspace', 'restoration', source.workspace.issue);
     for (const view of [...source.getSnapshot(), ...source.failures]) {
-      const id = view.id, session = source.get(id);
-      message(`${id}:detail`, 'runner', view.detail, id);
+      const id = view.id, session = source.get(id) ?? source.getFailure(id);
       if (!session) continue;
+      const instance = identity(session), runner = token(view.name);
+      const event = (component: string, operation: string, actual: string, diagnostic = actual): HubEvent => ({
+        component, operation, runner, target: destination, expected: 'confirmed-outcome', actual,
+        code: diagnostic, nextAction: 'inspect-operation-status' });
       const snapshot = session.control.snapshot;
-      message(`${id}:brief`, 'delivery', session.control.brief.detail, id,
-        session.control.brief.result?.status ?? (session.control.brief.busy ? 'pending' : 'reported'));
       const target = snapshot.observation?.target;
       const destination = target ? token(`${target.owner}/${target.project}`) : '';
-      observe(`${id}:connection`, { component: 'connection', operation: 'observe', runner: token(id), target: destination,
-        expected: 'ready', actual: snapshot.state, code: code(snapshot.detail) || snapshot.state, nextAction: 'inspect-connection' });
-      const progress = session.control.config.progress;
-      if (progress && (progress.operation !== 'session_config.inspect' || ['failure', 'rejected', 'not-sent', 'outcome-unknown'].includes(progress.state)))
-        observe(`${id}:config:${progress.id}`, { component: 'configuration', operation: token(progress.operation), runner: token(id), target: destination,
-        expected: 'completed-receipt', actual: token(progress.state), code: diagnosticCode(progress.code) || progress.state, nextAction: 'inspect-configuration-receipt' });
-      const work = session.control.work.current?.work;
-      if (work) observe(`${id}:work:${work.observation_id}`, { component: 'work', operation: 'observe', runner: token(id), target: destination,
-        expected: 'original-work-terminal', actual: work.state, code: token(work.outcome) || work.state, nextAction: 'inspect-original-work' });
-      for (const result of snapshot.results) observe(`${id}:command:${result.id}`, {
-        component: 'delivery', operation: 'command', runner: token(id), target: destination, expected: 'completed-receipt',
-        actual: result.state, code: diagnosticCode(result.code) || result.state, nextAction: 'inspect-command-receipt' });
+      if (['running', 'failed', 'exited'].includes(view.status))
+        once(`${instance}:lifetime:${view.status}`, event('system', 'runner-lifecycle', view.status, code(view.detail) || view.status));
+      if (snapshot.state !== 'connecting') observe(`${instance}:connection`,
+        event('system', 'connection', snapshot.state, code(snapshot.detail) || snapshot.state));
+      for (const application of session.control.config.applications) {
+        const receipt = application.receipt;
+        const outcome = application.result?.outcome_unknown ? 'unknown' : application.result?.apply_status
+          ?? (['rejected', 'failure', 'not-sent'].includes(receipt.state) ? receipt.state : 'unknown');
+        once(`${instance}:apply:${identity(application)}:${outcome}`, event('settings', 'configuration-apply', outcome,
+          diagnosticCode(receipt.code) || outcome));
+      }
+      for (const attempt of session.control.work.attempts) {
+        const work = attempt.work, key = `${instance}:work:${identity(attempt)}`;
+        if (work) {
+          if (work.admission === 'admitted') once(`${key}:admitted`, event('task', 'work-admitted', 'admitted'));
+          if (work.started_event_id > 0) once(`${key}:started`, event('task', 'work-started', 'started'));
+          if (work.terminal || ['unknown', 'incomplete', 'interrupted', 'rejected'].includes(work.state))
+            once(`${key}:${work.state}:${work.outcome}`, event('task', 'work-outcome', work.state, token(work.outcome)));
+        } else if (attempt.submission && ['rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(attempt.submission.state)) {
+          const receipt = attempt.submission;
+          once(`${key}:${receipt.state}`, event('task', 'work-submission', receipt.state, diagnosticCode(receipt.code) || receipt.state));
+        }
+      }
     }
   };
+  const stopLifecycle = source.subscribeLifecycle(event => {
+    void log.record({ component: 'system', operation: event.operation, runner: token(event.runner), target: '',
+      expected: 'confirmed-outcome', actual: event.operation.endsWith('failed') ? 'failed' : 'succeeded',
+      code: code(event.detail) || event.operation, nextAction: 'inspect-runner-status' });
+  });
   void log.start(); refresh();
   const stop = source.subscribe(refresh);
   // Age cleanup continues even when no event or view change occurs.
   const timer = setInterval(() => { void log.prune(); }, 3_600_000);
-  return () => { stop(); clearInterval(timer); };
+  return () => { stop(); stopLifecycle(); clearInterval(timer); };
   };
 }

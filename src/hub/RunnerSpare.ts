@@ -9,7 +9,8 @@ type SpareSnapshot = Readonly<{
   detail: HubText;
   installation: Readonly<RunnerInstallation> | null;
 }>;
-type Slot = { session: RunnerSession; generation: number; launched: boolean; restarting?: boolean;
+export type SpareEvent = { operation: 'spare-prepared' | 'spare-failed'; detail?: HubText };
+type Slot = { session: RunnerSession; generation: number; launched: boolean; prepared?: boolean; restarting?: boolean;
   settleRestart?: () => void;
   retained?: boolean; timer?: ReturnType<typeof setTimeout> };
 
@@ -23,7 +24,8 @@ export class RunnerSpare {
 
   constructor(private readonly create: (root: string, changed: () => void) => RunnerSession,
     private readonly changed: () => void,
-    private readonly retainFailure: (session: RunnerSession, root: string) => void) {}
+    private readonly retainFailure: (session: RunnerSession, root: string) => void,
+    private readonly event: (event: SpareEvent) => void = () => {}) {}
 
   get snapshot(): SpareSnapshot {
     if (this.current.state === 'ready' && this.slot) {
@@ -108,6 +110,10 @@ export class RunnerSpare {
       if (!this.readinessReason(session)) {
         clearTimeout(slot.timer);
         this.current = { ...this.current, state: 'ready', detail: msg('spare.ready') };
+        if (!slot.prepared) {
+          slot.prepared = true;
+          this.event({ operation: 'spare-prepared' });
+        }
       } else {
         this.current = { ...this.current, state: 'preparing', detail: msg('spare.preparing') };
       }
@@ -129,6 +135,7 @@ export class RunnerSpare {
     });
   }
   private fail(reason: HubText) {
+    this.event({ operation: 'spare-failed', detail: reason });
     const generation = ++this.generation;
     const cleanup = this.retire();
     this.current = { ...this.current, state: 'unavailable', detail: this.cleanupFailure
@@ -192,6 +199,7 @@ export class RunnerSpare {
       await slot.session.dispose();
       return 'restarted' as const;
     } catch (reason) {
+      this.event({ operation: 'spare-failed', detail: errorText(reason) });
       const failed = this.slot;
       if (failed && this.owns(failed)) {
         clearTimeout(failed.timer);

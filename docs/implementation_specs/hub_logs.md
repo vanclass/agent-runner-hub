@@ -2,9 +2,13 @@
 
 ## Lifetime and ownership
 
-`Hub.tsx` composes `HubLog` and its `HubLogCapture` adapter independently of the keyed Workspace. Capture observes public allocation, assignment, configuration, connection, command and original-work outcomes. View detachment affects presentation only. The recorder neither launches processes nor sends or retries Runner instructions. `HubPreferences` owns retention selection; workspace restoration and Runner buffers remain separate owners.
+`Hub.tsx` composes `HubLog` and its `HubLogCapture` adapter independently of the keyed Workspace. New records use stable `system`, `task` and `settings` components; outcomes remain in actual/code fields. View detachment affects presentation only. The recorder neither launches processes nor sends or retries Runner instructions. `HubPreferences` owns retention selection; workspace restoration and Runner buffers remain separate owners.
 
-The projection retains component/operation, relevant Runner and Target, expected/actual state, safe code and next action. Raw exceptions and interpolated user content, instruction bodies, credentials and media are excluded. Structured message identities remain visible when arbitrary details cannot safely be retained. Duplicate observations of the same current outcome are suppressed; actual-start, rejection and uncertain-delivery states remain distinct.
+The projection retains component/operation, relevant Runner and Target, expected/actual state, safe code and next action. Raw exceptions and interpolated user content, instruction bodies, credentials and media are excluded. Structured message identities remain visible when arbitrary details cannot safely be retained.
+
+System capture uses visible session lifetime states and meaningful control connection changes. `RunnerSessions.subscribeLifecycle` forwards confirmed restart/shutdown and hidden-spare evidence without retaining another history. `RunnerSpare` emits preparation once per slot after authenticated canonical readiness and input availability, independently of later readiness refreshes or temporary assignment locks. Promotion records the assigned visible Runner name; replacement preparation is a separate event. Startup and replacement failures use the lifecycle owner's failure path, never a busy snapshot.
+
+Task capture uses all retained `RunnerWork.attempts`, confirmed admission/start evidence and original `WorkObservation` terminal outcomes, preserving rejected, interrupted, incomplete and unknown states. Submission rejection or uncertain delivery without an observation remains separate evidence. Settings capture uses explicit `RunnerConfigService.applications` receipts and validated apply results, including partial, failed and unresolved outcomes. Inspection, catalog acquisition, planning, work-list requests, ordinary polls and assignment progress messages produce no entries. In-memory suppression distinguishes session instances, attempts and outcomes; it is neither a persisted ledger nor replay of historical events.
 
 ## Durable order and failure boundary
 

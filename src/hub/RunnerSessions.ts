@@ -10,7 +10,7 @@ import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
 import { submitConfiguredWork } from './runnerSubmission';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
 import { RunnerNavigation } from './RunnerNavigation';
-import { RunnerSpare } from './RunnerSpare';
+import { RunnerSpare, type SpareEvent } from './RunnerSpare';
 import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './RunnerRestarts';
 import type { RunnerInstallation } from './runnerInstallation';
 import { copy, same } from './runnerConfigContract';
@@ -463,7 +463,14 @@ export class RunnerSession {
   }
 }
 
+export type RunnerLifecycleEvent = { operation: SpareEvent['operation'] | 'spare-promoted' | 'runner-restarted' | 'runner-shutdown' | 'runner-restart-failed'; runner?: string; detail?: import('./i18n').HubText };
 export class RunnerSessions {
+  private readonly lifecycleListeners = new Set<(event: RunnerLifecycleEvent) => void>();
+  readonly subscribeLifecycle = (listener: (event: RunnerLifecycleEvent) => void) => {
+    this.lifecycleListeners.add(listener);
+    return () => { this.lifecycleListeners.delete(listener); };
+  };
+  private lifecycle(event: RunnerLifecycleEvent) { this.lifecycleListeners.forEach(listener => listener(event)); }
   readonly navigation = new RunnerNavigation(() => this.changed());
   private readonly sessions = new Map<string, RunnerSession>();
   private readonly retired = new Map<string, { session: RunnerSession; root: string;
@@ -485,7 +492,7 @@ export class RunnerSessions {
       });
       return session;
     }, () => this.changed(),
-    (session, root) => this.retainRestartFailure(session, root));
+    (session, root) => this.retainRestartFailure(session, root), event => this.lifecycle(event));
   get spareSnapshot() { return this.spare.snapshot; }
   setInstallation(installation: RunnerInstallation | null) {
     if (this.disposed) return;
@@ -612,6 +619,7 @@ export class RunnerSessions {
     if (hidden) this.retired.get(id)!.state = 'checking';
     if (!await session.closeTab()) {
       this.retainRestartFailure(session, root);
+      this.lifecycle({ operation: 'runner-restart-failed', runner: session.view.name, detail: msg('restart.cleanupFailed') });
       throw new HubError(msg('restart.cleanupFailed'));
     }
     if (!owns()) return 'removed';
@@ -630,6 +638,7 @@ export class RunnerSessions {
       if (!interrupted) await this.waitForReplacement(replacement, replacementOwned);
     } catch (reason) {
       this.retainRestartFailure(session, root);
+      this.lifecycle({ operation: 'runner-restart-failed', runner: session.view.name, detail: errorText(reason) });
       replacement.closeFailure(reason);
       if (hidden && replacementOwned()) this.retired.get(id)!.state = 'restart-failed';
       throw reason;
@@ -640,6 +649,7 @@ export class RunnerSessions {
     }
     if (hidden) this.retired.get(id)!.state = 'idle';
     await session.dispose();
+    this.lifecycle({ operation: 'runner-restarted', runner: replacement.view.name });
     return 'restarted';
   }
   close(id: string) {
@@ -675,6 +685,7 @@ export class RunnerSessions {
     item.state = 'terminating';
     item.session.retireTab();
     if (await item.session.closeTab()) {
+      this.lifecycle({ operation: 'runner-shutdown', runner: item.session.view.name });
       await item.session.dispose();
       if (this.retired.get(id) === item) this.retired.delete(id);
     } else item.state = 'failed';
@@ -753,6 +764,7 @@ export class RunnerSessions {
     session.promote(tab, this.changed);
     this.sessions.set(tab.id, session);
     this.bindSelections(session);
+    this.lifecycle({ operation: 'spare-promoted', runner: tab.name });
     this.changed();
     this.spare.replenish();
     return session;
