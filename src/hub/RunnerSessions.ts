@@ -346,9 +346,9 @@ export class RunnerSession {
     try {
       const result = await submitConfiguredWork<WorkAttempt | BriefResult>(this.control.config, this.control.work, defaults, draft, async () => {
         this.control.assignmentLocked = false;
-        await this.control.fresh(); ready();
+        await this.control.fresh(true); ready();
         await this.references.preflight();
-        await this.control.fresh(); ready();
+        await this.control.fresh(true); ready();
         this.references.assertReadyForDelivery();
         return this.references.deliveryLease;
       }, briefRun ? lease => this.control.brief.submit(draft, lease) : undefined);
@@ -386,7 +386,7 @@ export class RunnerSession {
     let delivered = false;
     this.update({ submitting: true });
     try {
-      if (ordinary) await this.control.fresh();
+      if (ordinary) await this.control.fresh(true);
       if (this.foregroundInteraction) throw new HubError(msg('interaction.foregroundBlocked'));
       if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
       if (ordinary && !this.foregroundInteraction) {

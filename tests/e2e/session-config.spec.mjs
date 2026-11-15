@@ -1,5 +1,28 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
+for (const changedRevision of [false, true]) test('configured no-op submission uses canonical revision after complete paging: ' + changedRevision, async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async changedRevision => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { submitConfiguredWork } = await import('/src/hub/runnerSubmission.ts');
+    const { fixture, service } = createConfigHarness();
+    const plan = fixture.plan.bind(fixture);
+    fixture.plan = desired => {
+      if (changedRevision) fixture.revision = 'd'.repeat(64);
+      return plan(desired);
+    };
+    const submissions = [];
+    const work = { supports: () => true, blocked: false, busy: false,
+      submit: async text => { submissions.push(text); return {}; } };
+    await submitConfiguredWork(service, work, { accountIdentity: fixture.current.account, runMode: 'task-run',
+      model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } }, 'one', async () => undefined);
+    return { requests: fixture.requests.map(r => r.operation), submissions };
+  }, changedRevision);
+  expect(result.requests).toEqual(['session_config.inspect', 'session_config.inspect', 'session_config.inspect', 'session_config.plan',
+    ...(changedRevision ? ['session_config.inspect', 'session_config.inspect', 'session_config.inspect'] : [])]);
+  expect(result.submissions).toEqual(['one']);
+});
+
 test('unbound native startup preserves verified choices without choosing a target', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {

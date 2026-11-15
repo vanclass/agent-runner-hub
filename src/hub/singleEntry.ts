@@ -144,14 +144,14 @@ export class SingleEntry {
       this.attachments.bind(destination.control);
       const previous = session.control.work.current;
       const submission = submitConfiguredWork<WorkAttempt | BriefResult>(session.control.config, session.control.work, defaults, text, async () => {
-        await destination.control.fresh();
+        await destination.control.fresh(true);
         await destination.references.verifyAssignment();
         const finalReason = idleReason(destination);
         if (finalReason || !destination.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
           { reason: finalReason || msg('runtime.entry.inputUnsettled') }));
         destination.control.assignmentLocked = false;
         await this.attachments.preflight();
-        await destination.control.fresh();
+        await destination.control.fresh(true);
         this.attachments.assertReadyForDelivery();
         const attachmentReason = idleReason(destination, true);
         if (attachmentReason || !destination.ownsAssignment(token, this.attachments.deliveryLease)) throw new HubError(msg('runtime.entry.unsent',

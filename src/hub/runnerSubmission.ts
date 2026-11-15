@@ -30,8 +30,8 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
     if (config.uncertain || config.error || application?.result?.apply_status !== 'applied'
       || application.verification !== 'verified' || !application.inspection)
       throw new HubError(config.error || msg('config.partial'));
-  } else {
-    // A ready no-op plan needs verification, but no mutating Apply request.
+  } else if (plan.revision !== config.actual?.revision) {
+    // Reinspect only when the canonical no-op plan observed a different configuration.
     await config.inspect(defaults.accountIdentity);
     if (config.error || !config.catalog) throw new HubError(config.error || msg('config.incomplete'));
   }

@@ -85,7 +85,9 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.locator('textarea[data-instruction]').fill('always new');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 2');
-    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+      .filter(s => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === 'always new'))
+      .map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     const newSubmission = await page.evaluate(() => [...window.__nativeFixture.sessions]
       .filter(([, s]) => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === 'always new'))
       .map(([id, s]) => ({ id, count: s.feature.requests.filter(r => r.operation === 'work.submit').length })));

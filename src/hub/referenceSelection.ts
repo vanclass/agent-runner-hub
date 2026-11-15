@@ -215,7 +215,7 @@ export class RunnerReferenceSelection {
       || this.control.snapshot.observation?.attention.foreground_interaction_active)
       throw new HubError(msg('runtime.references.finishInteraction'));
   }
-  private async stableInventory(lease?: symbol) {
+  private async stableInventory(lease?: symbol, reuseCurrent = false) {
     const pageSize = this.control.snapshot.references?.capability?.inventory_page_size ?? 0;
     const scan = async () => {
       const references: Reference[] = [];
@@ -239,11 +239,11 @@ export class RunnerReferenceSelection {
           throw new HubError(msg('runtime.references.inventoryNoProgress'));
       }
     };
-    await this.control.fresh(); this.ready();
+    await this.control.fresh(reuseCurrent); this.ready();
     const first = await scan();
-    await this.control.fresh(); this.ready();
+    await this.control.fresh(reuseCurrent); this.ready();
     const second = await scan();
-    await this.control.fresh(); this.ready();
+    await this.control.fresh(reuseCurrent); this.ready();
     if (JSON.stringify(first) !== JSON.stringify(second))
       throw new HubError(msg('runtime.references.samplesChanged'));
     this.pendingSet = second;
@@ -293,7 +293,7 @@ export class RunnerReferenceSelection {
     this.submission = { lease, candidates: selected, verified: false }; this.changed();
     if (selected.some(item => !['staged', 'registered'].includes(this.state(item))))
       throw new HubError(msg('runtime.references.cancelFailed'));
-    const before = await this.stableInventory(lease);
+    const before = await this.stableInventory(lease, true);
     const excluded = this.candidates.filter(item => item.cancelRequested || inactive(this.state(item)))
       .map(item => this.referenceId(item)).filter((id): id is string => !!id);
     if (before.some(item => excluded.includes(item.reference_id)))
@@ -319,7 +319,8 @@ export class RunnerReferenceSelection {
           throw new HubError(msg('runtime.references.registrationIncomplete'));
       }
     } finally { this.registering = false; this.changed(); }
-    const after = await this.stableInventory(lease);
+    // Empty selection performs no registration; the lease-protected inventory is still applicable.
+    const after = selected.length ? await this.stableInventory(lease, true) : before;
     const intended = selected.map(item => this.referenceId(item)!);
     const expected = [...this.otherPending.map(item => item.reference_id), ...intended];
     if (new Set(intended).size !== intended.length || intended.some(id => !after.some(item => item.reference_id === id))

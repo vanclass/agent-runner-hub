@@ -125,13 +125,13 @@ export class RunnerControl {
     }, changed);
   }
   start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
-  async fresh() {
+  async fresh(reuseCurrent = false) {
     const after = this.snapshot.observationSerial ?? 0;
     const deadline = performance.now() + (this.snapshot.state === 'connecting' ? controlTiming.connectMs : controlTiming.refreshMs);
     while (!this.stopped && performance.now() < deadline) {
       if (this.snapshot.state === 'disconnected') break;
-      if (this.snapshot.state === 'ready' && (this.snapshot.observationSerial ?? 0) > after
-        && this.observationFresh) return this.snapshot;
+      if (this.observationFresh && !this.work.busy && !this.config.busy
+        && (reuseCurrent || (this.snapshot.observationSerial ?? 0) > after)) return this.snapshot;
       await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
     }
     throw new HubError(this.snapshot.detail || msg('runtime.control.freshUnavailable'));
@@ -161,7 +161,8 @@ export class RunnerControl {
       this.receivedAt = performance.now();
       this.changed();
       if (snapshot.state === 'disconnected') return;
-      this.timer = setTimeout(() => void this.refresh(), controlTiming.pollMs);
+      const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing || this.brief.busy;
+      this.timer = setTimeout(() => void this.refresh(), foreground ? controlTiming.settleMs : controlTiming.pollMs);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
   get pending() { return this.recovery.busy || this.controlBusy || this.config.busy || this.work.writing || this.brief.busy; }
