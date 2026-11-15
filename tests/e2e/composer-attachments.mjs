@@ -1,6 +1,7 @@
 import { PNG } from 'pngjs';
 import { registerAttachmentOutcomes } from './attachment-outcomes.mjs';
 import { registerLocalPreviews } from './local-previews.mjs';
+import { registerPreviewViews } from './preview-views.mjs';
 const png = [...PNG.sync.write({ width: 1, height: 1, data: Buffer.from([31, 87, 201, 255]) })];
 async function paste(page, label = 'Runner instructions') {
   await page.getByRole('textbox', { name: label, exact: true }).evaluate((input, bytes) => {
@@ -31,6 +32,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
   }
   registerAttachmentOutcomes({ test, expect, ready, paste, requests, send, drop });
   registerLocalPreviews({ test, expect, ready, paste, requests, drop });
+  registerPreviewViews({ test, expect, ready, drop });
   test('composer attachments stage repeated drop/paste edits without reference mutations', async ({ page }, info) => {
     await ready(page);
     await expect(page.locator('.generated-images')).not.toHaveAttribute('open');

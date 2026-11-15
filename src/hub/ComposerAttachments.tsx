@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { watchFileDrop } from './composerFileDrop';
 import type { RunnerReferenceSelection, Candidate } from './referenceSelection';
 import { t, tr } from './i18n';
+import { FocusedViewer } from './FocusedViewer';
+import { attachmentName, previewKind } from './localPreviews';
 
 function referenceState(state: Candidate['phase']) {
   switch (state) {
@@ -26,6 +28,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
   const host = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState(false);
   const [dropUnavailable, setDropUnavailable] = useState(false);
+  const [focusedKey, setFocusedKey] = useState<number>();
   const available = !disabled && selection.available;
   useEffect(() => {
     let disposed = false, stop: (() => void) | undefined;
@@ -44,6 +47,11 @@ export function ComposerAttachments({ selection, disabled, children }: {
   }, [selection, available]);
   const items = selection.candidates.filter(item => !item.submitted && selection.state(item) !== 'cancelled'
     && (selection.state(item) !== 'removed' || !item.cancelRequested));
+  const focused = items.find(item => item.key === focusedKey);
+  useEffect(() => { if (!focused) setFocusedKey(undefined); }, [focused]);
+  const focusedThumbnail = focused && selection.thumbnail(focused);
+  const content = focusedThumbnail ? { kind: 'image' as const, url: focusedThumbnail }
+    : focused && selection.previews.get(focused.key) || { kind: 'unavailable' as const, reason: 'unsupported' };
   return <div ref={host} className={`composer attachment-composer${hover ? ' attachment-drop-active' : ''}`}
     onDragOver={event => { event.preventDefault(); if (available) setHover(true); }}
     onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setHover(false); }}
@@ -58,8 +66,15 @@ export function ComposerAttachments({ selection, disabled, children }: {
     {!!items.length && <ul className="pending-attachments" aria-label={t('attachments.pending')}>
       {items.map(item => { const state = selection.state(item), thumbnail = selection.thumbnail(item);
         return <li className="attachment-chip" key={item.key}>
-        {thumbnail && <img src={thumbnail} alt={item.image ? t('references.clipboardPreview', { index: item.key }) : item.path} />}
-        <span title={item.path}>{item.image ? t('references.clipboardNumber', { index: item.key }) : item.path}</span>
+        <button type="button" className="attachment-open" title={item.path}
+          aria-label={t('preview.open', { name: attachmentName(item.path) || t('references.clipboardNumber', { index: item.key }) })}
+          onClick={() => {
+            if (!item.image && previewKind(item.path) !== 'unsupported') selection.previews.load(item.key, item.path);
+            setFocusedKey(item.key);
+          }}>
+          {thumbnail && <img src={thumbnail} alt={item.image ? t('references.clipboardPreview', { index: item.key }) : item.path} />}
+          <span>{item.image ? t('references.clipboardNumber', { index: item.key }) : item.path}</span>
+        </button>
         <span role="status">{referenceState(state)} {item.detail && tr(item.detail)}</span>
         <button type="button" disabled={!available || !!item.cancelRequested} aria-label={t('attachments.remove', { name: item.path || item.key })}
           onClick={() => void selection.cancel(item.key)}>×</button>
@@ -79,6 +94,8 @@ export function ComposerAttachments({ selection, disabled, children }: {
     </div>}
     {selection.error && <p role="alert">{tr(selection.error)}</p>}
     {children}
+    {focused && <FocusedViewer key={focused.key} name={attachmentName(focused.path) || undefined}
+      content={content} onDismiss={() => setFocusedKey(undefined)} />}
     {dropUnavailable && <p role="alert">{t('attachments.fallback')}</p>}
   </div>;
 }

@@ -1,4 +1,18 @@
 {
+  "preview": {
+    "focus": "이미지 미리 보기",
+    "loading": "원본 파일을 읽는 중…",
+    "unavailable": "이 파일은 미리 볼 수 없습니다. 첨부는 유지됩니다.",
+    "escape": "Escape 키를 눌러 돌아갑니다.",
+    "open": "첨부 파일 {{name}} 열기",
+    "help": "Help",
+    "images": "이미지",
+    "text": "텍스트",
+    "other": "혼합 / 기타",
+    "otherLimits": "폴더, PDF, Office 문서, 압축 파일 및 기타 형식은 로컬 내용 미리 보기를 지원하지 않습니다. 등록 지원 여부는 별개입니다.",
+    "limits": "크기 제한 내의 PNG 이미지 또는 UTF-8 텍스트 원문 전체를 표시합니다. 읽을 수 없거나 잘못되었거나 너무 큰 파일은 사용 불가로 표시하며 내용을 실행하지 않습니다.",
+    "close": "닫기"
+  },
   "activity": {
     "label": "Hub",
     "options": "실행 옵션을 불러오는 중…",
@@ -319,9 +333,6 @@
     "refresh": "이미지 새로 고침",
     "enlarge": "생성 이미지 확대",
     "verified": "검증된 생성 이미지",
-    "dialog": "확대된 생성 이미지",
-    "image": "생성 이미지",
-    "close": "미리 보기 닫기",
     "verifiedEnlarged": "확대된 검증된 생성 이미지",
     "number": "이미지 {{index}}",
     "enlargeAction": "확대"

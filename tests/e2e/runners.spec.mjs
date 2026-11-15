@@ -1,5 +1,6 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 import { PNG } from 'pngjs';
+import { imageGestures } from './preview-views.mjs';
 import { createHash } from 'node:crypto';
 import { registerSessionConfigUI } from './session-config-ui.mjs';
 import { registerSingleEntryWork } from './single-entry-work.mjs';
@@ -883,8 +884,9 @@ test('generated image previews render verified delivery, select, enlarge, refres
   expect(await image.evaluate(element => element.naturalWidth)).toBe(2);
   const firstUrl = await image.getAttribute('src');
   await page.getByRole('button', { name: 'Enlarge generated image' }).click();
-  await expect(page.getByRole('dialog', { name: 'Enlarged generated image' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close preview' }).click();
+  await expect(page.getByRole('dialog', { name: 'Image preview', exact: true })).toBeVisible();
+  await expect(page.locator('.focused-viewer[open] header, .focused-viewer[open] button')).toHaveCount(0);
+  await imageGestures(page, expect, 2);
   await page.getByRole('combobox', { name: 'Select generated image' }).selectOption({ index: 1 });
   await expect(image).toBeVisible(); await expect(image).not.toHaveAttribute('src', firstUrl);
   await create(page); await expect(image).toBeVisible(); const secondUrl = await image.getAttribute('src');

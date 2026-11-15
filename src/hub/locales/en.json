@@ -1,4 +1,18 @@
 {
+  "preview": {
+    "focus": "Image preview",
+    "loading": "Reading original file…",
+    "unavailable": "This file cannot be previewed. It remains attached.",
+    "escape": "Press Escape to return.",
+    "open": "Open attachment {{name}}",
+    "help": "Help",
+    "images": "Images",
+    "text": "Text",
+    "other": "Mixed / other",
+    "otherLimits": "Folders, PDF, Office documents, archives and other formats have no local content preview. Registration support is separate.",
+    "limits": "Previews show complete bounded PNG images or original UTF-8 text. Unreadable, invalid or oversized files show an unavailable message; file contents are never executed.",
+    "close": "Close"
+  },
   "activity": {
     "label": "Hub",
     "options": "Loading execution options…",
@@ -319,9 +333,6 @@
     "refresh": "Refresh images",
     "enlarge": "Enlarge generated image",
     "verified": "Verified generated image",
-    "dialog": "Enlarged generated image",
-    "image": "Generated image",
-    "close": "Close preview",
     "verifiedEnlarged": "Enlarged verified generated image",
     "number": "Image {{index}}",
     "enlargeAction": "Enlarge"

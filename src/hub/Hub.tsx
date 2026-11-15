@@ -9,6 +9,7 @@ import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { AppSettings } from './AppSettings';
+import { PreviewHelp } from './PreviewHelp';
 import { ShortcutSettings } from './ShortcutSettings';
 import { defaultShortcuts, useHubShortcuts } from './shortcuts';
 import type { RunnerView } from './model';
@@ -102,6 +103,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       <div className="hub-preferences">
         <button type="button" className="app-settings-trigger" aria-haspopup="dialog"
           onClick={() => setSettingsOpen(true)}>{t('setup.settings')}</button>
+        <PreviewHelp />
       </div>
     </header>
     {preferences.issue && <p role="alert" className="runner-error preferences-error">{tr(preferences.issue)}</p>}

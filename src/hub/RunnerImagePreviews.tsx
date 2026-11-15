@@ -1,18 +1,14 @@
 import { useHubTranslation, t, tr } from './i18n';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { FocusedViewer } from './FocusedViewer';
 import type { RunnerImages } from './runnerImages';
 import './runnerImages.css';
 
 export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
   useHubTranslation();
   const [enlarged, setEnlarged] = useState(false);
-  const dialog = useRef<HTMLDialogElement>(null);
   const preview = images.preview;
   useEffect(() => images.mount(), [images]);
-  useEffect(() => {
-    if (enlarged && preview) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [enlarged, preview]);
   useEffect(() => { if (!preview) setEnlarged(false); }, [preview]);
   return <section className="generated-images" aria-label={t('images.label')} data-state={images.state}
     data-incomplete={!!images.warning}>
@@ -30,10 +26,7 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
     {preview && <button className="generated-image-preview" type="button" aria-label={t('images.enlarge')}
       onClick={() => setEnlarged(true)}><img src={preview.url} alt={t('images.verified')}
         onError={() => { images.rejectRendering(); }} /><span>{preview.image.width} × {preview.image.height} · {t('images.enlargeAction')}</span></button>}
-    <dialog ref={dialog} className="generated-image-dialog" aria-label={t('images.dialog')}
-      onClose={() => setEnlarged(false)} onCancel={() => setEnlarged(false)}>
-      <div><strong>{t('images.image')}</strong><button type="button" onClick={() => setEnlarged(false)}>{t('images.close')}</button></div>
-      {preview && <img src={preview.url} alt={t('images.verifiedEnlarged')} />}
-    </dialog>
+    {enlarged && preview && <FocusedViewer key={preview.url} content={{ kind: 'image', url: preview.url }}
+      onDismiss={() => setEnlarged(false)} />}
   </section>;
 }
