@@ -1,9 +1,20 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { readyInstalledHub, stopWatching } from './runner-flow.mjs';
+import { startupMs } from '../../../tools/native-probe/limits.mjs';
 
 const read = browser => browser.execute(() => window.__TAURI_INTERNALS__.invoke('hub_log',
   { request: { retentionDays: 7, event: null } }));
+const geometry = browser => browser.execute(() => {
+  const node = document.querySelector('.hub-log-records');
+  const row = node?.querySelector('.hub-log-row:last-child');
+  if (!node || !row) return null;
+  const view = node.getBoundingClientRect(), latest = row.getBoundingClientRect();
+  return { scrollHeight: node.scrollHeight, clientHeight: node.clientHeight, scrollTop: node.scrollTop,
+    latestSequence: Number(row.dataset.sequence), bottomDistance: node.scrollHeight - node.clientHeight - node.scrollTop,
+    latestVisible: latest.top >= view.top && latest.bottom <= view.top + node.clientHeight + 2,
+    singleEntry: !!document.querySelector('.single-entry.active') };
+});
 export function hubLogCase(runnerRoot) {
   return defineNativeCase({
     id: 'hub-log', presentation: 'nonactivating',
@@ -13,6 +24,15 @@ export function hubLogCase(runnerRoot) {
     },
     async run(browser) {
       await readyInstalledHub(browser, runnerRoot);
+      await browser.execute(async () => {
+        // Safe fixture history belongs only to the suite's isolated app-local profile.
+        for (let index = 0; index < 200; index++) {
+          const result = await window.__TAURI_INTERNALS__.invoke('hub_log', { request: { retentionDays: 7,
+            event: { component: 'system', operation: 'connection', runner: 'Overflow fixture', target: '',
+              expected: 'confirmed-outcome', actual: 'ready', code: '', nextAction: '' } } });
+          if (result.issue) throw new Error(result.issue);
+        }
+      });
       await browser.execute(() => document.querySelector('.add-runner').click());
       await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.runner-row.active')),
         { timeout: browser.options.waitforTimeout });
@@ -27,6 +47,13 @@ export function hubLogCase(runnerRoot) {
         { timeout: browser.options.waitforTimeout });
       disk = await read(browser);
       const latest = Math.max(...disk.records.map(r => r.sequence));
+      let before;
+      await browser.waitUntil(async () => {
+        before = await geometry(browser);
+        return before?.singleEntry && before.latestSequence === latest
+          && before.scrollHeight > before.clientHeight && before.bottomDistance <= 2 && before.latestVisible;
+      }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'Expected overflowing bottom-following log before restart' });
+      assert.ok(before.scrollTop > 0);
       await browser.execute(() => {
         document.querySelector('.runner-management').open = true;
         document.querySelector('.runner-management button').click();
@@ -34,17 +61,24 @@ export function hubLogCase(runnerRoot) {
       await browser.waitUntil(async () => {
         disk = await read(browser);
         return disk.records.some(r => r.sequence > latest && r.operation === 'runner-restarted');
-      }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'No confirmed restart event while Single Entry remained open' });
-      await browser.waitUntil(async () => browser.execute(() => {
-        const n = document.querySelector('.hub-log-records');
-        return !!document.querySelector('.single-entry.active') && n
-          && n.scrollHeight - n.scrollTop - n.clientHeight <= 2;
-      }), { timeout: browser.options.waitforTimeout });
+      }, { timeout: startupMs, timeoutMsg: 'No confirmed restart event while Single Entry remained open' }).catch(async error => {
+        throw new Error(JSON.stringify({ message: error.message, before, after: await geometry(browser),
+          recentEvents: disk.records.slice(-8).map(({ sequence, operation, actual, code }) =>
+            ({ sequence, operation, actual, code })) }));
+      });
       const appended = disk.records.find(r => r.sequence > latest && r.operation === 'runner-restarted');
       await browser.waitUntil(async () => browser.execute(sequence =>
         !!document.querySelector(`.hub-log-row[data-sequence="${sequence}"]`), appended.sequence),
       { timeout: browser.options.waitforTimeout });
-      const liveAppend = { operation: 'runner-restarted', singleEntry: true, atBottomAfterAppend: true };
+      let after;
+      await browser.waitUntil(async () => {
+        after = await geometry(browser);
+        return after?.singleEntry && after.latestSequence >= appended.sequence && after.latestVisible
+          && after.scrollHeight > before.scrollHeight && after.scrollTop > before.scrollTop + 2
+          && after.bottomDistance <= 2;
+      }, { timeout: browser.options.waitforTimeout,
+        timeoutMsg: 'Rendered restart row did not move the overflowing viewport down to the latest row' });
+      const liveAppend = { operation: 'runner-restarted', renderedSequence: appended.sequence, before, after };
       await browser.execute(() => document.querySelector('.app-settings-trigger').click());
       await browser.execute(() => {
         const input = document.querySelector('.app-settings input[type="number"]');
