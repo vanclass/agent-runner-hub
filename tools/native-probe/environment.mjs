@@ -39,7 +39,7 @@ export async function createEnvironment(root, target, signal) {
           for (const name of [...profileFolders, 'user/roaming', 'user/local']) {
             await fs.mkdir(path.join(attempt, name), { recursive: true });
           }
-          const owner = await adapter.startOwner(root, build.executable, attempt, port, commandMs, spec.presentation);
+          const owner = await adapter.startOwner(root, build.executable, attempt, port, commandMs, spec.presentation, spec.windowWidth);
           settled = false;
           return { pid: owner.pid, initialPresentation: owner.initialPresentation,
             request: action => owner.request(action), async stop() {

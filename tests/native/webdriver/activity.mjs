@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
+import { startupMs } from '../../../tools/native-probe/limits.mjs';
+import { changeValue, readyInstalledHub, ownedConnection, inspection, receiptEvidence, stopWatching } from './runner-flow.mjs';
+
+async function geometry(browser) {
+  return browser.execute(() => {
+    const line = document.querySelector('.hub-activity');
+    const text = line.querySelector('.hub-activity-message');
+    const composer = document.querySelector('.workspace .composer');
+    const rect = node => {
+      const { left, top, width, height } = node.getBoundingClientRect();
+      return { left, top, width, height };
+    };
+    return { viewport: innerWidth, text: line.textContent, line: rect(line),
+      sentence: text && rect(text), composer: rect(composer),
+      readable: !!text && text.scrollWidth <= text.clientWidth,
+      live: line.getAttribute('aria-live'), atomic: line.getAttribute('aria-atomic'),
+      wrap: getComputedStyle(line).whiteSpace,
+      context: document.querySelector('.runner-row.active') ? 'runner' : 'single-entry' };
+  });
+}
+
+export function activityCase(runnerRoot, windowWidth) {
+  return defineNativeCase({
+    id: 'activity-' + windowWidth, presentation: 'nonactivating', windowWidth,
+    async ready(browser) {
+      if (process.platform !== 'win32') throw new BlockedPrerequisite('This responsive native observation requires the Windows owned placement adapter.');
+      await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.language-picker select')),
+        { timeout: startupMs });
+      await changeValue(browser, '.language-picker select', 'ko');
+      await readyInstalledHub(browser, runnerRoot);
+    },
+    async run(browser) {
+      const connection = await ownedConnection(browser, runnerRoot);
+      const response = await inspection(browser, connection);
+      // A fresh session has no selected Target. Observe its real guidance, never synthesize success.
+      assert.equal(response.result.reply.current.target, '');
+      await browser.waitUntil(async () => browser.execute(() =>
+        document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
+      { timeout: startupMs, timeoutMsg: 'Single Entry active target guidance was not observed' });
+      return { inspection: receiptEvidence(response), singleEntry: await geometry(browser),
+        method: 'actual installed Runner inspection and existing Hub selection UI; no work or configuration apply' };
+    },
+    async observe(browser) {
+      const rows = [];
+      rows.push(await geometry(browser));
+      await browser.execute(() => document.querySelector('.add-runner').click());
+      await browser.waitUntil(async () => browser.execute(() =>
+        !!document.querySelector('.runner-row.active') &&
+        document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
+      { timeout: startupMs, timeoutMsg: 'Runner-tab active target guidance was not observed' });
+      rows.push(await geometry(browser));
+      await browser.execute(() => document.querySelector('.single-entry').click());
+      await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.runner-row.active')),
+        { timeout: startupMs });
+      rows.push(await geometry(browser));
+      for (const row of rows) {
+        assert.equal(row.text, 'Hub 프로젝트 또는 대상을 선택하세요.');
+        assert.ok(Math.abs(row.sentence.left - row.composer.left) < 1, JSON.stringify(row));
+        assert.equal(row.readable, true, JSON.stringify(row));
+        assert.equal(row.line.height, 22);
+        assert.equal(row.wrap, 'nowrap');
+        assert.equal(row.live, 'polite'); assert.equal(row.atomic, 'true');
+      }
+      assert.deepEqual(rows[0].composer, rows[2].composer, 'Context roundtrip must preserve composer geometry');
+      assert.deepEqual(rows[0].line, rows[2].line, 'Context roundtrip must preserve reserved footer geometry');
+      await stopWatching(browser);
+      return { rows, independentContexts: true, verifiedApplication: 'not exercised; no apply control in current UI' };
+    }
+  });
+}

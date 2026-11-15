@@ -15,6 +15,13 @@ contract: path-safe `id`, explicit `background` or `nonactivating` presentation,
 `ready(browser)`, `run(browser)` and a displayed-case `observe(browser)` assertion.
 Cases own application readiness and feature assertions; they contain no OS window
 operations. Adding a case changes composition, never a feature branch in the executor.
+On Windows a displayed case may request `windowWidth`; the existing placement
+adapter sizes only its owned HWND while retaining rear, nonactivating placement.
+The responsive activity selection in `tests/native/activity.test.mjs` uses the
+installed-Runner readiness and owned-session helpers to observe actual localized
+selection guidance in Single Entry and Runner tabs. Its displayed checks cover
+sentence/composer alignment, clipping and context-roundtrip geometry. It does not
+submit work or claim verified settings application from guidance text.
 
 [`environment.mjs`](../../tools/native-probe/environment.mjs) builds once per suite,
 starts a new process with cleared invocation-owned profile directories for each case,

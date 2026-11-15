@@ -1,5 +1,5 @@
 param([Parameter(Mandatory=$true)][string]$Executable, [Parameter(Mandatory=$true)][int]$Port,
-      [Parameter(Mandatory=$true)][int]$BudgetMs)
+      [Parameter(Mandatory=$true)][int]$BudgetMs, [int]$WindowWidth = 0)
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @"
 using System;
@@ -82,6 +82,7 @@ try {
         $rect = [ProbeWindows+Rect]::new()
         if (-not [ProbeWindows]::GetWindowRect([IntPtr]$state.hwnd, [ref]$rect)) { throw 'Owned window geometry unavailable' }
         $width = $rect.Right - $rect.Left; $height = $rect.Bottom - $rect.Top
+        if ($WindowWidth -gt 0) { $width = $WindowWidth }
         $x = [Math]::Max(0, ([ProbeWindows]::GetSystemMetrics(0) - $width) / 2)
         $y = [Math]::Max(0, ([ProbeWindows]::GetSystemMetrics(1) - $height) / 2)
         if (-not [ProbeWindows]::SetWindowPos([IntPtr]$state.hwnd, [IntPtr]1, $x, $y, $width, $height, 0x250)) {
