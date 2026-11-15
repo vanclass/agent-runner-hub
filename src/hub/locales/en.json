@@ -24,6 +24,11 @@
     "inspectionFailed": "Could not inspect Runner settings."
   },
   "hubLog": {
+    "outcomes": {"succeeded":"Completed","failed":"Failed","applied":"Applied","partial":"Partially applied","unknown":"Outcome unconfirmed","incomplete":"Incomplete","interrupted":"Interrupted","rejected":"Rejected","failure":"Operation failed","notSent":"Not sent","ready":"Ready","disconnected":"Disconnected","running":"Running","exited":"Exited"},
+    "events": {"sparePrepared":"Spare Runner ready","sparePromoted":"Spare Runner assigned","spareFailed":"Spare Runner preparation failed","restarted":"Runner restarted","shutdown":"Runner shut down","restartFailed":"Runner restart failed","lifecycle":"Runner state","connection":"Connection","admitted":"Task admitted","started":"Task started","work":"Task outcome","submission":"Task submission","settings":"Settings application","other":"Hub event"},
+    "promoted": "Spare Runner assigned to {{runner}}",
+    "historical": "Historical record; outcome unverified",
+    "categories": {"system":"System","task":"Task","settings":"Settings"},
     "label": "Hub log",
     "retention": "Hub log retention (days)",
     "older": "Show older records",

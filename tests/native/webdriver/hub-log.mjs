@@ -20,10 +20,10 @@ export function hubLogCase(runnerRoot) {
       let disk;
       await browser.waitUntil(async () => {
         disk = await read(browser);
-        return !disk.issue && disk.records.some(r => r.component === 'connection' && r.runner);
+        return !disk.issue && disk.records.some(r => r.component === 'system' && r.operation === 'connection' && r.runner);
       }, { timeout: browser.options.waitforTimeout });
       await browser.execute(() => document.querySelector('.single-entry').click());
-      await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log pre').length > 0),
+      await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),
         { timeout: browser.options.waitforTimeout });
       await browser.execute(() => document.querySelector('.app-settings-trigger').click());
       await browser.execute(() => {
@@ -34,7 +34,7 @@ export function hubLogCase(runnerRoot) {
       await browser.waitUntil(async () => browser.execute(() => JSON.parse(localStorage.getItem(
         'agent-runner-hub.preferences.v1'))?.hubLogRetentionDays === 7), { timeout: browser.options.waitforTimeout });
       await browser.execute(() => document.querySelector('.settings-close').click());
-      const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-records > pre')].map(n => n.textContent));
+      const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
       disk = await read(browser); assert.equal(disk.issue, null);
       assert.ok(lines.length > 0); assert.ok(disk.records.length >= lines.length);
       await stopWatching(browser);
@@ -44,11 +44,11 @@ export function hubLogCase(runnerRoot) {
       await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.app-settings[open]')),
         { timeout: browser.options.waitforTimeout });
       await browser.execute(() => document.querySelector('.single-entry').click());
-      await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-records > pre').length > 0),
+      await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),
         { timeout: browser.options.waitforTimeout });
       const disk = await read(browser); assert.equal(disk.issue, null);
       for (const old of before.disk.records) assert.deepEqual(disk.records.find(r => r.sequence === old.sequence), old);
-      const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-records > pre')].map(n => n.textContent));
+      const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
       for (const old of before.lines) assert.ok(lines.includes(old), 'Restored formatter must be byte-identical');
       assert.equal(new Set(disk.records.map(r => r.sequence)).size, disk.records.length);
       assert.ok(disk.records.length > before.disk.records.length, 'Fresh startup events append after old history');
@@ -58,10 +58,16 @@ export function hubLogCase(runnerRoot) {
         formatAndOrderRetained: true, retentionDays: days, duplicateSequences: false };
     },
     async observe(browser) {
-      const view = await browser.execute(() => ({ lines: document.querySelectorAll('.hub-log-records > pre').length,
+      const view = await browser.execute(() => ({ lines: document.querySelectorAll('.hub-log-row').length,
         theme: document.querySelector('.hub').dataset.theme, error: document.querySelector('.hub-log [role="alert"]')?.textContent,
-        style: getComputedStyle(document.querySelector('.hub-log pre')).fontFamily }));
+        style: getComputedStyle(document.querySelector('.hub-log-row')).fontFamily,
+        columns: [...document.querySelector('.hub-log-row').children].map(n => n.className),
+        atBottom: (() => { const n = document.querySelector('.hub-log-records'); return n.scrollHeight - n.scrollTop - n.clientHeight <= 2; })() }));
       assert.ok(view.lines); assert.ok(!view.error); assert.match(view.style, /monospace|Consolas/);
+      assert.equal(view.columns.length, 3);
+      assert.equal(view.columns[0], 'hub-log-time'); assert.equal(view.columns[1], 'hub-log-category');
+      assert.match(view.columns[2], /^hub-log-message (normal|success|warning|failure)$/);
+      assert.ok(view.atBottom);
       return view;
     }
   });

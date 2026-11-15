@@ -24,6 +24,11 @@
     "inspectionFailed": "Runner 설정을 확인하지 못했습니다."
   },
   "hubLog": {
+    "outcomes": {"succeeded":"작업 완료","failed":"실패","applied":"적용 완료","partial":"일부 적용","unknown":"결과 미확인","incomplete":"미완료","interrupted":"중단됨","rejected":"거부됨","failure":"처리 실패","notSent":"전송되지 않음","ready":"준비됨","disconnected":"연결 끊김","running":"실행 중","exited":"종료됨"},
+    "events": {"sparePrepared":"예비 러너 준비됨","sparePromoted":"예비 러너 할당됨","spareFailed":"예비 러너 준비 실패","restarted":"러너 재시작됨","shutdown":"러너 종료됨","restartFailed":"러너 재시작 실패","lifecycle":"러너 상태","connection":"연결","admitted":"작업 접수됨","started":"작업 시작","work":"작업 결과","submission":"작업 제출","settings":"설정 적용","other":"허브 이벤트"},
+    "promoted": "예비 러너가 {{runner}}로 할당됨",
+    "historical": "이전 기록 · 결과 검증되지 않음",
+    "categories": {"system":"시스템","task":"작업","settings":"설정"},
     "label": "허브 로그",
     "retention": "허브 로그 보관 일수",
     "older": "이전 기록 더 보기",

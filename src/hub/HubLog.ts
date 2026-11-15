@@ -1,16 +1,56 @@
 import { invoke } from '@tauri-apps/api/core';
+import { t, type MessageKey } from './i18n';
 
 export type HubEvent = { component: string; operation: string; runner: string; target: string;
   expected: string; actual: string; code: string; nextAction: string };
 export type HubLogRecord = HubEvent & { sequence: number; timestamp: number };
+const eventLabels: Record<string, MessageKey> = {
+  'spare-prepared': 'hubLog.events.sparePrepared', 'spare-promoted': 'hubLog.events.sparePromoted',
+  'spare-failed': 'hubLog.events.spareFailed', 'runner-restarted': 'hubLog.events.restarted',
+  'runner-shutdown': 'hubLog.events.shutdown', 'runner-restart-failed': 'hubLog.events.restartFailed',
+  'runner-lifecycle': 'hubLog.events.lifecycle', connection: 'hubLog.events.connection',
+  'work-admitted': 'hubLog.events.admitted', 'work-started': 'hubLog.events.started',
+  'work-outcome': 'hubLog.events.work', 'work-submission': 'hubLog.events.submission',
+  'configuration-apply': 'hubLog.events.settings',
+};
+const outcomeLabels: Record<string, MessageKey> = {
+  succeeded: 'hubLog.outcomes.succeeded', failed: 'hubLog.outcomes.failed',
+  applied: 'hubLog.outcomes.applied', partial: 'hubLog.outcomes.partial',
+  unknown: 'hubLog.outcomes.unknown', incomplete: 'hubLog.outcomes.incomplete',
+  interrupted: 'hubLog.outcomes.interrupted', rejected: 'hubLog.outcomes.rejected',
+  failure: 'hubLog.outcomes.failure', 'outcome-unknown': 'hubLog.outcomes.unknown',
+  'not-sent': 'hubLog.outcomes.notSent', ready: 'hubLog.outcomes.ready',
+  disconnected: 'hubLog.outcomes.disconnected', running: 'hubLog.outcomes.running', exited: 'hubLog.outcomes.exited',
+};
 type History = { records: HubLogRecord[]; issue: string | null };
 export const validRetentionDays = (value: unknown): value is number => Number.isInteger(value)
   && Number(value) >= 1 && Number(value) <= 0xffffffff;
 export const defaultRetentionDays = 30;
-export function formatHubRecord(record: HubLogRecord) {
-  return `${new Date(record.timestamp).toISOString()} #${record.sequence} ${record.component}/${record.operation}`
-    + `${record.runner ? ` runner=${record.runner}` : ''}${record.target ? ` target=${record.target}` : ''}`
-    + ` expected=${record.expected} actual=${record.actual} code=${record.code} next=${record.nextAction}`;
+export function formatHubTimestamp(timestamp: number) {
+  const date = new Date(timestamp), pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+export function formatHubRecord(record: HubEvent) {
+  const modern = ['system', 'task', 'settings'].includes(record.component) && record.expected === 'confirmed-outcome';
+  const category = record.component === 'settings' || record.component === 'configuration' ? 'settings'
+    : record.component === 'task' || record.component === 'work' ? 'task' : 'system';
+  const label = eventLabels[record.operation];
+  const outcome = outcomeLabels[record.actual] ?? 'hubLog.outcomes.unknown';
+  const contextual = ['runner-lifecycle', 'connection', 'work-outcome', 'work-submission', 'configuration-apply'].includes(record.operation);
+  let message = modern && label ? t(label) : t('hubLog.events.other');
+  if (modern && contextual) message += ` · ${t(outcome)}`;
+  if (!modern) message += ` · ${t('hubLog.historical')}`;
+  const runner = /^[\p{L}\p{N}_. -]{1,256}$/u.test(record.runner) ? record.runner : '';
+  if (runner) message = modern && record.operation === 'spare-promoted' ? t('hubLog.promoted', { runner }) : `${runner} · ${message}`;
+  const target = /^(Project|Workspace)\/[\p{L}\p{N}_. /-]{1,256}$/u.test(record.target) ? record.target : '';
+  if (target) message += ` · ${target}`;
+  const tone = !modern ? 'normal' : ['failed', 'failure'].includes(record.actual) ? 'failure'
+    : ['succeeded', 'applied'].includes(record.actual) ? 'success'
+    : (contextual && !outcomeLabels[record.actual]) || ['unknown', 'outcome-unknown', 'partial', 'incomplete', 'interrupted', 'rejected', 'not-sent', 'disconnected'].includes(record.actual) ? 'warning' : 'normal';
+  const categoryKey = category === 'system' ? 'hubLog.categories.system'
+    : category === 'task' ? 'hubLog.categories.task' : 'hubLog.categories.settings';
+  return { category: t(categoryKey), message, tone };
 }
 
 /** One queue owns restore/append/prune; subscribers are presentation only. */
