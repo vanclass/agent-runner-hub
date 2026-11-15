@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { t, type MessageKey } from './i18n';
+import { i18n, t, type MessageKey } from './i18n';
 
 export type HubEvent = { component: string; operation: string; runner: string; target: string;
   expected: string; actual: string; code: string; nextAction: string };
@@ -40,7 +40,19 @@ export function formatHubRecord(record: HubEvent) {
   const contextual = ['runner-lifecycle', 'connection', 'work-outcome', 'work-submission', 'configuration-apply'].includes(record.operation);
   let message = modern && label ? t(label) : t('hubLog.events.other');
   if (modern && contextual) message += ` · ${t(outcome)}`;
-  if (!modern) message += ` · ${t('hubLog.historical')}`;
+  if (!modern) {
+    const component = ['assignment', 'allocation', 'restoration', 'runner', 'connection', 'configuration', 'work', 'delivery',
+      'system', 'task', 'settings'].includes(record.component) ? record.component : '';
+    const identity = record.operation.split('/')[0];
+    const operation = ['observe', 'command', 'apply', 'session_config.inspect', 'session_config.plan', 'session_config.apply'].includes(identity)
+      || Object.hasOwn(eventLabels, identity)
+      || (/^(entry|spare|workspace|runner|control|work)\.[a-zA-Z.]+$/.test(identity) && i18n.exists(identity)) ? identity : '';
+    const context = [component, operation].filter(Boolean).join(' / ');
+    const description: Record<string, MessageKey> = { connection: 'hubLog.events.connection', runner: 'hubLog.events.lifecycle',
+      configuration: 'hubLog.events.settings', work: 'hubLog.events.work', delivery: 'hubLog.events.submission' };
+    if (context) message += ` · ${Object.hasOwn(description, component) ? t(description[component]) + ' · ' : ''}${context}`;
+    message += ` · ${t('hubLog.historical')}`;
+  }
   const runner = /^[\p{L}\p{N}_. -]{1,256}$/u.test(record.runner) ? record.runner : '';
   if (runner) message = modern && record.operation === 'spare-promoted' ? t('hubLog.promoted', { runner }) : `${runner} · ${message}`;
   const target = /^(Project|Workspace)\/[\p{L}\p{N}_. /-]{1,256}$/u.test(record.target) ? record.target : '';

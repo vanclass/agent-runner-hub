@@ -66,6 +66,10 @@ test('localized outcomes, exact local timestamp dates, safe legacy fallback, nar
     for (const lang of ['en', 'ko']) {
       initializeHubLanguage(lang);
       result[lang] = [base, { ...base, component: 'system', operation: 'spare-prepared' }, { ...base, component: 'settings', operation: 'configuration-apply', actual: 'applied' }, { ...base, actual: 'failed' }, { ...base, actual: 'unknown' }, { ...base, component: 'work', code: 'FAILED' }].map(formatHubRecord);
+      result[`${lang}History`] = ['connection', 'work', 'configuration', 'runner'].map((component, i) => formatHubRecord({ ...base,
+        component, operation: ['observe', 'observe', 'session_config.apply', 'spare.preparing/SECRET'][i],
+        expected: 'SECRET', actual: 'SECRET', code: 'SECRET', nextAction: 'SECRET' }));
+      result[`${lang}Unsafe`] = formatHubRecord({ ...base, component: 'SECRET', operation: 'SECRET', expected: 'legacy' });
     }
     result.dates = [new Date(2026, 0, 1, 23, 59, 59).getTime(), new Date(2026, 0, 2, 0, 0, 1).getTime()].map(formatHubTimestamp);
     result.utcBoundary = formatHubTimestamp(Date.UTC(2026, 0, 1, 15, 0, 1));
@@ -79,6 +83,13 @@ test('localized outcomes, exact local timestamp dates, safe legacy fallback, nar
   expect(result.en[0].message).toContain('Completed'); expect(result.ko[0].message).toContain('작업 완료');
   expect(result.ko[1].message).toContain('예비 러너 준비됨'); expect(result.ko[2].message).toContain('설정 적용');
   expect(result.en[5].message).toContain('outcome unverified'); expect(JSON.stringify(result)).not.toContain('SECRET');
+  for (const lang of ['en', 'ko']) {
+    const history = result[`${lang}History`];
+    expect(new Set(history.map(r => r.message)).size).toBe(4);
+    expect(history.map(r => r.tone)).toEqual(Array(4).fill('normal'));
+    for (const row of history) expect(row.message).toContain(lang === 'en' ? 'outcome unverified' : '결과 검증되지 않음');
+    expect(history[3].message).toContain('spare.preparing');
+  }
   await page.evaluate(() => window.appendLog(1, { runner: 'Long Runner '.repeat(20), actual: 'failed', operation: 'work-outcome' }));
   await page.setViewportSize({ width: 360, height: 640 }); await expect(page.locator('.hub-log-row')).toHaveCount(201);
   const style = await page.locator('.hub-log-row').last().evaluate(n => ({ overflow: n.scrollWidth > n.clientWidth, height: n.clientHeight, color: getComputedStyle(n.querySelector('.hub-log-message')).color, category: getComputedStyle(n.querySelector('.hub-log-category')).color }));

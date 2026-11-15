@@ -25,6 +25,26 @@ export function hubLogCase(runnerRoot) {
       await browser.execute(() => document.querySelector('.single-entry').click());
       await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),
         { timeout: browser.options.waitforTimeout });
+      disk = await read(browser);
+      const latest = Math.max(...disk.records.map(r => r.sequence));
+      await browser.execute(() => {
+        document.querySelector('.runner-management').open = true;
+        document.querySelector('.runner-management button').click();
+      });
+      await browser.waitUntil(async () => {
+        disk = await read(browser);
+        return disk.records.some(r => r.sequence > latest && r.operation === 'runner-restarted');
+      }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'No confirmed restart event while Single Entry remained open' });
+      await browser.waitUntil(async () => browser.execute(() => {
+        const n = document.querySelector('.hub-log-records');
+        return !!document.querySelector('.single-entry.active') && n
+          && n.scrollHeight - n.scrollTop - n.clientHeight <= 2;
+      }), { timeout: browser.options.waitforTimeout });
+      const appended = disk.records.find(r => r.sequence > latest && r.operation === 'runner-restarted');
+      await browser.waitUntil(async () => browser.execute(sequence =>
+        !!document.querySelector(`.hub-log-row[data-sequence="${sequence}"]`), appended.sequence),
+      { timeout: browser.options.waitforTimeout });
+      const liveAppend = { operation: 'runner-restarted', singleEntry: true, atBottomAfterAppend: true };
       await browser.execute(() => document.querySelector('.app-settings-trigger').click());
       await browser.execute(() => {
         const input = document.querySelector('.app-settings input[type="number"]');
@@ -38,7 +58,7 @@ export function hubLogCase(runnerRoot) {
       disk = await read(browser); assert.equal(disk.issue, null);
       assert.ok(lines.length > 0); assert.ok(disk.records.length >= lines.length);
       await stopWatching(browser);
-      return { method: 'Candidate native Hub; actual Runner tab and app-local disk; no instruction submission', disk, lines };
+      return { method: 'Candidate native Hub; actual Runner tab and app-local disk; no instruction submission', disk, lines, liveAppend };
     },
     async afterRestart(browser, before) {
       await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.app-settings[open]')),
@@ -46,7 +66,12 @@ export function hubLogCase(runnerRoot) {
       await browser.execute(() => document.querySelector('.single-entry').click());
       await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),
         { timeout: browser.options.waitforTimeout });
-      const disk = await read(browser); assert.equal(disk.issue, null);
+      let disk;
+      await browser.waitUntil(async () => {
+        disk = await read(browser);
+        return disk.records.length > before.disk.records.length;
+      }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'Fresh startup events append after old history' });
+      assert.equal(disk.issue, null);
       for (const old of before.disk.records) assert.deepEqual(disk.records.find(r => r.sequence === old.sequence), old);
       const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
       for (const old of before.lines) assert.ok(lines.includes(old), 'Restored formatter must be byte-identical');

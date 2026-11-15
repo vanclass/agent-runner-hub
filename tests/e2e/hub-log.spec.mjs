@@ -7,7 +7,9 @@ test('Hub log restores before queued live events, serializes writes and exposes 
     const event = code => ({ component: 'configuration', operation: 'apply', runner: 'fixture', target: 'Project/Example',
       expected: 'completed-receipt', actual: 'rejected', code, nextAction: 'inspect-receipt' });
     const old = { ...event('OLD'), timestamp: 1, sequence: 1 }, calls = []; let release;
-    const blocked = new Promise(resolve => { release = resolve; }); let disk = [old];
+    const other = { ...old, component: 'work', operation: 'observe', sequence: 2 };
+    const blocked = new Promise(resolve => { release = resolve; }); let disk = [old, other];
+    const originalBytes = JSON.stringify(disk);
     window.__TAURI_INTERNALS__ = { invoke: async (command, { request }) => {
       calls.push(request); if (calls.length === 1) await blocked;
       if (request.event) disk.push({ ...request.event, sequence: disk.length + 1, timestamp: 2 });
@@ -21,12 +23,15 @@ test('Hub log restores before queued live events, serializes writes and exposes 
     window.__TAURI_INTERNALS__.invoke = async () => { throw 'HUB_LOG_WRITE_FAILED'; };
     await next.record(event('UNSAVED'));
     return { before, calls: calls.map(c => c.event?.code ?? 'load'), restored, again,
+      unchanged: JSON.stringify(disk.slice(0, 2)) === originalBytes,
       issue: next.issue, pending: next.pending.map(e => e.code), retained: next.history.length };
   });
   expect(observed.before).toBe(1); expect(observed.calls).toEqual(['load', 'LIVE', 'NEXT', 'load']);
   expect(observed.restored).toEqual(observed.again);
+  expect(observed.restored[0].message).not.toBe(observed.restored[1].message);
+  expect(observed.unchanged).toBe(true);
   expect(observed.pending).toEqual(['UNSAVED']); expect(observed.issue).toBe('HUB_LOG_WRITE_FAILED');
-  expect(observed.retained).toBe(3);
+  expect(observed.retained).toBe(4);
 });
 
 test('capture survives presentation detach, deduplicates refresh and projects safe distinct outcomes', async ({ page }) => {
