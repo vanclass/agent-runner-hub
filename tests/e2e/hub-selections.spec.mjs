@@ -23,7 +23,7 @@ test('Hub Activity keeps one line and leaves unchanged announcements untouched',
     const { default: React } = await import(resources.find(url => /\/react\.js\?/.test(url)));
     const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
     const { HubActivity } = await import('/src/hub/HubActivity.tsx');
-    const host = document.createElement('div'); host.style.width = '220px'; document.body.append(host);
+    const host = document.createElement('div'); host.className = 'workspace'; host.style.width = '220px'; document.body.append(host);
     const root = createRoot(host), props = { selections: { loadingOptions: true } };
     const render = async p => { root.render(React.createElement(HubActivity, p)); await new Promise(r => setTimeout(r, 30)); };
     await render(props);
@@ -37,9 +37,45 @@ test('Hub Activity keeps one line and leaves unchanged announcements untouched',
     observer.disconnect(); root.unmount(); host.remove();
     return { unchanged, failure, stableHeight, wrap, idle, height, idleHeight };
   });
-  expect(result).toEqual({ unchanged: 0, failure: 'HubCould not inspect Runner settings.', stableHeight: true,
+  expect(result).toEqual({ unchanged: 0, failure: 'Hub Could not inspect Runner settings.', stableHeight: true,
     wrap: 'nowrap', idle: '', height: 22, idleHeight: 22 });
 });
+test('Hub Activity sentence follows both composer insets across responsive widths and locales', async ({ page }) => {
+  await page.goto('/');
+  for (const width of [1280, 1101, 1100, 900, 801, 800, 640]) {
+    await page.setViewportSize({ width, height: 800 });
+    const result = await page.evaluate(async () => {
+      const resources = performance.getEntriesByType('resource').map(entry => entry.name);
+      const { default: React } = await import(resources.find(url => /\/react\.js\?/.test(url)));
+      const { default: { createRoot } } = await import(resources.find(url => /\/react-dom_client\.js\?/.test(url)));
+      const { HubActivity } = await import('/src/hub/HubActivity.tsx');
+      const { initializeHubLanguage } = await import('/src/hub/i18n.ts');
+      const results = [];
+      for (const runner of [false, true]) {
+        const host = document.createElement('div'); host.className = 'workspace'; document.body.append(host);
+        const composer = document.createElement('section'); composer.className = 'composer-area' + (runner ? ' runner-composer' : '');
+        composer.innerHTML = runner ? '<div class="runner-composer-content"><div class="composer"><textarea></textarea></div></div>' : '<div class="composer"><textarea></textarea></div>';
+        host.append(composer);
+        const mount = document.createElement('div'); host.append(mount); const root = createRoot(mount);
+        const render = async props => { root.render(React.createElement(HubActivity, props)); await new Promise(r => setTimeout(r, 30)); };
+        for (const language of ['en', 'ko']) {
+          initializeHubLanguage(language);
+          await render({ config: { presentedApplications: [{ receipt: {}, result: { apply_status: 'applied' }, verification: 'verified' }] } });
+          const line = mount.firstElementChild, message = line.firstElementChild;
+          results.push({ language, text: line.textContent, aligned: message.getBoundingClientRect().left === composer.querySelector('.composer').getBoundingClientRect().left,
+            readable: message.scrollWidth <= message.clientWidth, height: line.getBoundingClientRect().height });
+          await render({});
+          if (line.textContent !== '' || line.getBoundingClientRect().height !== 22) throw new Error('Idle line changed');
+        }
+        root.unmount(); host.remove();
+      }
+      initializeHubLanguage('en'); return results;
+    });
+    for (const row of result) expect(row).toEqual({ language: row.language,
+      text: row.language === 'ko' ? 'Hub 설정 적용을 확인했습니다.' : 'Hub Settings application verified.', aligned: true, readable: true, height: 22 });
+  }
+});
+
 test('Hub Activity projects every category without diagnostics or admission success', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {

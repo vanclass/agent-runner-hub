@@ -65,6 +65,6 @@ export function HubActivity({ selections, config }: { selections?: SelectionActi
   useHubTranslation();
   const key = hubActivityKey(selections, config);
   return <div className="hub-activity" role="status" aria-live="polite" aria-atomic="true">
-    {key && <><span className="hub-activity-label">{t('activity.label')}</span><span className="hub-activity-message">{t(key)}</span></>}
+    {key && <span className="hub-activity-message">{t('activity.label')} {t(key)}</span>}
   </div>;
 }

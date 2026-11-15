@@ -39,6 +39,16 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
       .some(r => r.operation === 'session_config.apply'))).toBe(true);
     await expect(page.locator('.hub-activity')).not.toContainText('Settings application verified.');
+    for (const width of [1280, 1101, 1100, 900, 801, 800, 640]) {
+      await page.setViewportSize({ width, height: 800 });
+      const edges = await page.locator('.workspace').evaluate(node => ({
+        input: node.querySelector('.composer').getBoundingClientRect().left,
+        sentence: node.querySelector('.hub-activity-message').getBoundingClientRect().left,
+        height: node.querySelector('.hub-activity').getBoundingClientRect().height
+      }));
+      expect(edges.sentence).toBe(edges.input); expect(edges.height).toBe(22);
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
     expect(await page.locator('.workspace').evaluate(node =>
       [...node.children].map(child => ({ cls: child.className, y: child.getBoundingClientRect().y, height: child.getBoundingClientRect().height })))).toEqual(geometry);
     expect(await page.locator('.hub-activity').evaluate(node => ({
@@ -56,6 +66,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await expect(composer(page)).toHaveValue('independent draft');
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(composer(page)).toHaveValue('', { timeout: 30000 });
+    await expect(page.locator('.hub-activity')).toHaveText('Hub Settings application verified.');
     const result = await page.evaluate(() => {
       const n = window.__nativeFixture, f = n.sessions.get('pty-1').feature;
       return { current: f.config.current, work: f.requests, other: n.sessions.get('pty-2').feature.requests,

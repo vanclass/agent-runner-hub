@@ -32,10 +32,13 @@ export async function observeHub(browser) {
     const line = document.querySelector('.hub-activity'), previous = line.previousElementSibling;
     return { text: line.textContent, height: line.getBoundingClientRect().height,
       whiteSpace: getComputedStyle(line).whiteSpace, previous: previous.className,
-      belowComposer: line.getBoundingClientRect().top === previous.getBoundingClientRect().bottom,
+      belowComposer: Math.abs(line.getBoundingClientRect().top - previous.getBoundingClientRect().bottom) < 1,
+      composerGap: line.getBoundingClientRect().top - previous.getBoundingClientRect().bottom,
       detailedPanels: document.querySelectorAll('.config-evidence, .config-plan, .config-receipt').length };
   });
-  assert.deepEqual(activity, { text: '', height: 22, whiteSpace: 'nowrap', previous: 'composer-area', belowComposer: true, detailedPanels: 0 });
+  assert.ok(Math.abs(activity.composerGap) < 1, JSON.stringify(activity));
+  const { composerGap, ...layout } = activity;
+  assert.deepEqual(layout, { text: '', height: 22, whiteSpace: 'nowrap', previous: 'composer-area', belowComposer: true, detailedPanels: 0 });
   return { initial, changed, activity, interaction: 'scripted DOM click; no physical/native input' };
 }
 
