@@ -1,5 +1,6 @@
 import { PNG } from 'pngjs';
 import { registerAttachmentOutcomes } from './attachment-outcomes.mjs';
+import { registerLocalPreviews } from './local-previews.mjs';
 const png = [...PNG.sync.write({ width: 1, height: 1, data: Buffer.from([31, 87, 201, 255]) })];
 async function paste(page, label = 'Runner instructions') {
   await page.getByRole('textbox', { name: label, exact: true }).evaluate((input, bytes) => {
@@ -29,6 +30,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).press('Enter');
   }
   registerAttachmentOutcomes({ test, expect, ready, paste, requests, send, drop });
+  registerLocalPreviews({ test, expect, ready, paste, requests, drop });
   test('composer attachments stage repeated drop/paste edits without reference mutations', async ({ page }, info) => {
     await ready(page);
     await expect(page.locator('.generated-images')).not.toHaveAttribute('open');
@@ -112,7 +114,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('allocate attachments once');
     await page.locator('textarea[data-instruction]').press('Enter');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await expect(page.locator('.hub-log-records')).toContainText('work.started');
+    await expect(page.locator('.hub-log-records')).toContainText('Task started');
     const sent = await requests(page);
     expect(sent.filter(r => r.request.operation === 'references.register').map(r => r.id)).toEqual(['pty-2', 'pty-2']);
     await page.locator('.runner-row').first().locator('.nav-row').click();

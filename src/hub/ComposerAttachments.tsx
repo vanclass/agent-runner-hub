@@ -56,8 +56,9 @@ export function ComposerAttachments({ selection, disabled, children }: {
     }}>
     {hover && <div className="attachment-drop-hint" role="status">{t('attachments.drop')}</div>}
     {!!items.length && <ul className="pending-attachments" aria-label={t('attachments.pending')}>
-      {items.map(item => { const state = selection.state(item); return <li className="attachment-chip" key={item.key}>
-        {item.thumbnail && <img src={item.thumbnail} alt={t('references.clipboardPreview', { index: item.key })} />}
+      {items.map(item => { const state = selection.state(item), thumbnail = selection.thumbnail(item);
+        return <li className="attachment-chip" key={item.key}>
+        {thumbnail && <img src={thumbnail} alt={item.image ? t('references.clipboardPreview', { index: item.key }) : item.path} />}
         <span title={item.path}>{item.image ? t('references.clipboardNumber', { index: item.key }) : item.path}</span>
         <span role="status">{referenceState(state)} {item.detail && tr(item.detail)}</span>
         <button type="button" disabled={!available || !!item.cancelRequested} aria-label={t('attachments.remove', { name: item.path || item.key })}

@@ -2,6 +2,8 @@
 mod desktop_terminal;
 #[cfg(all(feature = "desktop-terminal", any(target_os = "windows", target_os = "macos")))]
 mod hub_log;
+#[cfg(all(feature = "desktop-terminal", any(target_os = "windows", target_os = "macos")))]
+mod local_preview;
 
 #[cfg(all(feature = "native-webdriver", not(debug_assertions)))]
 compile_error!("native-webdriver is restricted to dedicated debug test builds");

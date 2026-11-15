@@ -1,6 +1,7 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { selectFiles, selectFolder } from '../../.project-config/managed/web-app-desktop/io/nativeIO';
 import { commandNamed, controlTiming, clipboardMaxBytes, type RunnerControl } from './runnerControl';
+import { LocalPreviews, previewKind } from './localPreviews';
 
 export type ReferenceRequest = { operation: 'references.register'; path: string }
   | { operation: 'references.list'; offset: number }
@@ -39,7 +40,14 @@ export class RunnerReferenceSelection {
   private disposed = false;
   private submission?: { lease: symbol; candidates: Candidate[]; verified: boolean };
   private frozen = false;
-  constructor(private owner: RunnerControl | undefined, private readonly changed: () => void) {}
+  readonly previews: LocalPreviews;
+  constructor(private owner: RunnerControl | undefined, private readonly changed: () => void) {
+    this.previews = new LocalPreviews(changed);
+  }
+  thumbnail(candidate: Candidate) {
+    const preview = this.previews.get(candidate.key);
+    return candidate.thumbnail ?? (preview?.kind === 'image' ? preview.url : undefined);
+  }
   get control() { if (!this.owner) throw new HubError(msg('runtime.control.ownerUnavailable')); return this.owner; }
   bind(control: RunnerControl) {
     if (this.owner && this.owner !== control) throw new HubError(msg('runtime.references.originChanged'));
@@ -97,6 +105,7 @@ export class RunnerReferenceSelection {
     return result.state === 'accepted' || result.state === 'removed' ? 'outcome-unknown' : result.state;
   }
   private releasePreview(candidate: Candidate) {
+    this.previews.release(candidate.key);
     if (candidate.thumbnail) URL.revokeObjectURL(candidate.thumbnail);
     candidate.thumbnail = undefined;
   }
@@ -105,8 +114,11 @@ export class RunnerReferenceSelection {
       this.error = msg('runtime.references.locked'); this.changed(); return;
     }
     this.candidates = this.candidates.filter(item => item.phase !== 'cancelled' || item.requestId !== undefined);
-    for (const path of paths.slice(0, Math.max(0, 128 - this.candidates.length)))
-      this.candidates.push({ key: ++this.sequence, path, sessionId: this.owner?.sessionId, phase: 'staged' });
+    for (const path of paths.slice(0, Math.max(0, 128 - this.candidates.length))) {
+      const candidate: Candidate = { key: ++this.sequence, path, sessionId: this.owner?.sessionId, phase: 'staged' };
+      this.candidates.push(candidate);
+      if (previewKind(path) === 'image') this.previews.load(candidate.key, path);
+    }
     this.error = ''; this.changed();
   }
   async choose(folder: boolean) {
@@ -375,6 +387,7 @@ export class RunnerReferenceSelection {
   }
   dispose() {
     this.disposed = true;
+    this.previews.dispose();
     this.candidates.forEach(item => {
       this.releasePreview(item);
       item.image = undefined;

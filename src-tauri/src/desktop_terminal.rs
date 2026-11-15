@@ -7,16 +7,22 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
         runner_feature, runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
-        pty_resize, pty_ack, pty_close, crate::hub_log::hub_log]);
+        pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
-        runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close, crate::hub_log::hub_log]);
+        runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
     builder.manage(Arc::new(crate::hub_log::Store::default())).manage(Arc::new(Sessions::default()))
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<Arc<Sessions>>().close_window(window.label());
             }
         })
+}
+
+#[tauri::command]
+async fn local_file_preview<R: Runtime>(window: Window<R>, path: String) -> Result<crate::local_preview::Preview, String> {
+    if window.label() != "main" { return Err("Local previews are available only to the main window".into()); }
+    tauri::async_runtime::spawn_blocking(move || crate::local_preview::read(path)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
