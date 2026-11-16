@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
-import { changeValue, readyInstalledHub, ownedConnection, inspection, receiptEvidence, stopWatching } from './runner-flow.mjs';
+import { changeValue, readyInstalledHub, ownedConnection, stopWatching } from './runner-flow.mjs';
 
 export function assertSupportedStartup(messages) {
   assert.ok(!messages.includes('Hub 이 Runner는 설정 조회를 지원하지 않습니다.'), JSON.stringify(messages));
@@ -45,10 +45,8 @@ export function activityCase(runnerRoot, windowWidth) {
       await readyInstalledHub(browser, runnerRoot);
     },
     async run(browser) {
-      const connection = await ownedConnection(browser, runnerRoot);
-      const response = await inspection(browser, connection);
-      // A fresh session has no selected Target. Observe its real guidance, never synthesize success.
-      assert.equal(response.result.reply.current.target, '');
+      await ownedConnection(browser, runnerRoot);
+      // Observe normal capability discovery without an additional inspection request.
       await browser.waitUntil(async () => browser.execute(() =>
         document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
       { timeout: startupMs, timeoutMsg: 'Single Entry active target guidance was not observed' });
@@ -56,9 +54,9 @@ export function activityCase(runnerRoot, windowWidth) {
       assertSupportedStartup(startupActivity);
       assert.ok(startupActivity.includes('Hub 실행 옵션을 불러오는 중…'),
         'Capability-discovery option loading must be observed: ' + JSON.stringify(startupActivity));
-      return { inspection: receiptEvidence(response), singleEntry: await geometry(browser), startupActivity,
+      return { singleEntry: await geometry(browser), startupActivity,
         startupCoverage: 'Observer installed before explicit Runner installation selection; earlier renderer startup is unverified.',
-        method: 'actual installed Runner inspection and existing Hub selection UI; no work or configuration apply' };
+        method: 'actual installed Runner capability discovery and existing Hub selection UI; no additional inspection, work or configuration apply' };
     },
     async observe(browser) {
       const rows = [];
