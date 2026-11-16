@@ -199,7 +199,7 @@ export class RunnerPresentation {
     try {
       if (!state.subscription) {
         const sub = await request({ operation: 'presentation.subscribe', api_version: 1, types: ['log', 'activity'] });
-        if (state !== this.state) return;
+        if (this.stopped || state !== this.state) return;
         state.subscribe(sub);
       }
       if (this.stopped) return;
@@ -208,20 +208,28 @@ export class RunnerPresentation {
       if (this.stopped || state !== this.state) return;
       state.page(page);
     } catch (error) { if (!this.stopped && state === this.state) state.fail(String(error)); }
-    finally { this.changed(); }
+    finally { if (!this.stopped && state === this.state) this.changed(); }
   }
   stop() { return this.stopping ??= this.release(); }
   private async release() {
     this.stopped = true;
     clearTimeout(this.timer); this.timer = undefined;
-    await this.running;
     if (!this.state.subscription && this.state.mode === 'connecting') this.state.mode = 'unsupported';
     const binding = this.binding, sub = this.state.subscription;
-    if (binding && sub) {
-      try { await this.request(binding.id, binding.generation, { operation: 'presentation.unsubscribe', api_version: 1,
-        subscription_id: sub.subscription_id }); }
-      catch { /* Process shutdown may already have retired the private stream. */ }
-    }
+    this.binding = undefined;
     this.state.ended(); this.changed();
+    if (binding && sub) {
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // Give normal release one polling interval, never the native transport timeout.
+        await Promise.race([
+          this.request(binding.id, binding.generation, { operation: 'presentation.unsubscribe', api_version: 1,
+            subscription_id: sub.subscription_id }),
+          new Promise<void>(resolve => { deadline = setTimeout(resolve, this.pollMs); }),
+        ]);
+      }
+      catch { /* Process shutdown may already have retired the private stream. */ }
+      finally { clearTimeout(deadline); }
+    }
   }
 }
