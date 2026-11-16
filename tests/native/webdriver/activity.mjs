@@ -3,6 +3,10 @@ import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-pro
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { changeValue, readyInstalledHub, ownedConnection, inspection, receiptEvidence, stopWatching } from './runner-flow.mjs';
 
+export function assertSupportedStartup(messages) {
+  assert.ok(!messages.includes('Hub 이 Runner는 설정 조회를 지원하지 않습니다.'), JSON.stringify(messages));
+}
+
 async function geometry(browser) {
   return browser.execute(() => {
     const line = document.querySelector('.hub-activity');
@@ -49,8 +53,11 @@ export function activityCase(runnerRoot, windowWidth) {
         document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
       { timeout: startupMs, timeoutMsg: 'Single Entry active target guidance was not observed' });
       const startupActivity = await browser.execute(() => window.__startupActivity);
-      assert.ok(!startupActivity.includes('이 Runner는 설정 조회를 지원하지 않습니다.'), JSON.stringify(startupActivity));
+      assertSupportedStartup(startupActivity);
+      assert.ok(startupActivity.includes('Hub 실행 옵션을 불러오는 중…'),
+        'Capability-discovery option loading must be observed: ' + JSON.stringify(startupActivity));
       return { inspection: receiptEvidence(response), singleEntry: await geometry(browser), startupActivity,
+        startupCoverage: 'Observer installed before explicit Runner installation selection; earlier renderer startup is unverified.',
         method: 'actual installed Runner inspection and existing Hub selection UI; no work or configuration apply' };
     },
     async observe(browser) {
