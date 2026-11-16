@@ -105,6 +105,8 @@ fn lifecycle_accepts_family_owned_terminal_and_uncertain_results() {
 #[test]
 fn exact_direct_successor_requires_owned_process_reference_and_original_final_result() {
     let mut p = capable();
+    let original_generation = p.snapshot.features.generation;
+    let original_presentation = p.snapshot.presentation_generation;
     p.feature_request(request(), "private").unwrap();
     let original = p.next;
     p.response(packet(original, "accepted", "queued")).unwrap();
@@ -116,6 +118,8 @@ fn exact_direct_successor_requires_owned_process_reference_and_original_final_re
     let mut crossed = successor.clone(); crossed["session_id"] = json!("other");
     assert!(p.successor_hello(&crossed).is_err());
     p.successor_hello(&successor).unwrap();
+    assert_eq!(p.snapshot.features.generation, original_generation, "Recovery owns its existing completion generation");
+    assert_ne!(p.snapshot.presentation_generation, original_presentation, "Successor stream needs a fresh cursor domain");
     assert_eq!(p.next, original);
     assert_eq!(p.snapshot.features.results.last().unwrap().state, "queued");
     assert_eq!(p.snapshot.state, "connecting");

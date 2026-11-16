@@ -69,6 +69,10 @@ node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/nati
 
 ## Actual Hub cases and explicit selection
 
+`semantic-presentation` selects the existing verified Runner installation, observes real startup semantic logs, and sends `/help` through the ordinary Hub composer. It also checks a read-only invalid `/files` argument rejection and semantic error output without entering the file-selection flow. It checks authenticated completion and subsequent output in a fresh owned Hub, then observes the nonactivating native viewport. It does not submit Provider work. Coverage omissions are reported separately from protocol success; browser fixtures do not establish installed-Runner delivery.
+
+The explicitly selected `semantic-work` case adds one read-only Pure Direct instruction through the Hub composer in this checkout, inheriting the verified canonical startup account/model. It requires actual canonical work start/success and the Provider reply in semantic output. It never changes persistent Runner configuration, provisions credentials, replays submission or grants PTY user-input authority. Both semantic cases use DOM focus inside their owned WebView without acquiring desktop focus.
+
 ```text
 node tools/native-probe/hub.mjs --help
 node tools/native-probe/hub.mjs --case installation-entry
@@ -94,7 +98,7 @@ resolver verifies the managed runtime before the Hub session owner launches a ne
 Runner. Ordinary startup account authentication and `session_config.inspect` are
 required; no saved Test account or second installation is needed. Missing authentication/capability
 remains blocked; this command never provisions accounts, copies credentials,
-injects startup authentication, adopts existing processes or submits model work.
+injects startup authentication or adopts existing processes. Model work is confined to the explicitly selected `semantic-work` case above.
 Use the normally installed runtime, never an already-running Hub or Runner session.
 If startup authentication or inspection is unavailable, retain the exact blocked
 reason and complete independent installation/UI, fixture and headless checks.

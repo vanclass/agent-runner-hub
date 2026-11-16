@@ -26,6 +26,8 @@ pub mod brief;
 pub mod run;
 #[path = "interaction.rs"]
 pub mod interaction;
+#[path = "presentation.rs"]
+pub mod presentation;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;
@@ -90,18 +92,22 @@ pub struct Snapshot {
     pub clipboard_staging: bool,
     pub generated_images_supported: bool,
     pub features: features::Features,
+    pub presentation_supported: bool,
+    pub presentation_generation: u64,
 }
 impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
             observation_age_ms: None, results: Vec::new(), detail: None, references: References::default(),
-            clipboard_staging: false, generated_images_supported: false, features: features::Features::default() }
+            clipboard_staging: false, generated_images_supported: false, features: features::Features::default(),
+            presentation_supported: false, presentation_generation: 0 }
     }
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum RequestKind { Observe, Command, Reference, Image, Feature }
+enum RequestKind { Observe, Command, Reference, Image, Feature, Presentation }
 struct Pending {
+    presentation: Option<presentation::Delivery>,
     kind: RequestKind, feature: Option<features::Request>, wire_start: u64,
     command: Option<String>, reference: Option<ReferenceRequest>, started: Instant, awaiting_interaction: bool,
     #[cfg(windows)] image: Option<(generated_images::Request, ImageCompletion)>,
@@ -118,6 +124,7 @@ impl Protocol {
         static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let mut snapshot = Snapshot::default();
         snapshot.features.generation = GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        snapshot.presentation_generation = snapshot.features.generation;
         Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(),
             snapshot, observed_at: None, queued_bytes: 0, written_bytes: 0,
             #[cfg(windows)] image_capability: None }
@@ -158,6 +165,8 @@ impl Protocol {
         verified.hello(packet)?;
         self.session = expected.1;
         self.connection = verified.connection;
+        self.snapshot.presentation_generation = verified.snapshot.presentation_generation;
+        self.snapshot.presentation_supported = false;
         self.snapshot.state = "connecting".into();
         self.observed_at = None;
         Ok(())
@@ -200,7 +209,7 @@ impl Protocol {
         if let Some(request) = &reference { self.snapshot.references.begin(self.next, request); }
         let kind = if command.is_some() { RequestKind::Command } else if reference.is_some() {
             RequestKind::Reference } else { RequestKind::Observe };
-        self.pending.insert(self.next, Pending { kind, feature: None, wire_start: self.queued_bytes,
+        self.pending.insert(self.next, Pending { kind, feature: None, presentation: None, wire_start: self.queued_bytes,
             command, reference, started: Instant::now(), awaiting_interaction: false,
             #[cfg(windows)] image: None });
         bytes.push(b'\n');
@@ -221,7 +230,7 @@ impl Protocol {
         request.validate()?;
         if self.recovering_direct() { return Err("Recovery handoff pending"); }
         if matches!(&request, features::Request::Recovery(recovery::Request::Recover { .. }))
-            && !self.pending.is_empty() { return Err("Control requests must settle before recovery"); }
+            && self.has_unsettled_requests() { return Err("Control requests must settle before recovery"); }
         if self.snapshot.state != "ready" || !self.snapshot.features.supports(&request) {
             return Err("Unsupported or unavailable native feature");
         }
@@ -235,6 +244,21 @@ impl Protocol {
         pending.kind = RequestKind::Feature;
         pending.feature = Some(request.clone());
         self.snapshot.features.begin(self.next, &request);
+        Ok(bytes)
+    }
+    fn presentation_request(&mut self, request: presentation::Request, generation: u64,
+        completion: presentation::Completion, key: &str) -> Result<Vec<u8>, &'static str> {
+        request.validate()?;
+        if generation != self.snapshot.presentation_generation || self.snapshot.state != "ready"
+            || !self.snapshot.presentation_supported || self.recovering_direct()
+            || self.pending.values().any(|p| p.presentation.as_ref().is_some_and(|d| d.completion.is_some())) {
+            return Err("Presentation is unavailable for this session generation");
+        }
+        let fields = serde_json::to_value(&request).map_err(|_| "Invalid presentation request")?;
+        let bytes = self.request_fields(None, None, Some(fields), key)?;
+        let pending = self.pending.get_mut(&self.next).unwrap();
+        pending.kind = RequestKind::Presentation;
+        pending.presentation = Some(presentation::Delivery { request, completion: Some(completion) });
         Ok(bytes)
     }
     fn response(&mut self, packet: Value) -> Result<(), &'static str> {
@@ -255,6 +279,13 @@ impl Protocol {
             (None, "rejected" | "failure") => status,
             _ => return Err("Malformed control result phase"),
         };
+        if pending.presentation.is_some() {
+            if finished {
+                let mut delivery = self.pending.remove(&id).unwrap().presentation.unwrap();
+                delivery.settle(delivery.request.response(&packet));
+            }
+            return Ok(());
+        }
         if pending.kind == RequestKind::Observe && finished {
             if state != "accepted" { return Err("Runner observation was rejected"); }
             let observation: Observation = serde_json::from_value(packet["observation"].clone())
@@ -267,6 +298,7 @@ impl Protocol {
             self.snapshot.references.capability = references::Capability::read(&packet["capabilities"]["references"]);
             self.snapshot.references.removal_capability = references::RemovalCapability::read(&packet["capabilities"]["reference_removal"]);
             self.snapshot.features.discover(&packet["capabilities"]);
+            self.snapshot.presentation_supported = presentation::supported(&packet["capabilities"]["presentation"]);
             #[cfg(windows)] {
                 self.image_capability = generated_images::Capability::read(&packet["capabilities"]["generated_images"]);
                 self.snapshot.generated_images_supported = self.image_capability.is_some();
@@ -313,10 +345,12 @@ impl Protocol {
             result.code = result_code(&packet);
         }
         if finished {
-            let was_front = self.pending.keys().next().copied() == Some(id);
+            let was_front = self.pending.iter().find(|(_, p)| p.kind != RequestKind::Presentation).map(|(id, _)| *id) == Some(id);
             self.pending.remove(&id);
             if was_front {
-                if let Some(mut next) = self.pending.first_entry() { next.get_mut().started = Instant::now(); }
+                if let Some((_, next)) = self.pending.iter_mut().find(|(_, p)| p.kind != RequestKind::Presentation) {
+                    next.started = Instant::now();
+                }
             }
         }
         else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
@@ -330,7 +364,7 @@ impl Protocol {
     fn expired(&self) -> bool {
         // Runner owns the FIFO and emits no processing-start event. A queued
         // follower cannot time out while an earlier owner is legitimately busy.
-        self.pending.first_key_value().is_some_and(|(_, pending)| !pending.awaiting_interaction
+        self.pending.iter().find(|(_, p)| p.kind != RequestKind::Presentation).is_some_and(|(_, pending)| !pending.awaiting_interaction
             && pending.started.elapsed() > pending.feature.as_ref().map_or(COMPLETION_TIMEOUT, |r| r.wait_limit()))
     }
     fn disconnect(&mut self, detail: &str) {
@@ -346,6 +380,11 @@ impl Protocol {
         self.snapshot.features.disconnect(self.pending.iter().filter(|(_, p)| p.kind == RequestKind::Feature)
             .map(|(id, p)| (*id, self.written_bytes <= p.wire_start)));
         self.snapshot.generated_images_supported = false;
+        for pending in self.pending.values_mut() {
+            if let Some(delivery) = &mut pending.presentation {
+                delivery.settle(Err("Presentation transport disconnected; coverage is unverified".into()));
+            }
+        }
         #[cfg(windows)] {
             self.image_capability = None;
             for pending in self.pending.values() {

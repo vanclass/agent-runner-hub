@@ -9,7 +9,8 @@ use windows_sys::Win32::{Foundation::*, Security::{SECURITY_ATTRIBUTES, Cryptogr
 
 fn error() -> String { format!("Runner control I/O failed ({})", io::Error::last_os_error().raw_os_error().unwrap_or(0)) }
 enum Request { Command(String), Reference(ReferenceRequest), Image(generated_images::Request, super::ImageCompletion),
-    Feature(super::features::Request) }
+    Feature(super::features::Request),
+    Presentation(super::presentation::Request, u64, super::presentation::Completion) }
 type Admission = mpsc::Sender<Result<u64, String>>;
 struct SubmitError { detail: String, unknown: bool }
 impl From<&str> for SubmitError {
@@ -103,6 +104,20 @@ impl Client {
         best.is_some_and(|(_, command)| command.visible && command.enabled)
     }
     pub fn snapshot(&self) -> Snapshot { self.state.lock().unwrap().clone() }
+    pub fn presentation(&self, request: super::presentation::Request, generation: u64) -> Result<serde_json::Value, String> {
+        if self.stopped.load(Ordering::Acquire) || self.snapshot().state != "ready" {
+            return Err("Presentation control is unavailable".into());
+        }
+        let deadline = Instant::now() + super::COMPLETION_TIMEOUT + super::DELIVERY_GRACE;
+        let (send, receive) = mpsc::channel();
+        let (admitted, admission) = mpsc::channel();
+        self.send.try_send((Request::Presentation(request, generation, send), admitted))
+            .map_err(|_| "Presentation request queue unavailable".to_owned())?;
+        admission.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|_| "Presentation admission unavailable; coverage is unverified".to_owned())??;
+        receive.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|_| "Presentation response unavailable; coverage is unverified".to_owned())?
+    }
     fn image_alive(&self) -> bool { !self.stopped.load(Ordering::Acquire) && self.snapshot().state == "ready" }
     fn image_reply(&self, request: generated_images::Request) -> Result<generated_images::Reply, generated_images::Failure> {
         let (send, receive) = mpsc::channel();
@@ -210,13 +225,15 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
             deferred.extend(receive.try_iter());
             while let Some((request, _)) = deferred.front() {
                 if matches!(request, Request::Feature(super::features::Request::Recovery(super::recovery::Request::Recover { .. })))
-                    && !protocol.pending.is_empty() { break; }
+                    && protocol.has_unsettled_requests() { break; }
                 let (request, admitted) = deferred.pop_front().unwrap();
                 let result = match request {
                     Request::Command(command) => protocol.request(Some(command), key),
                     Request::Reference(request) => protocol.reference_request(request, key),
                     Request::Image(request, completion) => protocol.image_request(request, completion, key),
                     Request::Feature(request) => protocol.feature_request(request, key),
+                    Request::Presentation(request, generation, completion) =>
+                        protocol.presentation_request(request, generation, completion, key),
                 };
                 let receipt = result.map(|bytes| {
                     outgoing.extend(bytes);
@@ -242,6 +259,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
             protocol.written_bytes += count as u64;
         }
         *state.lock().unwrap() = protocol.public_snapshot();
+        protocol.expire_presentations();
         if protocol.expired() { return Err("Runner control completion timed out; uncertain commands were not retried"); }
         if protocol.connection.is_none() && started.elapsed() > Duration::from_secs(30) {
             return Err("Runner did not provide a v1 control hello");

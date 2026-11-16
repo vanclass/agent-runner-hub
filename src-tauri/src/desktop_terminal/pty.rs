@@ -57,6 +57,17 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 }
 
 impl Session {
+    pub fn presentation(&self, request: control::presentation::Request, generation: u64) -> Result<serde_json::Value, String> {
+        #[cfg(windows)] {
+            let client = self.control.lock().unwrap().clone().ok_or("Runner control unavailable")?;
+            if self.closing.load(Ordering::Acquire) { return Err("Runner is closing".into()); }
+            client.presentation(request, generation)
+        }
+        #[cfg(not(windows))] {
+            let _ = (request, generation);
+            Err("Presentation control is unsupported on this host".into())
+        }
+    }
     #[cfg(windows)]
     pub fn images_list(&self) -> Result<control::generated_images::Inventory, control::generated_images::Failure> {
         let client = self.control.lock().unwrap().clone().ok_or_else(control::generated_images::Failure::unavailable)?;

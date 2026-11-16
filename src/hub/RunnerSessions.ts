@@ -420,6 +420,7 @@ export class RunnerSession {
       if (!this.nativeSettled) {
         if (!this.pty || this.exitObserved) throw new HubError(this.nativeFailure || msg('tabs.unconfirmed'));
         this.nativeState = 'closing';
+        await this.control.presentation.stop();
         await this.pty.close();
         const deadline = performance.now() + 10000;
         while (!this.exitObserved && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
@@ -455,7 +456,7 @@ export class RunnerSession {
     this.references.dispose();
     clearTimeout(this.resizeTimer);
     this.pending = [];
-    const closing = this.nativeSettled ? undefined : this.pty?.close();
+    const closing = this.nativeSettled ? undefined : this.control.presentation.stop().then(() => this.pty?.close());
     this.input.dispose();
     this.terminal.dispose();
     this.cleanup = Promise.all([this.opening, closing]).then(async () => { if (!this.nativeSettled) await this.pty?.close(); });

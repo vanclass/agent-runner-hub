@@ -6,11 +6,11 @@ use tauri::{ipc::Channel, Manager, Runtime, State, Window};
 pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
-        runner_feature, runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
+        runner_presentation, runner_feature, runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
         pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
-        runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
+        runner_presentation, runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
     builder.manage(Arc::new(crate::hub_log::Store::default())).manage(Arc::new(Sessions::default()))
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
@@ -28,6 +28,12 @@ async fn local_file_preview<R: Runtime>(window: Window<R>, path: String) -> Resu
 #[tauri::command]
 fn runner_observe<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String) -> Result<control::Snapshot, String> {
     state.owned(&id, window.label())?.control_snapshot()
+}
+#[tauri::command]
+async fn runner_presentation<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String,
+    request: control::presentation::Request, generation: u64) -> Result<serde_json::Value, String> {
+    let session = state.owned(&id, window.label())?;
+    tauri::async_runtime::spawn_blocking(move || session.presentation(request, generation)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

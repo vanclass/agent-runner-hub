@@ -24,9 +24,11 @@ import { registerSlashCommands } from './slash-commands.mjs';
 import { registerWG2 } from './wg2.mjs';
 import { registerWG3 } from './wg3.mjs';
 import { registerAutoRecovery } from './runner-auto-recovery.mjs';
+import { registerSemanticViewport } from './semantic-viewport.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
+registerSemanticViewport({ test, expect, transport, configure, create: createWork, generatedFixture });
 registerWG2({ test, expect, transport, configure });
 registerWG3({ test, expect, transport, configure });
 registerAutoRecovery({ test, expect, transport, configure, create: createPrepared });
@@ -905,7 +907,8 @@ test('generated image previews render verified delivery, select, enlarge, refres
 
 async function create(page) {
   await page.getByRole('button', { name: 'New Runner', exact: true }).click();
-  await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
+  await expect(page.locator('.runner-terminal')).toBeVisible();
+  await expect(page.locator('.terminal-host .xterm-screen')).toBeAttached();
   await expect(page.locator('textarea[data-instruction]')).toBeEnabled();
 }
 async function foreground(page, id, active) {
