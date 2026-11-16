@@ -6,8 +6,9 @@ import { randomUUID } from 'node:crypto';
 import { after } from 'node:test';
 import { PNG } from 'pngjs';
 import { nativeSuite } from '../../tools/native-probe/suite.mjs';
-import { defineNativeCase } from '../../tools/native-probe/case.mjs';
+import { defineNativeCase, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
 import { readyInstalledHub } from './webdriver/runner-flow.mjs';
+import { generatedSource } from './webdriver/attachment-preview.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const directory = path.join(root, 'temp/preview-originals', randomUUID());
 await fs.mkdir(directory, { recursive: true });
@@ -67,4 +68,12 @@ const preview = defineNativeCase({
     return state;
   }
 });
-nativeSuite([preview], { root, target:path.join(root,'local/hub-native/target') });
+const generated = defineNativeCase({
+  id: 'generated-consumer', presentation: 'background',
+  ready: browser => readyInstalledHub(browser, 'D:/Codex/codex_workspace'),
+  async run(browser) {
+    const result = await generatedSource(browser);
+    throw new UnverifiedObservation(JSON.stringify(result));
+  }
+});
+nativeSuite([preview, generated], { root, target:path.join(root,'local/hub-native/target') });

@@ -75,15 +75,16 @@ export async function readyInstalledHub(browser, runnerRoot, platform = process.
   });
 }
 
-export async function ownedConnection(browser, runnerRoot) {
+export async function ownedConnection(browser, runnerRoot, sessionId) {
   let connection;
   await browser.waitUntil(async () => {
-    connection = await browser.execute(async () => {
-      const entries = Object.entries(window.__wg3Observation.snapshots);
+    connection = await browser.execute(async sessionId => {
+      const entries = Object.entries(window.__wg3Observation.snapshots)
+        .filter(([id]) => sessionId === undefined || id === sessionId);
       if (entries.length !== 1) return null;
       const [session, observed] = entries[0];
       return { session, snapshot: observed ?? await window.__TAURI_INTERNALS__.invoke('runner_observe', { id: session }) };
-    });
+    }, sessionId);
     return connection && connection.snapshot.state !== 'connecting';
   }, { timeout: startupMs, timeoutMsg: 'Owned Hub Runner observation did not settle' }).catch(async error => {
     const diagnostic = await browser.execute(() => ({

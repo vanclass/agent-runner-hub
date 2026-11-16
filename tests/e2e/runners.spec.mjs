@@ -25,9 +25,11 @@ import { registerWG2 } from './wg2.mjs';
 import { registerWG3 } from './wg3.mjs';
 import { registerAutoRecovery } from './runner-auto-recovery.mjs';
 import { registerSemanticViewport } from './semantic-viewport.mjs';
+import { registerGeneratedConsumer } from './generated-consumer.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
+registerGeneratedConsumer({ test, expect, transport, configure, generatedFixture });
 registerSemanticViewport({ test, expect, transport, configure, create: createWork, generatedFixture });
 registerWG2({ test, expect, transport, configure });
 registerWG3({ test, expect, transport, configure });
