@@ -168,6 +168,7 @@
 .attachment-chip button { border: 1px solid var(--border); border-radius: 4px; background: var(--inset); }
 .composer textarea { width: 100%; display: block; resize: none; min-height: 75px; padding: 16px; border: 0; background: transparent; color: var(--text); opacity: 1; }
 .composer textarea::placeholder { color: var(--disabled); opacity: 1; }
+.hub .composer textarea[data-instruction]:focus { outline: none; }
 .composer-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 0 10px 10px; }
 .send-button { background: var(--disabled-bg); border: 1px solid var(--border); border-radius: 5px; padding: 7px 10px; font-size: 11px !important; }.send-button > span { margin-left: 12px; }
 .composer-note { margin: 9px 0 0; text-align: center; font-size: 10px; color: var(--muted); }

@@ -33,6 +33,26 @@ export function registerComposerAttachments({ test, expect, transport, configure
   registerAttachmentOutcomes({ test, expect, ready, paste, requests, send, drop });
   registerLocalPreviews({ test, expect, ready, paste, requests, drop });
   registerPreviewViews({ test, expect, ready, drop });
+  test('instruction focus has no outline in either shared composer', async ({ page }, info) => {
+    await ready(page);
+    for (const label of ['Runner instructions', 'Single Entry instructions']) {
+      if (label.startsWith('Single')) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+      const input = page.getByRole('textbox', { name: label, exact: true });
+      await input.click();
+      await expect(input).toBeFocused();
+      await expect(input).toHaveCSS('outline-style', 'none');
+      await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab');
+      await expect(input).toBeFocused();
+      await expect(input).toHaveCSS('outline-style', 'none');
+      await input.fill('editable'); await input.press('Shift+Enter');
+      await expect(input).toHaveValue('editable\n');
+      await input.press('ControlOrMeta+A'); await input.press('Backspace');
+      await expect(input).toHaveValue('');
+      await info.attach(label, { body: await page.screenshot(), contentType: 'image/png' });
+    }
+    const settings = page.getByRole('button', { name: 'App settings', exact: true });
+    await settings.focus(); await expect(settings).toHaveCSS('outline-style', 'solid');
+  });
   test('composer attachments stage repeated drop/paste edits without reference mutations', async ({ page }, info) => {
     await ready(page);
     await expect(page.locator('.generated-images')).not.toHaveAttribute('open');
@@ -116,7 +136,8 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('allocate attachments once');
     await page.locator('textarea[data-instruction]').press('Enter');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-    await expect(page.locator('.hub-log-records')).toContainText('Task started');
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+      .some(session => session.feature.work?.started_event_id > 0))).toBe(true);
     const sent = await requests(page);
     expect(sent.filter(r => r.request.operation === 'references.register').map(r => r.id)).toEqual(['pty-2', 'pty-2']);
     await page.locator('.runner-row').first().locator('.nav-row').click();
