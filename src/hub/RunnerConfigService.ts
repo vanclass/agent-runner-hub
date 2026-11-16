@@ -18,6 +18,7 @@ const terminal = (result: FeatureResult) => ['accepted', 'rejected', 'failure', 
 /** One Runner instance owns this service; drafts and receipts never enter preferences. */
 export class RunnerConfigService {
   capability?: ConfigCapability;
+  inspectionUnsupported = false;
   activity: ConfigActivity = 'idle';
   progress?: FeatureResult;
   actual?: ConfigInspect;
@@ -63,6 +64,7 @@ export class RunnerConfigService {
   observe(session: string, state: string, snapshot?: FeatureSnapshot) {
     if (this.closed) return;
     const previousCapability = this.capability;
+    const previousUnsupported = this.inspectionUnsupported;
     let applicationChanged = false;
     const identity = state === 'ready' && snapshot && snapshot.generation > 0
       ? { session, generation: snapshot.generation } : undefined;
@@ -73,6 +75,8 @@ export class RunnerConfigService {
     this.capability = state === 'ready' && cap?.version === 1 && cap.options_revision === true
       && Number.isSafeInteger(cap.options_page_size) && cap.options_page_size > 0 && cap.options_page_size <= 32
       && Array.isArray(cap.operations) && cap.operations.includes('session_config.inspect') ? cap : undefined;
+    // Native ready snapshots publish capabilities from a completed authenticated observation.
+    this.inspectionUnsupported = !!identity && !this.supports('inspect');
     if (!this.capability) { this.catalog = undefined; this.plan = undefined; this.planned = undefined; }
     for (const receipt of snapshot?.results ?? []) {
       if (receipt.feature !== 'session_config') continue;
@@ -87,7 +91,8 @@ export class RunnerConfigService {
     }
     this.deliver();
     if (state === 'disconnected') this.close();
-    else if (applicationChanged || this.waiting || !same(previousCapability, this.capability)) this.changed();
+    else if (applicationChanged || this.waiting || previousUnsupported !== this.inspectionUnsupported
+      || !same(previousCapability, this.capability)) this.changed();
   }
   private deliver() {
     const wait = this.waiting;
@@ -101,6 +106,7 @@ export class RunnerConfigService {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.inspectionUnsupported = false;
     this.capability = undefined;
     this.catalog = undefined;
     this.plan = undefined;

@@ -32,12 +32,17 @@ export class HubSelections {
     // Inspection itself temporarily hides a busy spare from the source supplier.
     if (this.loadingOptions && this.attempted?.busy) return;
     const service = this.source();
+    const unsupported = msg('config.unsupported');
+    if (same(this.detail, unsupported) && !service?.inspectionUnsupported) {
+      this.detail = ''; this.changed();
+    }
     if (!service || !service.supports('inspect') || this.attempted && this.attempted !== service)
       this.attempted = undefined;
     if (this.loadingOptions || !this.editable || !service) return;
     if (!service.supports('inspect')) {
-      const detail = msg('config.unsupported');
-      if (!same(this.detail, detail)) { this.detail = detail; this.changed(); }
+      if (service.inspectionUnsupported && !this.detail) {
+        this.detail = unsupported; this.changed();
+      }
       return;
     }
     if (service.busy) return;

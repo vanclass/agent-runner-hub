@@ -8,6 +8,8 @@
 
 Native capability discovery follows an authenticated completed observation. Only locally implemented feature/version/operation combinations are exposed. A native instance generation, together with the owning PTY session, fences frontend results without exposing process/session/connection wire identities or the private key. An unbound startup snapshot cannot establish that identity. Exited instances reject late publication; changing the selected tab never retargets a request.
 
+`RunnerConfigService.inspectionUnsupported` distinguishes a ready authenticated snapshot without supported inspection from capability discovery still in progress. `HubSelections` stays neutral before that evidence, shows option-loading activity only during inspection, and removes obsolete unsupported guidance when the source disappears or its evidence changes. Genuine inspection failures and explicit selection requirements remain visible. Confirmed unsupported inspection retains its localized guidance and configuration restrictions; no timer or persistent event log participates in this decision.
+
 ## Requests, completion and bounded waiting
 
 The typed feature wrapper selects `session_config` and an inspect, plan or apply request. Native adds the unchanged v1 authentication/identity envelope. Inspect can carry an account pair, offset and options guard. Plan carries desired settings. Apply carries the exact desired/revision/plan_id returned by a ready plan. Options evidence is inspect-only.

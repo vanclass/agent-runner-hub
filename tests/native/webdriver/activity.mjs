@@ -29,6 +29,15 @@ export function activityCase(runnerRoot, windowWidth) {
       await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.language-picker select')),
         { timeout: startupMs });
       await changeValue(browser, '.language-picker select', 'ko');
+      await browser.execute(() => {
+        window.__startupActivity = [];
+        const record = () => {
+          const text = document.querySelector('.hub-activity')?.textContent;
+          if (text && window.__startupActivity.at(-1) !== text) window.__startupActivity.push(text);
+        };
+        new MutationObserver(record).observe(document.body, { subtree: true, childList: true, characterData: true });
+        record();
+      });
       await readyInstalledHub(browser, runnerRoot);
     },
     async run(browser) {
@@ -39,7 +48,9 @@ export function activityCase(runnerRoot, windowWidth) {
       await browser.waitUntil(async () => browser.execute(() =>
         document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
       { timeout: startupMs, timeoutMsg: 'Single Entry active target guidance was not observed' });
-      return { inspection: receiptEvidence(response), singleEntry: await geometry(browser),
+      const startupActivity = await browser.execute(() => window.__startupActivity);
+      assert.ok(!startupActivity.includes('이 Runner는 설정 조회를 지원하지 않습니다.'), JSON.stringify(startupActivity));
+      return { inspection: receiptEvidence(response), singleEntry: await geometry(browser), startupActivity,
         method: 'actual installed Runner inspection and existing Hub selection UI; no work or configuration apply' };
     },
     async observe(browser) {

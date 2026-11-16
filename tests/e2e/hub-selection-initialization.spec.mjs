@@ -1,5 +1,70 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
+for (const outcome of ['supported', 'unsupported', 'failure']) {
+  test(`capability discovery stays neutral before authenticated ${outcome} evidence`, async ({ page }) => {
+    await page.goto('/');
+    const result = await page.evaluate(async outcome => {
+      const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+      const { HubSelections } = await import('/src/hub/HubSelections.ts');
+      const { hubActivityKey } = await import('/src/hub/HubActivity.tsx');
+      const { service, fixture } = createConfigHarness();
+      let source = service;
+      const choices = new HubSelections(() => source, () => {}, { runMode: 'issue-run' });
+      const pending = [];
+      for (const state of ['connecting', 'ready']) {
+        service.observe(fixture.session, state);
+        choices.initialize();
+        pending.push(hubActivityKey(choices) ?? null);
+      }
+      service.observe(fixture.session, 'ready', { generation: 0, sessionConfig: null, results: [] });
+      choices.initialize();
+      pending.push(hubActivityKey(choices) ?? null);
+      const before = fixture.requests.length;
+      fixture.hold = true;
+      if (outcome === 'failure') fixture.fault = 'missing';
+      const snapshot = structuredClone(fixture.features);
+      if (outcome === 'unsupported') snapshot.sessionConfig = null;
+      service.observe(fixture.session, 'ready', snapshot);
+      choices.initialize();
+      const active = hubActivityKey(choices);
+      if (outcome !== 'unsupported') { fixture.hold = false; fixture.complete(); }
+      while (choices.loadingOptions) await new Promise(resolve => setTimeout(resolve, 5));
+      const completed = hubActivityKey(choices) ?? null, count = fixture.requests.length;
+      for (let i = 0; i < 5; i++) choices.initialize();
+      const repeated = fixture.requests.length;
+      source = undefined; choices.initialize();
+      const unavailable = hubActivityKey(choices) ?? null;
+      return { pending, before, active, completed, unavailable, count, repeated };
+    }, outcome);
+    expect(result.pending).toEqual([null, null, null]);
+    expect(result.before).toBe(0);
+    expect(result.active).toBe(outcome === 'unsupported' ? 'activity.unsupported' : 'activity.options');
+    expect(result.completed).toBe(outcome === 'supported' ? null :
+      outcome === 'unsupported' ? 'activity.unsupported' : 'activity.inspectionFailed');
+    expect(result.unavailable).toBe(outcome === 'failure' ? 'activity.inspectionFailed' : null);
+    expect(result.repeated).toBe(result.count);
+    if (outcome === 'unsupported') expect(result.count).toBe(0);
+  });
+}
+
+test('obsolete unsupported guidance clears when support arrives before inspection is available', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { HubSelections } = await import('/src/hub/HubSelections.ts');
+    const { hubActivityKey } = await import('/src/hub/HubActivity.tsx');
+    const { service, fixture } = createConfigHarness();
+    let editable = true;
+    const choices = new HubSelections(() => service, () => {}, {}, () => {}, () => editable);
+    service.observe(fixture.session, 'ready', { ...fixture.features, sessionConfig: null });
+    choices.initialize();
+    const unsupported = hubActivityKey(choices);
+    editable = false; fixture.changed(); choices.initialize();
+    return { unsupported, supported: hubActivityKey(choices) ?? null, requests: fixture.requests.length };
+  });
+  expect(result).toEqual({ unsupported: 'activity.unsupported', supported: null, requests: 0 });
+});
+
 for (const recovery of ['replacement', 'readiness']) {
   test(`failed automatic inspection recovers on ${recovery} only`, async ({ page }) => {
     await page.goto('/');

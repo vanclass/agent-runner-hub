@@ -42,7 +42,7 @@ test('unbound native startup preserves verified choices without choosing a targe
   });
   expect(result.available).toBe(true);
   expect(result.before).not.toHaveProperty('target');
-  expect(result.before.accountIdentity).toEqual({ agent_id: 'codex', profile_name: 'first' });
+  expect(result.before).toEqual({});
   expect(result.selected).toEqual({ binding_state: 'bound', owner: 'Project', project: 'Exact' });
   expect(result.uncertain).toBe(false); expect(result.unknown).toBe(false);
   expect(result.readOnly).toBe(true);
