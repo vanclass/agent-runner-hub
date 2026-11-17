@@ -4,13 +4,23 @@ export function registerComposerSubmission({ test, expect, transport, configure,
     await page.addInitScript(outcome => {
       const native = window.__TAURI_INTERNALS__, original = native.invoke;
       native.invoke = async (command, args) => {
+        if (command === 'runner_presentation') {
+          const stream_id = 's-' + args.id, subscription_id = 'u-' + args.id;
+          if (args.request.operation === 'presentation.subscribe') return { stream_id, subscription_id,
+            snapshot_sequence: 0, first_sequence: 1, activities: [], closed: false };
+          if (args.request.operation === 'presentation.unsubscribe') return { unsubscribed: true };
+          return { stream_id, subscription_id, events: [], next_sequence: 0, through_sequence: 0,
+            caught_up: true, coverage: 'complete', missing_range: null, closed: false };
+        }
         if (command === 'runner_feature' && args.request.request?.operation === 'work.submit') {
           window.__submitHeld = true;
           await new Promise(resolve => { window.__releaseSubmit = resolve; });
           if (outcome === 'unknown') throw Error('receipt unavailable');
           if (outcome === 'not-sent') return { state: 'not-sent', detail: 'fixture unsent' };
         }
-        return original(command, args);
+        const result = await original(command, args);
+        if (command === 'runner_observe') result.presentationSupported = true;
+        return result;
       };
     }, outcome);
     await configure(page); await create(page);
@@ -23,7 +33,7 @@ export function registerComposerSubmission({ test, expect, transport, configure,
     await input.press('Enter');
     await page.waitForFunction(() => window.__submitHeld);
     expect(await height()).toBeCloseTo(base, 0); await expect(input).toHaveValue(draft);
-    const boxes = await page.evaluate(() => ['.terminal-host', '.runner-composer-content'].map(s => {
+    const boxes = await page.evaluate(() => ['.runner-semantic', '.runner-composer-content'].map(s => {
       const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height };
     }));
     expect(boxes[0].height).toBeGreaterThan(100); expect(boxes[0].bottom).toBeLessThanOrEqual(boxes[1].top + 1);

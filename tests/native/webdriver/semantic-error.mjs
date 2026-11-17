@@ -19,10 +19,9 @@ export async function semanticError(browser, connection) {
     receipt = snapshot.results.find(r => r.command === command && r.phase === 'completed');
     return !!receipt;
   }, { timeout: startupMs, timeoutMsg: 'Read-only invalid command receipt unverified; do not replay' });
-  await browser.waitUntil(async () => browser.execute(command => [...document.querySelectorAll('.xterm-rows > div')]
-    .some(line => !line.textContent.includes(command)
-      && /error|invalid|usage|does not|cannot|오류|잘못|인자/i.test(line.textContent)), command),
-  { timeout: startupMs, timeoutMsg: 'Actual Runner rejection did not reach PTY viewport' });
+  await browser.waitUntil(async () => browser.execute(() => !!document.querySelector(
+    '.semantic-logs .presentation-error, .semantic-logs .presentation-failure, .semantic-logs .project-error')),
+  { timeout: startupMs, timeoutMsg: 'Actual Runner rejection did not render semantic error output' });
   assert.notEqual(receipt.state, 'outcome-unknown');
-  return { state: receipt.state, ownerStatus: receipt.ownerStatus, code: receipt.code, ptyOutputObserved: true };
+  return { state: receipt.state, ownerStatus: receipt.ownerStatus, code: receipt.code, semanticErrorObserved: true };
 }

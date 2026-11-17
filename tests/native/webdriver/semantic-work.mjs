@@ -6,7 +6,7 @@ import { changeValue, correlated, visibleConnection, visibleConfiguration } from
 async function geometry(browser) {
   return browser.execute(() => {
     const input = document.querySelector('textarea[data-instruction]');
-    const terminal = document.querySelector('.terminal-host');
+    const terminal = document.querySelector('.runner-semantic');
     const rect = element => {
       if (!element) return null;
       const r = element.getBoundingClientRect();
@@ -46,7 +46,7 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
     const input = document.querySelector(selector); return input && !input.disabled && !input.readOnly;
   }, inputSelector), { timeout: startupMs });
   const compact = await geometry(browser);
-  const retainedLine = await browser.execute(() => [...document.querySelectorAll('.xterm-rows > div')]
+  const retainedLine = await browser.execute(() => [...document.querySelectorAll('.semantic-record')]
     .map(line => line.textContent.trim()).find(Boolean));
   await changeValue(browser, inputSelector, instruction);
   const editing = await geometry(browser);
@@ -82,7 +82,7 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
   assert.ok(submitted && completed.started_event_id > 0, 'Canonical work start must be observed');
   assert.equal(completed.outcome, 'succeeded', 'Actual read-only Provider work must succeed');
   const reply = single ? 'HUB_SINGLE_ENTRY_ACCEPTANCE' : 'HUB_LONG_COMPOSER_ACCEPTANCE';
-  await browser.waitUntil(async () => browser.execute(reply => document.querySelector('.xterm-rows')
+  await browser.waitUntil(async () => browser.execute(reply => document.querySelector('.semantic-logs')
     ?.textContent.includes(reply), reply), { timeout: startupMs });
   const confirmed = await geometry(browser);
   assert.equal(confirmed.draftLength, 0, 'Canonical start clears the unchanged draft');
@@ -94,49 +94,32 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
   let originalInstructionBufferCount;
   if (single) {
     originalInstructionBufferCount = await browser.execute(instruction => {
-      const host = document.querySelector('.terminal-host');
-      let fiber = host[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
-      for (; fiber; fiber = fiber.return) {
-        const terminal = fiber.memoizedProps?.session?.terminal;
-        if (terminal?.element?.parentElement !== host) continue;
-        const buffer = terminal.buffer.active;
-        const lines = Array.from({ length: buffer.length }, (_, i) => buffer.getLine(i).translateToString());
-        const matches = lines.flatMap((line, i) => line.includes(instruction) ? [i] : []);
-        if (matches.length) terminal.scrollToLine(matches[0]);
-        return matches.length;
-      }
+      const output = document.querySelector('.semantic-logs').textContent;
+      return output.split(instruction).length - 1;
     }, instruction);
     if (originalInstructionBufferCount !== 1) throw new UnverifiedObservation(
       'Original instruction exact buffer count ' + originalInstructionBufferCount + '; no synthetic echo: '
       + JSON.stringify({ requestId: submitted.id, started: completed.started_event_id, outcome: completed.outcome,
         tab: connection.tab, session: connection.session, generation: connection.generation }));
-    await browser.waitUntil(async () => browser.execute(instruction => document.querySelector('.xterm-rows')
+    await browser.waitUntil(async () => browser.execute(instruction => document.querySelector('.semantic-logs')
       .textContent.includes(instruction), instruction), { timeout: startupMs,
-      timeoutMsg: 'Original instruction unavailable in actual xterm scrollback; no synthetic echo' });
+      timeoutMsg: 'Original instruction unavailable in canonical output; no synthetic echo' });
   }
-  const output = await browser.execute(() => document.querySelector('.xterm-rows').textContent);
+  const output = await browser.execute(() => document.querySelector('.semantic-logs').textContent);
   const scrollback = await browser.execute(retainedLine => {
-    const host = document.querySelector('.terminal-host');
-    let fiber = host[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
-    for (; fiber; fiber = fiber.return) {
-      const terminal = fiber.memoizedProps?.session?.terminal;
-      if (terminal?.element?.parentElement !== host) continue;
-      const buffer = terminal.buffer.active;
-      return { lines: buffer.length, baseY: buffer.baseY,
-        startupRetained: Array.from({ length: buffer.length }, (_, i) => buffer.getLine(i).translateToString())
-          .some(line => !!retainedLine && line.includes(retainedLine)) };
-    }
-    return null;
+    const records = [...document.querySelectorAll('.semantic-record')];
+    return { records: records.length,
+      startupRetained: records.some(line => !!retainedLine && line.textContent.includes(retainedLine)) };
   }, retainedLine);
   if (!single) assert.ok(scrollback?.startupRetained, 'Original startup scrollback retained');
   const normalize = text => text.replace(/\s/g, '');
   const count = normalize(output).split(normalize(instruction)).length - 1;
-  if (single) assert.equal(count, 1, 'Original Single Entry instruction appears once in visible xterm: '
+  assert.equal(count, 1, 'Original instruction appears once in canonical output: '
     + JSON.stringify({ requestId: submitted.id, started: completed.started_event_id, outcome: completed.outcome,
       identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
       matchingRows: output.split('\n').filter(line => /Reply|HUB_SINGLE|tools|changes/.test(line)) }));
   return { originalRequestId: submitted.id, started: completed.started_event_id > 0, outcome: completed.outcome,
-    ptyReplyObserved: true, instructionCount: single ? count : undefined,
+    semanticReplyObserved: true, instructionCount: count,
     originalInstructionBufferCount,
     identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
     geometry: { compact, editing, entered, confirmed },

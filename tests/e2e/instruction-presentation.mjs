@@ -54,8 +54,8 @@ export function registerInstructionPresentation({ test, expect, transport, confi
       await configure(page);
       const preparedIds = await page.evaluate(() => [...window.__nativeFixture.sessions.keys()]);
       await create(page);
-      await expect.poll(() => page.locator('.xterm-rows').innerText()).toContain('/files');
-      expect((await page.locator('.xterm-rows').innerText()).match(/\/files/g)).toHaveLength(7);
+      await expect.poll(() => page.locator('.xterm-rows').textContent()).toContain('/files');
+      expect((await page.locator('.xterm-rows').textContent()).match(/\/files/g)).toHaveLength(7);
       const createdIds = await page.evaluate(prepared => [...window.__nativeFixture.sessions.keys()]
         .filter(id => !prepared.includes(id)), preparedIds);
       expect(createdIds).toHaveLength(1);
@@ -101,7 +101,7 @@ export function registerInstructionPresentation({ test, expect, transport, confi
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()]
         .flatMap(s => s.control.references.results))).toEqual([]);
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.items))).toEqual([]);
-      expect((await page.locator('.xterm-rows').innerText()).match(/\/files/g)).toHaveLength(7);
+      expect((await page.locator('.xterm-rows').textContent()).match(/\/files/g)).toHaveLength(7);
     });
   }
 }

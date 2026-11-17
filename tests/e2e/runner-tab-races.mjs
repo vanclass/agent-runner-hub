@@ -1,5 +1,5 @@
 export function registerRunnerTabRaces({ test, expect, transport, configure, create }) {
-    for (const dispose of [false, true]) test(`PTY-only output allows ${dispose ? 'dispose' : 'close'} without semantic requests`, async ({ page }) => {
+    for (const dispose of [false, true]) test(`Unsupported presentation allows ${dispose ? 'dispose' : 'close'} without semantic requests`, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
       const result = await page.evaluate(async dispose => {
         const { RunnerSession } = await import('/src/hub/RunnerSessions.ts');

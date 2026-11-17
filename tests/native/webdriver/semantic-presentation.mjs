@@ -15,14 +15,16 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
         await browser.execute(() => document.querySelector('.add-runner').click());
         let connection = await visibleConnection(browser, runnerRoot);
         await browser.waitUntil(async () => browser.execute(() => {
-          return document.querySelector('.xterm-rows')?.textContent.trim().length > 0;
-        }), { timeout: startupMs, timeoutMsg: 'Actual PTY startup did not reach the viewport' });
+          return document.querySelector('.semantic-logs')?.textContent.trim().length > 0;
+        }), { timeout: startupMs, timeoutMsg: 'Actual semantic startup did not reach the viewport' });
         const startup = await browser.execute(() => {
-          const output = document.querySelector('.xterm-rows');
+          const output = document.querySelector('.semantic-logs');
           return { characters: output.textContent.length,
-            parserVisible: getComputedStyle(document.querySelector('.terminal-host')).visibility === 'visible' };
+            records: output.querySelectorAll('.semantic-record').length,
+            parserHidden: getComputedStyle(document.querySelector('.terminal-host')).visibility === 'hidden',
+            incomplete: !!document.querySelector('.runner-semantic > .presentation-warning') };
         });
-        assert.ok(startup.characters > 0); assert.ok(startup.parserVisible);
+        assert.ok(startup.characters > 0); assert.ok(startup.parserHidden); assert.equal(startup.incomplete, false);
         // Use the ordinary Hub composer and authenticated command route, without PTY user input.
         const canonical = await visibleConfiguration(browser, connection);
         stage = 'canonical-account-catalog';
@@ -42,7 +44,7 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
         if (workRoot) {
           stage = 'work-' + route;
           const workAdmission = await semanticWork(browser, connection, workRoot, route);
-          return { method: 'actual installed Runner / native Hub / original PTY output', startup,
+          return { method: 'actual installed Runner / native Hub / canonical presentation', startup,
             workAdmission, identity: workAdmission.identity,
             allocationIdentity: { tab: connection.tab, session: connection.session, generation: connection.generation } };
         }
@@ -84,10 +86,15 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
         assert.equal(commandObservation.session, connection.session, 'Visible tab owns the command receipt');
         assert.equal(commandObservation.snapshot.features.generation, connection.generation);
         stage = 'command-output';
-        await browser.waitUntil(async () => browser.execute(() => /help/i.test(document.querySelector('.xterm-rows')?.textContent)), { timeout: startupMs });
+        await browser.waitUntil(async () => browser.execute(count => document.querySelectorAll('.semantic-record').length > count,
+          startup.records), { timeout: startupMs, timeoutMsg: 'Help produced no new canonical records' });
+        const helpOutput = await browser.execute(count => [...document.querySelectorAll('.semantic-record')]
+          .slice(count).map(n => n.textContent).join('').slice(0, 6000), startup.records);
+        assert.ok(helpOutput.trim().length > 0, 'Completed /help must add canonical output');
         const error = await semanticError(browser, connection);
-        return { method: 'actual installed Runner / native Hub / original PTY output', startup,
-          composerCommand: '/help', commandCompleted: true, ptyOutputObserved: true,
+        return { method: 'actual installed Runner / native Hub / canonical presentation', startup,
+          composerCommand: '/help', commandCompleted: true, semanticOutputObserved: true,
+          helpOutput,
           workAdmission: 'not exercised by read-only command case',
           errorPresentation: error ?? 'not exercised by work case',
           identity: { tab: connection.tab, session: connection.session, generation: connection.generation } };
@@ -103,6 +110,9 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
               reserved: s.assignmentReserved, foreground: s.foregroundInteraction,
               uncertain: s.submissionUncertain, state: s.control.snapshot.state,
               generation: s.control.snapshot.features?.generation,
+              presentation: { mode: s.control.presentation.state.mode, cursor: s.control.presentation.state.cursor,
+                records: s.control.presentation.state.records.length, issues: [...s.control.presentation.state.issues],
+                tail: s.control.presentation.state.records.slice(-4).map(r => r.text).join('').slice(-3000) },
               attention: s.control.snapshot.observation?.attention,
               composerDisabled: document.querySelector('.runner-composer textarea')?.disabled };
           }
@@ -118,14 +128,14 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
         if (toggle?.getAttribute('aria-expanded') === 'true') toggle.click();
       });
       const observation = await browser.execute(() => {
-        const viewport = document.querySelector('.terminal-host'), rect = viewport.getBoundingClientRect();
+        const viewport = document.querySelector('.runner-semantic'), rect = viewport.getBoundingClientRect();
         const input = document.querySelector('.runner-composer textarea'), composer = input.getBoundingClientRect();
         return { width: rect.width, height: rect.height, visible: getComputedStyle(viewport).visibility,
           composerHeight: composer.height, composerBelowTerminal: composer.top >= rect.bottom,
-          semanticViewportAbsent: !document.querySelector('.runner-semantic') };
+          parserHidden: getComputedStyle(document.querySelector('.terminal-host')).visibility === 'hidden' };
       });
       assert.ok(observation.width > 0 && observation.height > 100);
-      assert.equal(observation.visible, 'visible'); assert.ok(observation.semanticViewportAbsent && observation.composerBelowTerminal);
+      assert.equal(observation.visible, 'visible'); assert.ok(observation.parserHidden && observation.composerBelowTerminal);
       return observation;
     }
   });
