@@ -45,6 +45,7 @@ export class RunnerSession {
   private get exitObserved() { return this.nativeState === 'settled' || this.nativeState === 'failed'; }
   get submissionUncertain() { return this.deliveryUnknown || this.control.commandUnresolved || this.control.brief.blocked; }
   view: RunnerView;
+  composerCompact = false;
   private tabRecord?: RunnerTabRecord;
   private presentationRetired = false;
   get tab() {
@@ -295,7 +296,12 @@ export class RunnerSession {
     this.update({ id: tab.id, name: tab.name, createdOrder: tab.createdOrder, detail: undefined });
   }
   rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
-  setDraft(draft: string) { if (!this.view.submitting && !this.view.closing) this.update({ draft }); }
+  setDraft(draft: string) {
+    if (!this.view.submitting && !this.view.closing) {
+      this.composerCompact = false;
+      this.update({ draft });
+    }
+  }
   private observeSubmission() {
     const command = this.submittedCommand;
     if (command && command.attempt.state === 'completed') {
@@ -384,6 +390,7 @@ export class RunnerSession {
     const defaults = copy(this.hubSelections?.defaults ?? {});
     if (ordinary && !this.foregroundInteraction) this.references.freeze();
     let delivered = false;
+    this.composerCompact = true;
     this.update({ submitting: true });
     try {
       if (ordinary) await this.control.fresh(true);
@@ -420,7 +427,6 @@ export class RunnerSession {
       if (!this.nativeSettled) {
         if (!this.pty || this.exitObserved) throw new HubError(this.nativeFailure || msg('tabs.unconfirmed'));
         this.nativeState = 'closing';
-        await this.control.presentation.stop();
         await this.pty.close();
         const deadline = performance.now() + 10000;
         while (!this.exitObserved && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
@@ -456,7 +462,7 @@ export class RunnerSession {
     this.references.dispose();
     clearTimeout(this.resizeTimer);
     this.pending = [];
-    const closing = this.nativeSettled ? undefined : this.control.presentation.stop().then(() => this.pty?.close());
+    const closing = this.nativeSettled ? undefined : this.pty?.close();
     this.input.dispose();
     this.terminal.dispose();
     this.cleanup = Promise.all([this.opening, closing]).then(async () => { if (!this.nativeSettled) await this.pty?.close(); });

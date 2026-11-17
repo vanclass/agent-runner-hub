@@ -223,7 +223,9 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       await ready(page, tab, { runResult: 'outcome-unknown' });
       await input(page).fill('retained after Run'); await input(page).press('Control+Enter');
       if (!tab) await page.keyboard.press('Control+Home');
-      await feedback(page, tab, 'brief.runUnknown');
+      await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
+        .filter(r => r.operation === 'run.invoke').length), { timeout: 35000 }).toBe(1);
+      if (tab) await page.keyboard.press('Control+End');
       await expect(input(page)).toHaveValue('retained after Run');
       await page.keyboard.press('Control+Enter');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests.filter(r => r.operation === 'run.invoke').length)).toBe(1);

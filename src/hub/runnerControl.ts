@@ -6,7 +6,6 @@ import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
 import { RunnerBrief } from './RunnerBrief';
 import { RunnerRecovery } from './RunnerRecovery';
-import { RunnerPresentation } from './RunnerPresentation';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
@@ -52,7 +51,6 @@ export type CommandAttempt = { admission: FeatureAdmission; result?: ControlResu
   state: 'pending' | 'completed' | 'not-sent' | 'unknown' };
 
 export class RunnerControl {
-  readonly presentation: RunnerPresentation;
   readonly images: RunnerImages;
   readonly config: RunnerConfigService;
   readonly work: RunnerWork;
@@ -87,7 +85,6 @@ export class RunnerControl {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
   constructor(private readonly changed: () => boolean | void) {
-    this.presentation = new RunnerPresentation(() => { this.changed(); }, undefined, controlTiming.pollMs);
     this.recovery = new RunnerRecovery(undefined, false, {
       completionMs: controlTiming.completionMs,
       observeMs: controlTiming.refreshMs,
@@ -149,8 +146,6 @@ export class RunnerControl {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
       this.snapshot = snapshot;
-      this.presentation.observe(this.id, snapshot.state === 'ready', snapshot.presentationSupported === true,
-        snapshot.presentationGeneration ?? snapshot.features?.generation ?? 0, this.recovery.busy || this.tabClosing);
       this.receivedAt = performance.now();
       this.observeCommand();
       this.brief.observe(snapshot);
@@ -280,7 +275,6 @@ export class RunnerControl {
   }
   stop(detail: HubText = msg('runtime.control.processExited'), finalSnapshot?: ControlSnapshot) {
     this.stopped = true;
-    void this.presentation.stop();
     this.images.stop();
     this.sending = false;
     clearTimeout(this.timer);

@@ -51,7 +51,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
     await home(page);
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('');
-    await expect(page.locator('.hub-log-records').filter({ hasText: 'task/work-started' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.work.started_event_id)).toBeGreaterThan(0);
     await expect(page.getByText('Assignment evidence', { exact: true })).toHaveCount(0);
     await expect(page.locator('.xterm')).toHaveCount(0);
     const receipt = await page.evaluate(() => ({ requests: window.__nativeFixture.sessions.get('pty-1').feature.requests,

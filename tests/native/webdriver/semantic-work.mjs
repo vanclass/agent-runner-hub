@@ -19,22 +19,21 @@ export async function semanticWork(browser, connection, workRoot) {
     input.focus();
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
   });
-  let submitted, completed, activityObserved = false, maxActivityRows = 0;
+  let submitted, completed;
   await browser.waitUntil(async () => {
     const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
     submitted ??= snapshot.features.results.find(r => r.feature === 'work' && r.operation === 'work.submit');
     const observations = snapshot.features.results.filter(r => r.feature === 'work').flatMap(r => [r.reply?.work, ...(r.reply?.works ?? [])]).filter(Boolean);
     completed = observations.find(work => work.submission_request_id === submitted?.id && work.terminal);
-    const rows = await browser.execute(() => document.querySelectorAll('.semantic-activity').length);
-    activityObserved ||= rows > 0; maxActivityRows = Math.max(maxActivityRows, rows);
     return !!completed;
   }, { timeout: subagentCompletionMs, timeoutMsg: 'Original work completion unverified; do not resubmit' }).catch(error => {
     throw new UnverifiedObservation(error.message);
   });
   assert.ok(submitted && completed.started_event_id > 0, 'Canonical work start must be observed');
   assert.equal(completed.outcome, 'succeeded', 'Actual read-only Provider work must succeed');
-  await browser.waitUntil(async () => browser.execute(() => document.querySelector('.semantic-logs')?.textContent.includes('HUB_PRESENTATION_ACCEPTANCE')), { timeout: startupMs });
+  await browser.waitUntil(async () => browser.execute(() => [...document.querySelectorAll('.xterm-rows > div')]
+    .some(line => line.textContent.trim() === 'HUB_PRESENTATION_ACCEPTANCE')), { timeout: startupMs });
   return { originalRequestId: submitted.id, started: completed.started_event_id > 0, outcome: completed.outcome,
-    semanticReplyObserved: true, activityObserved, maxActivityRows, instructionCount: 1,
+    ptyReplyObserved: true, instructionCount: 1,
     accountAndModel: 'inherited from verified canonical startup configuration' };
 }

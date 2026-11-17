@@ -16,19 +16,21 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
       const style = getComputedStyle(input);
       const base = parseFloat(style.lineHeight) * input.rows + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
       const footer = workspace.querySelector<HTMLElement>('.hub-activity')?.offsetHeight ?? 0;
-      const limit = Math.max(base, workspace.clientHeight - footer - parseFloat(getComputedStyle(slot).getPropertyValue('--composer-top-gap')));
+      // 편집 높이 비율이다. 늘리면 입력창이 커지고, 줄이면 터미널 공간이 커진다.
+      const limit = Math.max(base, (workspace.clientHeight - footer) / 2);
       input.style.height = '0px';
       const chrome = content.scrollHeight - input.offsetHeight;
-      const height = Math.min(Math.max(base, input.scrollHeight), Math.max(base, limit - chrome));
+      const height = session.composerCompact ? base
+        : Math.min(Math.max(base, input.scrollHeight), Math.max(base, limit - chrome));
       input.style.height = `${height}px`;
-      slot.style.height = `${Math.min(limit, chrome + base)}px`;
+      slot.style.height = `${Math.min(limit, chrome + height)}px`;
       content.style.maxHeight = `${limit}px`;
     };
     fit();
     const resize = new ResizeObserver(fit);
     resize.observe(workspace); resize.observe(content);
     return () => resize.disconnect();
-  }, [text, session]);
+  }, [text, session, session.composerCompact]);
   const available = !session.view.closing && session.view.status === 'running' && session.view.canSubmit
     && !session.assignmentReserved && !session.foregroundInteraction && !session.submissionUncertain;
   async function submit(briefRun = false) {

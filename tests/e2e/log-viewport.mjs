@@ -1,5 +1,5 @@
 export function registerLogViewport({ test, expect, transport, configure, create }) {
-  for (const height of [550, 800]) test(`Runner composer overlays log at ${height}`, async ({ page }, info) => {
+  for (const height of [550, 800]) test(`Runner composer preserves visible log at ${height}`, async ({ page }, info) => {
     await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
     await page.setViewportSize({ width: 1100, height });
@@ -23,7 +23,9 @@ export function registerLogViewport({ test, expect, transport, configure, create
       expect(grown.content.bottom).toBe(base.content.bottom);
       expect(grown.content.top).toBeLessThan(base.content.top);
       expect(grown.content.top).toBeGreaterThanOrEqual(grown.workspace.top + 15);
-      expect(grown.terminal).toEqual(base.terminal); expect(grown.slot).toEqual(base.slot);
+      expect(grown.terminal.bottom).toBeLessThanOrEqual(grown.content.top + 1);
+      expect(grown.terminal.height).toBeGreaterThan(100);
+      expect(grown.slot.height).toBeGreaterThan(base.slot.height);
     }
     await input.fill(Array.from({ length: 80 }, (_, i) => `editable line ${i}`).join('\n'));
     expect(await input.evaluate(n => n.scrollHeight > n.clientHeight)).toBe(true);
@@ -68,7 +70,8 @@ export function registerLogViewport({ test, expect, transport, configure, create
       Array.from({ length: 600 }, (_, i) => `line ${i} DirectRun output\r\n`).join('') + '\x1b[32mLOG-END\x1b[0m\r\n'));
     await expect(page.locator('.xterm-rows')).toContainText('LOG-END');
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
-    await expect(page.locator('.workspace > *')).toHaveCount(3);
+    await expect(page.locator('.workspace > .output, .workspace > .workspace-context, .workspace > .runner-composer')).toHaveCount(3);
+    await expect(page.locator('.workspace > .hub-activity')).toHaveCount(1);
     await expect(page.locator('.runner-interaction, .runner-work-status, .runner-instructions, .terminal-tools')).toHaveCount(0);
     await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
     await expect(page.getByText('Process exited (1)', { exact: true })).toHaveCount(0);

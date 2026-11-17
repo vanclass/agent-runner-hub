@@ -172,8 +172,7 @@
 .composer-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 0 10px 10px; }
 .send-button { background: var(--disabled-bg); border: 1px solid var(--border); border-radius: 5px; padding: 7px 10px; font-size: 11px !important; }.send-button > span { margin-left: 12px; }
 .composer-note { margin: 9px 0 0; text-align: center; font-size: 10px; color: var(--muted); }
-/* 상단 여백이다. 늘리면 최대 입력 높이가 줄고, 줄이면 더 위까지 확장된다. */
-.runner-composer { --composer-top-gap: 16px; position: relative; padding: 0; z-index: 1; }
+.runner-composer { position: relative; padding: 0; z-index: 1; }
 .runner-composer-content { position: absolute; bottom: 0; left: 0; right: 0; padding: 0 var(--composer-inline-inset) 13px; overflow-y: auto; background: var(--surface); }
 .runner-composer .attachment-composer { max-height: none; overflow: visible; }
 .runner-composer textarea { min-height: 0; height: auto; line-height: 1.5; padding: 8px 12px; overflow-y: auto; }

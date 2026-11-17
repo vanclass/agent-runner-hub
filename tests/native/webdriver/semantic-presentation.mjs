@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
+import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { readyInstalledHub, ownedConnection, stopWatching, inspection, changeValue } from './runner-flow.mjs';
 import { semanticWork } from './semantic-work.mjs';
@@ -12,23 +12,16 @@ export function semanticPresentation(runnerRoot, workRoot) {
     async run(browser) {
       try {
         let connection = await ownedConnection(browser, runnerRoot);
-        if (!connection.snapshot.presentationSupported) throw new BlockedPrerequisite('Installed Runner does not advertise supported presentation v1.');
         await browser.execute(() => document.querySelector('.add-runner').click());
         await browser.waitUntil(async () => browser.execute(() => {
-          const output = document.querySelector('.runner-semantic');
-          return output && output.querySelectorAll('.semantic-record').length > 0;
-        }), { timeout: startupMs, timeoutMsg: 'Actual semantic startup replay did not reach the viewport' });
+          return document.querySelector('.xterm-rows')?.textContent.trim().length > 0;
+        }), { timeout: startupMs, timeoutMsg: 'Actual PTY startup did not reach the viewport' });
         const startup = await browser.execute(() => {
-          const output = document.querySelector('.runner-semantic');
-          return { records: output.querySelectorAll('.semantic-record').length,
-            characters: output.querySelector('.semantic-logs').textContent.length,
-            incomplete: !!output.querySelector(':scope > .presentation-warning'),
-            coverageIssues: [...output.querySelectorAll(':scope > .presentation-warning > div')].map(n => n.textContent),
-            parserHidden: getComputedStyle(document.querySelector('.terminal-host')).visibility === 'hidden',
-            promptAbsent: !/> \/|Task Run · model/.test(output.textContent) };
+          const output = document.querySelector('.xterm-rows');
+          return { characters: output.textContent.length,
+            parserVisible: getComputedStyle(document.querySelector('.terminal-host')).visibility === 'visible' };
         });
-        assert.ok(startup.characters > 0); assert.ok(startup.parserHidden); assert.ok(startup.promptAbsent);
-        assert.equal(startup.incomplete, false, 'Startup semantic coverage: ' + JSON.stringify(startup.coverageIssues));
+        assert.ok(startup.characters > 0); assert.ok(startup.parserVisible);
         // Use the ordinary Hub composer and authenticated command route, without PTY user input.
         const canonical = await inspection(browser, connection);
         const account = JSON.stringify(canonical.result.reply.current.account);
@@ -77,11 +70,11 @@ export function semanticPresentation(runnerRoot, workRoot) {
         // Allocation may create a fresh session instead of promoting the original spare.
         // Correlate the actual composer receipt, never assume spare-to-tab identity.
         connection = { ...commandObservation, generation: commandObservation.snapshot.features.generation };
-        await browser.waitUntil(async () => browser.execute(count => document.querySelectorAll('.semantic-record').length > count, startup.records), { timeout: startupMs });
+        await browser.waitUntil(async () => browser.execute(() => /help/i.test(document.querySelector('.xterm-rows')?.textContent)), { timeout: startupMs });
         const work = workRoot ? await semanticWork(browser, connection, workRoot) : undefined;
         const error = workRoot ? undefined : await semanticError(browser, connection);
-        return { method: 'actual installed Runner / native Hub / authenticated presentation v1', startup,
-          composerCommand: '/help', commandCompleted: true, semanticOutputGrew: true,
+        return { method: 'actual installed Runner / native Hub / original PTY output', startup,
+          composerCommand: '/help', commandCompleted: true, ptyOutputObserved: true,
           workAdmission: work ?? 'not exercised by read-only command case',
           errorPresentation: error ?? 'not exercised by work case',
           identity: { session: connection.session, generation: connection.generation } };
@@ -89,13 +82,14 @@ export function semanticPresentation(runnerRoot, workRoot) {
     },
     async observe(browser) {
       const observation = await browser.execute(() => {
-        const viewport = document.querySelector('.runner-semantic'), rect = viewport.getBoundingClientRect();
+        const viewport = document.querySelector('.terminal-host'), rect = viewport.getBoundingClientRect();
+        const input = document.querySelector('.runner-composer textarea'), composer = input.getBoundingClientRect();
         return { width: rect.width, height: rect.height, visible: getComputedStyle(viewport).visibility,
-          activityRows: viewport.querySelectorAll('.semantic-activity').length,
-          internalComposerAbsent: !viewport.textContent.includes('> /'), footerAbsent: !viewport.textContent.includes('Task Run · model') };
+          composerHeight: composer.height, composerBelowTerminal: composer.top >= rect.bottom,
+          semanticViewportAbsent: !document.querySelector('.runner-semantic') };
       });
       assert.ok(observation.width > 0 && observation.height > 100);
-      assert.equal(observation.visible, 'visible'); assert.ok(observation.internalComposerAbsent && observation.footerAbsent);
+      assert.equal(observation.visible, 'visible'); assert.ok(observation.semanticViewportAbsent && observation.composerBelowTerminal);
       return observation;
     }
   });

@@ -1,12 +1,4 @@
 {
-  "presentation": {
-    "label": "Runner 의미 기반 출력",
-    "activity": "실시간 Activity",
-    "connecting": "Runner 출력에 연결 중…",
-    "incomplete": "일부 Runner 출력이 누락되었거나 확인되지 않았습니다.",
-    "closed": "Runner 출력 스트림이 종료되었습니다.",
-    "unsupported": "이 Runner는 지원되는 의미 기반 출력을 제공하지 않습니다. Runner 컨트롤을 포함한 터미널 출력을 표시합니다."
-  },
   "preview": {
     "focus": "이미지 미리 보기",
     "loading": "원본 파일을 읽는 중…",

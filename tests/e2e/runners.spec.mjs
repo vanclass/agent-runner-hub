@@ -24,13 +24,15 @@ import { registerSlashCommands } from './slash-commands.mjs';
 import { registerWG2 } from './wg2.mjs';
 import { registerWG3 } from './wg3.mjs';
 import { registerAutoRecovery } from './runner-auto-recovery.mjs';
-import { registerSemanticViewport } from './semantic-viewport.mjs';
+import { registerPtyViewport } from './pty-viewport.mjs';
+import { registerComposerSubmission } from './composer-submission.mjs';
 import { registerGeneratedConsumer } from './generated-consumer.mjs';
 
 test.setTimeout(90_000);
 test.use({ navigationTimeout: 60_000 });
 registerGeneratedConsumer({ test, expect, transport, configure, generatedFixture });
-registerSemanticViewport({ test, expect, transport, configure, create: createWork, generatedFixture });
+registerPtyViewport({ test, expect, transport, configure, create: createWork });
+registerComposerSubmission({ test, expect, transport, configure, create: createWork });
 registerWG2({ test, expect, transport, configure });
 registerWG3({ test, expect, transport, configure });
 registerAutoRecovery({ test, expect, transport, configure, create: createPrepared });
@@ -1296,7 +1298,7 @@ test('terminal color, cursor, device and focus replies preserve idle input owner
   await entry(page);
   await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/status' }]);
   expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(records(writes, 'pty-1')).toEqual([]);
@@ -1311,7 +1313,7 @@ test('blocked terminal typing leaves idle assignment available without user byte
   await entry(page); await page.evaluate(() => window.__nativeFixture.readyNew());
   await page.locator('textarea[data-instruction]').press('Enter');
   await assignedEntry(page);
-  await expect(page.locator('.hub-log-records').filter({ hasText: 'interaction.commandSubmitted' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands)).toEqual([{ id: 'pty-1', command: '/status' }]);
   const writes = await page.evaluate(() => window.__nativeFixture.writes);
   expect(records(writes, 'pty-1').some(record => record.char === 47)).toBe(false);
   expect(writes).toEqual([]);
