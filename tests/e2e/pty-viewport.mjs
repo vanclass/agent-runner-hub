@@ -1,5 +1,5 @@
 export function registerPtyViewport({ test, expect, transport, configure, create }) {
-  for (const capability of [false, undefined]) test(`PTY fallback with semantic capability ${capability}`, async ({ page }, info) => {
+  for (const capability of [true, false, undefined]) test(`Original PTY output with semantic capability ${capability}`, async ({ page }, info) => {
     await transport(page, undefined, { work: true, auto: true });
     await page.addInitScript(capability => {
       const native = window.__TAURI_INTERNALS__, original = native.invoke;
@@ -18,7 +18,7 @@ export function registerPtyViewport({ test, expect, transport, configure, create
     await expect(page.locator('.xterm-rows')).toContainText('Runner prompt >');
     await expect(page.locator('.xterm-rows')).toContainText('Runner error');
     await expect(page.locator('.runner-semantic')).toHaveCount(0);
-    await expect(page.locator('.presentation-limitation')).toBeVisible();
+    await expect(page.locator('.presentation-limitation')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
     const before = await page.evaluate(() => window.__nativeFixture.writes);
     await page.locator('.xterm-helper-textarea').press('x');
@@ -27,13 +27,13 @@ export function registerPtyViewport({ test, expect, transport, configure, create
     expect(await page.evaluate(() => window.__presentationRequests)).toEqual([]);
     await info.attach('pty-visible', { body: await page.screenshot(), contentType: 'image/png' });
   });
-  for (const single of [false, true]) for (const long of [false, true]) test(`PTY fallback submitted text Runner-owned Single Entry ${single} long ${long}`, async ({ page }) => {
+  for (const single of [false, true]) for (const long of [false, true]) test(`Original PTY submitted text Runner-owned Single Entry ${single} long ${long}`, async ({ page }) => {
     await transport(page, undefined, { work: true, auto: true });
     await page.addInitScript(() => {
       const native = window.__TAURI_INTERNALS__, original = native.invoke;
       native.invoke = async (command, args) => {
         const result = await original(command, args);
-        if (command === 'runner_observe') result.presentationSupported = false;
+        if (command === 'runner_observe') result.presentationSupported = true;
         if (command === 'runner_feature' && args.request.request?.operation === 'work.submit')
           window.__nativeFixture.emit(args.id, '\r\n' + args.request.request.instruction.replaceAll('\n', '\r\n') + '\r\n');
         return result;

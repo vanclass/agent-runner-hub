@@ -1,12 +1,4 @@
 {
-  "presentation": {
-    "label": "Runner semantic output",
-    "activity": "Live Activity",
-    "connecting": "Connecting to Runner output…",
-    "incomplete": "Some Runner output is missing or unverified.",
-    "closed": "Runner output stream ended.",
-    "unsupported": "This Runner does not offer supported semantic output. Showing its terminal output, including Runner controls."
-  },
   "preview": {
     "focus": "Image preview",
     "loading": "Reading original file…",

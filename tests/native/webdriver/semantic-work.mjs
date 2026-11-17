@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
 import { startupMs, subagentCompletionMs } from '../../../tools/native-probe/limits.mjs';
 import { changeValue, correlated, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
+import { terminalBuffer, canonicalRecords } from './terminal-buffer.mjs';
 
 async function geometry(browser) {
   return browser.execute(() => {
     const input = document.querySelector('textarea[data-instruction]');
-    const terminal = document.querySelector('.runner-semantic');
+    const terminal = document.querySelector('.terminal-host');
     const rect = element => {
       if (!element) return null;
       const r = element.getBoundingClientRect();
@@ -46,8 +47,7 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
     const input = document.querySelector(selector); return input && !input.disabled && !input.readOnly;
   }, inputSelector), { timeout: startupMs });
   const compact = await geometry(browser);
-  const retainedLine = await browser.execute(() => [...document.querySelectorAll('.semantic-record')]
-    .map(line => line.textContent.trim()).find(Boolean));
+  const retainedLine = single ? undefined : (await terminalBuffer(browser)).full.split('\n').find(line => line.trim());
   await changeValue(browser, inputSelector, instruction);
   const editing = await geometry(browser);
   const previousRequests = await browser.execute(async () => {
@@ -55,14 +55,16 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
       window.__TAURI_INTERNALS__.invoke('runner_observe', { id })))).flatMap(s => s.features?.results ?? [])
       .filter(r => r.feature === 'work' && r.operation === 'work.submit').map(r => r.id);
   });
-  await browser.execute(selector => {
+  const pendingDelivery = await browser.execute(selector => {
     const input = document.querySelector(selector);
     input.focus();
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+    return { draftLength: input.value.length, height: input.getBoundingClientRect().height,
+      disabled: input.disabled, rows: input.rows };
   }, inputSelector);
   const entered = await geometry(browser);
   connection = await visibleConnection(browser);
-  let submitted, completed;
+  let submitted, completed, instructionPublication;
   await browser.waitUntil(async () => {
     const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
     submitted ??= snapshot.features.results.find(r => r.feature === 'work' && r.operation === 'work.submit'
@@ -71,6 +73,11 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
     if (submitted?.state === 'outcome-unknown') throw new UnverifiedObservation('Work effect unknown; do not replay');
     const observations = snapshot.features.results.filter(r => r.feature === 'work').flatMap(r => [r.reply?.work, ...(r.reply?.works ?? [])]).filter(Boolean);
     completed = observations.find(work => work.submission_request_id === submitted?.id && work.terminal);
+    if (!instructionPublication) {
+      const buffer = await terminalBuffer(browser);
+      if (buffer.full.replace(/\s/g, '').includes(instruction.replace(/\s/g, '')))
+        instructionPublication = { buffer, workTerminal: !!completed };
+    }
     return !!completed;
   }, { timeout: subagentCompletionMs, timeoutMsg: 'Original work completion unverified; do not resubmit' }).catch(error => {
     error.message += ': ' + JSON.stringify({ identity: { tab: connection.tab, session: connection.session,
@@ -82,8 +89,7 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
   assert.ok(submitted && completed.started_event_id > 0, 'Canonical work start must be observed');
   assert.equal(completed.outcome, 'succeeded', 'Actual read-only Provider work must succeed');
   const reply = single ? 'HUB_SINGLE_ENTRY_ACCEPTANCE' : 'HUB_LONG_COMPOSER_ACCEPTANCE';
-  await browser.waitUntil(async () => browser.execute(reply => document.querySelector('.semantic-logs')
-    ?.textContent.includes(reply), reply), { timeout: startupMs });
+  await browser.waitUntil(async () => (await terminalBuffer(browser)).full.includes(reply), { timeout: startupMs });
   const confirmed = await geometry(browser);
   assert.equal(confirmed.draftLength, 0, 'Canonical start clears the unchanged draft');
   if (!single) {
@@ -93,36 +99,30 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
   }
   let originalInstructionBufferCount;
   if (single) {
-    originalInstructionBufferCount = await browser.execute(instruction => {
-      const output = document.querySelector('.semantic-logs').textContent;
-      return output.split(instruction).length - 1;
-    }, instruction);
+    const normalize = text => text.replace(/\s/g, '');
+    originalInstructionBufferCount = normalize((await terminalBuffer(browser)).full).split(normalize(instruction)).length - 1;
     if (originalInstructionBufferCount !== 1) throw new UnverifiedObservation(
       'Original instruction exact buffer count ' + originalInstructionBufferCount + '; no synthetic echo: '
       + JSON.stringify({ requestId: submitted.id, started: completed.started_event_id, outcome: completed.outcome,
         tab: connection.tab, session: connection.session, generation: connection.generation }));
-    await browser.waitUntil(async () => browser.execute(instruction => document.querySelector('.semantic-logs')
-      .textContent.includes(instruction), instruction), { timeout: startupMs,
-      timeoutMsg: 'Original instruction unavailable in canonical output; no synthetic echo' });
+    assert.equal(originalInstructionBufferCount, 1, 'Original PTY instruction retained');
   }
-  const output = await browser.execute(() => document.querySelector('.semantic-logs').textContent);
-  const scrollback = await browser.execute(retainedLine => {
-    const records = [...document.querySelectorAll('.semantic-record')];
-    return { records: records.length,
-      startupRetained: records.some(line => !!retainedLine && line.textContent.includes(retainedLine)) };
-  }, retainedLine);
+  const buffer = await terminalBuffer(browser), output = buffer.full;
+  const canonical = await canonicalRecords(browser, connection);
+  const scrollback = { rows: buffer.length, startupRetained: output.includes(retainedLine) };
   if (!single) assert.ok(scrollback?.startupRetained, 'Original startup scrollback retained');
   const normalize = text => text.replace(/\s/g, '');
   const count = normalize(output).split(normalize(instruction)).length - 1;
+  assert.equal(normalize(canonical.text).split(normalize(instruction)).length - 1, 1, 'Canonical instruction appears once');
   assert.equal(count, 1, 'Original instruction appears once in canonical output: '
     + JSON.stringify({ requestId: submitted.id, started: completed.started_event_id, outcome: completed.outcome,
       identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
       matchingRows: output.split('\n').filter(line => /Reply|HUB_SINGLE|tools|changes/.test(line)) }));
   return { originalRequestId: submitted.id, started: completed.started_event_id > 0, outcome: completed.outcome,
-    semanticReplyObserved: true, instructionCount: count,
+    terminalReplyObserved: true, instructionCount: count, buffer, canonical,
     originalInstructionBufferCount,
     identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
-    geometry: { compact, editing, entered, confirmed },
+    geometry: { compact, editing, pendingDelivery, entered, confirmed }, instructionPublication,
     scrollback,
     accountAndModel: 'inherited from verified canonical startup configuration' };
 }

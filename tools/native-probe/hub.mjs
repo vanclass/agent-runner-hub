@@ -9,11 +9,11 @@ import { rendererProbe } from '../../tests/native/webdriver/probe.mjs';
 import { languageCase } from '../../tests/native/webdriver/language.mjs';
 import { hubLogCase } from '../../tests/native/webdriver/hub-log.mjs';
 import { subagentRun } from '../../tests/native/webdriver/subagent.mjs';
-import { semanticPresentation } from '../../tests/native/webdriver/semantic-presentation.mjs';
+import { semanticPresentation } from '../../tests/native/webdriver/terminal-presentation.mjs';
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--help') {
-  console.log('Presentation cases: semantic-presentation checks canonical startup output and composer /help; semantic-work submits a long bilingual read-only instruction; single-entry-work checks one original instruction in its assigned semantic tab. All require --runner-root and use the canonical startup account/model.');
+  console.log('Terminal cases (retained case IDs): semantic-presentation compares original xterm scrollback/viewport and diagnostic canonical records for /help; semantic-work submits a long bilingual read-only instruction; single-entry-work checks one original instruction in its assigned terminal. All require --runner-root and use the canonical startup account/model.');
   console.log('Additional case: hub-log (requires --runner-root); checks tab-independent capture and a fresh native process with the same isolated app data.');
   console.log('node tools/native-probe/hub.mjs [--case <id>] [--runner-root <absolute existing Runner installation>] [--target-dir <absolute Cargo cache>]\nCases: installation-entry, configuration-selection, runner-read-only, renderer-probe, language-preference, hub-log, subagent-run, semantic-presentation, semantic-work. Default: the three WG3 cases. Repeat --case for explicit composition. Runner cases reuse the ordinary authenticated startup account in a new test-owned Hub process. Select the existing installation for the fresh Hub profile. Only explicitly selected work cases may submit their declared instruction. No automatic presentation escalation.');
 } else {
