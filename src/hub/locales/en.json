@@ -292,8 +292,6 @@
     "drop": "Drop files or folders here",
     "pending": "Pending attachments",
     "remove": "Remove attachment {{name}}",
-    "earlier": "Move attachment {{name}} earlier",
-    "later": "Move attachment {{name}} later",
     "reconcile": "Reconcile registration",
     "fallback": "Native file/folder drop is unavailable here. Image paste requires PNG data in the paste event.",
     "instructionOnly": "Attachments require a new work instruction. Remove them before sending commands or terminal replies."

@@ -590,7 +590,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
       await info.attach('restart-pending', { body: await page.screenshot(), contentType: 'image/png' });
       await page.locator(`[data-runner-id="${id}"] .nav-row`).click();
       await expect(page.locator('.composer-area textarea')).toHaveValue('retained per-tab draft');
-      await expect(page.locator('.attachment-chip')).toContainText('/fixture/image.png');
+      await expect(page.locator('.attachment-open > span')).toHaveText('image.png');
       await expect(page.getByRole('button', { name: label, exact: true })).toBeDisabled();
       await page.reload();
       await page.locator('.single-entry').click();

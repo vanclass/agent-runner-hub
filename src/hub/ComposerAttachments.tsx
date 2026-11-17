@@ -65,6 +65,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
     {hover && <div className="attachment-drop-hint" role="status">{t('attachments.drop')}</div>}
     {!!items.length && <ul className="pending-attachments" aria-label={t('attachments.pending')}>
       {items.map(item => { const state = selection.state(item), thumbnail = selection.thumbnail(item);
+        const name = item.image ? t('references.clipboardNumber', { index: item.key }) : attachmentName(item.path);
         return <li className="attachment-chip" key={item.key}>
         <button type="button" className="attachment-open" title={item.path}
           aria-label={t('preview.open', { name: attachmentName(item.path) || t('references.clipboardNumber', { index: item.key }) })}
@@ -72,16 +73,12 @@ export function ComposerAttachments({ selection, disabled, children }: {
             if (!item.image && previewKind(item.path) !== 'unsupported') selection.previews.load(item.key, item.path);
             setFocusedKey(item.key);
           }}>
-          {thumbnail && <img src={thumbnail} alt={item.image ? t('references.clipboardPreview', { index: item.key }) : item.path} />}
-          <span>{item.image ? t('references.clipboardNumber', { index: item.key }) : item.path}</span>
+          {thumbnail && <img src={thumbnail} alt={item.image ? t('references.clipboardPreview', { index: item.key }) : name} />}
+          <span>{name}</span>
         </button>
-        <span role="status">{referenceState(state)} {item.detail && tr(item.detail)}</span>
-        <button type="button" disabled={!available || !!item.cancelRequested} aria-label={t('attachments.remove', { name: item.path || item.key })}
+        {(state !== 'staged' || item.detail) && <span role="status">{referenceState(state)} {item.detail && tr(item.detail)}</span>}
+        <button type="button" className="attachment-remove" disabled={!available || !!item.cancelRequested} aria-label={t('attachments.remove', { name: item.path || item.key })}
           onClick={() => void selection.cancel(item.key)}>×</button>
-        <button type="button" disabled={!available} aria-label={t('attachments.earlier', { name: item.path || item.key })}
-          onClick={() => selection.move(item.key, -1)}>←</button>
-        <button type="button" disabled={!available} aria-label={t('attachments.later', { name: item.path || item.key })}
-          onClick={() => selection.move(item.key, 1)}>→</button>
         {['registered', 'removed', 'failed', 'rejected'].includes(selection.state(item)) && <button type="button" disabled={!available}
           onClick={() => void selection.reconcile(item.key)}>{t('attachments.reconcile')}</button>}
         {(item.cancelRequested || state === 'outcome-unknown') && <button type="button" disabled={!available}

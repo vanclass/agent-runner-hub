@@ -117,7 +117,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
     await expect(page.locator('.generated-images summary')).toHaveCount(0);
     await page.getByRole('button', { name: 'Refresh images', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Refresh images', exact: true })).toBeEnabled();
-    await expect(page.getByRole('list', { name: 'Pending attachments', exact: true })).toContainText('/fixture/image.png');
+    await expect(page.getByRole('list', { name: 'Pending attachments', exact: true }).locator('.attachment-open > span')).toHaveText('image.png');
     await page.getByRole('button', { name: 'Remove attachment /fixture/image.png', exact: true }).click();
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true; });
     await page.waitForTimeout(600);

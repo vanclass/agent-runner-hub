@@ -91,7 +91,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
         await page.evaluate(() => { const f = window.__nativeFixture, r = f.referenceRequests.find(r => r.request.operation === 'references.remove'); f.finishReference(r.id, r.requestId); });
         await expect(page.locator('.attachment-chip').first()).toContainText('Removed');
         await page.locator('.attachment-chip').first().getByRole('button', { name: 'Reconcile registration', exact: true }).click();
-        await expect(page.locator('.attachment-chip').first()).toContainText('Staged');
+        await expect(page.locator('.attachment-chip').first().locator('[role=status]')).toHaveCount(0);
       }
     });
   }

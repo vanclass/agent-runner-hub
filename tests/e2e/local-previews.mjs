@@ -63,6 +63,28 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       await info.attach('exact-url-lifetimes', { body: JSON.stringify(await page.evaluate(() => ({
         allocated: window.__localPreview.allocated, revoked: window.__nativeFixture.revokedUrls, reads: window.__localPreview.reads }))), contentType: 'application/json' });
     });
+    test('local preview ' + label + ' responsive contained tiles', async ({ page }, info) => {
+      await setup(page);
+      await drop(page, Array.from({ length: 12 }, (_, i) => `/fixture/tile-${i}.png`));
+      await expect(page.locator('.attachment-chip img')).toHaveCount(12);
+      const columns = [];
+      for (const width of [1280, 1440, 1920]) {
+        await page.setViewportSize({ width, height: 900 });
+        const tiles = await page.locator('.attachment-chip').evaluateAll(items => items.map(item => {
+          const box = item.getBoundingClientRect(), image = item.querySelector('img');
+          return { x: box.x, y: box.y, width: box.width, imageHeight: image.getBoundingClientRect().height,
+            fit: getComputedStyle(image).objectFit, right: box.right };
+        }));
+        columns.push(tiles.filter(tile => tile.y === tiles[0].y).length);
+        for (const tile of tiles) {
+          expect(tile.width).toBeCloseTo(144, 0); expect(tile.imageHeight).toBe(120);
+          expect(tile.fit).toBe('contain'); expect(tile.right).toBeLessThanOrEqual(width);
+        }
+        await info.attach(`tiles-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+      }
+      expect(columns[0]).toBeLessThan(columns[1]); expect(columns[1]).toBeLessThan(columns[2]);
+      await info.attach('responsive-columns', { body: JSON.stringify(columns), contentType: 'application/json' });
+    });
     test('local preview ' + label + ' cancellation fences delayed native reads', async ({ page }) => {
       await setup(page);
       await page.evaluate(() => { window.__localPreview.gate = new Promise(resolve => { window.__localPreview.release = resolve; }); });
@@ -127,7 +149,7 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
     expect(result.missing).toEqual({ kind:'unavailable',reason:'unreadable' });
     expect(result.allocated).toEqual([]);
     await drop(page, ['/fixture/missing.png']);
-    await expect(page.locator('.attachment-chip')).toContainText('/fixture/missing.png');
+    await expect(page.locator('.attachment-open > span')).toHaveText('missing.png');
     await expect(page.locator('.attachment-chip img')).toHaveCount(0);
     expect(await requests(page)).toEqual([]);
   });

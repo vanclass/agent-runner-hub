@@ -63,8 +63,9 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await paste(page);
     await expect(page.locator('.attachment-chip')).toHaveCount(3);
     await expect(page.locator('.attachment-chip img')).toBeVisible();
-    await page.getByRole('button', { name: 'Move attachment /fixture/folder earlier', exact: true }).click();
-    await expect(page.locator('.attachment-chip').first()).toContainText('/fixture/folder');
+    await expect(page.getByRole('button', { name: /Move attachment/ })).toHaveCount(0);
+    await expect(page.locator('.attachment-open > span')).toHaveText(['image.png', 'folder', 'Clipboard image 3']);
+    await expect(page.locator('.attachment-chip [role=status]')).toHaveCount(0);
     await page.getByRole('button', { name: 'Remove attachment /fixture/image.png', exact: true }).focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('.attachment-chip')).toHaveCount(2);
@@ -102,14 +103,12 @@ export function registerComposerAttachments({ test, expect, transport, configure
     expect(await page.evaluate(() => window.__nativeFixture.staged)).toEqual([]);
     await expect(page.locator('.runner-references')).toHaveCount(0);
   });
-  test('composer attachments submit only remaining ordered paths and frozen paste bytes to exact Runner', async ({ page }) => {
+  test('composer attachments submit only remaining paths and frozen paste bytes to exact Runner', async ({ page }) => {
     await ready(page);
     await drop(page, ['/fixture/image.png']);
     await paste(page);
     await drop(page, ['/fixture/folder']);
     await page.getByRole('button', { name: 'Remove attachment /fixture/image.png', exact: true }).click();
-    await page.getByRole('button', { name: 'Move attachment /fixture/folder earlier', exact: true }).click();
-    await page.getByRole('button', { name: 'Move attachment /fixture/folder earlier', exact: true }).click();
     await page.evaluate(() => window.__nativeFixture.missingImage(true));
     await send(page);
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
@@ -117,7 +116,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
       refs: window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.register'),
       deliveries: window.__nativeFixture.deliveredSets }));
     expect(result.staged[0].png).toEqual(png); expect(result.reads).toEqual([]);
-    expect(result.refs.map(r => [r.id, r.request.path])).toEqual([['pty-1', '/fixture/folder'], ['pty-1', result.staged[0].path]]);
+    expect(result.refs.map(r => [r.id, r.request.path])).toEqual([['pty-1', result.staged[0].path], ['pty-1', '/fixture/folder']]);
     expect(result.deliveries).toHaveLength(1); expect(result.deliveries[0].ids).toHaveLength(2);
     await expect(page.locator('.attachment-chip')).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toHaveValue('');
@@ -142,7 +141,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     expect(sent.filter(r => r.request.operation === 'references.register').map(r => r.id)).toEqual(['pty-2', 'pty-2']);
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(page.locator('.attachment-chip')).toHaveCount(1);
-    await expect(page.locator('.attachment-chip')).toContainText('/fixture/folder');
+    await expect(page.locator('.attachment-open > span')).toHaveText('folder');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await expect(page.locator('.attachment-chip')).toHaveCount(0);
   });
@@ -178,7 +177,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await page.locator('.attachment-chip').first().getByRole('button', { name: 'Reconcile registration', exact: true }).click();
     await expect.poll(async () => (await requests(page)).filter(r => r.request.operation === 'references.remove').length).toBe(1);
     await page.evaluate(() => { const f = window.__nativeFixture, r = f.referenceRequests.find(r => r.request.operation === 'references.remove'); f.finishReference(r.id, r.requestId); });
-    await expect(page.locator('.attachment-chip').first()).toContainText('Staged');
+    await expect(page.locator('.attachment-chip').first().locator('[role=status]')).toHaveCount(0);
     expect(await page.evaluate(() => window.__nativeFixture.deliveredSets)).toEqual([]);
   });
   test('composer attachments inventory mismatch blocks work and keeps final selections', async ({ page }) => {

@@ -78,13 +78,6 @@ export class RunnerReferenceSelection {
     return !this.disposed && !this.locked && !this.owner?.assignmentLocked
       && !this.registering && !this.listing && !this.staging && !this.picking;
   }
-  move(key: number, offset: number) {
-    if (!this.available) return;
-    const index = this.candidates.findIndex(item => item.key === key), next = index + offset;
-    if (index < 0 || next < 0 || next >= this.candidates.length) return;
-    [this.candidates[index], this.candidates[next]] = [this.candidates[next], this.candidates[index]];
-    this.changed();
-  }
   result(candidate: Candidate) { return this.results.find(result => result.id === candidate.requestId); }
   referenceId(candidate: Candidate) { return this.result(candidate)?.reference?.reference_id; }
   state(candidate: Candidate): CandidateState {
