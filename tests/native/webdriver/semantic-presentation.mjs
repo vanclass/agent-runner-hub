@@ -1,18 +1,19 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
-import { readyInstalledHub, ownedConnection, stopWatching, inspection, changeValue } from './runner-flow.mjs';
+import { readyInstalledHub, visibleConnection, visibleConfiguration, stopWatching, changeValue } from './runner-flow.mjs';
 import { semanticWork } from './semantic-work.mjs';
 import { semanticError } from './semantic-error.mjs';
 
-export function semanticPresentation(runnerRoot, workRoot) {
+export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
   return defineNativeCase({
-    id: workRoot ? 'semantic-work' : 'semantic-presentation', presentation: 'nonactivating',
+    id: workRoot ? (route === 'single-entry' ? 'single-entry-work' : 'semantic-work') : 'semantic-presentation', presentation: 'nonactivating',
     ready: browser => readyInstalledHub(browser, runnerRoot),
     async run(browser) {
+      let stage = 'allocation';
       try {
-        let connection = await ownedConnection(browser, runnerRoot);
         await browser.execute(() => document.querySelector('.add-runner').click());
+        let connection = await visibleConnection(browser, runnerRoot);
         await browser.waitUntil(async () => browser.execute(() => {
           return document.querySelector('.xterm-rows')?.textContent.trim().length > 0;
         }), { timeout: startupMs, timeoutMsg: 'Actual PTY startup did not reach the viewport' });
@@ -23,18 +24,29 @@ export function semanticPresentation(runnerRoot, workRoot) {
         });
         assert.ok(startup.characters > 0); assert.ok(startup.parserVisible);
         // Use the ordinary Hub composer and authenticated command route, without PTY user input.
-        const canonical = await inspection(browser, connection);
-        const account = JSON.stringify(canonical.result.reply.current.account);
+        const canonical = await visibleConfiguration(browser, connection);
+        stage = 'canonical-account-catalog';
+        const account = JSON.stringify(canonical.current.account);
         await browser.waitUntil(async () => browser.execute(account => {
           const select = document.querySelector('.task-panel .account-settings select');
           return select && !select.disabled && [...select.options].some(option => option.value === account);
         }, account), { timeout: startupMs, timeoutMsg: 'Canonical startup account unavailable in Hub catalog' });
         await changeValue(browser, '.task-panel .account-settings select', account);
+        stage = 'model-catalog';
         await browser.waitUntil(async () => browser.execute(() => {
           const model = document.querySelector('.task-panel .model-settings select');
           return model && !model.disabled && model.options.length > 1;
         }), { timeout: startupMs, timeoutMsg: 'Runner tab configuration catalog did not become ready' });
+        stage = 'composer-readiness';
         await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.runner-composer textarea')?.disabled), { timeout: startupMs });
+        if (workRoot) {
+          stage = 'work-' + route;
+          const workAdmission = await semanticWork(browser, connection, workRoot, route);
+          return { method: 'actual installed Runner / native Hub / original PTY output', startup,
+            workAdmission, identity: workAdmission.identity,
+            allocationIdentity: { tab: connection.tab, session: connection.session, generation: connection.generation } };
+        }
+        stage = 'command-submission';
         await browser.execute(() => {
           const input = document.querySelector('.runner-composer textarea');
           input.focus();
@@ -69,18 +81,42 @@ export function semanticPresentation(runnerRoot, workRoot) {
         });
         // Allocation may create a fresh session instead of promoting the original spare.
         // Correlate the actual composer receipt, never assume spare-to-tab identity.
-        connection = { ...commandObservation, generation: commandObservation.snapshot.features.generation };
+        assert.equal(commandObservation.session, connection.session, 'Visible tab owns the command receipt');
+        assert.equal(commandObservation.snapshot.features.generation, connection.generation);
+        stage = 'command-output';
         await browser.waitUntil(async () => browser.execute(() => /help/i.test(document.querySelector('.xterm-rows')?.textContent)), { timeout: startupMs });
-        const work = workRoot ? await semanticWork(browser, connection, workRoot) : undefined;
-        const error = workRoot ? undefined : await semanticError(browser, connection);
+        const error = await semanticError(browser, connection);
         return { method: 'actual installed Runner / native Hub / original PTY output', startup,
           composerCommand: '/help', commandCompleted: true, ptyOutputObserved: true,
-          workAdmission: work ?? 'not exercised by read-only command case',
+          workAdmission: 'not exercised by read-only command case',
           errorPresentation: error ?? 'not exercised by work case',
-          identity: { session: connection.session, generation: connection.generation } };
+          identity: { tab: connection.tab, session: connection.session, generation: connection.generation } };
+      } catch (error) {
+        const diagnostic = await browser.execute(() => {
+          const host = document.querySelector('.terminal-host');
+          let fiber = host?.[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
+          for (; fiber; fiber = fiber.return) {
+            const s = fiber.memoizedProps?.session;
+            if (s?.terminal?.element?.parentElement !== host) continue;
+            return { tab: s.view.id, session: s.control.sessionId, status: s.view.status,
+              canSubmit: s.view.canSubmit, win32: s.input.win32, modes: s.terminal.modes,
+              reserved: s.assignmentReserved, foreground: s.foregroundInteraction,
+              uncertain: s.submissionUncertain, state: s.control.snapshot.state,
+              generation: s.control.snapshot.features?.generation,
+              attention: s.control.snapshot.observation?.attention,
+              composerDisabled: document.querySelector('.runner-composer textarea')?.disabled };
+          }
+          return { activeTab: document.querySelector('.runner-row.active')?.dataset.runnerId };
+        });
+        error.message += ': ' + JSON.stringify({ stage, diagnostic });
+        throw error;
       } finally { await stopWatching(browser); }
     },
     async observe(browser) {
+      await browser.execute(() => {
+        const toggle = document.querySelector('.task-panel-toggle');
+        if (toggle?.getAttribute('aria-expanded') === 'true') toggle.click();
+      });
       const observation = await browser.execute(() => {
         const viewport = document.querySelector('.terminal-host'), rect = viewport.getBoundingClientRect();
         const input = document.querySelector('.runner-composer textarea'), composer = input.getBoundingClientRect();

@@ -3,13 +3,34 @@ import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { outcome, BlockedPrerequisite, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
 import { readyInstalledHub, ownedConnection, finalReceipt, inspection, inspectRequest,
-  watchObservations, stopWatching } from './webdriver/runner-flow.mjs';
+  watchObservations, stopWatching, visibleConnection } from './webdriver/runner-flow.mjs';
 
 const connection = { session: 'owned-session', generation: 7,
   snapshot: { state: 'ready', features: { generation: 7, results: [], runnerRoot: 'C:/isolated' } } };
 const admission = { state: 'submitted', generation: 7, id: 42 };
 const completed = { id: 42, feature: 'session_config', operation: 'session_config.inspect', phase: 'completed', state: 'accepted' };
 const snapshot = results => ({ state: 'ready', features: { generation: 7, results } });
+
+test('visible tab selects its bound PTY even when a spare is observed first', async () => {
+  const previous = { window: globalThis.window, document: globalThis.document };
+  const host = {}, session = { view: { id: 'tab-2' }, control: { sessionId: 'target' },
+    terminal: { element: { parentElement: host } } };
+  host.__reactFiber$test = { memoizedProps: {}, return: { memoizedProps: { session } } };
+  globalThis.document = { querySelector: selector => selector === '.terminal-host'
+    ? host : { dataset: { runnerId: 'tab-2' } } };
+  globalThis.window = { __wg3Observation: { snapshots: { spare: null } }, __TAURI_INTERNALS__: {
+    invoke: async (_command, { id }) => {
+      assert.equal(id, 'target');
+      return { ...snapshot([]), observationSerial: 1, observationAgeMs: 0,
+        features: { ...snapshot([]).features, sessionConfig: { operations: ['session_config.inspect'] } } };
+    } } };
+  try {
+    const browser = { execute: async (fn, ...args) => fn(...args),
+      waitUntil: async predicate => assert.ok(await predicate()) };
+    const result = await visibleConnection(browser);
+    assert.equal(result.session, 'target'); assert.equal(result.tab, 'tab-2');
+  } finally { Object.assign(globalThis, previous); }
+});
 
 test('immutable native invoke identifies owned PTY events and forwards callbacks unchanged', async () => {
   const previous = globalThis.window, callbacks = new Map(), originalSet = callbacks.set;

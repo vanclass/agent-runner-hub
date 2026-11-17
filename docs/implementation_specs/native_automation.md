@@ -31,6 +31,15 @@ presentation/observation and driver/process/profile settlement. Driver configura
 belongs to [`driver.mjs`](../../tools/native-probe/driver.mjs); native evidence checks
 belong to [`observations.mjs`](../../tools/native-probe/observations.mjs).
 
+Installed presentation acceptance allocates through Add Runner before connection
+observation; optional hidden Spare readiness is not an admission prerequisite.
+The mounted terminal and active tab bind the existing RunnerSession PTY identity,
+then authenticated native observations and receipts verify its generation.
+`single-entry-work` and `semantic-work` independently check original instruction
+visibility and long bilingual composer geometry through the normal UI. See
+[`runner-flow.mjs`](../../tests/native/webdriver/runner-flow.mjs) and
+[`semantic-work.mjs`](../../tests/native/webdriver/semantic-work.mjs).
+
 Each case records its identity, invocation, host, architecture, presentation and
 observations independently. Prerequisite blocks, failures and unverified observations
 are distinct outcomes; cleanup failures prevent a pass. The suite cannot continue

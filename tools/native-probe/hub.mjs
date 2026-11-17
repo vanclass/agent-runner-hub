@@ -13,7 +13,7 @@ import { semanticPresentation } from '../../tests/native/webdriver/semantic-pres
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--help') {
-  console.log('PTY cases: semantic-presentation checks visible installed startup output and composer /help; semantic-work additionally submits one read-only Pure Direct instruction with the canonical startup account/model. Both require --runner-root.');
+  console.log('PTY cases: semantic-presentation checks installed startup output and composer /help; semantic-work submits a long bilingual read-only instruction; single-entry-work checks one original instruction in its assigned tab. All require --runner-root and use the canonical startup account/model.');
   console.log('Additional case: hub-log (requires --runner-root); checks tab-independent capture and a fresh native process with the same isolated app data.');
   console.log('node tools/native-probe/hub.mjs [--case <id>] [--runner-root <absolute existing Runner installation>] [--target-dir <absolute Cargo cache>]\nCases: installation-entry, configuration-selection, runner-read-only, renderer-probe, language-preference, hub-log, subagent-run, semantic-presentation, semantic-work. Default: the three WG3 cases. Repeat --case for explicit composition. Runner cases reuse the ordinary authenticated startup account in a new test-owned Hub process. Select the existing installation for the fresh Hub profile. Only explicitly selected work cases may submit their declared instruction. No automatic presentation escalation.');
 } else {
@@ -31,6 +31,7 @@ if (args.length === 1 && args[0] === '--help') {
   const runnerRoot = values.get('--runner-root');
   const cases = [installationEntry, configurationSelection(runnerRoot), runnerReadOnly(runnerRoot), rendererProbe, languageCase, hubLogCase(runnerRoot), subagentRun(runnerRoot), semanticPresentation(runnerRoot)];
   cases.push(semanticPresentation(runnerRoot, root));
+  cases.push(semanticPresentation(runnerRoot, root, 'single-entry'));
   const selected = ids.length ? ids.map(id => {
     const spec = cases.find(c => c.id === id);
     if (!spec) throw new Error('Unknown case: ' + id + '; see --help');

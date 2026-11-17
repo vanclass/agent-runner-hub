@@ -75,12 +75,34 @@ export async function readyInstalledHub(browser, runnerRoot, platform = process.
   });
 }
 
+export async function visibleConnection(browser, runnerRoot) {
+  let identity;
+  await browser.waitUntil(async () => {
+    identity = await browser.execute(() => {
+      const host = document.querySelector('.terminal-host');
+      const tab = document.querySelector('.runner-row.active')?.dataset.runnerId;
+      let fiber = host?.[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        const session = fiber.memoizedProps?.session;
+        if (session?.view?.id === tab && session.terminal?.element?.parentElement === host) {
+          return { tab, session: session.control.sessionId };
+        }
+      }
+      return null;
+    });
+    return !!identity?.session;
+  }, { timeout: startupMs, timeoutMsg: 'Visible tab to PTY binding unavailable' }).catch(error => {
+    throw new UnverifiedObservation(error.message);
+  });
+  return { ...await ownedConnection(browser, runnerRoot, identity.session), tab: identity.tab };
+}
+
 export async function ownedConnection(browser, runnerRoot, sessionId) {
   let connection;
   await browser.waitUntil(async () => {
     connection = await browser.execute(async sessionId => {
-      const entries = Object.entries(window.__wg3Observation.snapshots)
-        .filter(([id]) => sessionId === undefined || id === sessionId);
+      const entries = sessionId === undefined ? Object.entries(window.__wg3Observation.snapshots)
+        : [[sessionId, null]];
       if (entries.length !== 1) return null;
       const [session, observed] = entries[0];
       return { session, snapshot: observed ?? await window.__TAURI_INTERNALS__.invoke('runner_observe', { id: session }) };
@@ -107,6 +129,25 @@ export async function ownedConnection(browser, runnerRoot, sessionId) {
   if (!snapshot.features.sessionConfig?.operations?.includes('session_config.inspect')) throw new BlockedPrerequisite(
     'Unsupported capability: ordinary session_config.inspect is required.');
   return { ...connection, generation: snapshot.features.generation };
+}
+
+export async function visibleConfiguration(browser, connection) {
+  let actual;
+  await browser.waitUntil(async () => {
+    actual = await browser.execute(id => {
+      const host = document.querySelector('.terminal-host');
+      let fiber = host?.[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        const s = fiber.memoizedProps?.session;
+        if (s?.control?.sessionId === id && s.terminal.element?.parentElement === host)
+          return s.control.config.actual;
+      }
+      return null;
+    }, connection.session);
+    return !!actual;
+  }, { timeout: startupMs, timeoutMsg: 'Visible session canonical configuration unavailable' });
+  assert.ok(isInspection(actual));
+  return actual;
 }
 
 export function correlated(snapshot, connection) {

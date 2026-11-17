@@ -71,7 +71,11 @@ node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/nati
 
 `semantic-presentation` retains its case ID but observes original PTY startup output and sends `/help` through the ordinary Hub composer. It also checks a read-only invalid `/files` argument rejection without entering file selection. It checks authenticated completion and visible xterm geometry in a fresh owned Hub using the existing verified installation. It does not submit Provider work; browser fixtures do not establish installed-Runner delivery.
 
-The explicitly selected `semantic-work` case adds one read-only Pure Direct instruction through the Hub composer in this checkout, inheriting the verified canonical startup account/model. It requires actual canonical work start/success and PTY output. It never changes persistent Runner configuration, provisions credentials, replays submission or grants PTY user-input authority. Both cases use DOM focus inside their owned WebView without acquiring desktop focus.
+The explicitly selected `semantic-work` case adds one long Korean/English multiline read-only Pure Direct instruction through the Runner composer. `single-entry-work` independently submits one short read-only instruction through Single Entry and counts its original text in the assigned xterm. Both inherit the verified canonical startup account/model and require canonical work start/success. Composer acceptance records editing, post-Enter and confirmed rectangles, draft clearing and retained scrollback. These cases never change persistent Runner configuration, provision credentials, replay submission or grant PTY user-input authority. DOM focus stays inside the owned WebView without acquiring desktop focus.
+
+Presentation cases click the ordinary Add Runner action before waiting for a connection. A hidden Spare is optional. Read-only renderer inspection binds the active sidebar tab and mounted xterm to their existing RunnerSession control identity; native observations and command receipts must match that exact PTY and generation. Unavailable renderer identity is unverified, never permission to assume the first observed session is the destination.
+
+Work cases submit their declared instruction directly after native/configuration readiness; they do not require an unrelated `/help` command to produce PTY text. The separate command case retains that observation and its own failure boundary.
 
 ```text
 node tools/native-probe/hub.mjs --help
