@@ -1,5 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$Executable, [Parameter(Mandatory=$true)][int]$BudgetMs)
+param([Parameter(Mandatory=$true)][string]$Executable,
+  [Parameter(Mandatory=$true)][string]$ExpectedSha256, [Parameter(Mandatory=$true)][int]$BudgetMs)
 $ErrorActionPreference = 'Stop'
+Add-Type -Path (Join-Path $PSScriptRoot 'windows-job.cs')
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -28,13 +30,9 @@ public static class ForegroundFixture {
   }
 }
 "@
-$owned = [Diagnostics.Process]::new()
-$owned.StartInfo.FileName = $Executable
-$owned.StartInfo.WorkingDirectory = [IO.Path]::GetDirectoryName($Executable)
-$owned.StartInfo.UseShellExecute = $false
-$owned.StartInfo.CreateNoWindow = $true
-$owned.StartInfo.RedirectStandardOutput = $true
-$owned.StartInfo.RedirectStandardError = $true
+$owned = $null
+$job = $null
+$image = $null
 $started = $false
 $children = @{}
 function Snapshot {
@@ -43,29 +41,30 @@ function Snapshot {
   $rect = [ForegroundFixture+Rect]::new()
   $null = [ForegroundFixture]::GetWindowRect($window, [ref]$rect)
   return @{ pid=$owned.Id; created=$owned.StartTime.ToUniversalTime().ToString('o'); hwnd=$window.ToInt64();
+    executable=$owned.MainModule.FileName;executableSha256=$actualHash;ownership='job-before-resume';
     visible=[ForegroundFixture]::IsWindowVisible($window); enabled=[ForegroundFixture]::IsWindowEnabled($window);
     noActivateStyle=(([ForegroundFixture]::GetWindowLong($window,-20) -band 0x08000000) -ne 0);
     foreground=[ForegroundFixture]::GetForegroundWindow().ToInt64();
     rect=@{x=$rect.Left;y=$rect.Top;width=($rect.Right-$rect.Left);height=($rect.Bottom-$rect.Top)} }
 }
 function ObserveChildren {
-  $all = @(Get-CimInstance Win32_Process)
-  $parents = @([uint32]$owned.Id)
-  do {
-    $next = @($all | Where-Object { $_.ParentProcessId -in $parents -and $_.CreationDate -ge $owned.StartTime })
-    $parents = @($next | ForEach-Object { [uint32]$_.ProcessId })
-    foreach ($child in $next) { $children[[string]$child.ProcessId] = $child.CreationDate }
-  } while ($parents.Count -gt 0)
-  return @($all | Where-Object { $children.ContainsKey([string]$_.ProcessId) -and
-    $_.CreationDate -eq $children[[string]$_.ProcessId] -and
+  $members = @($job.Members())
+  $all = @(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in $members -and $_.ProcessId -ne $owned.Id })
+  foreach ($child in $all) { $children[[string]$child.ProcessId] = $child.CreationDate }
+  return @($all | Where-Object { $_.CommandLine -and $env:WEBVIEW2_USER_DATA_FOLDER -and
     $_.CommandLine.Contains($env:WEBVIEW2_USER_DATA_FOLDER) }).Count -gt 0
 }
 try {
-  if (-not $owned.Start()) { throw 'Process creation failed' }
+  $image = [IO.File]::Open($Executable, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { $actualHash = ([BitConverter]::ToString($sha.ComputeHash($image))).Replace('-', '').ToLowerInvariant() }
+  finally { $sha.Dispose() }
+  if ($actualHash -ne $ExpectedSha256) { throw 'Launch image digest mismatch' }
+  $job = [ForegroundJob]::new($Executable, $BudgetMs)
+  $owned = $job.Root
   $started = $true
-  $null = $owned.Handle
-  $stdout = $owned.StandardOutput.ReadToEndAsync(); $stderr = $owned.StandardError.ReadToEndAsync()
-  @{ started=$true;pid=$owned.Id;created=$owned.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress
+  @{ started=$true;pid=$owned.Id;created=$owned.StartTime.ToUniversalTime().ToString('o');
+    executable=$owned.MainModule.FileName;executableSha256=$actualHash;ownership='job-before-resume' } | ConvertTo-Json -Compress
   while ($null -ne ($line = [Console]::ReadLine())) {
     $request = $line | ConvertFrom-Json
     if ($request.action -eq 'stop') { break }
@@ -101,12 +100,12 @@ finally {
     }
     $deadline=[DateTime]::UtcNow.AddMilliseconds($BudgetMs)
     do {
-      $remaining=@(Get-CimInstance Win32_Process | Where-Object {
-        $children.ContainsKey([string]$_.ProcessId) -and $_.CreationDate -eq $children[[string]$_.ProcessId] })
+      $remaining=@($job.Members())
       if ($remaining.Count -eq 0) { break }; Start-Sleep -Milliseconds 200
     } while ([DateTime]::UtcNow -lt $deadline)
     @{ stopped=$owned.HasExited;forced=$forced;exitCode=$owned.ExitCode;childrenSettled=($remaining.Count -eq 0);
-      stdout=$stdout.Result;stderr=$stderr.Result } | ConvertTo-Json -Compress
+      ownership='job-before-resume';remainingPids=$remaining;executable=$Executable;executableSha256=$actualHash } | ConvertTo-Json -Compress
   }
-  $owned.Dispose()
+  if ($job) { $job.Dispose() }
+  if ($image) { $image.Dispose() }
 }

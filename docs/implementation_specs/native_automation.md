@@ -11,18 +11,23 @@ replace their fixtures, schedule suites or authorize desktop input.
 
 [`tests/native/foreground/fixture.mjs`](../../tests/native/foreground/fixture.mjs)
 exports `createForeground(root, { synthetic, signal })` for a fresh Windows process.
-Its `close()` must settle the retained process handle and observed children before
-removing invocation-owned profiles. Consumers create their own fixture; no process
+Its `close()` requires normal root exit and an empty kernel-owned process job before
+removing invocation-owned profiles. Unverified launch or descendant exit preserves
+the attempt. The root joins its job while suspended, covering children born before
+renderer inspection and during teardown. Consumers create their own fixture; no process
 or input authority transfers between runs. The setup smoke is:
 
 ```text
 node tests/native/foreground/smoke.mjs --evidence-dir <new absolute evidence directory>
 node --test tests/native/foreground/foreground.test.mjs
+node --test tests/native/foreground/ownership.test.mjs
 ```
 
 The entry reuses managed preparation, build ownership and backend staging with the
 ordinary desktop features. It embeds the checked-out frontend plus a staged-only
-bootstrap, records asset/executable identity, and starts hidden but focusable.
+bootstrap, copies and hashes an invocation-owned launch image under the build lease,
+and starts hidden but focusable. The owner locks and checks that image before launch;
+another invocation may rebuild the shared cache without replacing a retained image.
 The Windows owner presents only its own HWND without activation. Plain startup
 and optional synthetic image list/read readiness are separate setup observations;
 the bootstrap preserves unrelated IPC, installation verification and authentication.

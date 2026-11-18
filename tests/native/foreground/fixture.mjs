@@ -25,6 +25,12 @@ export function foregroundEnvironment(attempt) {
 }
 
 // The returned process belongs only to this fixture. Consumers must settle it before cleanup.
+export async function removeForegroundAttempt(attempt, settled) {
+  assert.ok(settled, 'Preserve profile for unsettled owner');
+  assert.equal(path.dirname(attempt), os.tmpdir());
+  await fs.rm(attempt, { recursive: true, maxRetries: 10, retryDelay: pollMs });
+}
+
 export async function createForeground(root, { synthetic = false, signal, target = path.join(root, 'local/native-foreground/target') } = {}) {
   assert.equal(process.platform, 'win32', 'Foreground fixture is Windows-only');
   const invocation = randomUUID(), attempt = await fs.mkdtemp(path.join(os.tmpdir(), 'hub-fg-'));
@@ -34,13 +40,12 @@ export async function createForeground(root, { synthetic = false, signal, target
   async function close() {
     if (owner) {
       evidence.settlement = await owner.stop();
-      settled = evidence.settlement.stopped && evidence.settlement.childrenSettled;
+      settled = evidence.settlement.stopped && evidence.settlement.childrenSettled
+        && !evidence.settlement.forced && evidence.settlement.exitCode === 0;
       owner = null;
-      assert.ok(settled && !evidence.settlement.forced && evidence.settlement.exitCode === 0, 'Owned clean settlement required');
+      assert.ok(settled, 'Owned clean settlement required');
     }
-    assert.ok(settled, 'Preserve profile for unsettled owner');
-    assert.equal(path.dirname(attempt), os.tmpdir());
-    await fs.rm(attempt, { recursive: true, maxRetries: 10, retryDelay: pollMs });
+    await removeForegroundAttempt(attempt, settled);
     evidence.profileRemoved = !(await fs.stat(attempt).catch(() => null));
   }
   try {
@@ -48,16 +53,19 @@ export async function createForeground(root, { synthetic = false, signal, target
     evidence.stage = 'process';
     for (const name of ['user/roaming', 'user/local', 'tmp', 'app-data', 'webview2'])
       await fs.mkdir(path.join(attempt, name), { recursive: true });
+    settled = false;
     owner = await startProtocol(path.join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
       ['-NoProfile', '-NonInteractive', '-File', path.join(root, 'tests/native/foreground/windows-owner.ps1'),
-        '-Executable', evidence.build.executable, '-BudgetMs', String(commandMs)],
+        '-Executable', evidence.build.executable, '-ExpectedSha256', evidence.build.executableSha256, '-BudgetMs', String(commandMs)],
       { cwd: attempt, windowsHide: true, shell: false, env: foregroundEnvironment(attempt), stdio: ['pipe', 'pipe', 'pipe'] }, startupMs);
-    settled = false;
     evidence.pid = owner.pid;
     evidence.window = await waitFor(async () => {
       const state = await owner.request('snapshot'); return state.hwnd ? state : null;
     });
     evidence.stage = 'renderer';
+    assert.equal(path.resolve(evidence.window.executable), path.resolve(evidence.build.executable));
+    assert.equal(evidence.window.executableSha256, evidence.build.executableSha256);
+    assert.equal(evidence.window.ownership, 'job-before-resume');
     const log = path.join(attempt, 'app-data/hub-logs/events.jsonl');
     evidence.readiness = await waitFor(async () => {
       const bytes = await fs.readFile(log, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return ''; });

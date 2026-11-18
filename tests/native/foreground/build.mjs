@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { withBuildOwnership } from '../../../.project-config/managed/web-app-tauri/ownership.mjs';
 import { inspectNative, prepareNative, targetTriple } from '../../../.project-config/managed/web-app-tauri/native/environment.mjs';
@@ -19,6 +20,14 @@ export async function inventory(folder) {
     }
   }
   await visit(''); return files;
+}
+
+export async function stageLaunchImage(cachedExecutable, attempt) {
+  const folder = path.join(attempt, 'launch');
+  await fs.mkdir(folder);
+  const executable = path.join(folder, path.basename(cachedExecutable));
+  await fs.copyFile(cachedExecutable, executable, constants.COPYFILE_EXCL);
+  return { executable, executableSha256: hash(await fs.readFile(executable)) };
 }
 
 export async function buildForeground(root, attempt, target, invocation, synthetic, signal) {
@@ -54,8 +63,8 @@ export async function buildForeground(root, attempt, target, invocation, synthet
       const built = await command(process.execPath, [environment.cli, 'build', '--debug', '--no-bundle',
         '--target', targetTriple, '--config', JSON.stringify(override), '--', '--locked'], backend, signal, { env, quiet: false });
       if (built.code) throw new Error('Foreground ordinary native build failed');
-      const executable = path.join(target, targetTriple, 'debug/web-app-native.exe');
-      return { executable, executableSha256: hash(await fs.readFile(executable)), features, graph: graph.stdout,
+      const launch = await stageLaunchImage(path.join(target, targetTriple, 'debug/web-app-native.exe'), attempt);
+      return { ...launch, features, graph: graph.stdout,
         versions: environment.versions, ordinaryAssets, stagedAssets, override, fixture: fixture?.image,
         sourceHead: (await command('git', ['rev-parse', 'HEAD'], root, signal)).stdout };
     });
