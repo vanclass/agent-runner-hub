@@ -125,6 +125,10 @@ are generated or consumed. Device/emulator loading and store acceptance remain s
 
 ## Storage layout and build results
 
+All storage paths below are relative to this Tool's root, `.project-config/tools/web_app_build_system/`.
+`local/` owns machine/user settings and reusable installation state; `output/` owns retained verified results;
+`temp/` owns execution staging and disposable intermediates.
+
 config.json contains deployment defaults. Put local overrides in local/settings.json:
 {"schema":1,"allowDependencyInstall":false} disables automatic dependency installation.
 Choosing a preparation/build action permits supported local npm installation when enabled.
@@ -146,20 +150,15 @@ If restoring prior output fails, the attempt stays unpublished and preserves pre
 under its exact staging directory. Follow the diagnostic path to restore those bytes before
 retrying; do not delete that staging directory while it contains your prior output.
 
-All paths here are relative to .project-config/tools/web_app_build_system/.
-local/ holds local configuration and reusable Electron packaging-tool state.
-temp/staging/<id>/ holds each build attempt until verification; successful publication
-renames that attempt to output/<id>/, retaining app/, result.json and release-evidence.json.
-Windows console viewport/request files use execution-scoped temp/console-*/ directories,
-and Android capability probes use temp/probes/ with per-probe cleanup.
-Verified products are retained under output/<id>/app with result.json.
-Future verified builds also publish release-evidence.json with build-owned project binding,
+Verified products are retained under output/<id>/app with result.json beside app/.
+Each verified build also publishes release-evidence.json with build-owned project binding,
 source/version/runtime evidence and complete inventory. Apply the normal resource Update
 before rebuilding for release eligibility; older products remain independently usable.
 The separately registered Web App Release Adapter consumes one explicitly selected retained
 result without rebuilding or changing this Tool's ownership. Its Workspace integration guide is
 agent_runner/src/runner/project_management/components/web_app/RELEASE_ADAPTER.md.
-Failed/cancelled attempts delete only their own staging directory. Earlier products and
+Build staging lives in temp/staging/<id>/; failed/cancelled attempts delete only their owned
+staging directory unless it contains recoverable previous-output data. Earlier products and
 local settings survive updates/removal. To delete old products, choose the exact result
 directory yourself. Removal deletes only unchanged receipt-owned installed files; modified
 and unrelated files remain. Reinstallation requires resolving any surviving file conflict.
@@ -174,7 +173,14 @@ Missing creation identity or child-settlement evidence, PID reuse and inaccessib
 metadata block recovery with guidance. This includes legacy records without child evidence.
 Preserve the lock until its owner and child writers are independently verified stopped;
 only then manually remove that exact stale lock and retry. Other checkouts are untouched.
-Tool files, retained results in output/, local settings in local/ and root build entries are excluded from production freshness.
+Reusable Electron packaging tools live in local/electron-tools/. Preparation uses owned
+temp/electron-install-*/ and temp/electron-previous-*/ attempts with existing restoration and
+cleanup. Windows console requests/viewports live in temp/console-*/ and Android capability
+probes in temp/probes/; each invocation/probe cleans only its own artifacts. Do not bulk-delete
+temp/ while an attempt is active or previous-output restoration remains unresolved.
+Tool source, local/ settings/cache, output/ retained results, temp/ execution artifacts and root
+build entries are excluded from production freshness. They do not make unchanged application
+inputs stale or turn an unverified product into a release-eligible result.
 
 ## Adapter extension boundary
 

@@ -67,6 +67,7 @@ export async function prepareWindowsElectron(root, environment, signal, stage, a
     if (await fs.realpath(local) !== local) throw new Error('Packaging tools must use the plain checkout-local Build System directory.');
     const temp = path.join(path.dirname(local), 'temp');
     await fs.mkdir(temp, { recursive: true });
+    if (await fs.realpath(temp) !== temp) throw new Error('Packaging attempts must use the plain tool-owned temp directory.');
     const attempt = path.join(temp, 'electron-install-' + randomUUID());
     const backup = path.join(temp, 'electron-previous-' + randomUUID());
     await fs.mkdir(attempt);
