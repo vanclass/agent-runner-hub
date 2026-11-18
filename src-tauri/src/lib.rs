@@ -11,6 +11,9 @@ compile_error!("native-webdriver is restricted to dedicated debug test builds");
 #[cfg(all(feature = "native-webdriver", debug_assertions, target_os = "macos"))]
 mod native_automation_macos;
 
+#[cfg(all(feature = "native-webdriver", debug_assertions, target_os = "windows"))]
+mod native_ole_probe;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
@@ -30,6 +33,8 @@ pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(all(feature = "native-webdriver", debug_assertions, any(target_os = "windows", target_os = "macos")))]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init_with_port(probe_port));
+    #[cfg(all(feature = "native-webdriver", debug_assertions, target_os = "windows"))]
+    let builder = builder.plugin(native_ole_probe::plugin());
     #[cfg(all(feature = "desktop-terminal", any(target_os = "windows", target_os = "macos")))]
     let builder = desktop_terminal::configure(builder);
     #[cfg(all(feature = "native-io", any(target_os = "windows", target_os = "macos")))]
