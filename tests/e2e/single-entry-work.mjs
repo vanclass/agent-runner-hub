@@ -238,7 +238,8 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
           ...(['pure-direct-run', 'direct-run'].includes(mode) ? { root: 'C:/explicit-root' } : {}) } })), mode);
       await page.reload();
       await expect(page.locator('.spare-status')).toHaveCount(0);
-      await page.locator('textarea[data-instruction]').fill('mode once'); await assign(page);
+      await page.locator('textarea[data-instruction]').fill(mode === 'task-run'
+        ? 'Target\nOwner: Workspace\nProject: codex_workspace\nGoal\nmode once' : 'mode once'); await assign(page);
       await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe(mode);
     });

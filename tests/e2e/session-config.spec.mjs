@@ -15,12 +15,12 @@ for (const changedRevision of [false, true]) test('configured no-op submission u
     const work = { supports: () => true, blocked: false, busy: false,
       submit: async text => { submissions.push(text); return {}; } };
     await submitConfiguredWork(service, work, { accountIdentity: fixture.current.account, runMode: 'task-run',
-      model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } }, 'one', async () => undefined);
+      model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } }, 'Target\nOwner: Project\nProject: Explicit\nGoal\none', async () => undefined);
     return { requests: fixture.requests.map(r => r.operation), submissions };
   }, changedRevision);
   expect(result.requests).toEqual(['session_config.inspect', 'session_config.inspect', 'session_config.inspect', 'session_config.plan',
     ...(changedRevision ? ['session_config.inspect', 'session_config.inspect', 'session_config.inspect'] : [])]);
-  expect(result.submissions).toEqual(['one']);
+  expect(result.submissions).toEqual(['Target\nOwner: Project\nProject: Explicit\nGoal\none']);
 });
 
 test('unbound native startup preserves verified choices without choosing a target', async ({ page }) => {

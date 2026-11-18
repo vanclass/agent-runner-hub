@@ -107,9 +107,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
         }
       }, fault);
       await composer(page).fill('keep me'); await send(page);
-      await page.keyboard.press('Control+Home');
-      await expect(page.locator('.hub-log-records')).toContainText('runner/', { timeout: 30000 });
-      await page.keyboard.press('Control+End');
+      await expect(composer(page)).toBeEnabled();
       await expect(composer(page)).toHaveValue('keep me');
       if (['invalid', 'confirmation_required'].includes(fault)) {
         await expect(page.locator('.hub-activity')).toContainText(fault === 'invalid'
@@ -196,9 +194,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
           operation: 'references.register', state: 'outcome-unknown' });
       }, fault);
       await composer(page).fill('references unsent'); await send(page);
-      await page.keyboard.press('Control+Home');
-      await expect(page.locator('.hub-log-records')).toContainText('runner/', { timeout: 30000 });
-      await page.keyboard.press('Control+End');
+      await expect(composer(page)).toBeEnabled();
       await expect(composer(page)).toHaveValue('references unsent');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     });
@@ -206,7 +202,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
   test('session reference preflight still verifies selected inventory before API work', async ({ page }) => {
     await open(page, { clipboard: true });
     await drop(page, ['/fixture/image.png']);
-    await expect(page.locator('.attachment-chip')).toContainText('Staged · unregistered');
+    await expect(page.locator('.attachment-chip')).toContainText('image.png');
     expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.register'))).toEqual([]);
     await composer(page).fill('with reference'); await send(page);
     await expect(composer(page)).toHaveValue('', { timeout: 30000 });

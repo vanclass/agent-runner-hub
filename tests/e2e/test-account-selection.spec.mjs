@@ -81,6 +81,8 @@ test('explicit test consumer configures before one work submission through ordin
     const { submitConfiguredWork } = await import('/src/hub/runnerSubmission.ts');
     const { WorkFixture } = await import('/tests/fixtures/work.ts');
     const fixture = new WorkFixture('test-owned'), identity = { session: 'test-owned', generation: 1 };
+    // TaskRun keeps its session pair; the selected account must support that pair.
+    fixture.config.current.model.id = 's0';
     const config = new RunnerConfigService({ identity: () => identity, available: () => true,
       submit: (session, request) => fixture.config.submit(session, request) }, () => {});
     const work = new RunnerWork({ identity: () => identity, available: () => true,
@@ -95,14 +97,14 @@ test('explicit test consumer configures before one work submission through ordin
     const model = config.catalog.options.models[0];
     const defaults = { accountIdentity: selected.selection.account,
       model: { model: model.id, reasoning_effort: model.reasoning_efforts[0], service_tier: model.service_tiers[0] } };
-    const attempt = await submitConfiguredWork(config, work, defaults, 'original acceptance request', async () => {
+    const attempt = await submitConfiguredWork(config, work, defaults, 'Target\nOwner: Project\nProject: Explicit\nGoal\noriginal acceptance request', async () => {
       if (config.actual.effective.account !== selected.selection.account.profile_name) throw Error('Unverified effective account');
     });
     work.close();
     return { attempt, submissions: fixture.requests.filter(r => r.operation === 'work.submit'), application: config.latestApplication };
   });
   expect(result.submissions).toHaveLength(1);
-  expect(result.submissions[0].instruction).toBe('original acceptance request');
+  expect(result.submissions[0].instruction).toBe('Target\nOwner: Project\nProject: Explicit\nGoal\noriginal acceptance request');
   expect(result.application.verification).toBe('verified');
   expect(result.attempt.work.started_event_id).toBeGreaterThan(0);
 });
