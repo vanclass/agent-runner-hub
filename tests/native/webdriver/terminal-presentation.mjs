@@ -64,7 +64,30 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
         }
       });
       assert.equal(scroll.top, 0); assert.ok(scroll.base > 0);
-      return { connection, startup, helpReceipt, publication, canonical, errorReceipt, after, scroll };
+      const editors = [];
+      for (const single of [false, true]) {
+        if (single) await browser.execute(() => document.querySelector('.single-entry').click());
+        await browser.waitUntil(async () => browser.execute(() => {
+          const input = document.querySelector('textarea[data-instruction]');
+          return input && !input.disabled && !input.readOnly;
+        }), { timeout: startupMs });
+        await changeValue(browser, 'textarea[data-instruction]', 'native viewport line\n'.repeat(120));
+        editors.push(await browser.execute(() => {
+          const input = document.querySelector('textarea[data-instruction]');
+          input.scrollTop = 240;
+          const rect = s => { const r = document.querySelector(s).getBoundingClientRect();
+            return { top: r.top, bottom: r.bottom, height: r.height }; };
+          return { output: rect('.output'), composer: rect('.composer-area'), footer: rect('.hub-activity'),
+            scroll: input.scrollTop, overflow: input.scrollHeight > input.clientHeight };
+        }));
+        const last = editors.at(-1);
+        assert.ok(last.overflow && last.scroll >= 200);
+        assert.ok(last.output.height >= 45 && last.output.bottom <= last.composer.top + 1);
+        assert.ok(last.composer.bottom <= last.footer.top + 1);
+        await changeValue(browser, 'textarea[data-instruction]', '');
+      }
+      await browser.execute(() => document.querySelector('.runner-row .nav-row').click());
+      return { connection, startup, helpReceipt, publication, canonical, errorReceipt, after, scroll, editors };
     },
     async observe(browser) {
       const observation = await browser.execute(() => {

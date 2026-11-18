@@ -150,7 +150,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await composer.focus(); await composer.fill('local draft only');
       await expect(composer).toBeInViewport();
       await expect(page.locator('.hub-activity')).toBeInViewport();
-      await expect(page.locator('.runner-composer-content')).toHaveCSS('overflow-y', 'auto');
+      await expect(page.locator('.composer-reference-content')).toHaveCSS('overflow-y', 'auto');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);

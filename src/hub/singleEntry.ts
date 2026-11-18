@@ -38,6 +38,7 @@ export function idleReason(session: RunnerSession, allowReferences = false) {
 
 export class SingleEntry {
   draft = '';
+  composerCompact = false;
   readonly selections: HubSelections;
   attachments: RunnerReferenceSelection;
   get defaults() { return this.selections.defaults; }
@@ -69,6 +70,7 @@ export class SingleEntry {
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
   setDraft(value: string) {
     if (!this.editable) return;
+    this.composerCompact = false;
     this.draft = value;
     this.phase = 'editing';
     this.changed();
@@ -81,6 +83,7 @@ export class SingleEntry {
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.submissionToken = token;
+    this.composerCompact = true;
     this.phase = 'preparing';
     this.detail = msg('runtime.entry.checking');
     this.runnerId = undefined;

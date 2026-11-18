@@ -62,6 +62,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
       event.preventDefault();
       if (available) void selection.captureImage(image);
     }}>
+    <div className="composer-reference-content">
     {hover && <div className="attachment-drop-hint" role="status">{t('attachments.drop')}</div>}
     {!!items.length && <ul className="pending-attachments" aria-label={t('attachments.pending')}>
       {items.map(item => { const state = selection.state(item), thumbnail = selection.thumbnail(item);
@@ -90,9 +91,10 @@ export function ComposerAttachments({ selection, disabled, children }: {
       <button type="button" disabled={!available} onClick={() => selection.reviewOtherPending()}>{t('references.includeOthers')}</button>
     </div>}
     {selection.error && <p role="alert">{tr(selection.error)}</p>}
+    {dropUnavailable && <p role="alert">{t('attachments.fallback')}</p>}
+    </div>
     {children}
     {focused && <FocusedViewer key={focused.key} name={attachmentName(focused.path) || undefined}
       content={content} onDismiss={() => setFocusedKey(undefined)} />}
-    {dropUnavailable && <p role="alert">{t('attachments.fallback')}</p>}
   </div>;
 }

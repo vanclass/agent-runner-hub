@@ -4,6 +4,7 @@ import type { HubSelections } from './HubSelections';
 import { same } from './runnerConfigContract';
 import { DirectoryInput } from './DirectoryInput';
 import { ComposerAttachments } from './ComposerAttachments';
+import { ComposerPresentation } from './ComposerPresentation';
 import { instructionKey } from './instructionKey';
 import { runModeLabel } from './runModeLabel';
 import { runModes } from './runnerWork';
@@ -81,7 +82,7 @@ export function SingleEntrySettings({ entry }: { entry: SingleEntry }) {
 export function SingleEntryComposer({ entry, location, onSelectRunner }: {
   entry: SingleEntry; location?: string; onSelectRunner: (id: string) => void;
 }) {
-  return <section className="composer-area" aria-label={t('composer.label')}>
+  return <ComposerPresentation text={entry.draft} compact={entry.composerCompact}>
     <ComposerAttachments selection={entry.attachments} disabled={entry.pending || entry.phase === 'unknown'}>
       <textarea data-instruction="true" aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable} readOnly={entry.loadingOptions}
         onKeyDown={event => instructionKey(event, briefRun => {
@@ -89,5 +90,5 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
         })}
         placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
     </ComposerAttachments>
-  </section>;
+  </ComposerPresentation>;
 }

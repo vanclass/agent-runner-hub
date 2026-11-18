@@ -1,4 +1,32 @@
 export function registerLogViewport({ test, expect, transport, configure, create }) {
+  for (const single of [false, true]) test(`shared composer viewport ${single ? 'Single Entry' : 'Runner'}`, async ({ page }, info) => {
+    await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
+    if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    const input = page.locator('textarea[data-instruction]');
+    for (const [width, height] of [[1440, 1000], [1100, 550], [700, 650]]) {
+      await page.setViewportSize({ width, height }); await input.fill('');
+      await expect.poll(() => input.evaluate(n => {
+        const s = getComputedStyle(n);
+        return Math.abs(n.clientHeight - (parseFloat(s.lineHeight) * 3 + parseFloat(s.paddingTop) + parseFloat(s.paddingBottom)));
+      })).toBeLessThanOrEqual(1);
+      const base = await input.evaluate(n => {
+        const s = getComputedStyle(n);
+        return Math.round(parseFloat(s.lineHeight) * 3 + parseFloat(s.paddingTop) + parseFloat(s.paddingBottom));
+      });
+      await input.fill('wrapped words '.repeat(3000));
+      await expect.poll(() => input.evaluate(n => n.clientHeight)).toBeGreaterThan(base);
+      expect(await input.evaluate(n => n.scrollHeight)).toBeGreaterThan(await input.evaluate(n => n.clientHeight));
+      const boxes = await page.evaluate(() => ['.output', '.composer-area', '.hub-activity'].map(s => {
+        const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height };
+      }));
+      expect(boxes[0].height).toBeGreaterThan(45);
+      expect(boxes[0].bottom).toBeLessThanOrEqual(boxes[1].top + 1);
+      expect(boxes[1].bottom).toBeLessThanOrEqual(boxes[2].top + 1);
+      expect(boxes[2].bottom).toBeLessThanOrEqual(height);
+      await info.attach(`shared-${single}-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
+      await input.fill(''); await expect.poll(() => input.evaluate(n => n.clientHeight)).toBe(base);
+    }
+  });
   for (const height of [550, 800]) test(`Runner composer preserves visible log at ${height}`, async ({ page }, info) => {
     await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
@@ -8,9 +36,10 @@ export function registerLogViewport({ test, expect, transport, configure, create
     const geometry = () => page.evaluate(() => {
       const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect();
         return { top: r.top, bottom: r.bottom, height: r.height, width: r.width }; };
-      const input = document.querySelector('.runner-composer textarea'), style = getComputedStyle(input);
-      return { input: rect('.runner-composer textarea'), content: rect('.runner-composer-content'),
-        terminal: rect('.terminal-host'), slot: rect('.runner-composer'), workspace: rect('.workspace'),
+      const input = document.querySelector('.composer-area textarea'), style = getComputedStyle(input);
+      return { input: rect('.composer-area textarea'), content: rect('.composer-area'),
+        terminal: rect('.terminal-host'), slot: rect('.composer-area'), workspace: rect('.workspace'),
+        logLine: document.querySelector('.xterm-rows > div').getBoundingClientRect().height,
         line: parseFloat(style.lineHeight), padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) };
     });
     await input.fill('one\ntwo\nthree');
@@ -24,7 +53,7 @@ export function registerLogViewport({ test, expect, transport, configure, create
       expect(grown.content.top).toBeLessThan(base.content.top);
       expect(grown.content.top).toBeGreaterThanOrEqual(grown.workspace.top + 15);
       expect(grown.terminal.bottom).toBeLessThanOrEqual(grown.content.top + 1);
-      expect(grown.terminal.height).toBeGreaterThan(100);
+      expect(grown.terminal.height).toBeGreaterThanOrEqual(grown.logLine * 3 - 1);
       expect(grown.slot.height).toBeGreaterThan(base.slot.height);
     }
     await input.fill(Array.from({ length: 80 }, (_, i) => `editable line ${i}`).join('\n'));

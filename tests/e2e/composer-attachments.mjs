@@ -33,6 +33,27 @@ export function registerComposerAttachments({ test, expect, transport, configure
   registerAttachmentOutcomes({ test, expect, ready, paste, requests, send, drop });
   registerLocalPreviews({ test, expect, ready, paste, requests, drop });
   registerPreviewViews({ test, expect, ready, drop });
+  for (const kind of ['image', 'file', 'mixed']) for (const single of [false, true]) test(`attachment wheel regions ${single ? 'Single Entry' : 'Runner'} ${kind}`, async ({ page }) => {
+    await ready(page);
+    if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    if (kind !== 'image') await drop(page, Array.from({ length: 80 }, (_, i) => `/fixture/scroll-${i}.txt`));
+    if (kind !== 'file') for (let i = 0; i < (kind === 'image' ? 12 : 2); i++)
+      await paste(page, single ? 'Single Entry instructions' : 'Runner instructions');
+    const input = page.locator('textarea[data-instruction]');
+    await input.fill('editable line\n'.repeat(100));
+    await expect.poll(() => page.locator('.attachment-composer').evaluate(n => n.scrollHeight - n.clientHeight)).toBeLessThanOrEqual(1);
+    await input.evaluate(n => { n.scrollTop = 0; });
+    await input.hover(); await page.mouse.wheel(0, 240);
+    await expect.poll(() => input.evaluate(n => n.scrollTop)).toBeGreaterThan(100);
+    const references = page.locator('.composer-reference-content');
+    await references.evaluate(n => { n.scrollTop = 0; });
+    await references.hover(); await page.mouse.wheel(0, 240);
+    await expect.poll(() => references.evaluate(n => n.scrollTop)).toBeGreaterThan(100);
+    expect(await page.locator('.composer-area').evaluate(n => n.scrollTop)).toBe(0);
+    const before = await page.locator('.attachment-chip').count();
+    await page.locator('.attachment-remove').first().click();
+    await expect(page.locator('.attachment-chip')).toHaveCount(before - 1);
+  });
   test('instruction focus has no outline in either shared composer', async ({ page }, info) => {
     await ready(page);
     for (const label of ['Runner instructions', 'Single Entry instructions']) {
