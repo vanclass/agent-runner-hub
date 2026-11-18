@@ -123,7 +123,7 @@ archive integrity, arm64 library, toolchain and input evidence. These are local/
 requiring separate authorized signing before installation or store upload. No signing credentials
 are generated or consumed. Device/emulator loading and store acceptance remain separate checks.
 
-## Local settings and results
+## Storage layout and build results
 
 config.json contains deployment defaults. Put local overrides in local/settings.json:
 {"schema":1,"allowDependencyInstall":false} disables automatic dependency installation.
@@ -174,7 +174,7 @@ Missing creation identity or child-settlement evidence, PID reuse and inaccessib
 metadata block recovery with guidance. This includes legacy records without child evidence.
 Preserve the lock until its owner and child writers are independently verified stopped;
 only then manually remove that exact stale lock and retry. Other checkouts are untouched.
-Tool files, local results/settings and root build entries are excluded from production freshness.
+Tool files, retained results in output/, local settings in local/ and root build entries are excluded from production freshness.
 
 ## Adapter extension boundary
 
