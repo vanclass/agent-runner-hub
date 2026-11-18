@@ -35,7 +35,7 @@ export function hubLogCase(runnerRoot) {
       await readyInstalledHub(browser, runnerRoot);
       await browser.execute(async () => {
         // Safe fixture history belongs only to the suite's isolated app-local profile.
-        for (let index = 0; index < 200; index++) {
+        for (let index = 0; index < 450; index++) {
           const result = await window.__TAURI_INTERNALS__.invoke('hub_log', { request: { retentionDays: 7,
             event: { component: 'system', operation: 'connection', runner: 'Overflow fixture', target: '',
               expected: 'confirmed-outcome', actual: 'ready', code: '', nextAction: '' } } });
@@ -88,6 +88,38 @@ export function hubLogCase(runnerRoot) {
       }, { timeout: browser.options.waitforTimeout,
         timeoutMsg: 'Rendered restart row did not move the overflowing viewport down to the latest row' });
       const liveAppend = { operation: 'runner-restarted', renderedSequence: appended.sequence, before, after };
+      const pagination = [];
+      while (await browser.execute(() => document.querySelectorAll('.hub-log-row').length) < disk.records.length) {
+        const previous = await browser.execute(() => {
+          const node = document.querySelector('.hub-log-records');
+          const row = node.querySelector('.hub-log-row');
+          node.scrollTop = 0;
+          return { count: node.children.length, sequence: row.dataset.sequence,
+            offset: row.getBoundingClientRect().top - node.getBoundingClientRect().top };
+        });
+        await browser.waitUntil(async () => browser.execute(count =>
+          document.querySelectorAll('.hub-log-row').length >= count + 1, previous.count),
+        { timeout: browser.options.waitforTimeout });
+        const current = await browser.execute(sequence => {
+          const node = document.querySelector('.hub-log-records');
+          const row = node.querySelector(`[data-sequence="${sequence}"]`);
+          return { count: node.children.length, offset: row.getBoundingClientRect().top - node.getBoundingClientRect().top };
+        }, previous.sequence);
+        assert.ok(Math.abs(current.offset - previous.offset) <= 1, 'Prepended native rows retain their offset');
+        assert.equal(current.count, Math.min(previous.count + 200, disk.records.length));
+        pagination.push({ previous, current });
+      }
+      const expandedGeometry = await browser.execute(() => {
+        const region = document.querySelector('.hub-log'), node = region.querySelector('.hub-log-records');
+        node.scrollTop = 0;
+        return { headerAbsent: !region.querySelector('.terminal-tools, button'),
+          topGap: node.getBoundingClientRect().top - region.getBoundingClientRect().top,
+          sequences: [...node.children].map(row => Number(row.dataset.sequence)) };
+      });
+      assert.ok(expandedGeometry.headerAbsent);
+      assert.equal(expandedGeometry.topGap, 0);
+      assert.deepEqual(expandedGeometry.sequences, disk.records.map(row => row.sequence));
+      await browser.execute(() => { const n = document.querySelector('.hub-log-records'); n.scrollTop = n.scrollHeight; });
       await browser.execute(() => document.querySelector('.app-settings-trigger').click());
       await browser.execute(() => {
         const input = document.querySelector('.app-settings input[type="number"]');
@@ -103,7 +135,7 @@ export function hubLogCase(runnerRoot) {
       disk = await read(browser); assert.equal(disk.issue, null);
       assert.ok(lines.length > 0); assert.ok(disk.records.length >= lines.length);
       await stopWatching(browser);
-      return { method: 'Candidate native Hub; actual Runner tab and app-local disk; no instruction submission', disk, lines, liveAppend };
+      return { method: 'Candidate native Hub; actual Runner tab and app-local disk; no instruction submission', disk, lines, liveAppend, pagination, expandedGeometry };
     },
     async afterRestart(browser, before) {
       await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.app-settings[open]')),
@@ -118,12 +150,20 @@ export function hubLogCase(runnerRoot) {
       }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'Fresh startup events append after old history' });
       assert.equal(disk.issue, null);
       for (const old of before.disk.records) assert.deepEqual(disk.records.find(r => r.sequence === old.sequence), old);
+      while (await browser.execute(() => document.querySelectorAll('.hub-log-row').length) < disk.records.length) {
+        const count = await browser.execute(() => {
+          const node = document.querySelector('.hub-log-records'); node.scrollTop = 0; return node.children.length;
+        });
+        await browser.waitUntil(async () => browser.execute(count =>
+          document.querySelectorAll('.hub-log-row').length > count, count), { timeout: browser.options.waitforTimeout });
+      }
       const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
       for (const old of before.lines) assert.ok(lines.includes(old), 'Restored formatter must be byte-identical');
       assert.equal(new Set(disk.records.map(r => r.sequence)).size, disk.records.length);
       assert.ok(disk.records.length > before.disk.records.length, 'Fresh startup events append after old history');
       const days = await browser.execute(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).hubLogRetentionDays);
       assert.equal(days, 7);
+      await browser.execute(() => { const n = document.querySelector('.hub-log-records'); n.scrollTop = n.scrollHeight; });
       return { recordsBefore: before.disk.records.length, recordsAfter: disk.records.length,
         formatAndOrderRetained: true, retentionDays: days, duplicateSequences: false };
     },

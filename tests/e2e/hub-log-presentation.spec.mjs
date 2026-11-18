@@ -1,8 +1,8 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 test.use({ timezoneId: 'Asia/Seoul' });
-async function mount(page, count = 450) {
+async function mount(page, count = 450, loading = false) {
   await page.goto('/');
-  await page.evaluate(async count => {
+  await page.evaluate(async ({ count, loading }) => {
     const resources = performance.getEntriesByType('resource').map(e => e.name);
     const { default: React } = await import(resources.find(u => /\/react\.js\?/.test(u)));
     const { default: { createRoot } } = await import(resources.find(u => /\/react-dom_client\.js\?/.test(u)));
@@ -16,7 +16,8 @@ async function mount(page, count = 450) {
       if (request.event) disk.push({ ...request.event, sequence: disk.length + 1, timestamp: Date.now() });
       return { records: structuredClone(disk), issue: null };
     } };
-    const log = new HubLog(30); await log.start();
+    const log = new HubLog(30); if (!loading) await log.start();
+    window.startLog = () => log.start();
     document.getElementById('app').style.display = 'none';
     document.querySelectorAll('dialog[open]').forEach(n => n.close());
     document.querySelectorAll('.hub-log').forEach(n => n.remove());
@@ -40,10 +41,37 @@ async function mount(page, count = 450) {
       await log.record({ ...event, runner: 'Unresolved event' });
     };
     window.failLog = async () => { window.__TAURI_INTERNALS__.invoke = async () => { throw 'HUB_LOG_WRITE_FAILED'; }; await log.record(event); };
-  }, count);
-  await expect(page.locator('.hub-log-row')).toHaveCount(Math.min(count, 200));
+  }, { count, loading });
+  await expect(page.locator('.hub-log-row')).toHaveCount(loading ? 0 : Math.min(count, 200));
 }
 const bottom = page => page.locator('.hub-log-records').evaluate(n => n.scrollHeight - n.scrollTop - n.clientHeight <= 2);
+
+test('storage loading remains visible until retained history arrives', async ({ page }) => {
+  await mount(page, 450, true);
+  await expect(page.locator('.hub-log > [role="status"]')).toBeVisible();
+  await expect(page.locator('.hub-log-records')).not.toContainText('No retained Hub events.');
+  await page.evaluate(() => window.startLog());
+  await expect(page.locator('.hub-log > [role="status"]')).toHaveCount(0);
+  await expect(page.locator('.hub-log-row')).toHaveCount(200);
+  expect(await bottom(page)).toBe(true);
+});
+
+test('header-free log retains its localized accessible name and fills the region', async ({ page }) => {
+  await mount(page);
+  for (const [language, name] of [['en', 'Hub log'], ['ko', '허브 로그']]) {
+    await page.evaluate(async language => {
+      const { initializeHubLanguage } = await import('/src/hub/i18n.ts');
+      initializeHubLanguage(language); window.renderLog();
+    }, language);
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
+    await expect(page.locator('.hub-log .terminal-tools, .hub-log button')).toHaveCount(0);
+    const gap = await page.locator('.hub-log-records').evaluate(n => {
+      const parent = n.parentElement.getBoundingClientRect(), view = n.getBoundingClientRect();
+      return { top: view.top - parent.top, bottom: parent.bottom - view.bottom };
+    });
+    expect(gap).toEqual({ top: 0, bottom: 0 });
+  }
+});
 test('delayed save renders once only after confirmation and survives unrelated updates', async ({ page }) => {
   await mount(page, 2);
   const rows = page.locator('.hub-log-records .hub-log-row');
@@ -95,10 +123,25 @@ test('bottom following, historical anchor over multiple appends and expansion, r
   await page.locator('.hub-log-records').evaluate(n => { n.scrollTop = 350; n.dispatchEvent(new Event('scroll')); });
   const before = await anchor(page);
   await page.evaluate(() => window.appendLog(5)); await expect(page.locator('.hub-log-row')).toHaveCount(208); expect(await anchor(page)).toEqual(before);
-  await page.getByRole('button', { name: 'Show older records' }).click(); await expect(page.locator('.hub-log-row')).toHaveCount(408); expect(await anchor(page)).toEqual(before);
-  await page.evaluate(() => window.appendLog(4)); await expect(page.locator('.hub-log-row')).toHaveCount(412); expect(await anchor(page)).toEqual(before);
+  const viewport = page.locator('.hub-log-records');
+  await viewport.hover();
+  await page.mouse.wheel(0, -10000);
+  await expect(page.locator('.hub-log-row')).toHaveCount(408);
+  expect(await viewport.locator('[data-sequence="251"]').evaluate(n =>
+    n.getBoundingClientRect().top - n.parentElement.getBoundingClientRect().top)).toBe(10);
+  const expanded = await anchor(page);
+  await page.evaluate(() => window.appendLog(4)); await expect(page.locator('.hub-log-row')).toHaveCount(412); expect(await anchor(page)).toEqual(expanded);
+  await page.mouse.wheel(0, -20000);
+  await expect(page.locator('.hub-log-row')).toHaveCount(462);
+  expect(await viewport.locator('[data-sequence="51"]').evaluate(n =>
+    n.getBoundingClientRect().top - n.parentElement.getBoundingClientRect().top)).toBe(10);
+  await page.mouse.wheel(0, -20000);
+  await expect.poll(async () => (await anchor(page)).sequence).toBe('1');
+  await expect(page.locator('.hub-log-row')).toHaveCount(462);
+  expect(await page.locator('.hub-log-row').evaluateAll(rows => rows.map(n => Number(n.dataset.sequence))))
+    .toEqual(Array.from({ length: 462 }, (_, i) => i + 1));
   await page.locator('.hub-log-records').evaluate(n => { n.scrollTop = n.scrollHeight; n.dispatchEvent(new Event('scroll')); });
-  await page.evaluate(() => window.appendLog()); await expect(page.locator('.hub-log-row')).toHaveCount(413); expect(await bottom(page)).toBe(true);
+  await page.evaluate(() => window.appendLog()); await expect(page.locator('.hub-log-row')).toHaveCount(463); expect(await bottom(page)).toBe(true);
   await page.evaluate(() => window.detachLog()); await expect(page.locator('.hub-log')).toHaveCount(0);
   await page.evaluate(() => window.renderLog()); await expect(page.locator('.hub-log-row')).toHaveCount(200); expect(await bottom(page)).toBe(true);
   expect(await page.evaluate(() => window.diskBytes() === window.originalBytes)).toBe(true);
