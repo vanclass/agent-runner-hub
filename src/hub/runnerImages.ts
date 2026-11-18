@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 export type GeneratedImage = { imageId: string; sourceSequence: number; outputIndex: number;
   source: string; mimeType: string; byteLength: number; sha256: string; width: number; height: number };
-type Verified = { image: GeneratedImage; png: number[] };
+type Verified = { image: GeneratedImage; bytes: number[] };
 type Inventory = { images: GeneratedImage[]; incomplete: { detail: string } | null };
 type Preview = { url: string; bytes: number; image: GeneratedImage; changed: () => void };
 type State = 'loading' | 'available' | 'empty' | 'unsupported' | 'unavailable' | 'failed';
@@ -126,9 +126,10 @@ export class RunnerImages {
     try {
       const verified = await invoke<Verified>('runner_image_read', { id, imageId: selected.imageId });
       if (this.stopped || this.id !== id || scope !== this.scope || !this.ready || !this.supported || !this.selected || !same(selected, this.selected)) return;
-      if (!same(verified.image, selected) || verified.png.length !== selected.byteLength)
+      if (!same(verified.image, selected) || verified.bytes.length !== selected.byteLength
+        || !['image/png', 'image/gif'].includes(selected.mimeType))
         throw { state: 'failed', detail: msg('runtime.images.mismatch') };
-      const url = URL.createObjectURL(new Blob([new Uint8Array(verified.png)], { type: 'image/png' }));
+      const url = URL.createObjectURL(new Blob([new Uint8Array(verified.bytes)], { type: selected.mimeType }));
       retain(this.owner, { url, bytes: selected.byteLength, image: selected, changed: this.changed });
       this.state = 'available'; this.detail = msg('runtime.images.verified');
     } catch (reason) {

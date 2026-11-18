@@ -8,7 +8,7 @@ import { PNG } from 'pngjs';
 import { nativeSuite } from '../../tools/native-probe/suite.mjs';
 import { defineNativeCase, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
 import { readyInstalledHub } from './webdriver/runner-flow.mjs';
-import { generatedSource } from './webdriver/attachment-preview.mjs';
+import { generatedSource, animatedFixture, injectGeneratedImage } from './webdriver/attachment-preview.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const directory = path.join(root, 'temp/preview-originals', randomUUID());
 await fs.mkdir(directory, { recursive: true });
@@ -69,11 +69,28 @@ const preview = defineNativeCase({
   }
 });
 const generated = defineNativeCase({
-  id: 'generated-consumer', presentation: 'background',
+  id: 'generated-consumer', presentation: 'nonactivating',
+  ready: browser => readyInstalledHub(browser, 'D:/Codex/codex_workspace'),
+  async run(browser) {
+    const fixture = animatedFixture();
+    await injectGeneratedImage(browser, fixture);
+    return { classification: 'Synthetic image IPC only; no genuine Codex generation provenance', fixture };
+  },
+  async observe(browser) {
+    try {
+      const result = await generatedSource(browser);
+      assert.equal(result.outcome, 'supported', JSON.stringify(result));
+      return result;
+    } finally { await browser.execute(() => window.__restoreGeneratedFixture()); }
+  }
+});
+const genuineGenerated = defineNativeCase({
+  id: 'genuine-generated-consumer', presentation: 'background',
   ready: browser => readyInstalledHub(browser, 'D:/Codex/codex_workspace'),
   async run(browser) {
     const result = await generatedSource(browser);
     throw new UnverifiedObservation(JSON.stringify(result));
   }
 });
-nativeSuite([preview, generated], { root, target:path.join(root,'local/hub-native/target') });
+nativeSuite(process.env.GENERATED_GIF_ONLY === '1' ? [generated] : [preview, generated, genuineGenerated],
+  { root, target: process.env.CARGO_TARGET_DIR || path.join(root,'local/hub-native/target') });

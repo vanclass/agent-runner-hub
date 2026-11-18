@@ -1,8 +1,111 @@
 use super::*;
+fn gif_fixture() -> (Metadata, Vec<u8>) {
+    // Hand-authored GIF89a: two full 2x1 red/blue frames, 200ms each, infinite loop.
+    let bytes = STANDARD.decode("R0lGODlhAgABAIAAAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAAAgABAAACAgQKACH5BAAUAAAALAAAAAACAAEAAAICTAoAOw==").unwrap();
+    let (mut image, _) = fixture();
+    image.mime_type = "image/gif".into();
+    image.byte_length = bytes.len() as u64;
+    image.sha256 = format!("{:x}", Sha256::digest(&bytes));
+    (image, bytes)
+}
+#[test]
+fn capability_shapes_and_advertised_metadata_are_exact() {
+    let old = cap();
+    let mut value = json!({"version":1,"operations":old.operations,"mime_types":["image/png","image/gif"],
+        "max_image_bytes":MAX_BYTES,"max_chunk_bytes":17,"page_size":2,"lifetime":"owning_control_connection","read_only":true});
+    let new = Capability::read(&value).unwrap();
+    let (gif, _) = gif_fixture();
+    assert!(Metadata::read(&wire(&gif), &old).is_err());
+    assert_eq!(Metadata::read(&wire(&gif), &new).unwrap(), gif);
+    for mime in [json!([]), json!(["image/gif"]), json!(["image/gif","image/png"]),
+        json!(["image/png","image/png"]), json!(["image/png","image/webp"]), json!(["image/png",null]), json!("image/png")] {
+        value["mime_types"] = mime; assert!(Capability::read(&value).is_none());
+    }
+}
+#[test]
+fn complete_gif_preserves_frames_bytes_and_owned_resource_cleanup() {
+    let (image, bytes) = gif_fixture();
+    verify(&image, &bytes).unwrap();
+    let mut options = gif::DecodeOptions::new(); options.set_color_output(gif::ColorOutput::Indexed);
+    let mut decoder = options.read_info(Cursor::new(&bytes)).unwrap();
+    let mut frames = Vec::new();
+    while let Some(frame) = decoder.read_next_frame().unwrap() { frames.push(frame.buffer.to_vec()); }
+    assert_eq!(frames, [vec![0,0], vec![1,1]]);
+    let images = Images::default(); catalog(&images, &image);
+    let result = images.read(&image.image_id, |request| {
+        let Request::Read { offset, .. } = request else { panic!() };
+        let mut capability = cap(); capability.mime_types.push("image/gif".into());
+        response(&Request::Read { image: image.clone(), offset, length: 17 },
+            &capability, &chunk(&image, &bytes, offset, 17), "accepted")
+    }, || true).unwrap();
+    assert_eq!(result.bytes, bytes); assert_eq!(result.image, image);
+    images.clear(); assert!(images.read(&image.image_id, |_| panic!(), || true).is_err());
+}
 fn cap() -> Capability {
     Capability::read(&json!({"version":1,"operations":["generated_images.list","generated_images.read"],
         "mime_types":["image/png"],"max_image_bytes":MAX_BYTES,"max_chunk_bytes":17,"page_size":2,
         "lifetime":"owning_control_connection","read_only":true})).unwrap()
+}
+#[test]
+fn malformed_gif_structure_and_metadata_fail_even_with_matching_transport_hash() {
+    let (image, bytes) = gif_fixture();
+    for index in 0..bytes.len() {
+        let truncated = &bytes[..index]; let mut item = image.clone();
+        item.byte_length = truncated.len() as u64; item.sha256 = format!("{:x}", Sha256::digest(truncated));
+        assert!(verify(&item, truncated).is_err(), "truncation at {index}");
+    }
+    for (offset, value) in [(6, 3), (6, 255), (7, 255), (8, 0), (48, 3), (74, 255), (78, 0x94)] {
+        let mut corrupt = bytes.clone(); corrupt[offset] = value;
+        let mut item = image.clone(); item.sha256 = format!("{:x}", Sha256::digest(&corrupt));
+        assert!(verify(&item, &corrupt).is_err(), "corruption at {offset}");
+    }
+    let mut trailing = bytes.clone(); trailing.push(0);
+    let mut item = image.clone(); item.byte_length += 1; item.sha256 = format!("{:x}", Sha256::digest(&trailing));
+    assert!(verify(&item, &trailing).is_err());
+    for (field, value) in [("width", json!(3)), ("height", json!(0)), ("mime_type", json!("image/webp")),
+        ("byte_length", json!(MAX_BYTES+1)), ("source_sequence", json!(0)), ("output_index", json!(1))] {
+        let mut packet = wire(&image); packet[field] = value;
+        let mut supported = cap(); supported.mime_types.push("image/gif".into());
+        let parsed = Metadata::read(&packet, &supported);
+        assert!(parsed.is_err() || verify(&parsed.unwrap(), &bytes).is_err());
+    }
+}
+#[test]
+fn gif_lzw_termination_palette_and_excess_pixels_are_verified() {
+    let (image, bytes) = gif_fixture();
+    for raster in [[0x04, 0x00], [0x04, 0x50], [0x94, 0x0a], [0x44, 0x01]] {
+        let mut corrupt = bytes.clone(); corrupt[58..60].copy_from_slice(&raster);
+        let mut item = image.clone(); item.sha256 = format!("{:x}", Sha256::digest(&corrupt));
+        assert!(verify(&item, &corrupt).is_err(), "raster {raster:?}");
+    }
+    let mut split = bytes.clone(); split.splice(57..60, [1, 0x04, 1, 0x0a]);
+    let mut item = image.clone(); item.byte_length = split.len() as u64;
+    item.sha256 = format!("{:x}", Sha256::digest(&split)); verify(&item, &split).unwrap();
+    let mut huge = bytes.clone(); huge[6..10].copy_from_slice(&[255;4]);
+    item = image.clone(); item.width = 65535; item.height = 65535;
+    item.sha256 = format!("{:x}", Sha256::digest(&huge)); assert!(verify(&item, &huge).is_err());
+    item = image.clone(); item.sha256 = "0".repeat(64); assert!(verify(&item, &bytes).is_err());
+    item = image.clone(); item.byte_length += 1; assert!(verify(&item, &bytes).is_err());
+    item = image.clone(); item.mime_type = "image/png".into(); assert!(verify(&item, &bytes).is_err());
+    let (mut png, png_bytes) = fixture(); png.mime_type = "image/gif".into();
+    assert!(verify(&png, &png_bytes).is_err());
+}
+#[test]
+fn gif_chunks_retain_identity_boundaries_and_session_lifetime() {
+    let (image, bytes) = gif_fixture(); let mut supported = cap();
+    supported.mime_types.push("image/gif".into());
+    let request = Request::Read { image: image.clone(), offset: 0, length: 17 };
+    for (field, value) in [("mime_type", json!("image/png")), ("source_sequence", json!(2)),
+        ("output_index", json!(1)), ("byte_length", json!(84)), ("offset", json!(1)),
+        ("next_offset", json!(18)), ("data_base64", json!(STANDARD.encode(&bytes[..16])))] {
+        let mut packet = chunk(&image, &bytes, 0, 17); packet[field] = value;
+        assert!(response(&request, &supported, &packet, "accepted").is_err(), "{field}");
+    }
+    let a = Images::default(); let b = Images::default(); catalog(&a, &image);
+    assert!(b.read(&image.image_id, |_| panic!("foreign catalog"), || true).is_err());
+    let alive = std::cell::Cell::new(true);
+    assert!(a.read(&image.image_id, |_| { alive.set(false);
+        Ok(Reply::Chunk { bytes: bytes.clone(), next: None }) }, || alive.get()).is_err());
 }
 fn fixture() -> (Metadata, Vec<u8>) {
     let mut bytes = Vec::new();
@@ -41,7 +144,7 @@ fn complete_ordered_chunks_produce_verified_png_only_after_sha_and_decode() {
         offsets.push(offset);
         response(&Request::Read { image: image.clone(), offset, length: 17 }, &cap(), &chunk(&image, &bytes, offset, 17), "accepted")
     }, || true).unwrap();
-    assert_eq!(verified.png, bytes); assert_eq!(offsets, (0..bytes.len() as u64).step_by(17).collect::<Vec<_>>());
+    assert_eq!(verified.bytes, bytes); assert_eq!(offsets, (0..bytes.len() as u64).step_by(17).collect::<Vec<_>>());
     assert_eq!(verified.image, image);
 }
 #[test]
@@ -112,7 +215,7 @@ fn rejected_partial_inventories_retain_verified_images_and_safe_actionable_failu
         assert_eq!(warning.state, "incomplete");
         assert!(warning.detail.contains(code));
         assert!(!warning.detail.contains("PRIVATE"));
-        assert_eq!(images.read(&image.image_id, |_| Ok(Reply::Chunk { bytes: bytes.clone(), next: None }), || true).unwrap().png, bytes);
+        assert_eq!(images.read(&image.image_id, |_| Ok(Reply::Chunk { bytes: bytes.clone(), next: None }), || true).unwrap().bytes, bytes);
     }
 }
 

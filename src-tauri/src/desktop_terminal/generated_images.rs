@@ -1,4 +1,4 @@
-//! Connection-scoped image metadata and ordered, verified PNG retrieval. No disk writes.
+//! Connection-scoped image metadata and ordered, verified PNG/GIF retrieval. No disk writes.
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -38,7 +38,7 @@ impl Capability {
     pub fn read(value: &Value) -> Option<Self> {
         let item: Self = serde_json::from_value(value.clone()).ok()?;
         (item.version == 1 && item.operations == ["generated_images.list", "generated_images.read"]
-            && item.mime_types == ["image/png"] && item.read_only
+            && (item.mime_types == ["image/png"] || item.mime_types == ["image/png", "image/gif"]) && item.read_only
             && item.lifetime == "owning_control_connection"
             && (1..=MAX_BYTES).contains(&item.max_image_bytes)
             && (1..=32768).contains(&item.max_chunk_bytes)
@@ -60,7 +60,7 @@ impl Metadata {
     fn read(value: &Value, cap: &Capability) -> Result<Self> {
         let item: Self = serde_json::from_value(value.clone()).map_err(|_| Failure::failed("Malformed image metadata"))?;
         if !hex(&item.image_id, 32) || !hex(&item.sha256, 64) || item.source_sequence == 0
-            || item.output_index != 0 || item.source != "codex.imageGeneration" || item.mime_type != "image/png"
+            || item.output_index != 0 || item.source != "codex.imageGeneration" || !cap.mime_types.contains(&item.mime_type)
             || !(1..=cap.max_image_bytes).contains(&item.byte_length)
             || item.width == 0 || item.height == 0 || u64::from(item.width) * u64::from(item.height) > MAX_PIXELS {
             return Err(Failure::failed("Unsupported or invalid image metadata"));
@@ -140,7 +140,7 @@ pub fn response(request: &Request, cap: &Capability, packet: &Value, state: &str
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Verified { pub image: Metadata, pub png: Vec<u8> }
+pub struct Verified { pub image: Metadata, pub bytes: Vec<u8> }
 #[derive(Serialize)]
 pub struct Inventory { pub images: Vec<Metadata>, pub incomplete: Option<Failure> }
 #[derive(Default)]
@@ -193,12 +193,17 @@ impl Images {
         }
         verify(&image, &bytes)?;
         if !alive() { return Err(Failure::unavailable()); }
-        Ok(Verified { image, png: bytes })
+        Ok(Verified { image, bytes })
     }
 }
 fn verify(image: &Metadata, bytes: &[u8]) -> Result<()> {
     if bytes.len() as u64 != image.byte_length || format!("{:x}", Sha256::digest(bytes)) != image.sha256 {
         return Err(Failure::failed("Image length or SHA-256 verification failed"));
+    }
+    match image.mime_type.as_str() {
+        "image/gif" => return verify_gif(image, bytes),
+        "image/png" => {},
+        _ => return Err(Failure::failed("Unsupported image MIME type")),
     }
     let invalid = || Failure::failed("Image is not a complete supported PNG");
     if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") { return Err(invalid()); }
@@ -222,6 +227,46 @@ fn verify(image: &Metadata, bytes: &[u8]) -> Result<()> {
     let size = reader.output_buffer_size().filter(|size| *size <= (MAX_PIXELS * 4) as usize).ok_or_else(invalid)?;
     reader.next_frame(&mut vec![0; size]).map_err(|_| invalid())?;
     reader.finish().map_err(|_| invalid())?;
+    Ok(())
+}
+
+fn verify_gif(image: &Metadata, bytes: &[u8]) -> Result<()> {
+    let invalid = || Failure::failed("Image is not a complete supported GIF");
+    if bytes.len() as u64 > MAX_BYTES { return Err(invalid()); }
+    let mut options = gif::DecodeOptions::new();
+    options.set_color_output(gif::ColorOutput::Indexed);
+    options.set_memory_limit(gif::MemoryLimit::Bytes(std::num::NonZeroU64::new(MAX_PIXELS).unwrap()));
+    options.check_frame_consistency(true);
+    options.check_lzw_end_code(true);
+    options.allow_unknown_blocks(false);
+    let mut reader = options.read_info(Cursor::new(bytes)).map_err(|_| invalid())?;
+    if u32::from(reader.width()) != image.width || u32::from(reader.height()) != image.height
+        || image.width == 0 || image.height == 0
+        || u64::from(image.width) * u64::from(image.height) > MAX_PIXELS {
+        return Err(invalid());
+    }
+    let mut pixels = Vec::new();
+    let mut frames = 0;
+    // Each raster is validated and discarded; encoded bytes remain untouched.
+    while let Some(frame) = reader.next_frame_info().map_err(|_| invalid())? {
+        let count = u64::from(frame.width) * u64::from(frame.height);
+        let transparent = frame.transparent;
+        if count == 0 || count > MAX_PIXELS { return Err(invalid()); }
+        pixels.resize(count as usize, 0);
+        let colors = reader.palette().map_err(|_| invalid())?.len() / 3;
+        reader.read_into_buffer(&mut pixels).map_err(|_| invalid())?;
+        if pixels.iter().any(|index| usize::from(*index) >= colors)
+            || transparent.is_some_and(|index| usize::from(index) >= colors) {
+            return Err(invalid());
+        }
+        // Drain through LZW termination, rejecting excess raster data as well.
+        if reader.fill_buffer(&mut [0]).map_err(|_| invalid())? { return Err(invalid()); }
+        frames += 1;
+    }
+    let mut input = reader.into_inner();
+    if frames == 0 || std::io::Read::read(&mut input, &mut [0]).map_err(|_| invalid())? != 0 {
+        return Err(invalid());
+    }
     Ok(())
 }
 
