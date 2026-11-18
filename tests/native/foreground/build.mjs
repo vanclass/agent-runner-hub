@@ -8,6 +8,7 @@ import { command } from '../../../.project-config/managed/web-app-tauri/native/p
 import { npm } from '../../../.project-config/managed/web-app-tauri/project.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { bootSource, hash, payload } from './bootstrap.mjs';
+import { frontendSource } from './source.mjs';
 
 export async function inventory(folder) {
   const files = {};
@@ -30,9 +31,10 @@ export async function stageLaunchImage(cachedExecutable, attempt) {
   return { executable, executableSha256: hash(await fs.readFile(executable)) };
 }
 
-export async function buildForeground(root, attempt, target, invocation, synthetic, signal) {
+export async function buildForeground(root, attempt, target, invocation, synthetic, signal, expectedHead) {
   return withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal,
     (stage, hint) => console.log(stage + ': ' + hint), async () => {
+      const source = await frontendSource(root, expectedHead, signal);
       let environment = await inspectNative(root, signal);
       environment = await prepareNative(root, environment, signal, console.log, true);
       const frontend = path.join(attempt, 'frontend');
@@ -63,9 +65,11 @@ export async function buildForeground(root, attempt, target, invocation, synthet
       const built = await command(process.execPath, [environment.cli, 'build', '--debug', '--no-bundle',
         '--target', targetTriple, '--config', JSON.stringify(override), '--', '--locked'], backend, signal, { env, quiet: false });
       if (built.code) throw new Error('Foreground ordinary native build failed');
+      const verifiedSource = await frontendSource(root, expectedHead, signal);
+      if (verifiedSource.sha256 !== source.sha256) throw new Error('Frontend inputs changed during staging');
       const launch = await stageLaunchImage(path.join(target, targetTriple, 'debug/web-app-native.exe'), attempt);
       return { ...launch, features, graph: graph.stdout,
         versions: environment.versions, ordinaryAssets, stagedAssets, override, fixture: fixture?.image,
-        sourceHead: (await command('git', ['rev-parse', 'HEAD'], root, signal)).stdout };
+        sourceHead: expectedHead, source, sourceVerifiedAfterBuild: true };
     });
 }

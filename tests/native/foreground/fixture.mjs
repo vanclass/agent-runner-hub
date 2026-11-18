@@ -31,7 +31,7 @@ export async function removeForegroundAttempt(attempt, settled) {
   await fs.rm(attempt, { recursive: true, maxRetries: 10, retryDelay: pollMs });
 }
 
-export async function createForeground(root, { synthetic = false, signal, target = path.join(root, 'local/native-foreground/target') } = {}) {
+export async function createForeground(root, { expectedHead, synthetic = false, signal, target = path.join(root, 'local/native-foreground/target') } = {}) {
   assert.equal(process.platform, 'win32', 'Foreground fixture is Windows-only');
   const invocation = randomUUID(), attempt = await fs.mkdtemp(path.join(os.tmpdir(), 'hub-fg-'));
   let owner, settled = true;
@@ -49,7 +49,7 @@ export async function createForeground(root, { synthetic = false, signal, target
     evidence.profileRemoved = !(await fs.stat(attempt).catch(() => null));
   }
   try {
-    evidence.build = await buildForeground(root, attempt, target, invocation, synthetic, signal ?? new AbortController().signal);
+    evidence.build = await buildForeground(root, attempt, target, invocation, synthetic, signal ?? new AbortController().signal, expectedHead);
     evidence.stage = 'process';
     for (const name of ['user/roaming', 'user/local', 'tmp', 'app-data', 'webview2'])
       await fs.mkdir(path.join(attempt, name), { recursive: true });

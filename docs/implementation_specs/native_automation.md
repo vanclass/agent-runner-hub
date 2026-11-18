@@ -10,7 +10,7 @@ replace their fixtures, schedule suites or authorize desktop input.
 ## Windows foreground fixture setup
 
 [`tests/native/foreground/fixture.mjs`](../../tests/native/foreground/fixture.mjs)
-exports `createForeground(root, { synthetic, signal })` for a fresh Windows process.
+exports `createForeground(root, { expectedHead, synthetic, signal })` for a fresh Windows process.
 Its `close()` requires normal root exit and an empty kernel-owned process job before
 removing invocation-owned profiles. Unverified launch or descendant exit preserves
 the attempt. The root joins its job while suspended, covering children born before
@@ -18,15 +18,21 @@ renderer inspection and during teardown. Consumers create their own fixture; no 
 or input authority transfers between runs. The setup smoke is:
 
 ```text
-node tests/native/foreground/smoke.mjs --evidence-dir <new absolute evidence directory>
+node tests/native/foreground/smoke.mjs --project-root <absolute checkout> --expected-head <revision> --evidence-dir <new absolute evidence directory>
 node --test tests/native/foreground/foreground.test.mjs
 node --test tests/native/foreground/ownership.test.mjs
+node --test tests/native/foreground/source.test.mjs
 ```
 
 The entry reuses managed preparation, build ownership and backend staging with the
 ordinary desktop features. It embeds the checked-out frontend plus a staged-only
 bootstrap, copies and hashes an invocation-owned launch image under the build lease,
-and starts hidden but focusable. The owner locks and checks that image before launch;
+and starts hidden but focusable. The explicit checkout and expected revision are
+checked before staging. The [frontend source owner](../../tests/native/foreground/source.mjs)
+compares effective source, public assets and build-configuration bytes with that
+revision before and after the build; changed, missing or untracked inputs block setup.
+Each mode retains this input inventory alongside its packaged assets and executable.
+The owner locks and checks that image before launch;
 another invocation may rebuild the shared cache without replacing a retained image.
 The Windows owner presents only its own HWND without activation. Plain startup
 and optional synthetic image list/read readiness are separate setup observations;
