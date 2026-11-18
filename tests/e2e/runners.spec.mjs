@@ -195,7 +195,7 @@ async function transport(page, freshTarget, referenceOptions) {
           if (session.imageReadGate) await session.imageReadGate;
           const image = session.images.find(image => image.imageId === args.imageId);
           if (!image) throw { state: 'unavailable', detail: 'Fixture image is unavailable' };
-          return { image, png: referenceOptions.generatedPng };
+          return { image, bytes: referenceOptions.generatedPng };
         }
         if (command === 'runner_command') {
           commands.push(args);

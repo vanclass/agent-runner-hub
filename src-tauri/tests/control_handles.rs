@@ -310,7 +310,7 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert_eq!(images.iter().map(|image| image.source_sequence).collect::<Vec<_>>(), [31, 17]);
     let image = client.image_read(&images[0].image_id).unwrap();
     assert_eq!((image.image.width, image.image.height), (2, 1));
-    assert!(image.png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert!(image.bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(client.image_read(&images[1].image_id).err().unwrap().state, "failed");
     assert_eq!(client.image_read(&"c".repeat(32)).err().unwrap().state, "unavailable");
     for (body, expected) in [("  한글 🌍\n    second\t \n\n", "accepted"), ("reject", "rejected"), ("unknown", "outcome-unknown")] {

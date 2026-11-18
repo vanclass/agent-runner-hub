@@ -77,7 +77,7 @@ fn public_work_identity_receipts_status_and_exact_owned_shutdown() {
         assert!(inventory.incomplete.is_none() && !inventory.images.is_empty(), "No genuine native image delivered");
         let image = first.image_read(&inventory.images[0].image_id).expect("Native image verification failed");
         let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("test-runner-frog.png");
-        std::fs::write(&output, &image.png).unwrap();
+        std::fs::write(&output, &image.bytes).unwrap();
         println!("GENUINE_NATIVE_IMAGE submission={original}, image={:?}, output={}", image.image, output.display());
     }
     first.close().unwrap(); harness.exited(&first_id);
