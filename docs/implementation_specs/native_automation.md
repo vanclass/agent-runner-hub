@@ -69,20 +69,14 @@ require additional isolation. No frontend WDIO extension, `withGlobalTauri`,
 plugin's default permission set is empty; HTTP script execution is unauthenticated
 and is secured here by test-only compilation and local runtime isolation, not ACLs.
 
-## Windows native OLE source fixture
+## Windows file-drop acceptance boundary
 
-[`native_ole_probe.rs`](../../src-tauri/src/native_ole_probe.rs) is compiled only by
-the Windows debug `native-webdriver` build. Its inlined plugin manifest and local
-main-window capability expose source startup and read-only observations only in
-that test environment. No production UI source surface is installed.
-A test-created WebView source can invoke startup from its trusted left-button
-interaction. The fixture requires the button still held inside the owned Hub,
-offers the original absolute PNG path through a real `IDataObject`/`CF_HDROP`,
-and uses standard `DoDragDrop` with release/Escape-driven `IDropSource` callbacks.
-Observations retain the OLE result, physical hit-test recipient and UI-thread
-capture HWND/ancestry. A same-window source does not guarantee authorized capture:
-the existing Computer Use owner still decides delivery and cleanup. This source
-tests native OLE file ingress, not Explorer-specific behavior or attachment delivery.
+The debug WebDriver build has no OLE source plugin or source-startup command.
+Genuine Windows file-drop acceptance requires an OS file drag into each actual
+composer, with native Tauri event, original-path thumbnail and ordinary authenticated
+preflight evidence. Scripted event emission establishes only fixture integration.
+Historical OLE source/capture failure evidence remains in the retained task reports;
+it does not establish composer ingress or attachment delivery.
 
 ## Windows process, window and observation
 
