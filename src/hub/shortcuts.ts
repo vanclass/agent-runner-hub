@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 
 export type ShortcutMap = { assign: string; entry: string; runner: string };
-export const defaultShortcuts: ShortcutMap = { assign: 'Enter', entry: 'Ctrl+Home', runner: 'Ctrl+Digit' };
-const reserved = ['Enter', 'Shift+Enter', 'Ctrl+Enter', 'Home', 'Ctrl+Home', 'Ctrl+End', 'Ctrl+PageUp', 'Ctrl+PageDown'];
+export const defaultShortcuts: ShortcutMap = { assign: 'Enter', entry: 'Ctrl+Shift+Home', runner: 'Ctrl+Digit' };
+const reserved = ['Enter', 'Shift+Enter', 'Ctrl+Enter', 'Home', 'Ctrl+Home', 'Ctrl+End', 'Ctrl+PageUp', 'Ctrl+PageDown',
+  'Ctrl+Shift+Home', 'Ctrl+Shift+End', 'Ctrl+Shift+PageUp', 'Ctrl+Shift+PageDown'];
 const modifiers = ['Ctrl', 'Alt', 'Shift', 'Meta'];
 const specialKeys = /^(Enter|Home|End|PageUp|PageDown|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|F([1-9]|1[0-9]|2[0-4]))$/;
 function parts(value: string) {
@@ -22,7 +23,7 @@ export function projectShortcuts(value: unknown): ShortcutMap | undefined {
   const assign = parts(result.assign), entry = parts(result.entry), runner = parts(result.runner);
   if (!assign || !entry || !runner || assign.key === 'Digit' || entry.key === 'Digit' || runner.key !== 'Digit') return;
   if ((result.assign !== 'Enter' && reserved.includes(result.assign))
-    || (result.entry !== 'Ctrl+Home' && reserved.includes(result.entry))) return;
+    || (result.entry !== defaultShortcuts.entry && reserved.includes(result.entry))) return;
   if (result.assign === result.entry || [assign, entry].some(chord => chord.prefix === runner.prefix && /^[1-9]$/.test(chord.key))) return;
   return result;
 }
@@ -73,13 +74,13 @@ export function useHubShortcuts(shortcuts: ShortcutMap, runnerIds: readonly stri
       }
       if (event.type !== 'keydown' || composing || event.isComposing || document.querySelector('dialog[open]')) return;
       const state = current.current, chord = captureShortcut(event);
-      const navigation = ['Ctrl+Home', 'Ctrl+End', 'Ctrl+PageUp', 'Ctrl+PageDown'].includes(chord ?? '');
+      const navigation = ['Ctrl+Shift+Home', 'Ctrl+Shift+End', 'Ctrl+Shift+PageUp', 'Ctrl+Shift+PageDown'].includes(chord ?? '');
       if (navigation) {
         stop(event); held.add(identity);
         if (event.repeat) return;
         const order = [null, ...state.runnerIds], index = Math.max(0, order.indexOf(state.actions.selectedId));
-        const next = chord === 'Ctrl+Home' ? 0 : chord === 'Ctrl+End' ? order.length - 1
-          : Math.max(0, Math.min(order.length - 1, index + (chord === 'Ctrl+PageUp' ? -1 : 1)));
+        const next = chord === 'Ctrl+Shift+Home' ? 0 : chord === 'Ctrl+Shift+End' ? order.length - 1
+          : Math.max(0, Math.min(order.length - 1, index + (chord === 'Ctrl+Shift+PageUp' ? -1 : 1)));
         state.actions.select(order[next]); return;
       }
       const action = shortcutAction(event, state.shortcuts);

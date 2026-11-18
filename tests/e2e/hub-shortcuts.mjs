@@ -1,5 +1,5 @@
 export function registerHubShortcuts({ test, expect, transport, configure, create, foreground }) {
-  const home = page => page.keyboard.press('Control+Home');
+  const home = page => page.keyboard.press('Control+Shift+Home');
   const rows = page => page.locator('.runner-row .nav-row');
   async function ready(page, options = {}) {
     await transport(page, undefined, { auto: true, work: true, ...options });
@@ -9,7 +9,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
   }
   async function remap(page) {
-    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
     for (const [action, chord] of [['Assign instruction', 'Alt+Enter'], ['Go to Single Entry', 'Alt+Home'], ['Go to Runner by position', 'Alt+2']]) {
       await page.getByRole('dialog').getByRole('button', { name: action, exact: true }).click();
       await page.keyboard.press(chord);
@@ -17,6 +17,38 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.getByRole('button', { name: 'Apply and save', exact: true }).click();
     await page.keyboard.press('Escape');
   }
+  test('shortcuts navigate endpoints and leave Ctrl-only textarea editing intact', async ({ page }) => {
+    await ready(page);
+    const entry = page.getByRole('button', { name: 'Single Entry', exact: true });
+    for (const key of ['Home', 'End', 'PageUp', 'PageDown']) {
+      await page.keyboard.press('Control+Shift+' + key);
+      await expect(entry).toHaveAttribute('aria-current', 'page');
+    }
+    await create(page); await create(page); await home(page);
+    await page.keyboard.press('Control+Shift+PageUp'); await expect(entry).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Control+Shift+PageDown'); await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Control+Shift+End'); await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Control+Shift+PageDown'); await expect(rows(page).nth(1)).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Control+Shift+PageUp'); await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
+    await rows(page).nth(0).click({ button: 'middle' });
+    await page.getByRole('button', { name: 'Terminate and close tab', exact: true }).click();
+    await home(page); await page.keyboard.press('Control+Shift+PageDown');
+    await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
+    await home(page);
+    const input = page.locator('.composer textarea');
+    await page.keyboard.press('Control+1');
+    await input.fill('runner draft');
+    await page.keyboard.press('Control+Home');
+    await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
+    expect(await input.evaluate(n => n.selectionStart)).toBe(0);
+    await home(page);
+    await input.fill('first line\nmiddle line\nlast line');
+    for (const key of ['Home', 'End', 'PageUp', 'PageDown']) {
+      await page.keyboard.press('Control+' + key); await expect(entry).toHaveAttribute('aria-current', 'page');
+      await expect(input).toBeFocused();
+      if (key === 'Home' || key === 'End') expect(await input.evaluate(n => n.selectionStart)).toBe(key === 'Home' ? 0 : 'first line\nmiddle line\nlast line'.length);
+    }
+  });
   test('shortcuts assign exactly once with defaults and custom restored keys through Single Entry', async ({ page }) => {
     await ready(page);
     await page.keyboard.press('Control+Enter');
@@ -69,7 +101,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     const terminal = page.locator('.xterm-helper-textarea');
     await terminal.focus();
     await page.evaluate(() => { window.__nativeFixture.writes.length = 0; });
-    await page.keyboard.press('Control+Home'); await expect(page.locator('.composer textarea')).toBeFocused();
+    await page.keyboard.press('Control+Shift+Home'); await expect(page.locator('.composer textarea')).toBeFocused();
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     await page.keyboard.press('Control+1'); await expect(rows(page).nth(0)).toBeFocused(); await terminal.focus();
     await foreground(page, 'pty-1', true);
@@ -78,25 +110,32 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     await terminal.evaluate(node => {
       node.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
-      node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', code: 'Home', isComposing: true, bubbles: true }));
+      node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', code: 'Home', ctrlKey: true, shiftKey: true, isComposing: true, bubbles: true }));
       node.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
     });
     await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
-    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
     const dialog = page.getByRole('dialog');
+    for (const chord of ['Control+Shift+End', 'Control+Shift+PageUp', 'Control+Shift+PageDown', 'Control+Home', 'Control+End', 'Control+PageUp', 'Control+PageDown']) {
+      await dialog.getByRole('button', { name: 'Go to Single Entry', exact: true }).click();
+      await page.keyboard.press(chord);
+      await expect(dialog.getByRole('button', { name: 'Apply and save' })).toBeDisabled();
+      await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
+    }
     await dialog.getByRole('button', { name: 'Go to Single Entry', exact: true }).click();
     await page.keyboard.press('Control+Enter');
     await expect(dialog.getByRole('alert')).toContainText('overlap');
     await expect(dialog.getByRole('button', { name: 'Apply and save' })).toBeDisabled();
     await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
     await dialog.getByRole('button', { name: 'Restore defaults' }).click();
+    await expect(dialog.getByRole('button', { name: 'Go to Single Entry', exact: true })).toHaveText('Ctrl+Shift+Home');
     await dialog.getByRole('button', { name: 'Go to Single Entry', exact: true }).click();
     await page.keyboard.press('Control+v');
     await expect(dialog.getByRole('alert')).toContainText('reserved');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
     await expect(page.locator('.shortcut-settings-trigger')).toBeFocused();
     await page.keyboard.press('Escape');
-    await terminal.focus(); await page.keyboard.press('Control+Home');
+    await terminal.focus(); await page.keyboard.press('Control+Shift+Home');
     await expect(page.locator('.composer textarea')).toBeFocused();
   });
   test('shortcuts never replay pending assignments', async ({ page }) => {

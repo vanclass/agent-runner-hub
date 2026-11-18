@@ -57,7 +57,7 @@
   },
   "shortcuts": {
     "title": "단축키 설정",
-    "help": "지시문 입력란에서 Enter는 전송, Shift+Enter는 줄바꿈입니다. Ctrl+Enter는 IssueRun에서만 브리프 준비 후 실행합니다. Ctrl+Home은 Single Entry, Ctrl+End는 마지막 Runner, Ctrl+PageUp/PageDown은 경계를 넘지 않고 인접 탭으로 이동합니다. Ctrl+1~9는 현재 순서로 이동합니다. 사용자 지정 배정 키는 Single Entry 지시문 입력란에서 작동합니다. Escape로 캡처를 취소합니다.",
+    "help": "지시문 입력란에서 Enter는 전송, Shift+Enter는 줄바꿈입니다. Ctrl+Enter는 IssueRun에서만 브리프 준비 후 실행합니다. Ctrl+Shift+Home은 Single Entry, Ctrl+Shift+End는 마지막 Runner, Ctrl+Shift+PageUp/PageDown은 경계를 넘지 않고 인접 탭으로 이동합니다. Ctrl+1~9는 현재 순서로 이동합니다. 사용자 지정 배정 키는 Single Entry 지시문 입력란에서 작동합니다. Escape로 캡처를 취소합니다.",
     "assign": "지시문 배정",
     "entry": "Single Entry로 이동",
     "runner": "현재 순서의 Runner로 이동",

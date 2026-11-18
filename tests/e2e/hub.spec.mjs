@@ -10,10 +10,10 @@ test('reserved navigation reaches beyond nine tabs and stops at visible endpoint
   const rows = page.locator('.runner-row .nav-row');
   await expect(rows).toHaveCount(23);
   await page.keyboard.press('Control+9'); await expect(rows.nth(8)).toHaveAttribute('aria-current', 'page');
-  await page.keyboard.press('Control+PageDown'); await expect(rows.nth(9)).toHaveAttribute('aria-current', 'page');
-  await page.keyboard.press('Control+End'); await expect(rows.nth(22)).toHaveAttribute('aria-current', 'page');
-  await page.keyboard.press('Control+PageDown'); await expect(rows.nth(22)).toHaveAttribute('aria-current', 'page');
-  await page.keyboard.press('Control+Home'); await page.keyboard.press('Control+PageUp');
+  await page.keyboard.press('Control+Shift+PageDown'); await expect(rows.nth(9)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+Shift+End'); await expect(rows.nth(22)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+Shift+PageDown'); await expect(rows.nth(22)).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Control+Shift+Home'); await page.keyboard.press('Control+Shift+PageUp');
   await expect(page.getByRole('button', { name: 'Single Entry', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(rows).toHaveCount(23);
 });
@@ -86,7 +86,7 @@ test('keyboard navigation and scrolling keep Single Entry accessible', async ({ 
   await expect(page.locator('.add-runner')).toBeFocused();
   await expect(entry).toBeInViewport();
   expect((await entry.boundingBox()).y).toBe(entryTop);
-  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('Control+Shift+Home');
   await expect(page.locator('.composer textarea')).toBeFocused();
   await expect(entry).toHaveAttribute('aria-current', 'page');
   await testInfo.attach('resized-navigation', { body: await page.screenshot(), contentType: 'image/png' });

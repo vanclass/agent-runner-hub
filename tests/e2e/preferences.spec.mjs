@@ -90,7 +90,7 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     for (const width of [1400, 1000, 760, 626]) {
       await page.setViewportSize({ width, height: width === 626 ? 450 : 700 });
       await expect(page.getByRole('textbox', { name, exact: true })).toBeInViewport();
-      await expect(page.locator('.app-settings-trigger')).toBeInViewport();
+      await expect(page.locator('.hub-preferences > .app-settings-trigger').first()).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect((await page.locator('.output').boundingBox()).height).toBeGreaterThan(90);
       await testInfo.attach(language + '-' + theme + '-' + width, { body: await page.screenshot(), contentType: 'image/png' });
@@ -98,7 +98,7 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     const composer = page.getByRole('textbox', { name: language === 'en' ? 'Single Entry instructions' : 'Single Entry 지시문', exact: true });
     await composer.fill('keep this draft /status 안녕');
-    await page.locator('.app-settings-trigger').click();
+    await page.locator('.hub-preferences > .app-settings-trigger').first().click();
     await languagePicker.selectOption(language === 'en' ? 'ko' : 'en');
     await expect(composer).toHaveCount(0);
     await expect(page.locator('.composer textarea')).toHaveValue('keep this draft /status 안녕');
@@ -112,7 +112,7 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
   test('shortcuts settings preserve preferences and accessible capture in ' + language + '/' + theme, async ({ page }, info) => {
     await seed(page, JSON.stringify({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' } }));
     await page.goto('/tests/fixtures/hub.html');
-    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
     const dialog = page.getByRole('dialog'), buttons = dialog.locator('.shortcut-row button');
     await buttons.nth(0).click(); await page.keyboard.press('Alt+Enter');
     await buttons.nth(1).click(); await page.keyboard.press('Alt+Home');
@@ -123,9 +123,14 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
     expect(saved).toEqual({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' },
       shortcuts: { assign: 'Alt+Enter', entry: 'Alt+Home', runner: 'Alt+Digit' } });
-    await page.reload(); await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.reload(); await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
     await expect(buttons.nth(0)).toHaveText('Alt+Enter'); await expect(buttons.nth(1)).toHaveText('Alt+Home');
     await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
+    await dialog.locator('.composer-actions button').first().click();
+    await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
+    await dialog.locator('.composer-actions button').last().click();
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).shortcuts, key)).toEqual({
+      assign: 'Enter', entry: 'Ctrl+Shift+Home', runner: 'Ctrl+Digit' });
   });
 }
 for (const failure of ['write', 'concurrent', 'read']) {
@@ -141,7 +146,7 @@ for (const failure of ['write', 'concurrent', 'read']) {
         return original.call(this, name, ...args);
       };
     }, { key, raw, failure });
-    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
     await page.locator('.shortcut-row button').first().click(); await page.keyboard.press('Alt+Enter');
     await page.getByRole('button', { name: 'Apply and save' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -149,25 +154,30 @@ for (const failure of ['write', 'concurrent', 'read']) {
     if (failure !== 'read') expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   });
 }
-test('retired shortcut values use defaults without rewriting unrelated or custom preferences', async ({ page }) => {
+for (const entry of ['Home', 'Ctrl+Home']) test('retired shortcut ' + entry + ' uses defaults without rewriting unrelated or custom preferences', async ({ page }) => {
   const raw = JSON.stringify({ ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
-    shortcuts: { assign: 'Ctrl+Enter', entry: 'Home', runner: 'Alt+Digit' } });
+    shortcuts: { assign: 'Alt+Enter', entry, runner: 'Alt+Digit' } });
   await seed(page, raw);
   await page.goto('/tests/fixtures/hub.html');
-  await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+  await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
   const buttons = page.locator('.shortcut-row button');
-  await expect(buttons.nth(0)).toHaveText('Enter');
-  await expect(buttons.nth(1)).toHaveText('Ctrl+Home');
+  await expect(buttons.nth(0)).toHaveText('Alt+Enter');
+  await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
   await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
+  await page.reload();
+  await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+  await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   await page.getByRole('button', { name: 'Apply and save' }).click();
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key)).toEqual({
     ...defaults, theme: 'black', singleEntry: { runMode: 'issue-run' },
-    shortcuts: { assign: 'Enter', entry: 'Ctrl+Home', runner: 'Alt+Digit' } });
+    shortcuts: { assign: 'Alt+Enter', entry: 'Ctrl+Shift+Home', runner: 'Alt+Digit' } });
 });
 
 for (const shortcuts of [null, 'Home', {}, { assign: 'Home', entry: 'Home', runner: 'Ctrl+Digit' },
-  { assign: 'Alt+Enter', entry: 'unsupported', runner: 'Alt+Digit', draft: 'inert' }]) {
+  { assign: 'Alt+Enter', entry: 'unsupported', runner: 'Alt+Digit', draft: 'inert' },
+  { assign: 'Ctrl+Enter', entry: 'Ctrl+Home', runner: 'Ctrl+Digit' }]) {
   test('unsupported optional shortcuts isolate defaults: ' + JSON.stringify(shortcuts), async ({ page }) => {
     const raw = JSON.stringify({ ...defaults, theme: 'black', shortcuts,
       singleEntry: { initialized: true, runMode: 'issue-run', account: 'bad\u0000name' } });
@@ -175,10 +185,10 @@ for (const shortcuts of [null, 'Home', {}, { assign: 'Home', entry: 'Home', runn
     await expect(page.locator('.hub')).toHaveAttribute('data-theme', 'black');
     await expect(page.locator('.preferences-error')).toHaveCount(0);
     expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
-    await page.locator('.app-settings-trigger').click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
     const buttons = page.locator('.shortcut-row button');
     await expect(buttons.nth(0)).toHaveText(shortcuts?.assign === 'Alt+Enter' ? 'Alt+Enter' : 'Enter');
-    await expect(buttons.nth(1)).toHaveText('Ctrl+Home');
+    await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
   });
 }
 

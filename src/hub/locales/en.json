@@ -57,7 +57,7 @@
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
-    "help": "Enter sends in instruction fields; Shift+Enter adds a line. Ctrl+Enter stages Brief → Run only in IssueRun. Ctrl+Home selects Single Entry; Ctrl+End selects the last Runner; Ctrl+PageUp/PageDown selects the adjacent tab without wrapping. Ctrl+1–9 selects by position. Custom assignment keys work in Single Entry instruction fields. Escape cancels capture.",
+    "help": "Enter sends in instruction fields; Shift+Enter adds a line. Ctrl+Enter stages Brief → Run only in IssueRun. Ctrl+Shift+Home selects Single Entry; Ctrl+Shift+End selects the last Runner; Ctrl+Shift+PageUp/PageDown selects the adjacent tab without wrapping. Ctrl+1–9 selects by position. Custom assignment keys work in Single Entry instruction fields. Escape cancels capture.",
     "assign": "Assign instruction",
     "entry": "Go to Single Entry",
     "runner": "Go to Runner by position",
