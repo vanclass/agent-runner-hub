@@ -125,7 +125,7 @@ are generated or consumed. Device/emulator loading and store acceptance remain s
 
 ## Local settings and results
 
-config.json contains deployment defaults. Put local overrides in .local/settings.json:
+config.json contains deployment defaults. Put local overrides in local/settings.json:
 {"schema":1,"allowDependencyInstall":false} disables automatic dependency installation.
 Choosing a preparation/build action permits supported local npm installation when enabled.
 
@@ -146,7 +146,13 @@ If restoring prior output fails, the attempt stays unpublished and preserves pre
 under its exact staging directory. Follow the diagnostic path to restore those bytes before
 retrying; do not delete that staging directory while it contains your prior output.
 
-Verified products are retained under .local/results/<id>/app with result.json.
+All paths here are relative to .project-config/tools/web_app_build_system/.
+local/ holds local configuration and reusable Electron packaging-tool state.
+temp/staging/<id>/ holds each build attempt until verification; successful publication
+renames that attempt to output/<id>/, retaining app/, result.json and release-evidence.json.
+Windows console viewport/request files use execution-scoped temp/console-*/ directories,
+and Android capability probes use temp/probes/ with per-probe cleanup.
+Verified products are retained under output/<id>/app with result.json.
 Future verified builds also publish release-evidence.json with build-owned project binding,
 source/version/runtime evidence and complete inventory. Apply the normal resource Update
 before rebuilding for release eligibility; older products remain independently usable.

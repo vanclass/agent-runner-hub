@@ -86,8 +86,8 @@ export function lineInput() {
 
 function readTerminalSize(file) {
   if (!file) return { columns: process.stdout.columns || 100, rows: process.stdout.rows || 24 };
-  const local = fs.realpathSync(path.resolve(import.meta.dirname, '../.local'));
-  const relative = path.relative(local, fs.realpathSync(file));
+  const temp = fs.realpathSync(path.resolve(import.meta.dirname, '../temp'));
+  const relative = path.relative(temp, fs.realpathSync(file));
   if (!/^console-\d+-\d+[\\/]viewport\.json$/.test(relative)) {
     throw new Error('Windows console viewport escaped its invocation directory. Restart build.cmd.');
   }

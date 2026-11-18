@@ -22,6 +22,6 @@ node .project-config/tools/web_app_build_system/src/entry.mjs --build macos-taur
 
 Each job selects its own native build command. The Rust check entry reuses native prerequisite inspection, checkout ownership, backend/feature staging, Cargo lock resolution and owned cancellation. The native build is the existing Build System adapter and immutable publication path. Missing host prerequisites fail explicitly; CI does not invoke privileged installers or accept licenses.
 
-Results are archived under the ignored Build System `.local` directory before artifact upload. Tar preserves `.app` executable permissions; artifacts have separate architecture names and missing output fails the upload. Compilation, Rust PTY tests and byte-verified native packages are separate from installer execution, GUI interaction, Gatekeeper, signing and notarization.
+Results retained in the Build System's `output/` directory are archived under its ignored `temp/` directory before artifact upload. Tar preserves `.app` executable permissions; artifacts have separate architecture names and missing output fails the upload. Compilation, Rust PTY tests and byte-verified native packages are separate from installer execution, GUI interaction, Gatekeeper, signing and notarization.
 
 Run the workflow through push, pull request or workflow_dispatch in the consuming GitHub repository. Local checks do not establish that all hosted jobs have executed successfully. Keep native-host and GitHub execution evidence separate.

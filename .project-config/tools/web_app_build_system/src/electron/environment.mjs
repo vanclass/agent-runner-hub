@@ -46,7 +46,7 @@ export async function inspectWindowsElectron(root, signal) {
   const recipe = JSON.parse(await fs.readFile(new URL('../../electron-package.json', import.meta.url), 'utf8'));
   if (runtime.web?.cli && !createRequire(runtime.web.cli)('semver').satisfies(process.version, recipe.engines.node)) return {
     enabled: true, ready: false, preparable: false, hints: ['Electron Forge requires Node ' + recipe.engines.node + '; install compatible Node/npm externally and retry.'] };
-  const tools = path.join(root, '.project-config/tools/web_app_build_system/.local/electron-tools');
+  const tools = path.join(root, '.project-config/tools/web_app_build_system/local/electron-tools');
   const forge = runtime.web?.cli ? await forgeTools(tools, recipe, runtime.web.cli, signal) : null;
   const hints = [...runtime.hints];
   if (!forge) hints.push('Prepare local Electron Forge, Squirrel.Windows maker and packaging binaries. Native modules may additionally require Python/MSVC/Windows SDK installed externally; no privilege elevation is performed.');
@@ -57,7 +57,7 @@ export async function inspectWindowsElectron(root, signal) {
 export async function prepareWindowsElectron(root, environment, signal, stage, allowed) {
   if (environment.ready) return environment;
   if (!environment.enabled || !environment.preparable || environment.verificationStatus === 'unavailable') throw new Error(environment.hints.join('\n'));
-  if (!allowed) throw new Error('Dependency installation is disabled. Enable allowDependencyInstall in .local/settings.json, or prepare tools yourself.');
+  if (!allowed) throw new Error('Dependency installation is disabled. Enable allowDependencyInstall in local/settings.json, or prepare tools yourself.');
   const owner = await runtimeOwner(root);
   if (!environment.runtime.ready) environment.runtime = await owner.prepareElectron(root, environment.runtime, signal, stage, allowed);
   if (!environment.forge) {
@@ -65,8 +65,10 @@ export async function prepareWindowsElectron(root, environment, signal, stage, a
     const local = path.dirname(environment.tools);
     await fs.mkdir(local, { recursive: true });
     if (await fs.realpath(local) !== local) throw new Error('Packaging tools must use the plain checkout-local Build System directory.');
-    const attempt = path.join(local, 'electron-install-' + randomUUID());
-    const backup = path.join(local, 'electron-previous-' + randomUUID());
+    const temp = path.join(path.dirname(local), 'temp');
+    await fs.mkdir(temp, { recursive: true });
+    const attempt = path.join(temp, 'electron-install-' + randomUUID());
+    const backup = path.join(temp, 'electron-previous-' + randomUUID());
     await fs.mkdir(attempt);
     let moved = false, committed = false;
     try {

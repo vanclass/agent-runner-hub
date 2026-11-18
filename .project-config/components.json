@@ -1929,9 +1929,7 @@
             "value": "playwright install chromium && node .project-config/managed/web-app-testing/readiness.mjs"
           },
           {
-            "entries": [
-              ".project-config/tools/web_app_build_system/.local/"
-            ],
+            "entries": [],
             "group_id": "6-WebApp.5-Tools.17-WebAppBuildSystem.20-web_app_build_system",
             "kind": "scm_ignore_group",
             "surface": "gitignore",

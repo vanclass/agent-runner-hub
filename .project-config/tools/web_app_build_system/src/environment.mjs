@@ -66,7 +66,7 @@ export async function inspectEnvironment(root, signal) {
 export async function prepareEnvironment(root, environment, signal, stage, allowed) {
   if (environment.ready) return environment;
   if (!environment.preparable) throw new Error(environment.hints.join('\n'));
-  if (!allowed) throw new Error('Dependency installation is disabled. Enable allowDependencyInstall in .local/settings.json, or prepare npm dependencies yourself.');
+  if (!allowed) throw new Error('Dependency installation is disabled. Enable allowDependencyInstall in local/settings.json, or prepare npm dependencies yourself.');
   stage('Preparing environment', 'Installing declared npm dependencies; Ctrl+C cancels. Registry access and local write permission are required.');
   const locked = await fs.access(path.join(root, 'package-lock.json')).then(() => true, () => false);
   const manifest = await fs.readFile(path.join(root, 'package.json'));

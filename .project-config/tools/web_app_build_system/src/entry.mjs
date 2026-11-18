@@ -5,7 +5,7 @@ import { executeTarget } from './execution.mjs';
 import { menu, lineInput } from './menu.mjs';
 
 const root = await fs.realpath(fileURLToPath(new URL('../../../../', import.meta.url)));
-const local = fileURLToPath(new URL('../.local/', import.meta.url));
+const local = fileURLToPath(new URL('../local/', import.meta.url));
 const args = process.argv.slice(2);
 const lines = !process.stdin.isTTY || !process.stdout.isTTY ? lineInput() : null;
 let active;

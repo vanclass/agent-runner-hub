@@ -6,15 +6,14 @@ import { writeReleaseEvidence } from './release-evidence.mjs';
 import { verifyAstroOutput } from './astro-output.mjs';
 
 export async function beginResult(local) {
-  await fs.mkdir(local, { recursive: true });
-  if (await fs.realpath(local) !== path.resolve(local)) throw new Error('Build System local state must be a plain tool-owned directory.');
+  const toolRoot = path.dirname(path.resolve(local));
   const id = randomUUID();
-  const stagingRoot = path.join(local, 'staging');
+  const stagingRoot = path.join(toolRoot, 'temp', 'staging');
   await fs.mkdir(stagingRoot, { recursive: true });
   if (await fs.realpath(stagingRoot) !== stagingRoot) throw new Error('Result staging cannot use filesystem indirection.');
   const staging = path.join(stagingRoot, id);
   await fs.mkdir(staging);
-  return { id, staging, output: path.join(staging, 'app'), local };
+  return { id, staging, output: path.join(staging, 'app'), retainedRoot: path.join(toolRoot, 'output') };
 }
 
 export async function verifyOutput(output, base = '/', foundation = 'ViteVanillaTS') {
@@ -54,7 +53,7 @@ export async function publishResult(attempt, target, integrity, inputs, capture)
   const resultBytes = JSON.stringify(result, null, 2) + '\n';
   await fs.writeFile(path.join(attempt.staging, 'result.json'), resultBytes, { flag: 'wx' });
   await writeReleaseEvidence(attempt, result, resultBytes, capture);
-  const results = path.join(attempt.local, 'results');
+  const results = attempt.retainedRoot;
   await fs.mkdir(results, { recursive: true });
   if (await fs.realpath(results) !== results) throw new Error('Result publication cannot use filesystem indirection.');
   const destination = path.join(results, attempt.id);

@@ -16,7 +16,7 @@ export const androidTargets = [androidTarget];
 const exists = file => fs.stat(file).then(stat => stat.isFile(), () => false);
 
 async function hostLink(root, rustc, host, env, signal) {
-  const parent = path.join(root, '.project-config/tools/web_app_build_system/.local/probes');
+  const parent = path.join(root, '.project-config/tools/web_app_build_system/temp/probes');
   await fs.mkdir(parent, { recursive: true });
   if (await fs.realpath(parent) !== parent) throw new Error('Rust host probes require plain tool-local staging.');
   const folder = path.join(parent, randomUUID());
@@ -53,7 +53,7 @@ async function inspectJdk(root, signal, policy) {
 
 async function symlinkCapable(root) {
   if (process.platform !== 'win32') return true;
-  const parent = path.join(root, '.project-config/tools/web_app_build_system/.local/probes');
+  const parent = path.join(root, '.project-config/tools/web_app_build_system/temp/probes');
   await fs.mkdir(parent, { recursive: true });
   if (await fs.realpath(parent) !== parent) throw new Error('Android capability probes require a plain tool-local directory.');
   const attempt = path.join(parent, randomUUID());

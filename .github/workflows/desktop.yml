@@ -42,9 +42,9 @@ jobs:
         run: node .project-config/tools/web_app_build_system/src/entry.mjs --build ${{ matrix.build }} --prepare
       - name: Archive results preserving app executable permissions
         shell: bash
-        run: tar -czf .project-config/tools/web_app_build_system/.local/desktop-artifacts.tar.gz -C .project-config/tools/web_app_build_system/.local results
+        run: mkdir -p .project-config/tools/web_app_build_system/temp && tar -czf .project-config/tools/web_app_build_system/temp/desktop-artifacts.tar.gz -C .project-config/tools/web_app_build_system output
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.target }}
-          path: .project-config/tools/web_app_build_system/.local/desktop-artifacts.tar.gz
+          path: .project-config/tools/web_app_build_system/temp/desktop-artifacts.tar.gz
           if-no-files-found: error
