@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createForeground } from './fixture.mjs';
+import { verifyForegroundFiles } from './evidence.mjs';
 
 const root = await fs.realpath(fileURLToPath(new URL('../../../', import.meta.url)));
 const args = process.argv.slice(2);
@@ -32,6 +33,17 @@ try {
     await fs.writeFile(file, JSON.stringify(result, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
     console.log(JSON.stringify({ mode: synthetic ? 'synthetic' : 'plain', outcome: result.outcome, file, failure: result.failure }));
     if (result.cleanupFailure || result.settlement && !result.profileRemoved) break;
+  }
+  if (!failed) {
+    try {
+      const handoff = await verifyForegroundFiles(root, expectedHead, output, controller.signal);
+      await fs.writeFile(path.join(output, 'handoff.json'), JSON.stringify(handoff, null, 2) + '\n',
+        { encoding: 'utf8', flag: 'wx' });
+      console.log(JSON.stringify({ handoff }));
+    } catch (error) {
+      failed = true;
+      console.error(JSON.stringify({ failure: { stage: 'evidence-handoff', reason: error.message } }));
+    }
   }
 } finally { process.removeListener('SIGINT', cancel); process.removeListener('SIGTERM', cancel); }
 if (failed) process.exitCode = 1;

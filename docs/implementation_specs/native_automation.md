@@ -22,6 +22,8 @@ node tests/native/foreground/smoke.mjs --project-root <absolute checkout> --expe
 node --test tests/native/foreground/foreground.test.mjs
 node --test tests/native/foreground/ownership.test.mjs
 node --test tests/native/foreground/source.test.mjs
+node --test tests/native/foreground/evidence.test.mjs
+node tests/native/foreground/validate.mjs
 ```
 
 The entry reuses managed preparation, build ownership and backend staging with the
@@ -32,6 +34,14 @@ checked before staging. The [frontend source owner](../../tests/native/foregroun
 compares effective source, public assets and build-configuration bytes with that
 revision before and after the build; changed, missing or untracked inputs block setup.
 Each mode retains this input inventory alongside its packaged assets and executable.
+The smoke checks both retained inventories against the admitted checkout again at
+handoff, after process/profile settlement. Changed renderer inputs reject the pair;
+a metadata-only revision can reuse observations when all effective input bytes match.
+The repeatable `validate.mjs` entry binds to its executing checkout and revision,
+records a fresh pair in a unique task-local evidence directory, and verifies it
+without rewriting earlier records. Integrated validation must execute this entry
+on reconciled content when renderer inputs have changed; earlier smoke success
+does not establish readiness of that content.
 The owner locks and checks that image before launch;
 another invocation may rebuild the shared cache without replacing a retained image.
 The Windows owner presents only its own HWND without activation. Plain startup
