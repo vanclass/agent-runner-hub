@@ -33,6 +33,54 @@ export function registerComposerAttachments({ test, expect, transport, configure
   registerAttachmentOutcomes({ test, expect, ready, paste, requests, send, drop });
   registerLocalPreviews({ test, expect, ready, paste, requests, drop });
   registerPreviewViews({ test, expect, ready, drop });
+  for (const outcome of ['unknown', 'rejected']) test(`IssueRun retains original image and draft on ${outcome}`, async ({ page }) => {
+    await ready(page, { workMode: outcome });
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+    await paste(page, 'Brief');
+    const input = page.locator('textarea[data-instruction]');
+    const draft = 'Original IssueRun draft\nWith an image';
+    await input.fill(draft); await input.press('Enter');
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.deliveredSets.length)).toBe(1);
+    await expect(input).toHaveValue(draft);
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    if (outcome === 'rejected') { await expect(input).toBeEnabled(); return; }
+    await expect(input).toBeDisabled();
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.mode = 'started'; });
+    await page.locator('.runner-row .nav-row').first().click();
+    await expect(input).toHaveValue('');
+    await expect(page.locator('.attachment-chip')).toHaveCount(0);
+    await expect(input).toBeEnabled();
+    await input.fill('New draft after late matching start');
+    await input.press('Enter');
+    await expect(input).toHaveValue('New draft after late matching start');
+    expect(await page.evaluate(() => window.__nativeFixture.deliveredSets.length)).toBe(1);
+  });
+  test('IssueRun confirmed start retires image and permits a new draft without terminal input modes', async ({ page }) => {
+    await ready(page);
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+    const input = page.locator('textarea[data-instruction]');
+    await paste(page, 'Brief');
+    await input.fill('Investigate the elapsed timer\nPreserve the paused work.');
+    await input.press('Enter');
+    await expect(input).toHaveValue('');
+    await expect(page.locator('.attachment-chip')).toHaveCount(0);
+    await page.evaluate(() => window.__nativeFixture.emit('pty-1', '\x1b[?9001l\x1b[?2004l'));
+    await expect(input).toBeEnabled();
+    await input.fill('Independent next draft');
+    await input.press('Enter');
+    await expect(input).toHaveValue('Independent next draft');
+    await expect(input).toBeEnabled();
+    await paste(page, 'Brief');
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await page.locator('.runner-row .nav-row').first().click();
+    await expect(input).toHaveValue('Independent next draft');
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests)
+      .filter(r => r.operation === 'work.submit').length)).toBe(1);
+    expect(await page.evaluate(() => window.__nativeFixture.deliveredSets.length)).toBe(1);
+  });
   for (const kind of ['image', 'file', 'mixed']) for (const single of [false, true]) test(`attachment wheel regions ${single ? 'Single Entry' : 'Runner'} ${kind}`, async ({ page }) => {
     await ready(page);
     if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();

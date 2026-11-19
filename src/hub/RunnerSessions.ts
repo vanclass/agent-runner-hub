@@ -320,7 +320,7 @@ export class RunnerSession {
       this.deliveryUnknown = false;
       this.references.finishSubmission(false);
       this.submittedAttempt = undefined;
-    } else if (attempt.work?.started_event_id) {
+    } else if (this.control.work.hasConfirmedStart(attempt)) {
       this.deliveryUnknown = false;
       if (this.view.draft === submitted.draft) this.view = { ...this.view, draft: '' };
       this.references.finishSubmission(true);
@@ -328,7 +328,7 @@ export class RunnerSession {
     }
   }
   private retainSubmission(attempt: WorkAttempt, draft: string) {
-    if (attempt.work?.started_event_id) {
+    if (this.control.work.hasConfirmedStart(attempt)) {
       if (this.view.draft === draft) this.update({ draft: '' });
       this.references.finishSubmission(true);
     } else if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected')) {

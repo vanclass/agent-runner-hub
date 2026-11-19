@@ -8,7 +8,10 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   useHubTranslation();
   const text = session.view.draft ?? '';
   const pending = !!session.view.submitting || session.control.commandPending;
-  const available = !session.view.closing && session.view.status === 'running' && session.view.canSubmit
+  const started = session.control.work.current;
+  const canDraft = session.view.canSubmit || !!started && started.work?.run_mode === 'issue-run'
+    && session.control.work.hasConfirmedStart(started);
+  const available = !session.view.closing && session.view.status === 'running' && canDraft
     && !session.assignmentReserved && !session.foregroundInteraction && !session.submissionUncertain;
   async function submit(briefRun = false) {
     if (session.view.submitting) return;
