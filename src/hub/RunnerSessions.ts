@@ -14,7 +14,7 @@ import { RunnerSpare, type SpareEvent } from './RunnerSpare';
 import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './RunnerRestarts';
 import type { RunnerInstallation } from './runnerInstallation';
 import { copy, same } from './runnerConfigContract';
-import type { WorkAttempt } from './runnerWork';
+import { issueSidebarActivity, type WorkAttempt } from './runnerWork';
 import type { BriefResult } from './RunnerBrief';
 import { HubSelections } from './HubSelections';
 import '@xterm/xterm/css/xterm.css';
@@ -199,6 +199,11 @@ export class RunnerSession {
               : execution.lifecycle_state === 'INTERACTIVE_READY' && execution.workflow_kind === ''
                 && execution.owned_execution_alive === false ? 'idle' : 'unknown';
       } else activity = 'unknown';
+    }
+    if (this.view.status === 'running' && this.control.snapshot.state === 'ready'
+      && this.control.observationFresh && observation && (observation.run_mode === 'issue-run'
+        || this.control.work.presentedCurrent?.work?.run_mode === 'issue-run')) {
+      activity = issueSidebarActivity(this.control.work.presentedCurrent, observation);
     }
     return { ...this.view, activity, unreadCompletion: this.control.work.unread };
   }

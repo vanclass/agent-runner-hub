@@ -1,4 +1,88 @@
 export function registerRunnerStatus({ test, expect, transport, configure, create }) {
+  test('IssueRun projection preserves Work safety and terminal uncertainty', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await configure(page); await create(page);
+    const results = await page.evaluate(async () => {
+      const { issueSidebarActivity, RunnerWork } = await import('/src/hub/runnerWork.ts');
+      const { terminalWork } = await import('/tests/fixtures/work.ts');
+      const observation = window.__nativeFixture.sessions.get('pty-1').control.observation;
+      const service = new RunnerWork({}, () => {});
+      const attempt = { work: terminalWork(1, 1, { run_mode: 'issue-run' }), uncertain: false, notSent: false };
+      service.attempts.push(attempt);
+      const check = () => ({ activity: issueSidebarActivity(attempt, observation), blocked: service.blocked });
+      const results = [check()];
+      attempt.work.state = 'incomplete'; results.push(check());
+      attempt.work.state = 'suspended'; results.push(check());
+      attempt.work.terminal = true; attempt.work.outcome = 'incomplete'; results.push(check());
+      attempt.work.state = 'succeeded'; attempt.work.outcome = 'succeeded'; results.push(check());
+      observation.execution.owned_execution_alive = true; results.push(check());
+      attempt.uncertain = true; results.push(check());
+      service.close(); return results;
+    });
+    expect(results.map(r => r.activity)).toEqual(['running', 'unknown', 'unknown', 'unknown', 'idle', 'unknown', 'unknown']);
+    expect(results.map(r => r.blocked)).toEqual([true, true, true, false, false, false, true]);
+  });
+  test('IssueRun sidebar distinguishes autonomous work from unverified handoffs', async ({ page }) => {
+    test.setTimeout(60000);
+    await transport(page, undefined, { auto: true, work: true });
+    await configure(page); await create(page);
+    const marker = page.locator('.runner-row').first().locator('.status-dot');
+    const baseline = await marker.boundingBox();
+    const publish = async changes => {
+      await page.evaluate(async changes => {
+        const { terminalWork } = await import('/tests/fixtures/work.ts');
+        const s = window.__nativeFixture.sessions.get('pty-1');
+        s.feature.config.current.run_mode = 'issue-run';
+        Object.assign(s.control.observation, { run_mode: 'issue-run' });
+        Object.assign(s.control.observation.execution, { lifecycle_state: 'INTERACTIVE_READY',
+          owned_execution_alive: false, workflow_kind: '', ...changes.execution });
+        Object.assign(s.control.observation.attention, { foreground_interaction_active: false,
+          suspension_status: 'inactive', suspension_reason: '', awaiting_user_command_reason: '',
+          restart_confirmation_required: false, ...changes.attention });
+        s.feature.observations.set('terminal:1', terminalWork(1, changes.event, {
+          run_mode: 'issue-run', work_id: { kind: 'issue', id: 'ir-status' }, owner: 'issue_lifecycle',
+          state: 'active', started_event_id: 1, ...changes.work }));
+      }, changes);
+      await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1')
+        .feature.requests.filter(r => r.operation === 'work.list').at(-1)?.after_event_id ?? 0)).toBeGreaterThanOrEqual(changes.event);
+      await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
+        .control.observation.attention.foreground_interaction_active = true; });
+    };
+    // Interpreter preparation, execution, then automatic Planner work retain one Work.
+    for (const [event, state] of [[1, 'instruction_admitted'], [2, 'active'], [3, 'active']]) {
+      await publish({ event, work: { state, started_event_id: event === 1 ? 0 : 1 } });
+      await expect(marker).toHaveClass('status-dot running');
+    }
+    await expect(marker).toHaveCSS('color', 'rgb(59, 130, 246)');
+    await expect(marker).toHaveAttribute('aria-label', 'Running');
+    await expect(marker.locator('svg circle')).toHaveCount(1);
+    expect(await marker.boundingBox()).toEqual(baseline);
+    // Work v1 cannot distinguish a pending automatic action from a question/decision.
+    for (const [event, work, attention] of [
+      [4, { state: 'incomplete', outcome: 'incomplete' }, {}],
+      [5, { state: 'suspended', owner: 'issue_stage_control' }, { suspension_status: 'suspended' }],
+      [6, { state: 'active' }, { awaiting_user_command_reason: 'authentication_recovery' }],
+    ]) {
+      await publish({ event, work, attention });
+      await expect(marker).toHaveClass('status-dot unknown');
+    }
+    await publish({ event: 7, attention: { restart_confirmation_required: true } });
+    await expect(marker).toHaveClass('status-dot attention');
+    await expect(marker).toHaveCSS('color', 'rgb(255, 214, 0)');
+    await expect(marker).toHaveAttribute('aria-label', 'Suspended / needs attention');
+    expect(await marker.boundingBox()).toEqual(baseline);
+    await publish({ event: 8 });
+    await expect(marker).toHaveClass('status-dot running');
+    await expect(page.locator('.composer-area textarea[data-instruction]')).toBeDisabled();
+    await expect(page.locator('.terminal-host textarea')).toHaveAttribute('readonly', '');
+    const safety = await page.evaluate(() => {
+      const n = window.__nativeFixture, s = n.sessions.get('pty-1');
+      return { writes: n.writes, submissions: s.feature.requests.filter(r => r.operation === 'work.submit') };
+    });
+    expect(safety).toEqual({ writes: [], submissions: [] });
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 999999; });
+    await expect(marker).toHaveClass('status-dot unknown');
+  });
   test('runner status releases completed TaskRun after historical unknown without losing unread', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);

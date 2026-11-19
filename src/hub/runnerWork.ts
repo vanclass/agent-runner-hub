@@ -1,4 +1,5 @@
 import { HubError, msg } from './i18n';
+import type { RunnerObservation } from './runnerControl';
 import { copy, record, same, type ConfigIdentity, type FeatureAdmission, type FeatureResult, type FeatureSnapshot } from './runnerConfigContract';
 
 export const runModes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run', 'subagent-run'] as const;
@@ -23,6 +24,23 @@ export type WorkObservation = {
 export type WorkAttempt = { identity: ConfigIdentity; readonly instruction?: string; submissionId?: number; submission?: FeatureResult; observationId?: string;
   status?: FeatureResult; work?: WorkObservation; uncertain: boolean; notSent: boolean; notified?: boolean };
 export type WorkActivity = 'idle' | 'running' | 'attention' | 'completed' | 'failed' | 'interrupted' | 'unknown';
+/** Presentation only: IssueRun foreground ownership is not a user-handoff signal. */
+export function issueSidebarActivity(attempt: WorkAttempt | undefined, observation: RunnerObservation): WorkActivity {
+  const { execution, attention } = observation;
+  if (attention.restart_confirmation_required || attention.termination_confirmation_active
+    || attention.account_setup_required) return 'attention';
+  const work = attempt?.work;
+  if (!attempt || attempt.notSent || attempt.uncertain || !work || work.run_mode !== 'issue-run'
+    || work.state === 'unknown' || work.admission !== 'admitted') return 'unknown';
+  // Work v1 conflates automatic next_action and user dialogue in incomplete.
+  if (attention.awaiting_user_command_reason || attention.suspension_status !== 'inactive'
+    || attention.suspension_reason || ['suspended', 'incomplete'].includes(work.state)) return 'unknown';
+  if (!work.terminal) return ['instruction_admitted', 'execution_started', 'active'].includes(work.state)
+    ? 'running' : 'unknown';
+  return work.outcome === 'succeeded' && execution.lifecycle_state === 'INTERACTIVE_READY'
+    && execution.owned_execution_alive === false && execution.workflow_kind === ''
+    && !attention.foreground_interaction_active ? 'idle' : 'unknown';
+}
 export interface WorkTransport {
   identity(): ConfigIdentity | undefined;
   available(operation: WorkRequest['operation'], attachmentLease?: symbol): boolean;
