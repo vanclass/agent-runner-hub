@@ -1,6 +1,16 @@
 use super::*;
 
 #[test]
+fn unavailable_full_observation_blocks_previously_supported_work() {
+    let mut p = ready();
+    p.snapshot.features.discover(&json!({"work":cap()}));
+    assert!(p.snapshot.features.supports(&submit()));
+    p.snapshot.observation = None; p.observed_at = None;
+    assert!(p.feature_request(submit(), "key").is_err());
+    assert!(p.feature_request(status(9), "key").is_err());
+}
+
+#[test]
 fn extended_modes_and_partial_operations_preserve_work_admission() {
     let mut p = ready(); let mut capability = cap();
     capability["run_modes"] = json!(["task-run", "subagent-run", "future-run"]);

@@ -113,6 +113,7 @@
       "idle": "Verified idle",
       "running": "Running",
       "attention": "Suspended / needs attention",
+      "userAction": "IssueRun needs your response or approval",
       "failed": "Failed",
       "unknown": "Status unknown"
     }

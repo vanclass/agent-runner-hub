@@ -1,4 +1,13 @@
 use super::*;
+
+#[test]
+fn unavailable_full_observation_blocks_previously_supported_recovery() {
+    let mut p = capable();
+    let request = features::Request::Recovery(recovery::Request::Recover { api_version: 1, reference: reference() });
+    assert!(p.snapshot.features.supports(&request));
+    p.snapshot.observation = None; p.observed_at = None;
+    assert!(p.feature_request(request, "private").is_err());
+}
 fn lifecycle(reference: recovery::Reference) -> Value {
     let mut result = packet(1, "accepted", "completed");
     result["reference"] = serde_json::to_value(reference).unwrap();

@@ -14,7 +14,7 @@ import { RunnerSpare, type SpareEvent } from './RunnerSpare';
 import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './RunnerRestarts';
 import type { RunnerInstallation } from './runnerInstallation';
 import { copy, same } from './runnerConfigContract';
-import { issueSidebarActivity, type WorkAttempt } from './runnerWork';
+import { issueSidebarActivity, issueUserAction, type WorkAttempt } from './runnerWork';
 import type { BriefResult } from './RunnerBrief';
 import { HubSelections } from './HubSelections';
 import '@xterm/xterm/css/xterm.css';
@@ -205,7 +205,12 @@ export class RunnerSession {
         || this.control.work.presentedCurrent?.work?.run_mode === 'issue-run')) {
       activity = issueSidebarActivity(this.control.work.presentedCurrent, observation);
     }
-    return { ...this.view, activity, unreadCompletion: this.control.work.unread };
+    const issueUserActionRequired = activity === 'attention' && this.view.status === 'running'
+      && this.control.observationFresh && !!observation && observation.run_mode === 'issue-run'
+      && !observation.attention.restart_confirmation_required && !observation.attention.termination_confirmation_active
+      && !observation.attention.account_setup_required
+      && issueUserAction(this.control.work.presentedCurrent, observation) === 'required';
+    return { ...this.view, activity, issueUserActionRequired, unreadCompletion: this.control.work.unread };
   }
   reserve(token: symbol) {
     if (this.disposed || this.view.closing || this.reservation || this.control.config.busy || this.control.config.uncertain

@@ -10,8 +10,8 @@ type MarkerState = 'idle' | 'running' | 'attention' | 'failed' | 'starting' | 'u
 const statusLabel = (state: MarkerState) => t(({ idle: 'tabs.states.idle', running: 'tabs.states.running',
   attention: 'tabs.states.attention', failed: 'tabs.states.failed', starting: 'status.starting',
   unknown: 'tabs.states.unknown' } as const)[state]);
-function StatusMarker({ state }: { state: MarkerState }) {
-  const label = statusLabel(state);
+function StatusMarker({ state, userAction }: { state: MarkerState; userAction?: boolean }) {
+  const label = userAction ? t('tabs.states.userAction') : statusLabel(state);
   return <span className={`status-dot ${state}`} role="img" aria-label={label} title={label}>
     <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       {state === 'idle' ? <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" />
@@ -63,7 +63,7 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove, drag, dropBef
   }
   const state: MarkerState = runner.activity && !['completed', 'interrupted'].includes(runner.activity)
     ? runner.activity as MarkerState : runner.status === 'starting' ? 'starting' : runner.status === 'failed' ? 'failed' : 'unknown';
-  const status = statusLabel(state);
+  const status = runner.issueUserActionRequired ? t('tabs.states.userAction') : statusLabel(state);
   return <li {...drag} draggable={!editing} className={`runner-row ${active ? 'active' : ''} ${dropBefore ? 'drop-before' : ''}`} data-runner-id={runner.id}
     onMouseDown={event => { if (event.button === 1) event.preventDefault(); }}
     onAuxClick={event => {
@@ -76,12 +76,12 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove, drag, dropBef
       onDoubleClick={event => { if (event.button === 0) startRename(); }}
       onKeyDown={event => { if (event.key === 'F2') { event.preventDefault(); startRename(); } }}
       title={t('sidebar.rowHint', { name: runner.name, status })}>
-      <StatusMarker state={state} />
+      <StatusMarker state={state} userAction={runner.issueUserActionRequired} />
       <span className="runner-name">{runner.name}</span>
       {runner.unreadCompletion && <span className="unread-completion" role="img" aria-label={t('tabs.unread')}>●</span>}
     </button>
     {editing && <div className="rename-row">
-      <StatusMarker state={state} />
+      <StatusMarker state={state} userAction={runner.issueUserActionRequired} />
       <input aria-label={t('sidebar.runnerName')} value={draft} autoFocus onFocus={event => event.currentTarget.select()}
         onChange={event => setDraft(event.target.value)} onBlur={() => finish(true)}
         onKeyDown={event => {

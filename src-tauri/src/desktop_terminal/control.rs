@@ -71,7 +71,25 @@ pub struct Attention {
     pub awaiting_user_command_reason: String, pub suspension_status: String, pub suspension_reason: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct UserActionRequirement {
+    pub kind: String, pub request_key: String, pub request_version: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssueRunUserAction {
+    pub schema_version: String, pub status: String, pub issue_run_id: String,
+    pub state_revision: Option<u64>, pub requirements: Vec<UserActionRequirement>,
+}
+fn user_action<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<IssueRunUserAction>, D::Error> {
+    let raw = Value::deserialize(decoder)?;
+    Ok(Some(serde_json::from_value(raw).unwrap_or_else(|_| IssueRunUserAction {
+        schema_version: String::new(), status: "unknown".into(), issue_run_id: String::new(),
+        state_revision: None, requirements: Vec::new(),
+    })))
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {
+    #[serde(default, deserialize_with = "user_action", skip_serializing_if = "Option::is_none")]
+    pub issue_run_user_action: Option<IssueRunUserAction>,
     pub run_mode: String, pub target: Target, pub selection: Selection,
     pub execution: Execution, pub attention: Attention, pub commands: Vec<CommandView>,
 }
@@ -172,11 +190,12 @@ impl Protocol {
         Ok(())
     }
     fn request(&mut self, command: Option<String>, key: &str) -> Result<Vec<u8>, &'static str> {
+        if command.is_some() && self.snapshot.observation.is_none() { return Err("Observation unavailable"); }
         self.request_inner(command, None, key)
     }
     fn reference_request(&mut self, request: ReferenceRequest, key: &str) -> Result<Vec<u8>, &'static str> {
         request.validate()?;
-        if self.snapshot.state != "ready" || self.snapshot.references.capability.is_none() {
+        if self.snapshot.state != "ready" || self.snapshot.observation.is_none() || self.snapshot.references.capability.is_none() {
             return Err("This Runner does not offer authenticated reference operations");
         }
         if matches!(request, ReferenceRequest::Remove { .. }) && self.snapshot.references.removal_capability.is_none() {
@@ -231,7 +250,7 @@ impl Protocol {
         if self.recovering_direct() { return Err("Recovery handoff pending"); }
         if matches!(&request, features::Request::Recovery(recovery::Request::Recover { .. }))
             && self.has_unsettled_requests() { return Err("Control requests must settle before recovery"); }
-        if self.snapshot.state != "ready" || !self.snapshot.features.supports(&request) {
+        if self.snapshot.state != "ready" || self.snapshot.observation.is_none() || !self.snapshot.features.supports(&request) {
             return Err("Unsupported or unavailable native feature");
         }
         if matches!(&request, features::Request::Work(_)) && self.snapshot.observation.as_ref().is_none_or(|view|
@@ -288,12 +307,15 @@ impl Protocol {
         }
         if pending.kind == RequestKind::Observe && finished {
             if state != "accepted" { return Err("Runner observation was rejected"); }
-            let observation: Observation = serde_json::from_value(packet["observation"].clone())
-                .map_err(|_| "Malformed canonical observation")?;
-            // A completed authenticated observe round-trip establishes readiness, not hello alone.
-            self.snapshot.observation = Some(observation);
+            let unavailable = packet["observation"]["observation_unavailable"] == true;
+            let observation = if unavailable { None } else {
+                Some(serde_json::from_value(packet["observation"].clone())
+                    .map_err(|_| "Malformed canonical observation")?)
+            };
+            // Partial replies keep the channel alive; only a full view establishes observation freshness.
+            self.snapshot.observation = observation;
             self.snapshot.observation_serial += 1;
-            self.observed_at = Some(Instant::now());
+            self.observed_at = if unavailable { None } else { Some(Instant::now()) };
             self.snapshot.state = "ready".into();
             self.snapshot.references.capability = references::Capability::read(&packet["capabilities"]["references"]);
             self.snapshot.references.removal_capability = references::RemovalCapability::read(&packet["capabilities"]["reference_removal"]);
@@ -312,9 +334,15 @@ impl Protocol {
                 let _ = completion.send(result);
             }
         }
-        if finished && (pending.command.is_some() || pending.reference.is_some()) && !packet["observation"].is_null() {
-            self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
-                .map_err(|_| "Malformed canonical observation")?);
+        if finished && (pending.command.is_some() || pending.reference.is_some())
+            && (!packet["observation"].is_null() || packet["observation_unavailable"] == true) {
+            if packet["observation"]["observation_unavailable"] == true || packet["observation_unavailable"] == true {
+                self.snapshot.observation = None;
+                self.observed_at = None;
+            } else {
+                self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
+                    .map_err(|_| "Malformed canonical observation")?);
+            }
         }
         if let Some(request) = &pending.feature {
             if finished && state == "accepted" && matches!(request,

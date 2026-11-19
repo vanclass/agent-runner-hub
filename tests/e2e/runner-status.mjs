@@ -1,4 +1,21 @@
 export function registerRunnerStatus({ test, expect, transport, configure, create }) {
+  test('IssueRun confirmed user action yields to process failure', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await configure(page); await create(page);
+    await page.evaluate(() => {
+      const s = window.__nativeFixture.sessions.get('pty-1');
+      s.feature.config.current.run_mode = 'issue-run';
+      s.control.observation.run_mode = 'issue-run';
+      s.control.observation.execution.owned_execution_alive = true;
+      s.control.observation.issue_run_user_action = { schema_version: 'issue-run-user-action-v1',
+        status: 'required', issue_run_id: 'ir-failure', state_revision: 1,
+        requirements: [{ kind: 'approval', request_key: '', request_version: '' }] };
+    });
+    const marker = page.locator('.runner-row').first().locator('.status-dot');
+    await expect(marker).toHaveClass('status-dot attention');
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
+    await expect(marker).toHaveClass('status-dot failed');
+  });
   test('IssueRun projection preserves Work safety and terminal uncertainty', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);
@@ -23,7 +40,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     expect(results.map(r => r.blocked)).toEqual([true, true, true, false, false, false, true]);
   });
   test('IssueRun sidebar distinguishes autonomous work from unverified handoffs', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(90000);
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);
     const marker = page.locator('.runner-row').first().locator('.status-dot');
@@ -54,7 +71,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
           account_setup_required: false, ...changes.attention });
         s.feature.observations.set(`terminal:${changes.id}`, terminalWork(changes.id, changes.event, {
           run_mode: 'issue-run', work_id: { kind: 'issue', id: 'ir-status' }, owner: 'issue_lifecycle',
-          state: 'active', started_event_id: 1, ...changes.work }));
+          state: 'active', started_event_id: 1, owner_revision: 1, ...changes.work }));
       }, changes);
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1')
         .feature.requests.filter(r => r.operation === 'work.list').at(-1)?.after_event_id ?? 0)).toBeGreaterThanOrEqual(changes.event);
@@ -89,22 +106,69 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await expect(page.locator('.composer-area textarea[data-instruction]')).toBeDisabled();
     await expect(page.locator('.terminal-host textarea')).toHaveAttribute('readonly', '');
     let event = 8;
+    const signal = async (status, requirements = [], extra = {}) => page.evaluate(({ status, requirements, extra }) => {
+      const c = window.__nativeFixture.sessions.get('pty-1').control;
+      c.observation.issue_run_user_action = { schema_version: 'issue-run-user-action-v1', status,
+        issue_run_id: 'ir-status', state_revision: 1, requirements, ...extra };
+    }, { status, requirements, extra });
+    await publish({ event: ++event, execution: { owned_execution_alive: true }, work: { owner_revision: 1 } });
+    for (const kind of ['clarification', 'approval', 'dialogue', 'human_request']) {
+      await signal('required', [{ kind, request_key: kind === 'dialogue' || kind === 'human_request' ? 'opaque' : '',
+        request_version: kind === 'dialogue' || kind === 'human_request' ? 'v1' : '' }]);
+      await expect(marker).toHaveClass('status-dot attention');
+      await expect(marker).toHaveAttribute('aria-label', 'IssueRun needs your response or approval');
+      await expect(marker).toHaveAttribute('title', 'IssueRun needs your response or approval');
+      await page.evaluate(async () => { const { i18n } = await import('/src/hub/i18n.ts'); await i18n.changeLanguage('ko'); });
+      await expect(marker).toHaveAttribute('aria-label', 'IssueRun 응답 또는 승인 필요');
+      await page.evaluate(async () => { const { i18n } = await import('/src/hub/i18n.ts'); await i18n.changeLanguage('en'); });
+      await expect(marker).toHaveCSS('color', 'rgb(255, 214, 0)');
+      await expect(marker.locator('svg path')).toHaveAttribute('d', 'M12 7v6m0 4h.01');
+      expect(await marker.boundingBox()).toEqual(baseline);
+      if (kind === 'clarification') {
+        for (const [state, age, expected] of [['connecting', 0, 'starting'], ['ready', 999999, 'unknown'],
+          ['ready', 0, 'attention']]) {
+          await page.evaluate(({ state, age }) => Object.assign(window.__nativeFixture.sessions.get('pty-1').control,
+            { state, age }), { state, age });
+          await expect(marker).toHaveClass(`status-dot ${expected}`);
+        }
+      }
+      await signal('not_required');
+      await expect(marker).toHaveClass('status-dot running');
+    }
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
+      .control.observation.execution.owned_execution_alive = false; });
+    for (const extra of [{ status: 'unknown' }, { state_revision: 2 }, { issue_run_id: 'other' },
+      { schema_version: 'future' }, { requirements: [{}] }]) {
+      await signal('required', [{ kind: 'approval', request_key: '', request_version: '' }], extra);
+      await expect(marker).toHaveClass('status-dot unknown');
+    }
+    await signal('not_required');
+    for (const state of ['suspended', 'incomplete']) {
+      await publish({ event: ++event, work: { state, owner_revision: 1 } });
+      await expect(marker).toHaveClass('status-dot unknown');
+    }
     for (const outcome of ['succeeded', 'failed', 'interrupted', 'rejected']) {
       if (outcome === 'rejected') workId = 2;
-      await publish({ event: ++event, released: true, work: { state: outcome, outcome, terminal: true,
+      await publish({ event: ++event, released: true, work: { state: outcome, outcome, terminal: true, owner_revision: 1,
         started_event_id: outcome === 'rejected' ? 0 : 1,
         admission: outcome === 'rejected' ? 'rejected' : 'admitted' } });
       await expect(marker).toHaveClass('status-dot idle');
       await expect(marker).toHaveAttribute('aria-label', 'Verified idle');
       await expect(marker).toHaveCSS('color', 'rgb(34, 197, 94)');
       expect(await marker.boundingBox()).toEqual(baseline);
+      await signal('not_required', [], { issue_run_id: '', state_revision: null });
+      await expect(marker).toHaveClass('status-dot idle');
       await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
         .control.observation.execution.owned_execution_alive = true; });
       await expect(marker).toHaveClass('status-dot running');
       await expect(marker).toHaveAttribute('aria-label', 'Running');
     }
     for (const requirement of ['restart_confirmation_required', 'termination_confirmation_active', 'account_setup_required']) {
-      await publish({ event: ++event, attention: { [requirement]: true } });
+      await page.evaluate(requirement => {
+        const attention = window.__nativeFixture.sessions.get('pty-1').control.observation.attention;
+        Object.assign(attention, { restart_confirmation_required: false, termination_confirmation_active: false,
+          account_setup_required: false, [requirement]: true });
+      }, requirement);
       await expect(marker).toHaveClass('status-dot attention');
     }
     await publish({ event: ++event, work: { state: 'unknown' } });
@@ -116,6 +180,21 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     expect(safety).toEqual({ writes: [], submissions: [] });
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 999999; });
     await expect(marker).toHaveClass('status-dot unknown');
+    await page.evaluate(() => {
+      const c = window.__nativeFixture.sessions.get('pty-1').control;
+      c.state = 'ready'; c.age = 0; delete c.observation;
+    });
+    await expect.poll(() => page.evaluate(() => JSON.parse(window.__nativeFixture.observed.get('pty-1') ?? '{}')
+      .observation)).toBeUndefined();
+    await expect(marker).toHaveClass('status-dot unknown');
+    const draft = page.locator('.composer-area textarea[data-instruction]');
+    await draft.fill('Retain this draft while observation is unavailable');
+    await draft.press('Enter');
+    await expect(draft).toBeDisabled();
+    await expect(draft).toBeEnabled();
+    await expect(draft).toHaveValue('Retain this draft while observation is unavailable');
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1')
+      .feature.requests.filter(r => r.operation === 'work.submit'))).toEqual([]);
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.state = 'disconnected'; });
     await expect(marker).toHaveClass('status-dot unknown');
   });

@@ -172,7 +172,7 @@ async function transport(page, freshTarget, referenceOptions) {
         }
         if (command === 'runner_observe') {
           const session = sessions.get(args.id), current = session.feature?.config.current;
-          if (current) {
+          if (current && session.control.observation) {
             Object.assign(session.control.observation, { run_mode: current.run_mode, target: { binding_state: 'bound',
               owner: current.target === 'workspace' ? 'Workspace' : 'Project', project: current.target === 'workspace' ? '' : 'Exact' } });
             Object.assign(session.control.observation.selection, { account: current.account.profile_name,

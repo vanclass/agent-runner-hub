@@ -50,6 +50,21 @@ fn ready() -> Protocol {
     protocol
 }
 #[test]
+fn optional_user_action_preserves_old_observations_and_opaque_fields() {
+    let old: Observation = serde_json::from_value(observation()).unwrap();
+    assert!(old.issue_run_user_action.is_none());
+    let mut full = observation();
+    full["issue_run_user_action"] = json!({"schema_version":"issue-run-user-action-v1",
+        "status":"required", "issue_run_id":"ir", "state_revision":7,
+        "requirements":[{"kind":"approval","request_key":"","request_version":"","question":"private"}]});
+    let decoded: Observation = serde_json::from_value(full.clone()).unwrap();
+    assert_eq!(decoded.issue_run_user_action.as_ref().unwrap().state_revision, Some(7));
+    assert!(!serde_json::to_string(&decoded).unwrap().contains("private"));
+    full["issue_run_user_action"] = json!({"status":"required"});
+    let decoded: Observation = serde_json::from_value(full).unwrap();
+    assert_eq!(decoded.issue_run_user_action.unwrap().status, "unknown");
+}
+#[test]
 fn hello_binds_the_actual_created_process_and_expected_session() {
     for field in ["process_id", "session_id", "version", "connection_id"] {
         let mut changed = hello(); changed[field] = json!("stale");
@@ -58,6 +73,45 @@ fn hello_binds_the_actual_created_process_and_expected_session() {
     assert_eq!(ready().snapshot.state, "ready");
 }
 
+#[test]
+fn partial_observation_retires_full_view_without_disconnect_and_can_recover() {
+    let mut protocol = ready();
+    protocol.request(None, "private").unwrap();
+    let mut partial = packet(2, "accepted", "completed");
+    partial["observation"] = json!({"observation_unavailable":true,
+        "issue_run_user_action":{"schema_version":"issue-run-user-action-v1","status":"unknown"}});
+    protocol.response(partial).unwrap();
+    assert!(protocol.connection.is_some());
+    assert_eq!(protocol.snapshot.state, "ready");
+    assert!(protocol.public_snapshot().observation.is_none());
+    assert!(protocol.public_snapshot().observation_age_ms.is_none());
+    assert!(protocol.request(Some("/status".into()), "private").is_err());
+    assert!(protocol.feature_request(features::Request::Work(work::Request::Submit {
+        api_version: 1, instruction: "must not submit".into(),
+    }), "private").is_err());
+    assert!(protocol.feature_request(features::Request::Recovery(recovery::Request::Reference {
+        api_version: 1, observation_id: "terminal:1".into(),
+    }), "private").is_err());
+    protocol.request(None, "private").unwrap();
+    let mut full = packet(3, "accepted", "completed");
+    full["observation"] = observation();
+    protocol.response(full).unwrap();
+    assert!(protocol.public_snapshot().observation.is_some());
+    assert!(protocol.public_snapshot().observation_age_ms.is_some());
+}
+#[test]
+fn unavailable_command_observation_preserves_acknowledgement_and_retires_freshness() {
+    let mut p = ready();
+    p.request(Some("/status".into()), "private").unwrap();
+    let mut completed = packet(2, "accepted", "completed");
+    completed["observation_unavailable"] = json!(true);
+    p.response(completed).unwrap();
+    assert_eq!(p.snapshot.results.last().unwrap().state, "accepted");
+    assert!(p.snapshot.observation.is_none());
+    assert!(p.observed_at.is_none());
+    assert!(p.connection.is_some());
+    assert!(p.request(None, "private").is_ok());
+}
 #[test]
 fn observation_freshness_advances_only_on_authenticated_completed_observations() {
     let mut protocol = ready();

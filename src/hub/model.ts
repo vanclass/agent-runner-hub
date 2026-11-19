@@ -13,5 +13,6 @@ export type RunnerView = {
   readonly submitting?: boolean;
   readonly activity?: WorkActivity | 'starting';
   readonly unreadCompletion?: boolean;
+  readonly issueUserActionRequired?: boolean;
   readonly closing?: boolean;
 };

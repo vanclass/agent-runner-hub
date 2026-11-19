@@ -24,12 +24,34 @@ export type WorkObservation = {
 export type WorkAttempt = { identity: ConfigIdentity; readonly instruction?: string; submissionId?: number; submission?: FeatureResult; observationId?: string;
   status?: FeatureResult; work?: WorkObservation; uncertain: boolean; notSent: boolean; notified?: boolean };
 export type WorkActivity = 'idle' | 'running' | 'attention' | 'completed' | 'failed' | 'interrupted' | 'unknown';
+export function issueUserAction(attempt: WorkAttempt | undefined, observation: RunnerObservation) {
+  const signal = observation.issue_run_user_action;
+  const work = attempt?.work;
+  const unbound = signal?.status === 'not_required' && signal.issue_run_id === '' && signal.state_revision === null
+    && (!work || work.terminal);
+  if (observation.run_mode !== 'issue-run' || !signal || signal.schema_version !== 'issue-run-user-action-v1'
+    || !['required', 'not_required', 'unknown'].includes(signal.status)
+    || typeof signal.issue_run_id !== 'string' || !unbound && (!signal.issue_run_id
+      || !Number.isSafeInteger(signal.state_revision) || Number(signal.state_revision) < 0)
+    || !Array.isArray(signal.requirements) || !signal.requirements.every(r => r
+      && ['clarification', 'approval', 'dialogue', 'human_request'].includes(r.kind)
+      && typeof r.request_key === 'string' && typeof r.request_version === 'string'
+      && (['clarification', 'approval'].includes(r.kind) ? r.request_key === '' && r.request_version === ''
+        : !!r.request_key && !!r.request_version))
+    || (signal.status === 'required' ? !signal.requirements.length : !!signal.requirements.length)
+    || work && !unbound && (work.run_mode !== 'issue-run' || work.work_id?.kind !== 'issue'
+      || work.work_id.id !== signal.issue_run_id || work.owner_revision !== signal.state_revision)) return 'unknown';
+  return signal.status;
+}
 /** Presentation only: IssueRun foreground ownership is not a user-handoff signal. */
 export function issueSidebarActivity(attempt: WorkAttempt | undefined, observation: RunnerObservation): WorkActivity {
   const { execution, attention } = observation;
   if (attention.restart_confirmation_required || attention.termination_confirmation_active
     || attention.account_setup_required) return 'attention';
+  const userAction = issueUserAction(attempt, observation);
+  if (userAction === 'required') return 'attention';
   if (execution.owned_execution_alive === true) return 'running';
+  if (observation.issue_run_user_action !== undefined && userAction === 'unknown') return 'unknown';
   const work = attempt?.work;
   // Work v1 conflates automatic next_action and user dialogue in incomplete.
   if (attention.awaiting_user_command_reason || attention.suspension_status !== 'inactive'
