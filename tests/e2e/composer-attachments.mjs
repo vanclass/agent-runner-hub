@@ -143,7 +143,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
       window.__nativeFixture.nativeEvent('tauri://drag-enter', { paths: ['/drop/folder'], position });
     });
     await expect(page.locator('.attachment-drop-active')).toBeVisible();
-    await page.evaluate(() => window.__nativeFixture.nativeEvent('tauri://drag-over', { position: { x: 0, y: 0 } }));
+    await page.evaluate(() => window.__nativeFixture.nativeEvent('tauri://drag-over', { position: { x: -1, y: -1 } }));
     await expect(page.locator('.attachment-drop-active')).toHaveCount(0);
     await page.locator('.attachment-composer').evaluate(element => {
       const r = element.getBoundingClientRect();
@@ -198,7 +198,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.dragListeners().length)).toBe(4);
-    expect(await page.evaluate(ids => window.__nativeFixture.dragListeners().filter(id => ids.includes(id)), previousListeners)).toEqual([]);
+    expect(await page.evaluate(ids => window.__nativeFixture.dragListeners().filter(id => ids.includes(id)), previousListeners)).toEqual(previousListeners);
     await drop(page, ['/fixture/image.png']); await paste(page, 'Single Entry instructions');
     expect(await requests(page)).toEqual([]);
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('allocate attachments once');

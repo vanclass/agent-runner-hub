@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { watchFileDrop } from './composerFileDrop';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { RunnerReferenceSelection, Candidate } from './referenceSelection';
 import { t, tr } from './i18n';
 import { FocusedViewer } from './FocusedViewer';
@@ -25,26 +24,8 @@ function referenceState(state: Candidate['phase']) {
 export function ComposerAttachments({ selection, disabled, children }: {
   selection: RunnerReferenceSelection; disabled: boolean; children: ReactNode;
 }) {
-  const host = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState(false);
-  const [dropUnavailable, setDropUnavailable] = useState(false);
   const [focusedKey, setFocusedKey] = useState<number>();
   const available = !disabled && selection.available;
-  useEffect(() => {
-    let disposed = false, stop: (() => void) | undefined;
-    const inside = (position?: { x: number; y: number }) => {
-      const rect = host.current?.getBoundingClientRect();
-      const x = (position?.x ?? -1) / window.devicePixelRatio, y = (position?.y ?? -1) / window.devicePixelRatio;
-      return !!rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
-    };
-    void Promise.resolve().then(() => watchFileDrop((paths, position) => {
-      if (!disposed && available && inside(position)) selection.select(paths);
-      if (!disposed) setHover(false);
-    }, position => { if (!disposed) setHover(available && inside(position)); }))
-      .then(unlisten => { if (disposed) unlisten(); else stop = unlisten; })
-      .catch(() => { if (!disposed) setDropUnavailable(true); });
-    return () => { disposed = true; stop?.(); };
-  }, [selection, available]);
   const items = selection.candidates.filter(item => !item.submitted && selection.state(item) !== 'cancelled'
     && (selection.state(item) !== 'removed' || !item.cancelRequested));
   const focused = items.find(item => item.key === focusedKey);
@@ -52,10 +33,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
   const focusedThumbnail = focused && selection.thumbnail(focused);
   const content = focusedThumbnail ? { kind: 'image' as const, url: focusedThumbnail }
     : focused && selection.previews.get(focused.key) || { kind: 'unavailable' as const, reason: 'unsupported' };
-  return <div ref={host} className={`composer attachment-composer${hover ? ' attachment-drop-active' : ''}`}
-    onDragOver={event => { event.preventDefault(); if (available) setHover(true); }}
-    onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setHover(false); }}
-    onDrop={event => { event.preventDefault(); setHover(false); }}
+  return <div className="composer attachment-composer"
     onPaste={event => {
       const image = Array.from(event.clipboardData.items).find(item => item.type.startsWith('image/'))?.getAsFile();
       if (!image) return;
@@ -63,7 +41,6 @@ export function ComposerAttachments({ selection, disabled, children }: {
       if (available) void selection.captureImage(image);
     }}>
     <div className="composer-reference-content">
-    {hover && <div className="attachment-drop-hint" role="status">{t('attachments.drop')}</div>}
     {!!items.length && <ul className="pending-attachments" aria-label={t('attachments.pending')}>
       {items.map(item => { const state = selection.state(item), thumbnail = selection.thumbnail(item);
         const name = item.image ? t('references.clipboardNumber', { index: item.key }) : attachmentName(item.path);
@@ -91,7 +68,6 @@ export function ComposerAttachments({ selection, disabled, children }: {
       <button type="button" disabled={!available} onClick={() => selection.reviewOtherPending()}>{t('references.includeOthers')}</button>
     </div>}
     {selection.error && <p role="alert">{tr(selection.error)}</p>}
-    {dropUnavailable && <p role="alert">{t('attachments.fallback')}</p>}
     </div>
     {children}
     {focused && <FocusedViewer key={focused.key} name={attachmentName(focused.path) || undefined}

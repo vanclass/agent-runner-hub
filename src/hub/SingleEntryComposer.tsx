@@ -8,6 +8,7 @@ import { ComposerPresentation } from './ComposerPresentation';
 import { instructionKey } from './instructionKey';
 import { runModeLabel } from './runModeLabel';
 import { runModes } from './runnerWork';
+import { entryAttachmentsDisabled } from './hubFileDrop';
 
 export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
@@ -83,7 +84,7 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
   entry: SingleEntry; location?: string; onSelectRunner: (id: string) => void;
 }) {
   return <ComposerPresentation text={entry.draft} compact={entry.composerCompact}>
-    <ComposerAttachments selection={entry.attachments} disabled={entry.pending || entry.phase === 'unknown'}>
+    <ComposerAttachments selection={entry.attachments} disabled={entryAttachmentsDisabled(entry)}>
       <textarea data-instruction="true" aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable} readOnly={entry.loadingOptions}
         onKeyDown={event => instructionKey(event, briefRun => {
           if (!briefRun || entry.defaults.runMode === 'issue-run') void entry.submit(location, onSelectRunner, briefRun);

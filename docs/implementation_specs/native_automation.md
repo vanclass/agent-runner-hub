@@ -118,11 +118,13 @@ and is secured here by test-only compilation and local runtime isolation, not AC
 ## Windows file-drop acceptance boundary
 
 The debug WebDriver build has no OLE source plugin or source-startup command.
-Genuine Windows file-drop acceptance requires an OS file drag into each actual
-composer, with native Tauri event, original-path thumbnail and ordinary authenticated
-preflight evidence. Scripted event emission establishes only fixture integration.
+Genuine Windows file-drop acceptance requires an OS file drag into non-composer Hub
+content with Runner and Single Entry active separately, observing the native Tauri
+event, original-path thumbnail, exactly one staged copy and unchanged inactive owners.
+Authenticated preflight is a separate evidence status. Scripted event emission
+establishes only fixture integration and cannot establish either native transfer.
 Historical OLE source/capture failure evidence remains in the retained task reports;
-it does not establish composer ingress or attachment delivery.
+it does not establish Hub-window ingress or attachment delivery.
 
 ## Windows process, window and observation
 

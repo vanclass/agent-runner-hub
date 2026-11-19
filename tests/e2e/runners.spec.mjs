@@ -26,6 +26,7 @@ import { registerWG3 } from './wg3.mjs';
 import { registerAutoRecovery } from './runner-auto-recovery.mjs';
 import { registerPtyViewport } from './pty-viewport.mjs';
 import { registerComposerSubmission } from './composer-submission.mjs';
+import { registerHubFileDrop } from './hub-file-drop.mjs';
 import { registerGeneratedConsumer } from './generated-consumer.mjs';
 
 test.setTimeout(90_000);
@@ -33,6 +34,7 @@ test.use({ navigationTimeout: 60_000 });
 registerGeneratedConsumer({ test, expect, transport, configure, generatedFixture });
 registerPtyViewport({ test, expect, transport, configure, create: createWork });
 registerComposerSubmission({ test, expect, transport, configure, create: createWork });
+registerHubFileDrop({ test, expect, transport, configure, create: createWork });
 registerWG2({ test, expect, transport, configure });
 registerWG3({ test, expect, transport, configure });
 registerAutoRecovery({ test, expect, transport, configure, create: createPrepared });
@@ -301,7 +303,7 @@ async function transport(page, freshTarget, referenceOptions) {
       // Browser simulation only. The configured native content window emits by label.
       nativeEvent,
       dragListeners: () => [...listeners].filter(([, item]) => item.event.startsWith('tauri://drag-')).map(([id]) => id),
-      drop: paths => nativeEvent('tauri://drag-drop', { paths, position: { x: 0, y: 0 } }),
+      drop: paths => nativeEvent('tauri://drag-drop', { paths, position: { x: -1, y: -1 } }),
       pauseWrites: () => { writeGate = new Promise(resolve => { releaseWrite = resolve; }); },
       resumeWrites: () => { writeGate = undefined; releaseWrite(); },
       count: () => count, failNext: () => { failNext = true; }, failWrite: () => { failWrite = true; },

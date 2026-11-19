@@ -132,7 +132,7 @@
 .removal-preference { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
 .rename-row { height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 10px; }
 .rename-row input { min-width: 0; width: 100%; height: 25px; border: 0; box-shadow: inset 0 0 0 1px var(--focus); border-radius: 3px; color: var(--text); background: var(--surface); padding: 0; }
-.workspace { --composer-inline-inset: 28px; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.workspace { --composer-inline-inset: 28px; position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .workspace:has(.runner-terminal) .output { flex: 1 1 0; overflow: hidden; }
 .workspace:has(.runner-terminal) .eyebrow { display: none; }
 .workspace:has(.runner-terminal) h1 { margin: 0; font-size: 18px; }
@@ -160,8 +160,9 @@
 .attachment-composer { position: relative; }
 .composer-reference-content { overflow-y: auto; overscroll-behavior: contain; }
 .composer-area textarea[data-instruction] { min-height: 0; height: auto; line-height: 1.5; padding: 8px 12px; overflow-y: auto; overscroll-behavior: contain; }
-.attachment-drop-active { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--selected-bg, var(--inset)); }
-.attachment-drop-hint { padding: 16px; text-align: center; color: var(--accent); font-weight: 600; border-bottom: 1px dashed var(--accent); }
+.workspace.attachment-drop-active::after { content: ''; position: absolute; inset: 0; border: 2px solid var(--accent); pointer-events: none; z-index: 5; }
+/* 아래 간격을 늘리면 안내가 로그 쪽으로 올라가고, 줄이면 입력 영역 아래쪽에 가까워진다. 안쪽 여백을 늘리면 안내가 커지고, 줄이면 작아진다. */
+.attachment-drop-hint { position: absolute; inset: auto var(--composer-inline-inset) 16px; z-index: 5; pointer-events: none; margin: 0; padding: 8px; text-align: center; color: var(--accent); background: var(--inset); font-weight: 600; border: 1px dashed var(--accent); border-radius: 6px; }
 .pending-attachments { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; margin: 0; list-style: none; }
 /* 첨부 타일 폭이다. 늘리면 한 줄의 개수가 줄고, 줄이면 더 많이 배치된다. */
 .pending-attachments { --attachment-tile-width: 144px; }

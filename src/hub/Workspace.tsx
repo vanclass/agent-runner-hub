@@ -12,16 +12,22 @@ import { SingleEntryComposer } from './SingleEntryComposer';
 import { HubActivity } from './HubActivity';
 import type { HubSelections } from './HubSelections';
 
-export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog, selections }: {
+export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog, selections,
+  fileDropActive = false, fileDropUnavailable = false }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
   hubLog: HubLog;
   selections?: HubSelections;
+  fileDropActive?: boolean; fileDropUnavailable?: boolean;
 }) {
   useHubTranslation();
   const singleEntry = !runner;
-  return <main className="workspace" aria-label={singleEntry ? t('workspace.singleLabel') : t('workspace.runnerLabel')}>
+  return <main className={`workspace${fileDropActive ? ' attachment-drop-active' : ''}`} aria-label={singleEntry ? t('workspace.singleLabel') : t('workspace.runnerLabel')}>
+    {fileDropActive && <div className="attachment-drop-hint" role="status">
+      {t(singleEntry ? 'attachments.dropEntry' : 'attachments.dropRunner')}
+    </div>}
+    {fileDropUnavailable && <p className="attachment-drop-hint" role="alert">{t('attachments.fallback')}</p>}
     <section className="output" aria-label={t('workspace.outputLabel')}>
       {singleEntry && <HubLogView log={hubLog} />}
       {session ? <RunnerTerminal session={session} theme={theme} /> : !singleEntry && <div className="empty-workspace">

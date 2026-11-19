@@ -3,7 +3,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
   const domain = (page, mode) => page.locator(`[data-domain="${mode}"]`);
   const ids = locator => locator.locator('.runner-row').evaluateAll(rows => rows.map(r => r.dataset.runnerId));
   async function display(page, value) {
-    await page.locator('.app-settings-trigger').click();
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('combobox', { name: 'Domain display', exact: true }).selectOption(value);
     await page.keyboard.press('Escape');
   }
@@ -165,10 +165,10 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect.poll(() => ids(task)).toEqual([original[1], original[0], original[2]]);
     await info.attach('navigation-restored', { body: await page.screenshot(), contentType: 'image/png' });
     for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
-      await page.locator('.app-settings-trigger').click();
+      await page.locator('.app-settings-trigger').first().click();
       await page.locator('.language-picker select').selectOption(language);
       await page.locator('.theme-picker button').nth(theme === 'light' ? 0 : 1).click();
-      await expect(page.locator('.domain-preference select')).toHaveValue('run-mode');
+      await expect(page.locator('.domain-preference select').first()).toHaveValue('run-mode');
       await page.keyboard.press('Escape');
       await expect(page.locator('.runner-domain')).toHaveCount(4);
       await expect(page.locator('.hub')).toHaveAttribute('data-theme', theme);

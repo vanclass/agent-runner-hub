@@ -290,7 +290,8 @@
     "verified": "Verified installation. Use New Runner to open an independent process."
   },
   "attachments": {
-    "drop": "Drop files or folders here",
+    "dropRunner": "Drop to add files or folders to this Runner",
+    "dropEntry": "Drop to add files or folders to Single Entry",
     "pending": "Pending attachments",
     "remove": "Remove attachment {{name}}",
     "reconcile": "Reconcile registration",

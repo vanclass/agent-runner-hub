@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { RunnerSessions } from './RunnerSessions';
 import { Sidebar } from './Sidebar';
 import { Workspace } from './Workspace';
+import { useHubFileDrop, runnerAttachmentsDisabled, entryAttachmentsDisabled } from './hubFileDrop';
 import { HubLog } from './HubLog';
 import { createHubLogCapture } from './HubLogCapture';
 import { TaskPanel } from './TaskPanel';
@@ -70,6 +71,16 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const [theme, setTheme] = useState<'light' | 'black'>(preferences.value.theme);
   const [confirmRemoval, setConfirmRemoval] = useState(preferences.value.confirmRunnerRemoval);
   const selected = allRunners.find(runner => runner.id === selectedId) ?? sessions.failures.find(runner => runner.id === selectedId);
+  const dropHost = useRef<HTMLDivElement>(null);
+  const dropSession = sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined);
+  const dropBlocked = setupRequired || settingsOpen || shortcutsOpen;
+  const fileDrop = useHubFileDrop(dropHost, selectedId === null ? {
+    key: 'single-entry', selection: sessions.entry.attachments,
+    disabled: () => dropBlocked || entryAttachmentsDisabled(sessions.entry),
+  } : dropSession ? {
+    key: selectedId, selection: dropSession.references,
+    disabled: () => dropBlocked || runnerAttachmentsDisabled(dropSession),
+  } : undefined);
   useEffect(() => { if (selectedId && !selected) setSelectedId(null); }, [selectedId, selected]);
   function rename(id: string, name: string) {
     const session = sessions.get(id);
@@ -96,7 +107,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     const next = remaining[index] ?? remaining.at(-1);
     setSelectedId(current => current === id ? next?.id ?? null : current);
   }
-  return <div className="hub" data-theme={theme}>
+  return <div ref={dropHost} className="hub" data-theme={theme}>
     <header className="toolbar">
       <div className="brand"><span className="brand-mark" aria-hidden="true">A</span><strong>AgentRunnerHub</strong></div>
       <span className="toolbar-location">{t('hub.workspace')} <span aria-hidden="true">/</span> {selected ? 'Runner' : t('common.singleEntry')}</span>
@@ -117,6 +128,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         onAdd={mode => void createRunner(mode)} addDisabled={!installation || launching} adding={launching}
         onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />
       <Workspace key={selectedId ?? 'single-entry'} runner={selected}
+        fileDropActive={fileDrop.active} fileDropUnavailable={fileDrop.unavailable}
         session={sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined)}
         theme={theme} installation={installation} hubLog={hubLog} selections={sessions.getSelections(selectedId ?? undefined)}
         entry={sessions.entry} onSelectRunner={setSelectedId} />

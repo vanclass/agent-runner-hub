@@ -290,7 +290,8 @@
     "verified": "설치를 검증했습니다. 새 Runner를 눌러 독립된 프로세스를 여세요."
   },
   "attachments": {
-    "drop": "파일이나 폴더를 여기에 놓으세요",
+    "dropRunner": "놓으면 현재 Runner에 파일 또는 폴더를 추가합니다",
+    "dropEntry": "놓으면 Single Entry에 파일 또는 폴더를 추가합니다",
     "pending": "제출 대기 첨부",
     "remove": "첨부 {{name}} 제거",
     "reconcile": "등록 결과 대조",
