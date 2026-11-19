@@ -133,9 +133,10 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
   for (const mode of ['rejected', 'unknown']) {
     test('session submission retains ' + mode + ' without replay and reconciles late start', async ({ page }) => {
       await open(page, { workMode: mode });
-      await composer(page).fill('retained once'); await send(page);
+      const original = 'Task: Fix the login error\nOwner: body\nReasoning: HIGH\n';
+      await composer(page).fill(original); await send(page);
       await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: mode === 'rejected' ? 'rejected' : 'unknown' })]));
-      await expect(composer(page)).toHaveValue('retained once');
+      await expect(composer(page)).toHaveValue(original);
       if (mode === 'unknown') {
         await expect(composer(page)).toBeDisabled();
         await page.evaluate(() => { const f = window.__nativeFixture.sessions.get('pty-1').feature; f.mode = 'started'; });

@@ -273,10 +273,11 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
   for (const mode of ['rejected', 'unknown']) {
     test('work Single Entry retains ' + mode + ' without replay', async ({ page }) => {
       await ready(page, { workMode: mode });
-      await page.locator('textarea[data-instruction]').fill('once'); await assign(page);
+      const original = 'Task: Fix the login error\nOwner: body\nReasoning: HIGH\n';
+      await page.locator('textarea[data-instruction]').fill(original); await assign(page);
       await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: mode === 'rejected' ? 'rejected' : 'unknown' })]));
       await home(page);
-      await expect(page.locator('textarea[data-instruction]')).toHaveValue('once');
+      await expect(page.locator('textarea[data-instruction]')).toHaveValue(original);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
       if (mode === 'unknown') await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
     });

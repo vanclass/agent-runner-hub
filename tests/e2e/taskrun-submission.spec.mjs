@@ -1,4 +1,28 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
+import { spawnSync } from 'node:child_process';
+
+test('TaskRun generated boundary agrees with canonical Runner parser', async ({ page }) => {
+  test.skip(!process.env.RUNNER_SOURCE_ROOT || !process.env.RUNNER_PYTHON, 'Requires the available Runner source and Python environment');
+  await page.goto('/');
+  const cases = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { prepareTaskRunInstruction } = await import('/src/hub/runnerSubmission.ts');
+    const { service } = createConfigHarness(); await service.inspect();
+    return ['Task: Fix the login error\nPriority: High', 'Owner: body', 'Project: body', 'Reasoning: HIGH',
+      'Other: value', '- Owner: body', '* Project: body', 'Task:',
+      ' \n\tTask: 안녕 🌍  \nPriority: High\n', ' \r\n  Task: 안녕 🌍\r\nPriority: High\r\n', 'Goal\n안녕'].map(body => ({
+      body, prepared: prepareTaskRunInstruction(body, { binding_state: 'bound', owner: 'Workspace', project: '' }, service.catalog),
+    }));
+  });
+  const script = `import json, sys\nfrom runner.session.target import parse_target_block_from_text\nfor case in json.load(sys.stdin):\n t = parse_target_block_from_text(case['prepared'], source_path='hub-integration')\n eol = '\\r\\n' if '\\r\\n' in case['body'] else '\\n'\n expected = case['body'] if case['body'].startswith('Goal') else 'Goal' + eol + case['body']\n assert t.instruction_text.encode('utf-8') == expected.encode('utf-8')\n assert (t.owner, t.project, t.reasoning) == ('Workspace', 'codex_workspace', None)\nprint('canonical parser cases:', len(json.loads(sys.argv[1])))`;
+  const result = spawnSync(process.env.RUNNER_PYTHON, ['-c', script, JSON.stringify(cases)], {
+    input: JSON.stringify(cases), encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, PYTHONPATH: process.env.RUNNER_SOURCE_ROOT, PYTHONDONTWRITEBYTECODE: '1' },
+  });
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain('canonical parser cases: 11');
+});
 
 test('TaskRun complete identity needs no defaults; ambiguous defaults reject and Workspace is canonical', async ({ page }) => {
   await page.goto('/');
@@ -28,7 +52,13 @@ test('TaskRun exact text and instruction-owned configuration', async ({ page }) 
     const { submitConfiguredWork } = await import('/src/hub/runnerSubmission.ts');
     const complete = 'Target\r\nOwner: Project\r\nProject: Explicit\r\nReasoning: max\r\nGoal\r\n안녕 🌍';
     const partial = 'Target\nOwner: Project\nGoal\nProject: body';
-    const cases = [[complete, complete], [partial, partial.replace('Target\n', 'Target\nProject: Exact\n')],
+    const bodies = ['Task: Fix the login error\nPriority: High', 'Owner: body', 'Project: body',
+      'Reasoning: HIGH', 'Other: value', '- Owner: body', '* Project: body', 'Task:',
+      '  \n\tTask: 안녕 🌍  \nPriority: High\n', ' \r\n  Task: 안녕 🌍\r\nPriority: High\r\n'];
+    const cases = [...bodies.map(text => {
+      const eol = text.includes('\r\n') ? '\r\n' : '\n';
+      return [text, `Target${eol}Owner: Project${eol}Project: Exact${eol}${eol}Goal${eol}${text}`];
+    }), [complete, complete], [partial, partial.replace('Target\n', 'Target\nProject: Exact\n')],
       ['Target\n* Project: Explicit\nGoal', 'Target\nOwner: Project\n* Project: Explicit\nGoal'],
       ['Goal\r\nTarget\r\nOwner: body', 'Target\r\nOwner: Project\r\nProject: Exact\r\n\r\nGoal\r\nTarget\r\nOwner: body'],
       ...['minimum', 'low', 'medium', 'high', 'xhigh', 'max'].map(g => {

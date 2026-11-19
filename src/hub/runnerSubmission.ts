@@ -38,7 +38,11 @@ export function prepareTaskRunInstruction(instruction: string, target: EntryDefa
   const values = { owner: selected.owner, project: selected.owner === 'Workspace' ? 'codex_workspace' : selected.project };
   const eol = instruction.match(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/)?.[0] ?? '\n';
   const additions = missing.map(key => `${key === 'owner' ? 'Owner' : 'Project'}: ${values[key as keyof typeof values]}${eol}`).join('');
-  if (!leading) return `Target${eol}${additions}${eol}${instruction}`;
+  if (!leading) {
+    // Blank lines do not end Runner metadata; a field-first body needs a heading.
+    const boundary = header >= 0 && lines[header].includes(':') ? `Goal${eol}` : '';
+    return `Target${eol}${additions}${eol}${boundary}${instruction}`;
+  }
   const offset = lines.slice(0, header + 1).join('').length;
   const separator = /[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]$/.test(lines[header]) ? '' : eol;
   return instruction.slice(0, offset) + separator + additions + instruction.slice(offset);

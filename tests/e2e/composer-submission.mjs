@@ -1,5 +1,5 @@
 export function registerComposerSubmission({ test, expect, transport, configure, create }) {
-  for (const single of [false, true]) for (const variant of ['complete', 'owner', 'project', 'missing', 'unavailable', 'mismatch'])
+  for (const single of [false, true]) for (const variant of ['complete', 'owner', 'project', 'missing', 'fields', 'unavailable', 'mismatch'])
     test(`TaskRun prepared instruction ${single ? 'Single Entry' : 'Runner'} ${variant}`, async ({ page }) => {
       await transport(page, undefined, { work: true, auto: true, workMode: variant === 'mismatch' ? 'rejected' : 'started' }); await configure(page); await create(page);
       if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
@@ -13,12 +13,13 @@ export function registerComposerSubmission({ test, expect, transport, configure,
           };
         }
       });
-      const body = 'Goal\n안녕 🌍\nTarget\nProject: body';
+      const body = variant === 'fields' ? 'Task: Fix the login error\nPriority: High\nOwner: body\nProject: body\nReasoning: HIGH\n안녕 🌍\n'
+        : 'Goal\n안녕 🌍\nTarget\nProject: body';
       const draft = ['complete', 'mismatch'].includes(variant) ? 'Target\nOwner: Project\nProject: Explicit\nReasoning: high\n' + body
         : variant === 'owner' ? 'Target\nOwner: Project\n' + body
         : variant === 'project' ? 'Target\nProject: Explicit\n' + body : body;
       const expected = ['complete', 'mismatch'].includes(variant) ? draft : variant === 'owner' ? draft.replace('Target\n', 'Target\nProject: Exact\n')
-        : variant === 'project' ? draft.replace('Target\n', 'Target\nOwner: Project\n') : 'Target\nOwner: Project\nProject: Exact\n\n' + body;
+        : variant === 'project' ? draft.replace('Target\n', 'Target\nOwner: Project\n') : 'Target\nOwner: Project\nProject: Exact\n\n' + (variant === 'fields' ? 'Goal\n' : '') + body;
       const input = page.locator('textarea[data-instruction]'); await input.fill(draft); await input.press('Enter');
       if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
       if (['unavailable', 'mismatch'].includes(variant)) { await expect(input).toBeEnabled(); await expect(input).toHaveValue(draft); }
