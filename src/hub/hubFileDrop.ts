@@ -49,7 +49,7 @@ export function useHubFileDrop(host: RefObject<HTMLDivElement>, destination: Des
       if (disposed) return;
       const target = targetAt(position);
       setHovered(undefined);
-      if (target) target.selection.select(paths);
+      if (target) target.selection.select([...new Set(paths)]);
     }, position => { if (!disposed) setHovered(targetAt(position)); }))
       .then(unlisten => { if (disposed) unlisten(); else stop = unlisten; })
       .catch(() => { if (!disposed) setUnavailable(true); });

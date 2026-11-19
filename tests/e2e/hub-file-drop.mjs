@@ -67,6 +67,24 @@ export function registerHubFileDrop({ test, expect, transport, configure, create
     await expect(page.locator('.attachment-chip')).toHaveCount(5);
     expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.request.operation !== 'references.list'))).toEqual([]);
   });
+  for (const single of [false, true]) test(`Hub deduplicates paths within one drop for ${single ? 'Single Entry' : 'Runner'}`, async ({ page }) => {
+    await ready(page);
+    if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await event(page, 'drop', '.toolbar', ['/fixture/folder', '/fixture/image.png', '/fixture/folder', '/fixture/image.png']);
+    await expect(page.locator('.attachment-chip')).toHaveCount(2);
+    await expect(page.locator('.attachment-open[title="/fixture/folder"]')).toHaveCount(1);
+    await expect(page.locator('.attachment-open[title="/fixture/image.png"]')).toHaveCount(1);
+    if (single) await page.locator('.runner-row .nav-row').first().click();
+    else await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await expect(page.locator('.attachment-chip')).toHaveCount(0);
+    if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    else await page.locator('.runner-row .nav-row').first().click();
+    await expect(page.locator('.attachment-chip')).toHaveCount(2);
+    await event(page, 'drop', '.attachment-composer', ['/fixture/folder', '/fixture/folder']);
+    await expect(page.locator('.attachment-chip')).toHaveCount(3);
+    await expect(page.locator('.attachment-open[title="/fixture/folder"]')).toHaveCount(2);
+    expect(await page.evaluate(() => window.__nativeFixture.referenceRequests.filter(r => r.request.operation !== 'references.list'))).toEqual([]);
+  });
   for (const language of ['en', 'ko']) test(`Hub drag feedback preserves fixed scrollback in rendered xterm and Hub log ${language}`, async ({ page }, info) => {
     await ready(page);
     const catalog = JSON.parse(readFileSync(new URL(`../../src/hub/locales/${language}.json`, import.meta.url), 'utf8'));
