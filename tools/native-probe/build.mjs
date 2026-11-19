@@ -7,7 +7,8 @@ import { npm } from '../../.project-config/managed/web-app-tauri/project.mjs';
 import { command } from '../../.project-config/managed/web-app-tauri/native/process.mjs';
 
 // Reuse managed preparation/staging; only the application-owned test overlay differs.
-export async function buildProbe(root, attempt, target, signal) {
+export async function buildProbe(root, attempt, target, signal, { focusRequired = false } = {}) {
+  if (focusRequired && process.platform !== 'win32') throw new Error('Focus-required probe supports Windows only');
   let result;
   await withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal,
     (name, hint) => console.log(`[native probe] ${name}: ${hint}`), async () => {
@@ -30,6 +31,7 @@ export async function buildProbe(root, attempt, target, signal) {
       override.bundle = overlay.bundle;
       override.build.features = [...config.build.features, 'native-webdriver'];
       override.app = { ...overlay.app, appDirectoriesOverride: path.join(attempt, 'app-data') };
+      if (focusRequired) override.app.windows = override.app.windows.map(w => ({ ...w, focusable: true }));
       if (process.platform === 'darwin') override.app.windows = override.app.windows.map(w => ({ ...w, incognito: true }));
       // CLI configuration changes are staged only; original config/locks are preserved.
       const built = await command(process.execPath, [environment.cli, 'build', '--debug', '--no-bundle',
@@ -39,7 +41,7 @@ export async function buildProbe(root, attempt, target, signal) {
         '--locked', '--features', config.build.features.join(',')], backend, signal, { env, quiet: false });
       if (ordinary.code) throw new Error('Ordinary native library check failed');
       result = { executable: path.join(target, targetTriple, 'debug', 'web-app-native' + (process.platform === 'win32' ? '.exe' : '')),
-        ordinaryGraphExcludesWebdriver: true, features: override.build.features };
+        ordinaryGraphExcludesWebdriver: true, features: override.build.features, focusRequired };
       await fs.access(result.executable);
     });
   return result;

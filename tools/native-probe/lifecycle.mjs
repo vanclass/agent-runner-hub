@@ -6,9 +6,13 @@ import { until, noActivation, displayed } from './observations.mjs';
 // Resource owners implement settlement; this pipeline orders those boundaries.
 export async function executeCase(spec, environment, resources) {
   const testCase = defineNativeCase(spec);
+  const focusRequired = testCase.presentation === 'focus-required';
+  if (focusRequired && environment.platform !== 'win32') {
+    throw new TypeError('Focus-required native cases support Windows only');
+  }
   const evidence = { schemaVersion: 2, caseId: testCase.id, environment,
     startedAt: new Date().toISOString(), stage: 'prerequisites', stages: {},
-    focusRequired: 'unverified; requires existing Computer Use boundary' };
+    focusRequired: focusRequired ? 'input requires existing Computer Use ownership' : 'not requested' };
   let owner, browser, failure;
   try {
     owner = await resources.start();
@@ -36,8 +40,14 @@ export async function executeCase(spec, environment, resources) {
     evidence.stage = 'readiness';
     await testCase.ready(browser);
     resources.signal.throwIfAborted();
+    if (focusRequired) {
+      evidence.stage = 'presentation';
+      evidence.stages.placed = await owner.request('show');
+      displayed(evidence.stages.initial, evidence.stages.placed);
+    }
     evidence.stage = 'assertions';
-    evidence.observations = await testCase.run(browser);
+    evidence.observations = await testCase.run(browser, focusRequired
+      ? Object.freeze({ pid: owner.pid, hwnd: evidence.stages.initial.hwnd }) : undefined);
     if (testCase.afterRestart) {
       await browser.deleteSession(); browser = undefined;
       evidence.firstTeardown = await owner.stop();
@@ -60,7 +70,10 @@ export async function executeCase(spec, environment, resources) {
       evidence.restartObservations = await testCase.afterRestart(browser, evidence.observations);
     }
     evidence.stages.afterActions = await owner.request('snapshot');
-    noActivation(evidence.stages.afterActions);
+    if (focusRequired) {
+      assert.equal(evidence.stages.afterActions.pid, owner.pid);
+      assert.equal(evidence.stages.afterActions.hwnd, evidence.stages.initial.hwnd, 'Owned input window changed');
+    } else noActivation(evidence.stages.afterActions);
     resources.signal.throwIfAborted();
     if (testCase.presentation === 'nonactivating') {
       evidence.stage = 'presentation';
@@ -78,14 +91,22 @@ export async function executeCase(spec, environment, resources) {
     evidence.failure = { stage: evidence.stage, name: error.name, message: error.message };
   } finally {
     const cleanupErrors = [];
-    if (browser) {
+    let mayTeardown = true;
+    if (focusRequired && browser) {
+      try { evidence.settlement = await testCase.settle(browser); }
+      catch (error) {
+        mayTeardown = false;
+        cleanupErrors.push({ stage: 'case-settlement', message: error.message });
+      }
+    }
+    if (browser && mayTeardown) {
       try { await browser.deleteSession(); }
       catch (error) { cleanupErrors.push({ stage: 'driver', message: error.message }); }
     }
-    if (owner) {
+    if (owner && mayTeardown) {
       try {
         evidence.teardown = await owner.stop();
-        noActivation(evidence.teardown);
+        if (!focusRequired) noActivation(evidence.teardown);
         assert.equal(evidence.teardown.forced, false);
         assert.equal(evidence.teardown.exitCode, 0);
         assert.equal(evidence.teardown.listenerReleased, true);

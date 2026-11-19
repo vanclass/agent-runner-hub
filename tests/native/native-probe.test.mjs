@@ -4,8 +4,22 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { isolatedEnvironment, startOwner } from '../../tools/native-probe/owner.mjs';
+import { isolatedEnvironment as windowsEnvironment } from '../../tools/native-probe/platforms/windows.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
+test('Windows focus mode is explicit and never inherited by ordinary cases', { skip: process.platform !== 'win32' }, () => {
+  const prior = process.env.HUB_NATIVE_PRESENTATION;
+  process.env.HUB_NATIVE_PRESENTATION = 'focus-required';
+  try {
+    for (const mode of [undefined, 'background', 'nonactivating']) {
+      assert.equal(windowsEnvironment(root, 32123, mode).HUB_NATIVE_PRESENTATION, undefined);
+    }
+    assert.equal(windowsEnvironment(root, 32123, 'focus-required').HUB_NATIVE_PRESENTATION, 'focus-required');
+  } finally {
+    if (prior === undefined) delete process.env.HUB_NATIVE_PRESENTATION;
+    else process.env.HUB_NATIVE_PRESENTATION = prior;
+  }
+});
 test('runtime allowlist excludes inherited Runner credentials and WebView debug overrides', { skip: process.platform !== 'win32' }, () => {
   const prior = process.env.RUNNER_AUTH_TOKEN;
   process.env.RUNNER_AUTH_TOKEN = 'fixture-secret';

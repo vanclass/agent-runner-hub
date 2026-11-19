@@ -51,13 +51,15 @@ Setup markers use the existing Hub log IPC, without a WebDriver/debug listener o
 production command. Evidence distinguishes setup failures and clean settlement.
 These checks issue no native input and establish no product gesture acceptance.
 Focus-required Candidate acceptance uses its separately authorized host input owner;
-the existing hidden, unfocusable WebDriver path and default launch remain separate.
+ordinary WebDriver cases and default launch remain nonactivating. The opt-in probe
+mode below can combine authenticated observation with separately owned native input.
 
 ## Reusable environment and cases
 
 [`suite.mjs`](../../tools/native-probe/suite.mjs) composes explicit case definitions
 under `node:test`. [`case.mjs`](../../tools/native-probe/case.mjs) defines the stable
-contract: path-safe `id`, explicit `background` or `nonactivating` presentation,
+contract: path-safe `id`, explicit `background`, `nonactivating` or Windows-only
+`focus-required` presentation,
 `ready(browser)`, `run(browser)` and a displayed-case `observe(browser)` assertion.
 Cases own application readiness and feature assertions; they contain no OS window
 operations. Adding a case changes composition, never a feature branch in the executor.
@@ -71,9 +73,20 @@ submit work or claim verified settings application from guidance text.
 
 [`environment.mjs`](../../tools/native-probe/environment.mjs) builds once per suite,
 starts a new process with cleared invocation-owned profile directories for each case,
-and retains staging until suite teardown. [`lifecycle.mjs`](../../tools/native-probe/lifecycle.mjs)
+and retains staging until suite teardown. A focus-required invocation opts into a
+focusable staged main window and the allowlisted `HUB_NATIVE_PRESENTATION` test
+mode together. Mixed ordinary/focus-required suites are rejected; ordinary builds
+stay unfocusable. No Cargo feature, dependency graph or production IPC is added.
+[`lifecycle.mjs`](../../tools/native-probe/lifecycle.mjs)
 orders process/listener readiness, driver connection, case readiness/actions,
-presentation/observation and driver/process/profile settlement. Driver configuration
+presentation/observation and driver/process/profile settlement. Focus-required
+cases finish readiness and nonactivating placement before `run(browser, {pid, hwnd})`;
+only existing Computer Use authority may acquire focus or send native input.
+The case's mandatory `settle(browser)` must verify input release and any submitted
+Discussion authority before driver deletion. Failure preserves driver/process/profile
+resources and records a non-pass result. Ordinary no-activation assertions remain
+through teardown; focus-mode evidence retains activation samples and HWND/PID checks.
+Driver configuration
 belongs to [`driver.mjs`](../../tools/native-probe/driver.mjs); native evidence checks
 belong to [`observations.mjs`](../../tools/native-probe/observations.mjs).
 
@@ -102,7 +115,9 @@ with `--locked`; the existing native infrastructure resolves it per invocation.
 [`src-tauri/src/lib.rs`](../../src-tauri/src/lib.rs) registers the optional
 `tauri-plugin-wdio-webdriver` only for supported desktop test builds. Release builds
 reject the feature. Test startup requires an explicit nonzero port, application
-directory override and hidden, unfocused, unfocusable windows. Ordinary builds do
+directory override and hidden, unfocused windows. Unfocusable is the default;
+the existing debug-only Windows guard admits a focusable main window only with
+the explicit focus-required test environment. Ordinary builds do
 not compile/register the optional server. The probe checks the ordinary active
 dependency graph and compiles the ordinary library without the feature.
 
@@ -142,7 +157,7 @@ the selected `127.0.0.1` listener. Port reservation is released before launch; a
 fails ownership verification instead of adopting another listener. Startup, driver
 connection and actual renderer readiness are separate checks.
 
-The main window starts hidden and unfocusable. After a hidden DOM observation/action,
+The ordinary main window starts hidden and unfocusable. After a hidden DOM observation/action,
 Windows `SetWindowPos` places only that HWND on the primary monitor at `HWND_BOTTOM`
 with `SWP_NOACTIVATE`, `SWP_SHOWWINDOW` and `SWP_NOOWNERZORDER`. The probe verifies
 visibility, stable HWND and that the foreground window is above it. Foreground PIDs

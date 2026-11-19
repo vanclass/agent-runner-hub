@@ -7,6 +7,9 @@ import { defineNativeCase } from './case.mjs';
 export function nativeSuite(cases, { root, target }) {
   const selected = cases.map(defineNativeCase);
   assert.equal(new Set(selected.map(c => c.id)).size, selected.length, 'Duplicate case id');
+  const focusRequired = selected.some(c => c.presentation === 'focus-required');
+  assert.ok(!focusRequired || selected.every(c => c.presentation === 'focus-required'),
+    'Focus-required cases use a separate opt-in invocation; ordinary builds stay unfocusable');
   test('native Hub environment', async t => {
     const controller = new AbortController();
     const cancel = () => controller.abort(new Error('Native tests cancelled'));
@@ -14,7 +17,7 @@ export function nativeSuite(cases, { root, target }) {
     for (const signal of signals) process.on(signal, cancel);
     let environment;
     try {
-      environment = await createEnvironment(root, target, controller.signal);
+      environment = await createEnvironment(root, target, controller.signal, { focusRequired });
       console.log('Native evidence: ' + environment.evidenceDir);
       for (const spec of selected) {
         await t.test(spec.id, async () => {

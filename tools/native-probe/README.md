@@ -146,10 +146,23 @@ Remove-Item Env:HUB_CONTROL_PYTHON
 Preserve/restore a pre-existing environment value when applicable. This ignored test
 authenticates only its synthetic protocol child, not an installed Runner or account.
 
-For focus-required checks, use the existing Runner Computer Use tools after their
+For focus-required checks, select a Windows case with `presentation: 'focus-required'`
+and `settle(browser)`, then pass it alone (or with other focus-required cases) to
+`nativeSuite`. The suite selects the existing staged build with a focusable main
+window. Direct `createEnvironment` callers must explicitly pass `{ focusRequired: true }`
+and use matching cases. Ordinary invocations retain unfocusable windows.
+`ready(browser)` must finish application readiness before nonactivating display;
+Work acceptance must also verify the intended bound Target and advertised reference/
+Work capabilities before native Enter. A fresh profile's installation selection and
+account readiness alone do not establish a bound Target.
+`run(browser, {pid, hwnd})` receives the exact owned input target. Use the existing
+Runner Computer Use tools after their
 authorization and exact owned process/window readiness checks. There is no native
 CLI flag that grants foreground input. Record observed effects and settle input
 through that owner; do not use WebDriver focus/click fallbacks or manual DevTools.
+The case must verify input release and settled Discussion authority (if submitted)
+in `settle` before returning to normal driver/Runner/process/profile teardown.
+Unsettled authority preserves those resources and fails the case.
 Keep such checks unverified if the required ownership/capability is unavailable.
 The tool sequence is `runner_computer_use.discover`, `acquire`, necessary `act`,
 then `release` and `status` to confirm settlement, using each live tool's schema

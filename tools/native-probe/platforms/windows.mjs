@@ -1,14 +1,15 @@
 import path from 'node:path';
 import { startProtocol } from '../protocol.mjs';
 
-export function isolatedEnvironment(attempt, port) {
+export function isolatedEnvironment(attempt, port, presentation) {
   const systemRoot = process.env.SystemRoot;
   if (!systemRoot) throw new Error('Windows SystemRoot is required');
   return { SystemRoot: systemRoot, WINDIR: systemRoot,
     PATH: path.join(systemRoot, 'System32'),
     USERPROFILE: path.join(attempt, 'user'), APPDATA: path.join(attempt, 'user/roaming'),
     LOCALAPPDATA: path.join(attempt, 'user/local'), TEMP: path.join(attempt, 'tmp'), TMP: path.join(attempt, 'tmp'),
-    WEBVIEW2_USER_DATA_FOLDER: path.join(attempt, 'webview2'), TAURI_WEBDRIVER_PORT: String(port) };
+    WEBVIEW2_USER_DATA_FOLDER: path.join(attempt, 'webview2'), TAURI_WEBDRIVER_PORT: String(port),
+    ...(presentation === 'focus-required' ? { HUB_NATIVE_PRESENTATION: presentation } : {}) };
 }
 
 
@@ -21,5 +22,5 @@ export function startOwner(root, executable, attempt, port, budgetMs, presentati
     ['-NoProfile', '-NonInteractive', '-File', path.join(root, 'tools/native-probe/windows-owner.ps1'),
       '-Executable', executable, '-Port', String(port), '-BudgetMs', String(budgetMs),
       ...(windowWidth === undefined ? [] : ['-WindowWidth', String(windowWidth)])],
-    { cwd: attempt, shell: false, windowsHide: true, env: isolatedEnvironment(attempt, port), stdio: ['pipe', 'pipe', 'pipe'] }, budgetMs);
+    { cwd: attempt, shell: false, windowsHide: true, env: isolatedEnvironment(attempt, port, presentation), stdio: ['pipe', 'pipe', 'pipe'] }, budgetMs);
 }

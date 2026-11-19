@@ -12,13 +12,13 @@ import { commandMs } from './limits.mjs';
 
 const profileFolders = ['user', 'tmp', 'app-data', 'webview2'];
 // Build/staging survives cases; each owned process gets a fresh data profile.
-export async function createEnvironment(root, target, signal) {
+export async function createEnvironment(root, target, signal, { focusRequired = false } = {}) {
   const invocationId = randomUUID();
   const evidenceDir = path.join(root, 'temp/native-probe', invocationId);
   await fs.mkdir(evidenceDir, { recursive: true });
   const attempt = await fs.mkdtemp(path.join(os.tmpdir(), 'hub-native-'));
   let build, buildFailure, settled = true;
-  try { platformAdapter(); build = await buildProbe(root, attempt, target, signal); }
+  try { platformAdapter(); build = await buildProbe(root, attempt, target, signal, { focusRequired }); }
   catch (error) { buildFailure = new BlockedPrerequisite('Native build prerequisite: ' + error.message); }
   return {
     evidenceDir,
@@ -32,6 +32,9 @@ export async function createEnvironment(root, target, signal) {
         profile: path.join(attempt, 'app-data') }, {
         signal,
         async start() {
+          if ((spec.presentation === 'focus-required') !== focusRequired) {
+            throw new BlockedPrerequisite('Case presentation must match the explicitly selected test build');
+          }
           if (!settled) throw new BlockedPrerequisite('Previous owned process has not settled');
           if (buildFailure) throw buildFailure;
           adapter = platformAdapter();
