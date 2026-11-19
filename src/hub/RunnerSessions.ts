@@ -183,10 +183,12 @@ export class RunnerSession {
     else if (this.view.status === 'exited') activity = 'unknown';
     else if (this.view.status === 'starting' || this.control.snapshot.state === 'connecting') activity = 'starting';
     else if (!this.control.observationFresh || !observation) activity = 'unknown';
-    if (activity === 'running' && this.control.observationFresh && observation
-      && (observation.attention.foreground_interaction_active || observation.attention.suspension_status !== 'inactive'
+    if (this.view.status === 'running' && this.control.observationFresh && observation) {
+      if (observation.attention.foreground_interaction_active || observation.attention.suspension_status !== 'inactive'
         || observation.attention.restart_confirmation_required || observation.attention.termination_confirmation_active
-        || observation.attention.account_setup_required || observation.attention.awaiting_user_command_reason)) activity = 'attention';
+        || observation.attention.account_setup_required || observation.attention.awaiting_user_command_reason) activity = 'attention';
+      else if (observation.execution.owned_execution_alive === true) activity = 'running';
+    }
     if (activity === 'idle') {
       if (this.control.observationFresh && observation) {
         const { execution, attention } = observation;
@@ -195,7 +197,7 @@ export class RunnerSession {
           || attention.account_setup_required || attention.awaiting_user_command_reason ? 'attention'
             : execution.owned_execution_alive === true ? 'running'
               : execution.lifecycle_state === 'INTERACTIVE_READY' && execution.workflow_kind === ''
-                && !this.control.work.blocked ? 'idle' : 'unknown';
+                && execution.owned_execution_alive === false ? 'idle' : 'unknown';
       } else activity = 'unknown';
     }
     return { ...this.view, activity, unreadCompletion: this.control.work.unread };

@@ -107,6 +107,22 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
         tab: connection.tab, session: connection.session, generation: connection.generation }));
     assert.equal(originalInstructionBufferCount, 1, 'Original PTY instruction retained');
   }
+  let released;
+  await browser.waitUntil(async () => {
+    const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
+    const observation = snapshot.observation;
+    const marker = await browser.execute(tab => {
+      const row = [...document.querySelectorAll('.runner-row')].find(r => r.dataset.runnerId === tab);
+      const dot = row?.querySelector('.status-dot');
+      return dot && { activity: dot.className, label: dot.getAttribute('aria-label'), color: getComputedStyle(dot).color };
+    }, connection.tab);
+    released = { observation, marker, age: snapshot.observationAgeMs };
+    return snapshot.state === 'ready' && observation?.execution.lifecycle_state === 'INTERACTIVE_READY'
+      && observation.execution.owned_execution_alive === false && observation.execution.workflow_kind === ''
+      && marker?.activity === 'status-dot idle';
+  }, { timeout: startupMs, timeoutMsg: 'Completed work did not produce verified released Idle sidebar authority' });
+  assert.equal(released.marker.color, 'rgb(34, 197, 94)');
+  assert.equal(released.marker.label, 'Verified idle');
   const buffer = await terminalBuffer(browser), output = buffer.full;
   const canonical = await canonicalRecords(browser, connection);
   const scrollback = { rows: buffer.length, startupRetained: output.includes(retainedLine) };
@@ -119,7 +135,7 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
       identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
       matchingRows: output.split('\n').filter(line => /Reply|HUB_SINGLE|tools|changes/.test(line)) }));
   return { originalRequestId: submitted.id, started: completed.started_event_id > 0, outcome: completed.outcome,
-    terminalReplyObserved: true, instructionCount: count, buffer, canonical,
+    terminalReplyObserved: true, instructionCount: count, buffer, canonical, released,
     originalInstructionBufferCount,
     identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
     geometry: { compact, editing, pendingDelivery, entered, confirmed }, instructionPublication,

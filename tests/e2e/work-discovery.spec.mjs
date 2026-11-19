@@ -24,6 +24,28 @@ test('promotion projection retains old discovery evidence, admits new events and
   });
 });
 
+test('newer Work presentation does not clear historical admission restrictions', async ({ page }) => {
+  await setup(page);
+  const result = await page.evaluate(async () => {
+    const { work, fixture, terminalWork } = window.__discovery;
+    fixture.changed();
+    fixture.observations.set('terminal:1', terminalWork(1, 1, { state: 'unknown', terminal: true, outcome: 'unknown' }));
+    await work.refreshInventory();
+    const states = [work.presentedActivity];
+    fixture.observations.set('terminal:2', terminalWork(2, 2)); await work.refreshInventory();
+    states.push(work.presentedActivity);
+    fixture.observations.set('terminal:2', terminalWork(2, 3, { started_event_id: 2, state: 'succeeded', terminal: true, outcome: 'succeeded' }));
+    await work.refreshInventory(); states.push(work.presentedActivity);
+    let refused = false;
+    try { await work.submit('must remain blocked'); } catch { refused = true; }
+    const result = { states, refused, blocked: work.blocked, activity: work.activity,
+      count: work.attempts.length, unread: work.unread, submissions: fixture.requests.filter(r => r.operation === 'work.submit').length };
+    work.close(); return result;
+  });
+  expect(result).toEqual({ states: ['unknown', 'running', 'completed'], refused: true,
+    blocked: true, activity: 'unknown', count: 2, unread: true, submissions: 0 });
+});
+
 async function setup(page, changes = {}) {
   await page.goto('/');
   await page.clock.install();

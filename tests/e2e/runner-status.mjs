@@ -1,8 +1,54 @@
 export function registerRunnerStatus({ test, expect, transport, configure, create }) {
+  test('runner status releases completed TaskRun after historical unknown without losing unread', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await configure(page); await create(page);
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    const marker = page.locator('.runner-row').first().locator('.status-dot');
+    const publish = changes => page.evaluate(async changes => {
+      const { terminalWork } = await import('/tests/fixtures/work.ts');
+      const f = window.__nativeFixture.sessions.get('pty-1').feature;
+      f.observations.set(`terminal:${changes.id}`, terminalWork(changes.id, changes.event, {
+        run_mode: 'task-run', work_id: { kind: 'task', id: `task-${changes.id}` }, owner: 'task',
+        started_event_id: changes.id, ...changes }));
+    }, changes);
+    await publish({ id: 1, event: 1, state: 'unknown', terminal: true, outcome: 'unknown' });
+    await expect(marker).toHaveClass('status-dot unknown');
+    await publish({ id: 2, event: 2 });
+    await expect(marker).toHaveClass('status-dot running');
+    await publish({ id: 2, event: 3, state: 'succeeded', terminal: true, outcome: 'succeeded' });
+    await expect(marker).toHaveClass('status-dot idle');
+    await expect(marker).toHaveCSS('color', 'rgb(34, 197, 94)');
+    await expect(marker).toHaveAttribute('aria-label', 'Verified idle');
+    await expect(page.locator('.runner-row').first().locator('.unread-completion')).toBeVisible();
+    for (const state of ['running', 'attention', 'unknown', 'idle']) {
+      await page.evaluate(state => {
+        const c = window.__nativeFixture.sessions.get('pty-1').control;
+        c.state = state === 'disconnected' ? 'disconnected' : 'ready';
+        c.age = state === 'unknown' ? 999999 : 0;
+        c.observation.execution.owned_execution_alive = state === 'running';
+        c.observation.attention.suspension_status = state === 'attention' ? 'suspended' : 'inactive';
+      }, state);
+      await expect(marker).toHaveClass(`status-dot ${state === 'disconnected' ? 'unknown' : state}`);
+    }
+    await publish({ id: 3, event: 4 }); await expect(marker).toHaveClass('status-dot running');
+    await publish({ id: 3, event: 5, state: 'succeeded', terminal: true, outcome: 'succeeded' });
+    await expect(marker).toHaveClass('status-dot idle');
+    await publish({ id: 4, event: 6, state: 'unknown', terminal: true, outcome: 'unknown' });
+    await expect(marker).toHaveClass('status-dot unknown');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.execution.owned_execution_alive = true; });
+    await expect(marker).toHaveClass('status-dot running');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.observation.attention.restart_confirmation_required = true; });
+    await expect(marker).toHaveClass('status-dot attention');
+    await expect(page.locator('.runner-row').first().locator('.unread-completion')).toBeVisible();
+    await page.locator('.runner-row').first().locator('.nav-row').click();
+    await expect(page.locator('.runner-row').first().locator('.unread-completion')).toHaveCount(0);
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.state = 'disconnected'; });
+    await expect(marker).toHaveClass('status-dot unknown');
+  });
   for (const theme of ['light', 'black']) test(`runner circular status fixed coordinates ${theme}`, async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page); await create(page);
-    await page.locator('.app-settings-trigger').click();
+    await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('button', { name: theme === 'light' ? 'Light' : 'Black', exact: true }).click();
     await page.keyboard.press('Escape');
     const rows = page.locator('.runner-row');
@@ -58,7 +104,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     const scrollBaseline = await coordinates();
     await page.setViewportSize({ width: 950, height: 400 });
     expect(await coordinates()).toEqual(scrollBaseline);
-    const list = page.locator('.runner-list');
+    const list = page.locator('.runner-domains');
     expect(await list.evaluate(list => list.scrollHeight > list.clientHeight)).toBe(true);
     await list.evaluate(list => { list.scrollTop = list.scrollHeight; });
     expect(await list.evaluate(list => list.scrollTop)).toBeGreaterThan(0);

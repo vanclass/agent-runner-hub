@@ -134,8 +134,7 @@ export class RunnerWork {
     return this.activityFor(attempt);
   }
   get presentedActivity(): WorkActivity {
-    const attempts = this.presentedAttempts;
-    return this.activityFor(attempts.filter(a => !a.notSent && (a.uncertain || !a.work?.terminal)).at(-1) ?? attempts.at(-1));
+    return this.activityFor(this.presentedCurrent);
   }
   private activityFor(attempt?: WorkAttempt): WorkActivity {
     const work = attempt?.work;
