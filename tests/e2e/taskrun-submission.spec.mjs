@@ -14,7 +14,7 @@ test('TaskRun generated boundary agrees with canonical Runner parser', async ({ 
       body, prepared: prepareTaskRunInstruction(body, { binding_state: 'bound', owner: 'Workspace', project: '' }, service.catalog),
     }));
   });
-  const script = `import json, sys\nfrom runner.session.target import parse_target_block_from_text\nfor case in json.load(sys.stdin):\n t = parse_target_block_from_text(case['prepared'], source_path='hub-integration')\n eol = '\\r\\n' if '\\r\\n' in case['body'] else '\\n'\n expected = case['body'] if case['body'].startswith('Goal') else 'Goal' + eol + case['body']\n assert t.instruction_text.encode('utf-8') == expected.encode('utf-8')\n assert (t.owner, t.project, t.reasoning) == ('Workspace', 'codex_workspace', None)\nprint('canonical parser cases:', len(json.loads(sys.argv[1])))`;
+  const script = `import json, sys\nfrom runner.session.target import parse_target_block_from_text\nfor case in json.load(sys.stdin):\n t = parse_target_block_from_text(case['prepared'], source_path='hub-integration')\n eol = '\r\n' if '\r\n' in case['body'] else '\n'\n expected = case['body'] if case['body'].startswith('Goal') else 'Goal' + eol + case['body']\n assert t.instruction_text.encode('utf-8') == expected.encode('utf-8')\n assert (t.owner, t.project, t.reasoning) == ('Workspace', 'codex_workspace', None)\nprint('canonical parser cases:', len(json.loads(sys.argv[1])))`;
   const result = spawnSync(process.env.RUNNER_PYTHON, ['-c', script, JSON.stringify(cases)], {
     input: JSON.stringify(cases), encoding: 'utf8', windowsHide: true,
     env: { ...process.env, PYTHONPATH: process.env.RUNNER_SOURCE_ROOT, PYTHONDONTWRITEBYTECODE: '1' },
@@ -59,6 +59,10 @@ test('TaskRun exact text and instruction-owned configuration', async ({ page }) 
       const eol = text.includes('\r\n') ? '\r\n' : '\n';
       return [text, `Target${eol}Owner: Project${eol}Project: Exact${eol}${eol}Goal${eol}${text}`];
     }), [complete, complete], [partial, partial.replace('Target\n', 'Target\nProject: Exact\n')],
+      ...['Task: Fix the login error', 'Priority: High', 'Owner: body', 'Project: body', 'Reasoning: high',
+        'Unrelated: value', '- Owner: body', '* Project: body'].map(first => {
+        const body = `${first}\nPriority: High\n안녕 🌍\n`;
+        return [body, 'Target\nOwner: Project\nProject: Exact\n\nGoal\n' + body]; }),
       ['Target\n* Project: Explicit\nGoal', 'Target\nOwner: Project\n* Project: Explicit\nGoal'],
       ['Goal\r\nTarget\r\nOwner: body', 'Target\r\nOwner: Project\r\nProject: Exact\r\n\r\nGoal\r\nTarget\r\nOwner: body'],
       ...['minimum', 'low', 'medium', 'high', 'xhigh', 'max'].map(g => {
@@ -93,3 +97,33 @@ test('TaskRun exact text and instruction-owned configuration', async ({ page }) 
     expect(result.current.model).toEqual({ id: 'm0', reasoning_effort: 'medium' });
   }
 });
+
+test('TaskRun field-first bodies retain exact bytes across the canonical Runner parser', async ({ page }) => {
+  await page.goto('/');
+  const cases = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { prepareTaskRunInstruction: prepare } = await import('/src/hub/runnerSubmission.ts');
+    const { service } = createConfigHarness(); await service.inspect();
+    const target = { binding_state: 'bound', owner: 'Project', project: 'Exact' };
+    return ['\n', '\r\n'].flatMap(eol => ['Task: Fix the login error', 'Priority: High', 'Owner: body',
+      'Project: body', 'Reasoning: HIGH', 'Other: value', '- Owner: body', '* Project: body', 'Owner:'].map(first => {
+      const original = `  ${eol}\t${first}${eol}Priority: High${eol}안녕 🌍  ${eol}${eol}`;
+      return { original, prepared: prepare(original, target, service.catalog), body: `Goal${eol}${original}` };
+    }));
+  });
+  for (const { original, prepared, body } of cases) {
+    expect(prepared.endsWith(body)).toBe(true);
+    expect(Buffer.from(prepared.slice(-original.length))).toEqual(Buffer.from(original));
+  }
+  test.skip(!process.env.RUNNER_TARGET_PARSER_SOURCE, 'Canonical Runner source must be supplied for integration');
+  const result = spawnSync('python', ['-c', `import json, sys
+from runner.session.target import parse_target_block_from_text
+for case in json.load(sys.stdin):
+    target = parse_target_block_from_text(case['prepared'], source_path='hub-boundary-check')
+    assert (target.owner, target.project, target.reasoning) == ('Project', 'Exact', None)
+    assert target.instruction_text == case['body'], repr(target.instruction_text)
+print('canonical parser: all bodies preserved')`], { input: JSON.stringify(cases), encoding: 'utf8',
+    env: { ...process.env, PYTHONPATH: process.env.RUNNER_TARGET_PARSER_SOURCE, PYTHONIOENCODING: 'utf-8' } });
+  expect(result.stderr).toBe(''); expect(result.status).toBe(0);
+});
+

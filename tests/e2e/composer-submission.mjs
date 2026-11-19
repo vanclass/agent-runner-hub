@@ -19,7 +19,8 @@ export function registerComposerSubmission({ test, expect, transport, configure,
         : variant === 'owner' ? 'Target\nOwner: Project\n' + body
         : variant === 'project' ? 'Target\nProject: Explicit\n' + body : body;
       const expected = ['complete', 'mismatch'].includes(variant) ? draft : variant === 'owner' ? draft.replace('Target\n', 'Target\nProject: Exact\n')
-        : variant === 'project' ? draft.replace('Target\n', 'Target\nOwner: Project\n') : 'Target\nOwner: Project\nProject: Exact\n\n' + (variant === 'fields' ? 'Goal\n' : '') + body;
+        : variant === 'project' ? draft.replace('Target\n', 'Target\nOwner: Project\n')
+        : 'Target\nOwner: Project\nProject: Exact\n\n' + (variant === 'fields' ? 'Goal\n' : '') + body;
       const input = page.locator('textarea[data-instruction]'); await input.fill(draft); await input.press('Enter');
       if (single) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
       if (['unavailable', 'mismatch'].includes(variant)) { await expect(input).toBeEnabled(); await expect(input).toHaveValue(draft); }
@@ -53,7 +54,8 @@ export function registerComposerSubmission({ test, expect, transport, configure,
     const input = page.locator('textarea[data-instruction]');
     const height = () => input.evaluate(n => n.getBoundingClientRect().height);
     await expect(input).toBeEnabled(); const base = await height();
-    const draft = Array.from({ length: 60 }, (_, i) => `한국어 English multiline ${i}`).join('\n');
+    const draft = 'Task: Fix the login error\nPriority: High\nOwner: body\n' +
+      Array.from({ length: 60 }, (_, i) => `한국어 English multiline ${i}`).join('\n');
     await input.fill(draft); expect(await height()).toBeGreaterThan(base);
     await input.press('Enter');
     await page.waitForFunction(() => window.__submitHeld);
