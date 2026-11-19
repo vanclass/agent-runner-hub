@@ -19,7 +19,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
       attempt.uncertain = true; results.push(check());
       service.close(); return results;
     });
-    expect(results.map(r => r.activity)).toEqual(['running', 'unknown', 'unknown', 'unknown', 'idle', 'unknown', 'unknown']);
+    expect(results.map(r => r.activity)).toEqual(['running', 'unknown', 'unknown', 'unknown', 'idle', 'running', 'running']);
     expect(results.map(r => r.blocked)).toEqual([true, true, true, false, false, false, true]);
   });
   test('IssueRun sidebar distinguishes autonomous work from unverified handoffs', async ({ page }) => {
@@ -28,7 +28,19 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await configure(page); await create(page);
     const marker = page.locator('.runner-row').first().locator('.status-dot');
     const baseline = await marker.boundingBox();
+    await page.evaluate(() => {
+      const s = window.__nativeFixture.sessions.get('pty-1');
+      s.control.observation.run_mode = 'issue-run';
+      s.feature.config.current.run_mode = 'issue-run';
+    });
+    await expect(marker).toHaveClass('status-dot idle');
+    await expect(marker).toHaveCSS('color', 'rgb(34, 197, 94)');
+    await expect(marker).toHaveAttribute('aria-label', 'Verified idle');
+    await expect(marker.locator('svg')).toHaveCount(1);
+    expect(await marker.boundingBox()).toEqual(baseline);
+    let workId = 1;
     const publish = async changes => {
+      changes = { id: workId, ...changes };
       await page.evaluate(async changes => {
         const { terminalWork } = await import('/tests/fixtures/work.ts');
         const s = window.__nativeFixture.sessions.get('pty-1');
@@ -38,15 +50,16 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
           owned_execution_alive: false, workflow_kind: '', ...changes.execution });
         Object.assign(s.control.observation.attention, { foreground_interaction_active: false,
           suspension_status: 'inactive', suspension_reason: '', awaiting_user_command_reason: '',
-          restart_confirmation_required: false, ...changes.attention });
-        s.feature.observations.set('terminal:1', terminalWork(1, changes.event, {
+          restart_confirmation_required: false, termination_confirmation_active: false,
+          account_setup_required: false, ...changes.attention });
+        s.feature.observations.set(`terminal:${changes.id}`, terminalWork(changes.id, changes.event, {
           run_mode: 'issue-run', work_id: { kind: 'issue', id: 'ir-status' }, owner: 'issue_lifecycle',
           state: 'active', started_event_id: 1, ...changes.work }));
       }, changes);
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1')
         .feature.requests.filter(r => r.operation === 'work.list').at(-1)?.after_event_id ?? 0)).toBeGreaterThanOrEqual(changes.event);
-      await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
-        .control.observation.attention.foreground_interaction_active = true; });
+      await page.evaluate(changes => { window.__nativeFixture.sessions.get('pty-1')
+        .control.observation.attention.foreground_interaction_active = !changes.released; }, changes);
     };
     // Interpreter preparation, execution, then automatic Planner work retain one Work.
     for (const [event, state] of [[1, 'instruction_admitted'], [2, 'active'], [3, 'active']]) {
@@ -75,12 +88,35 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await expect(marker).toHaveClass('status-dot running');
     await expect(page.locator('.composer-area textarea[data-instruction]')).toBeDisabled();
     await expect(page.locator('.terminal-host textarea')).toHaveAttribute('readonly', '');
+    let event = 8;
+    for (const outcome of ['succeeded', 'failed', 'interrupted', 'rejected']) {
+      if (outcome === 'rejected') workId = 2;
+      await publish({ event: ++event, released: true, work: { state: outcome, outcome, terminal: true,
+        started_event_id: outcome === 'rejected' ? 0 : 1,
+        admission: outcome === 'rejected' ? 'rejected' : 'admitted' } });
+      await expect(marker).toHaveClass('status-dot idle');
+      await expect(marker).toHaveAttribute('aria-label', 'Verified idle');
+      await expect(marker).toHaveCSS('color', 'rgb(34, 197, 94)');
+      expect(await marker.boundingBox()).toEqual(baseline);
+      await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
+        .control.observation.execution.owned_execution_alive = true; });
+      await expect(marker).toHaveClass('status-dot running');
+      await expect(marker).toHaveAttribute('aria-label', 'Running');
+    }
+    for (const requirement of ['restart_confirmation_required', 'termination_confirmation_active', 'account_setup_required']) {
+      await publish({ event: ++event, attention: { [requirement]: true } });
+      await expect(marker).toHaveClass('status-dot attention');
+    }
+    await publish({ event: ++event, work: { state: 'unknown' } });
+    await expect(marker).toHaveClass('status-dot unknown');
     const safety = await page.evaluate(() => {
       const n = window.__nativeFixture, s = n.sessions.get('pty-1');
       return { writes: n.writes, submissions: s.feature.requests.filter(r => r.operation === 'work.submit') };
     });
     expect(safety).toEqual({ writes: [], submissions: [] });
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 999999; });
+    await expect(marker).toHaveClass('status-dot unknown');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.state = 'disconnected'; });
     await expect(marker).toHaveClass('status-dot unknown');
   });
   test('runner status releases completed TaskRun after historical unknown without losing unread', async ({ page }) => {

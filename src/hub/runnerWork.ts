@@ -29,17 +29,22 @@ export function issueSidebarActivity(attempt: WorkAttempt | undefined, observati
   const { execution, attention } = observation;
   if (attention.restart_confirmation_required || attention.termination_confirmation_active
     || attention.account_setup_required) return 'attention';
+  if (execution.owned_execution_alive === true) return 'running';
   const work = attempt?.work;
-  if (!attempt || attempt.notSent || attempt.uncertain || !work || work.run_mode !== 'issue-run'
-    || work.state === 'unknown' || work.admission !== 'admitted') return 'unknown';
   // Work v1 conflates automatic next_action and user dialogue in incomplete.
   if (attention.awaiting_user_command_reason || attention.suspension_status !== 'inactive'
-    || attention.suspension_reason || ['suspended', 'incomplete'].includes(work.state)) return 'unknown';
-  if (!work.terminal) return ['instruction_admitted', 'execution_started', 'active'].includes(work.state)
-    ? 'running' : 'unknown';
-  return work.outcome === 'succeeded' && execution.lifecycle_state === 'INTERACTIVE_READY'
+    || attention.suspension_reason) return 'unknown';
+  const released = execution.lifecycle_state === 'INTERACTIVE_READY'
     && execution.owned_execution_alive === false && execution.workflow_kind === ''
-    && !attention.foreground_interaction_active ? 'idle' : 'unknown';
+    && !attention.foreground_interaction_active;
+  if (!attempt || attempt.notSent) return released ? 'idle' : 'unknown';
+  if (attempt.uncertain || !work || work.run_mode !== 'issue-run'
+    || ['unknown', 'suspended', 'incomplete'].includes(work.state)) return 'unknown';
+  if (work.terminal) return released && ['succeeded', 'failed', 'interrupted', 'rejected'].includes(work.outcome)
+    ? 'idle' : 'unknown';
+  if (work.admission !== 'admitted') return 'unknown';
+  return ['instruction_admitted', 'execution_started', 'active'].includes(work.state)
+    ? 'running' : 'unknown';
 }
 export interface WorkTransport {
   identity(): ConfigIdentity | undefined;
