@@ -1,5 +1,30 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
+test('unbound startup with an unavailable empty model catalog preserves explicit intent without retries', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+    const { HubSelections } = await import('/src/hub/HubSelections.ts');
+    fixture.current.target = '';
+    const inspect = fixture.inspection.bind(fixture);
+    fixture.inspection = (...args) => {
+      const reply = inspect(...args);
+      reply.model_catalog_status = 'unavailable'; reply.options.models = []; reply.options_page.totals.models = 0;
+      return reply;
+    };
+    const saved = { initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } };
+    const choices = new HubSelections(() => service, () => {}, saved);
+    await choices.inspectOptions();
+    const requests = fixture.requests.length;
+    for (let i = 0; i < 5; i++) choices.initialize();
+    return { defaults: choices.defaults, catalog: !!choices.catalog, detail: choices.detail,
+      actual: service.actual.model_catalog_status, requests, after: fixture.requests.length };
+  });
+  expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
+  expect(result).toMatchObject({ catalog: false, detail: { key: 'config.incomplete' }, actual: 'unavailable' });
+  expect(result.after).toBe(result.requests);
+});
+
 for (const changedRevision of [false, true]) test('configured no-op submission uses canonical revision after complete paging: ' + changedRevision, async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async changedRevision => {
