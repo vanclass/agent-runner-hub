@@ -39,8 +39,10 @@ export function issueUserAction(attempt: WorkAttempt | undefined, observation: R
       && (['clarification', 'approval'].includes(r.kind) ? r.request_key === '' && r.request_version === ''
         : !!r.request_key && !!r.request_version))
     || (signal.status === 'required' ? !signal.requirements.length : !!signal.requirements.length)
-    || work && !unbound && (work.run_mode !== 'issue-run' || work.work_id?.kind !== 'issue'
-      || work.work_id.id !== signal.issue_run_id || work.owner_revision !== signal.state_revision)) return 'unknown';
+    // Work discovery and the authenticated user-action projection sample independently.
+    || work && !unbound && (work.run_mode !== 'issue-run'
+      || work.work_id && (work.work_id.kind !== 'issue' || work.work_id.id !== signal.issue_run_id)
+      || work.owner_revision > Number(signal.state_revision))) return 'unknown';
   return signal.status;
 }
 /** Presentation only: IssueRun foreground ownership is not a user-handoff signal. */

@@ -1,4 +1,24 @@
 export function registerRunnerStatus({ test, expect, transport, configure, create }) {
+  test('IssueRun independently sampled revisions retain identity and freshness checks', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await configure(page); await create(page);
+    const results = await page.evaluate(async () => {
+      const { issueUserAction } = await import('/src/hub/runnerWork.ts');
+      const { terminalWork } = await import('/tests/fixtures/work.ts');
+      const observation = window.__nativeFixture.sessions.get('pty-1').control.observation;
+      observation.run_mode = 'issue-run';
+      observation.issue_run_user_action = { schema_version: 'issue-run-user-action-v1', status: 'required',
+        issue_run_id: 'current', state_revision: 7,
+        requirements: [{ kind: 'dialogue', request_key: 'opaque', request_version: 'v1' }] };
+      const classify = changes => issueUserAction({ work: terminalWork(1, 1, {
+        run_mode: 'issue-run', work_id: { kind: 'issue', id: 'current' }, owner_revision: 6, ...changes }) }, observation);
+      return [issueUserAction(undefined, observation), classify({ work_id: null }), classify({}),
+        classify({ owner_revision: 7 }), classify({ owner_revision: 8 }),
+        classify({ work_id: { kind: 'issue', id: 'replaced' } }),
+        classify({ work_id: { kind: 'task', id: 'current' } }), classify({ run_mode: 'task-run' })];
+    });
+    expect(results).toEqual(['required', 'required', 'required', 'required', 'unknown', 'unknown', 'unknown', 'unknown']);
+  });
   test('IssueRun confirmed user action yields to process failure', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);
@@ -137,7 +157,25 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     }
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
       .control.observation.execution.owned_execution_alive = false; });
-    for (const extra of [{ status: 'unknown' }, { state_revision: 2 }, { issue_run_id: 'other' },
+    await signal('required', [{ kind: 'approval', request_key: '', request_version: '' }], { state_revision: 2 });
+    await expect(marker).toHaveClass('status-dot attention');
+    await expect(marker).toHaveAttribute('aria-label', 'IssueRun needs your response or approval');
+    await expect(marker).toHaveCSS('color', 'rgb(255, 214, 0)');
+    expect(await marker.boundingBox()).toEqual(baseline);
+    await signal('not_required', [], { state_revision: 3 });
+    await expect(marker).toHaveClass('status-dot running');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
+      .control.observation.execution.owned_execution_alive = true; });
+    await signal('required', [{ kind: 'approval', request_key: '', request_version: '' }], { state_revision: 4 });
+    await expect(marker).toHaveClass('status-dot attention');
+    await signal('not_required', [], { state_revision: 5 });
+    await expect(marker).toHaveClass('status-dot running');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1')
+      .control.observation.execution.owned_execution_alive = false; });
+    // Discovery still has revision 1 after response admission at revision 5.
+    await publish({ event: ++event, work: { state: 'incomplete', outcome: 'incomplete' } });
+    await expect(marker).toHaveClass('status-dot unknown');
+    for (const extra of [{ status: 'unknown' }, { state_revision: 0 }, { issue_run_id: 'other' },
       { schema_version: 'future' }, { requirements: [{}] }]) {
       await signal('required', [{ kind: 'approval', request_key: '', request_version: '' }], extra);
       await expect(marker).toHaveClass('status-dot unknown');
@@ -147,6 +185,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
       await publish({ event: ++event, work: { state, owner_revision: 1 } });
       await expect(marker).toHaveClass('status-dot unknown');
     }
+    await signal('not_required', [], { state_revision: 6 });
     for (const outcome of ['succeeded', 'failed', 'interrupted', 'rejected']) {
       if (outcome === 'rejected') workId = 2;
       await publish({ event: ++event, released: true, work: { state: outcome, outcome, terminal: true, owner_revision: 1,
@@ -175,9 +214,11 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await expect(marker).toHaveClass('status-dot unknown');
     const safety = await page.evaluate(() => {
       const n = window.__nativeFixture, s = n.sessions.get('pty-1');
-      return { writes: n.writes, submissions: s.feature.requests.filter(r => r.operation === 'work.submit') };
+      return { writes: n.writes, commands: n.commands,
+        recoveries: (s.recoveries ?? []).filter(r => r.operation === 'recovery.recover'),
+        submissions: s.feature.requests.filter(r => r.operation === 'work.submit') };
     });
-    expect(safety).toEqual({ writes: [], submissions: [] });
+    expect(safety).toEqual({ writes: [], commands: [], recoveries: [], submissions: [] });
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 999999; });
     await expect(marker).toHaveClass('status-dot unknown');
     await page.evaluate(() => {
