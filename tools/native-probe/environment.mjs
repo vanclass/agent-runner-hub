@@ -12,7 +12,7 @@ import { commandMs } from './limits.mjs';
 
 const profileFolders = ['user', 'tmp', 'app-data', 'webview2'];
 // Build/staging survives cases; each owned process gets a fresh data profile.
-export async function createEnvironment(root, target, signal, { focusRequired = false } = {}) {
+export async function createEnvironment(root, target, signal, { focusRequired = false, preserveUserHome = false } = {}) {
   const invocationId = randomUUID();
   const evidenceDir = path.join(root, 'temp/native-probe', invocationId);
   await fs.mkdir(evidenceDir, { recursive: true });
@@ -27,7 +27,7 @@ export async function createEnvironment(root, target, signal, { focusRequired = 
       const caseDir = path.join(evidenceDir, spec.id);
       await fs.mkdir(caseDir, { recursive: true });
       return executeCase(spec, { invocationId, platform: process.platform, arch: process.arch,
-        presentation: spec.presentation, executable: build?.executable,
+        presentation: spec.presentation, executable: build?.executable, preserveUserHome,
         build, macOSRuntime: process.platform === 'darwin' ? 'executing on this host' : 'unverified',
         profile: path.join(attempt, 'app-data') }, {
         signal,
@@ -42,7 +42,8 @@ export async function createEnvironment(root, target, signal, { focusRequired = 
           for (const name of [...profileFolders, 'user/roaming', 'user/local']) {
             await fs.mkdir(path.join(attempt, name), { recursive: true });
           }
-          const owner = await adapter.startOwner(root, build.executable, attempt, port, commandMs, spec.presentation, spec.windowWidth);
+          const owner = await adapter.startOwner(root, build.executable, attempt, port, commandMs,
+            spec.presentation, spec.windowWidth, { preserveUserHome });
           settled = false;
           return { pid: owner.pid, initialPresentation: owner.initialPresentation,
             request: action => owner.request(action), async stop() {

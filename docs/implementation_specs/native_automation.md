@@ -146,9 +146,13 @@ it does not establish Hub-window ingress or attachment delivery.
 [`owner.mjs`](../../tools/native-probe/owner.mjs) selects a platform adapter;
 [`protocol.mjs`](../../tools/native-probe/protocol.mjs) owns its stdio session.
 The [Windows adapter](../../tools/native-probe/platforms/windows.mjs) starts hidden PowerShell
-with an environment allowlist. Application/WebView profile, user directories and
-scratch are invocation-owned; inherited Runner credentials and WebView debugging
-arguments are excluded. The adapter launches the test executable and retains its
+with an environment allowlist. Application/WebView profile and scratch remain
+invocation-owned. User home is isolated by default; an explicit Windows
+`createEnvironment` option, `preserveUserHome`, retains the normal `USERPROFILE`,
+tool-search `PATH` and OpenSSH's required `ProgramData` for installed-Runner
+acceptance. It copies no credentials and leaves application data isolated.
+Inherited Runner credentials and WebView debugging arguments remain excluded.
+The adapter launches the test executable and retains its
 original process handle. Window discovery additionally matches the test main-window
 title. It never adopts an existing Hub/Runner or changes a user-owned window.
 

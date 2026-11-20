@@ -40,6 +40,27 @@ test('runtime allowlist excludes inherited Runner credentials and WebView debug 
   }
 });
 
+test('Windows normal-home opt-in retains application isolation and the runtime allowlist', { skip: process.platform !== 'win32' }, () => {
+  const folder = path.join(root, 'temp/native-probe/environment-fixture');
+  const ordinary = windowsEnvironment(folder, 32123);
+  const optedIn = windowsEnvironment(folder, 32123, 'focus-required', { preserveUserHome: true });
+  assert.equal(ordinary.USERPROFILE, path.join(folder, 'user'));
+  assert.equal(optedIn.USERPROFILE, process.env.USERPROFILE);
+  assert.notEqual(optedIn.USERPROFILE, ordinary.USERPROFILE);
+  assert.equal(ordinary.PATH, path.join(process.env.SystemRoot, 'System32'));
+  assert.equal(optedIn.PATH, process.env.PATH);
+  for (const key of ['APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'WEBVIEW2_USER_DATA_FOLDER']) {
+    assert.equal(optedIn[key], ordinary[key]);
+    assert.ok(optedIn[key].startsWith(folder + path.sep));
+  }
+  assert.equal(optedIn.ProgramData, process.env.ProgramData);
+  assert.equal(ordinary.ProgramData, undefined);
+  assert.deepEqual(Object.keys(optedIn).sort(), [...Object.keys(ordinary), 'ProgramData', 'HUB_NATIVE_PRESENTATION'].sort());
+  assert.equal(optedIn.HOME, undefined);
+  assert.equal(optedIn.RUNNER_AUTH_TOKEN, undefined);
+  assert.equal(optedIn.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, undefined);
+});
+
 test('native owner reports failed process creation without adopting another Hub', { skip: process.platform !== 'win32', timeout: 20_000 }, async () => {
   const parent = path.join(root, 'temp/native-probe');
   await fs.mkdir(parent, { recursive: true });
