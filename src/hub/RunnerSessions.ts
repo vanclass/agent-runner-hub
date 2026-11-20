@@ -17,9 +17,11 @@ import { copy, same } from './runnerConfigContract';
 import { issueSidebarActivity, issueUserAction, type WorkAttempt } from './runnerWork';
 import type { BriefResult } from './RunnerBrief';
 import { HubSelections } from './HubSelections';
+import { InstructionHistory } from './instructionHistory';
 import '@xterm/xterm/css/xterm.css';
 
 export class RunnerSession {
+  readonly instructionHistory = new InstructionHistory();
   readonly terminal = new Terminal({ cursorBlink: false, scrollback: 10000 });
   hubSelections?: HubSelections;
   private submittedAttempt?: { attempt: WorkAttempt; draft: string };
@@ -314,11 +316,15 @@ export class RunnerSession {
       this.update({ draft });
     }
   }
+  private clearDraft() {
+    this.instructionHistory.reset();
+    this.view = { ...this.view, draft: '' };
+  }
   private observeSubmission() {
     const command = this.submittedCommand;
     if (command && command.attempt.state === 'completed') {
       if (command.attempt.result?.state === 'accepted' && this.view.draft === command.draft)
-        this.view = { ...this.view, draft: '' };
+        this.clearDraft();
       if (command.attempt.result?.state !== 'accepted') this.view = { ...this.view,
         detail: msg('work.rejected', { code: command.attempt.result?.code || '' }) };
       this.submittedCommand = undefined;
@@ -332,14 +338,17 @@ export class RunnerSession {
       this.submittedAttempt = undefined;
     } else if (this.control.work.hasConfirmedStart(attempt)) {
       this.deliveryUnknown = false;
-      if (this.view.draft === submitted.draft) this.view = { ...this.view, draft: '' };
+      if (this.view.draft === submitted.draft) this.clearDraft();
       this.references.finishSubmission(true);
       this.submittedAttempt = undefined;
     }
   }
   private retainSubmission(attempt: WorkAttempt, draft: string) {
     if (this.control.work.hasConfirmedStart(attempt)) {
-      if (this.view.draft === draft) this.update({ draft: '' });
+      if (this.view.draft === draft) {
+        this.clearDraft();
+        this.changed();
+      }
       this.references.finishSubmission(true);
     } else if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected')) {
       this.references.finishSubmission(false);
@@ -372,7 +381,10 @@ export class RunnerSession {
       }, briefRun ? lease => this.control.brief.submit(draft, lease) : undefined);
       if ('brief' in result) {
         if (result.status === 'completed') {
-          if (this.view.draft === draft) this.update({ draft: '' });
+          if (this.view.draft === draft) {
+            this.clearDraft();
+            this.changed();
+          }
           this.references.finishSubmission(true);
         }
         else if (result.staged || result.status === 'unknown') this.deliveryUnknown = true;

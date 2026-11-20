@@ -5,7 +5,7 @@ import { same } from './runnerConfigContract';
 import { DirectoryInput } from './DirectoryInput';
 import { ComposerAttachments } from './ComposerAttachments';
 import { ComposerPresentation } from './ComposerPresentation';
-import { instructionKey } from './instructionKey';
+import { InstructionTextarea } from './InstructionTextarea';
 import { runModeLabel } from './runModeLabel';
 import { runModes } from './runnerWork';
 import { entryAttachmentsDisabled } from './hubFileDrop';
@@ -85,11 +85,12 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
 }) {
   return <ComposerPresentation text={entry.draft} compact={entry.composerCompact}>
     <ComposerAttachments selection={entry.attachments} disabled={entryAttachmentsDisabled(entry)}>
-      <textarea data-instruction="true" aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable} readOnly={entry.loadingOptions}
-        onKeyDown={event => instructionKey(event, briefRun => {
+      <InstructionTextarea aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable} readOnly={entry.loadingOptions}
+        history={entry.instructionHistory} edit={value => entry.setDraft(value)}
+        submit={briefRun => {
           if (!briefRun || entry.defaults.runMode === 'issue-run') void entry.submit(location, onSelectRunner, briefRun);
-        })}
-        placeholder={t('entry.placeholder')} onChange={event => entry.setDraft(event.target.value)} />
+        }}
+        placeholder={t('entry.placeholder')} />
     </ComposerAttachments>
   </ComposerPresentation>;
 }

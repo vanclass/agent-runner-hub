@@ -7,6 +7,7 @@ import { copy, type ConfigAccount } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
 import type { BriefResult } from './RunnerBrief';
 import { RunnerReferenceSelection } from './referenceSelection';
+import { InstructionHistory } from './instructionHistory';
 
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier'>;
@@ -38,6 +39,7 @@ export function idleReason(session: RunnerSession, allowReferences = false) {
 
 export class SingleEntry {
   draft = '';
+  readonly instructionHistory = new InstructionHistory();
   composerCompact = false;
   readonly selections: HubSelections;
   attachments: RunnerReferenceSelection;
@@ -68,6 +70,10 @@ export class SingleEntry {
   get progress() { return this.pending && this.active?.session.control.brief.busy
     ? this.active.session.control.brief.detail : this.detail; }
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
+  private clearDraft() {
+    this.draft = '';
+    this.instructionHistory.reset();
+  }
   setDraft(value: string) {
     if (!this.editable) return;
     this.composerCompact = false;
@@ -171,7 +177,7 @@ export class SingleEntry {
         this.detail = destination.control.brief.detail;
         this.phase = result.status === 'completed' ? 'delivered' : attempted ? 'unknown' : 'incomplete';
         if (result.status === 'completed') {
-          if (this.draft === text) this.draft = '';
+          if (this.draft === text) this.clearDraft();
           this.attachments.finishSubmission(true);
           this.attachments = new RunnerReferenceSelection(undefined, this.changed);
           session.release(token); this.active = undefined;
@@ -191,7 +197,7 @@ export class SingleEntry {
       } else if (attempt.work?.started_event_id) {
         this.phase = 'delivered';
         this.detail = msg('work.started', { name: session.view.name, event: attempt.work.started_event_id });
-        if (this.draft === text) this.draft = '';
+        if (this.draft === text) this.clearDraft();
         this.attachments.finishSubmission(true);
         this.attachments = new RunnerReferenceSelection(undefined, this.changed);
         session.release(token);
@@ -232,7 +238,7 @@ export class SingleEntry {
       if (command.result?.state === 'accepted') {
         this.active = undefined;
         this.phase = 'delivered';
-        if (this.draft === active.text) this.draft = '';
+        if (this.draft === active.text) this.clearDraft();
         this.attachments.finishSubmission(false);
         active.session.release(active.token);
       } else {
@@ -252,7 +258,7 @@ export class SingleEntry {
     if (!attempt.work?.started_event_id) return;
     this.active = undefined;
     this.phase = 'delivered';
-    if (this.draft === active.text) this.draft = '';
+    if (this.draft === active.text) this.clearDraft();
     this.attachments.finishSubmission(true);
     this.attachments = new RunnerReferenceSelection(undefined, this.changed);
     this.detail = msg('work.started', { name: active.session.view.name, event: attempt.work.started_event_id });

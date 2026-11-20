@@ -2,7 +2,7 @@ import { useHubTranslation, t } from './i18n';
 import { ComposerPresentation } from './ComposerPresentation';
 import type { RunnerSession } from './RunnerSessions';
 import { ComposerAttachments } from './ComposerAttachments';
-import { instructionKey } from './instructionKey';
+import { InstructionTextarea } from './InstructionTextarea';
 import { runnerAttachmentsDisabled } from './hubFileDrop';
 
 export function RunnerComposer({ session }: { session: RunnerSession }) {
@@ -21,11 +21,12 @@ export function RunnerComposer({ session }: { session: RunnerSession }) {
   }
   return <ComposerPresentation text={text} compact={session.composerCompact} className="runner-composer">
     <ComposerAttachments selection={session.references} disabled={runnerAttachmentsDisabled(session)}>
-      <textarea data-instruction="true" aria-label={t(session.hubSelections?.defaults.runMode === 'issue-run' ? 'brief.input' : 'composer.runnerInstructions')} value={text} rows={3} disabled={!available || pending}
-        onKeyDown={event => instructionKey(event, briefRun => {
+      <InstructionTextarea key={session.view.id} aria-label={t(session.hubSelections?.defaults.runMode === 'issue-run' ? 'brief.input' : 'composer.runnerInstructions')} value={text} rows={3} disabled={!available || pending}
+        history={session.instructionHistory} edit={value => session.setDraft(value)}
+        submit={briefRun => {
           if (!briefRun || session.hubSelections?.defaults.runMode === 'issue-run') void submit(briefRun);
-        })}
-        placeholder={t('composer.placeholder')} onChange={event => session.setDraft(event.target.value)} />
+        }}
+        placeholder={t('composer.placeholder')} />
     </ComposerAttachments>
   </ComposerPresentation>;
 }
