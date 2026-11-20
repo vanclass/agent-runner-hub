@@ -297,6 +297,7 @@ export class RunnerSession {
   }
   promote(tab: RunnerTabRecord, changed: () => void) {
     if (this.disposed || this.tabRecord) throw new HubError(msg('spare.unavailable', { reason: msg('spare.changed') }));
+    this.instructionHistory.reset();
     if (this.presentationRetired) {
       this.control.work.beginPresentation();
       this.control.config.beginPresentation();

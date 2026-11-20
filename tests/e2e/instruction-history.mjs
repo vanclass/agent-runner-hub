@@ -1,4 +1,64 @@
 export function registerInstructionHistory({ test, expect, transport, configure, create }) {
+  test('instruction history starts empty when the same idle session gets a new tab', async ({ page }) => {
+    await transport(page, undefined, { work: true, auto: true });
+    await configure(page);
+    await create(page);
+    await page.evaluate(async () => {
+      const { RunnerSession } = await import('/src/hub/RunnerSessions.ts');
+      const hide = RunnerSession.prototype.hide;
+      RunnerSession.prototype.hide = function () {
+        hide.call(this);
+        window.__releasedInstructionSession = this;
+      };
+    });
+
+    const row = page.locator('.runner-row');
+    const oldId = await row.getAttribute('data-runner-id');
+    const input = page.locator('textarea[data-instruction]');
+    await input.click();
+    await page.keyboard.insertText('Removed draft');
+    await input.press('Control+a');
+    await input.press('Backspace');
+    await expect(input).toHaveValue('');
+    await input.press('Control+z');
+    await expect(input).toHaveValue('Removed draft');
+    await input.press('Control+y');
+    await expect(input).toHaveValue('');
+    await page.keyboard.insertText('Undone draft');
+    await input.press('Control+z');
+    await expect(input).toHaveValue('');
+
+    await row.locator('.remove-action').click();
+    const confirm = page.getByRole('button', { name: 'Terminate and close tab' });
+    if (await confirm.isVisible()) await confirm.click();
+    await expect(row).toHaveCount(0);
+    await page.waitForFunction(() => window.__releasedInstructionSession?.reusableIdle);
+    await create(page);
+    const newId = await row.getAttribute('data-runner-id');
+    expect(newId).toBeTruthy();
+    expect(newId).not.toBe(oldId);
+    expect(await page.evaluate(id => {
+      const session = window.__releasedInstructionSession;
+      return session.view.id === id && !!session.terminal.element?.closest('.terminal-host');
+    }, newId)).toBe(true);
+    const deliveryCounts = () => page.evaluate(() => {
+      const fixture = window.__nativeFixture;
+      return {
+        work: [...fixture.sessions.values()].flatMap(session => session.feature.requests)
+          .filter(request => request.operation === 'work.submit').length,
+        commands: fixture.commands.length,
+        writes: fixture.writes.length,
+      };
+    });
+    const before = await deliveryCounts();
+    await expect(input).toHaveValue('');
+    for (const chord of ['Control+y', 'Control+z', 'Control+y']) {
+      await input.press(chord);
+      await expect(input).toHaveValue('');
+    }
+    expect(await deliveryCounts()).toEqual(before);
+  });
+
   test('instruction history stays with the focused draft and clears after delivery', async ({ page }) => {
     await transport(page, undefined, { work: true, auto: true });
     await configure(page);
