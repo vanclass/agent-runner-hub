@@ -54,13 +54,37 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     const id = await page.locator('.runner-row').getAttribute('data-runner-id');
     await create(page);
     const other = await page.locator('.runner-row.active').getAttribute('data-runner-id');
+    const editor = page.locator('textarea[data-instruction]');
+    const single = page.getByRole('button', { name: 'Single Entry', exact: true });
+    const editDraft = async (tab, first, last) => {
+      await tab.click();
+      await expect(editor).toBeEditable();
+      await editor.click();
+      await page.keyboard.insertText(first);
+      await page.keyboard.insertText(last);
+      await expect(editor).toHaveValue(first + last);
+    };
+    const deliveryCounts = () => page.evaluate(() => {
+      const fixture = window.__nativeFixture;
+      return {
+        work: [...fixture.sessions.values()].flatMap(session => session.feature.requests)
+          .filter(request => request.operation === 'work.submit').length,
+        commands: fixture.commands.length,
+        writes: fixture.writes.length,
+      };
+    });
+    const beforeEdits = await deliveryCounts();
+    await editDraft(page.locator(`[data-runner-id="${other}"] .nav-row`), 'Peer Runner', ' draft');
+    await editDraft(single, 'Single Entry', ' draft');
     await page.locator(`[data-runner-id="${id}"] .nav-row`).click();
     await publish(page, 'pty-1', 'issue-run'); await display(page, 'run-mode');
     await expect(domain(page, 'issue-run').locator('.runner-row')).toHaveAttribute('data-runner-id', id);
+    await expect.poll(() => ids(page)).toEqual([other, id]);
     const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
     await expect(domain(page, 'direct-run')).toHaveCount(0);
     const text = page.locator('.composer textarea');
-    await text.fill('move this existing Runner');
+    const moved = page.locator(`[data-runner-id="${id}"] .nav-row`);
+    await editDraft(moved, 'move this', ' existing Runner');
     const before = await page.evaluate(() => ({ native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed }));
     await mode.selectOption(JSON.stringify('direct-run'));
     await expect(domain(page, 'direct-run').locator('.runner-row.active')).toHaveAttribute('data-runner-id', id);
@@ -68,6 +92,22 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(domain(page, 'issue-run')).toHaveCount(0);
     await expect(mode).toHaveValue(JSON.stringify('direct-run'));
     await expect(text).toHaveValue('move this existing Runner');
+    await expect.poll(() => ids(page)).toEqual([id, other]);
+    await single.click();
+    await page.keyboard.press('Control+1');
+    await expect(moved).toHaveAttribute('aria-current', 'page');
+    await expect(moved).toBeFocused();
+    await expect(editor).toHaveValue('move this existing Runner');
+    await editor.press('Control+z');
+    await expect(editor).toHaveValue('move this');
+    await editor.press('Control+y');
+    await expect(editor).toHaveValue('move this existing Runner');
+    await single.click();
+    await expect(editor).toHaveValue('Single Entry draft');
+    await page.locator(`[data-runner-id="${other}"] .nav-row`).click();
+    await expect(editor).toHaveValue('Peer Runner draft');
+    expect(await deliveryCounts()).toEqual(beforeEdits);
+    await moved.click();
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
     expect(await page.evaluate(() => ({ native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed }))).toEqual(before);
     await page.evaluate(() => {
