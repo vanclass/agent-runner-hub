@@ -31,6 +31,8 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
       await dialog(page).getByRole('textbox').fill('/missing');
       await dialog(page).locator('button[type=submit]').click();
       await expect(dialog(page).getByRole('alert')).toContainText('managed Python');
+      await page.keyboard.press('Escape'); await page.mouse.click(5, 5);
+      await expect(dialog(page)).toBeVisible();
       expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
       await dialog(page).getByRole('textbox').fill('/fixture/workspace/agent_runner');
       await dialog(page).getByRole('textbox').press('Enter');
@@ -76,6 +78,8 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
     await page.goto('/');
     await expect(dialog(page).getByRole('status')).toContainText('Verifying');
     await expect(dialog(page).getByRole('textbox')).toBeDisabled();
+    await page.keyboard.press('Escape'); await page.mouse.click(5, 5);
+    await expect(dialog(page)).toBeVisible();
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0].name)).toBe('Retained Runner');
     await page.evaluate(() => window.__finishInstallation());

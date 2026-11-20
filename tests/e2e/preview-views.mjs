@@ -1,4 +1,5 @@
 import { PNG } from 'pngjs';
+import { imageBackdrop, registerOrdinaryBackdrops } from './dialog-backdrops.mjs';
 const png = [...PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640 * 320 * 4, 180) })];
 const original = '  첫 번째 줄\n# 원문 <script>window.previewExecuted=true</script>\n{"값": "한글"}\n  ';
 
@@ -21,6 +22,7 @@ export async function imageGestures(page, expect, width = 640) {
 }
 
 export function registerPreviewViews({ test, expect, ready, drop }) {
+  registerOrdinaryBackdrops({ test, expect, ready });
   for (const entry of [false, true]) {
     async function setup(page) {
       await ready(page);
@@ -36,6 +38,13 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
       if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     }
     const label = entry ? 'Single Entry' : 'Runner';
+    test('dialog backdrop attachment ' + label + ' protects gestures and returns focus', async ({ page }) => {
+      await setup(page); await drop(page, ['/fixture/backdrop.png']);
+      const opener = page.getByRole('button', { name: 'Open attachment backdrop.png', exact: true });
+      await opener.click();
+      await expect(page.locator('.focused-image-viewport img')).toHaveJSProperty('naturalWidth', 640);
+      await imageBackdrop(page, expect, opener);
+    });
     test('focused preview ' + label + ' local image header, rendered gestures and reset', async ({ page }, info) => {
       await setup(page); await drop(page, ['/fixture/first.png','/fixture/second.png']);
       const open = page.getByRole('button', { name: 'Open attachment first.png', exact: true });

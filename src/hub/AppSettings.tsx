@@ -7,6 +7,7 @@ import { useHubTranslation } from './i18n';
 import type { HubLanguage } from './preferences';
 import type { DomainDisplay } from './RunnerNavigation';
 import type { EntryDefaults } from './singleEntry';
+import { useDialogBackdropDismiss } from './useDialogBackdropDismiss';
 
 export function AppSettings({ required, installation, theme, confirmRemoval, onConfirmRemoval, allocationPolicy, reuseEditable, onAllocationPolicy, onTheme, onLanguage, onVerified, onClose, onShortcuts, domainDisplay, onDomainDisplay, retentionDays, onRetentionDays }: {
   required: boolean; installation: RunnerInstallation | null; theme: 'light' | 'black';
@@ -21,6 +22,7 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
 }) {
   const { t } = useHubTranslation();
   const dialog = useRef<HTMLDialogElement>(null);
+  useDialogBackdropDismiss(dialog, onClose, !required);
   useEffect(() => {
     const element = dialog.current!;
     const previous = document.activeElement as HTMLElement | null;
@@ -31,6 +33,7 @@ export function AppSettings({ required, installation, theme, confirmRemoval, onC
   return <dialog ref={dialog} className="app-settings" aria-labelledby="installation-title"
     aria-describedby="installation-description" onCancel={event => { event.preventDefault(); if (!required) onClose(); }}
     onKeyDown={event => {
+      if (required && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); return; }
       if (event.key !== 'Tab') return;
       const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled), select:not(:disabled)')];
       const first = controls[0], last = controls.at(-1);

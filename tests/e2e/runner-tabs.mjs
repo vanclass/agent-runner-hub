@@ -90,7 +90,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await expect(page.locator('.workspace-header')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
       await own.locator('.nav-row').click();
-      await page.locator('.app-settings-trigger').click();
+      await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.keyboard.press('Escape');
       await own.locator('.remove-action').click();

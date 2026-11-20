@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from './i18n';
 import type { LocalPreview } from './localPreviews';
+import { useDialogBackdropDismiss } from './useDialogBackdropDismiss';
 import './focusedViewer.css';
 
 function ImageViewport({ url, name }: { url: string; name: string }) {
@@ -41,6 +42,7 @@ export function FocusedViewer({ name, content, onDismiss }: {
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const returnFocus = useRef<HTMLElement>();
+  useDialogBackdropDismiss(dialog, onDismiss, content.kind === 'image');
   useEffect(() => {
     if (!returnFocus.current && document.activeElement instanceof HTMLElement)
       returnFocus.current = document.activeElement;

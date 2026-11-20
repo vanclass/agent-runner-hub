@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { t } from './i18n';
 import { previewExtensions } from './localPreviews';
+import { useDialogBackdropDismiss } from './useDialogBackdropDismiss';
 import './focusedViewer.css';
 
 export function PreviewHelp() {
   const dialog = useRef<HTMLDialogElement>(null);
+  useDialogBackdropDismiss(dialog, () => dialog.current?.close());
   useEffect(() => () => dialog.current?.close(), []);
   return <>
     <button type="button" className="app-settings-trigger" aria-haspopup="dialog"

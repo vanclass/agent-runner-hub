@@ -1,7 +1,19 @@
 import { generatedSource, animatedFixture, injectGeneratedImage } from '../native/webdriver/attachment-preview.mjs';
 import { watchObservations } from '../native/webdriver/runner-flow.mjs';
+import { imageBackdrop } from './dialog-backdrops.mjs';
 
 export function registerGeneratedConsumer({ test, expect, transport, configure, generatedFixture }) {
+  test('dialog backdrop generated consumer protects gestures and returns focus', async ({ page }) => {
+    const fixture = generatedFixture();
+    await transport(page, undefined, { auto: true, work: true, ...fixture }); await configure(page);
+    await injectGeneratedImage({ execute: (fn, arg) => page.evaluate(fn, arg) }, {
+      image: { ...fixture.generatedImages[0], imageId: 'a'.repeat(32) }, bytes: fixture.generatedPng });
+    await page.locator('.add-runner').click();
+    const opener = page.locator('.generated-image-preview');
+    await expect(opener.locator('img')).toHaveJSProperty('naturalWidth', 2);
+    await opener.click();
+    await imageBackdrop(page, expect, opener);
+  });
   for (const failure of ['byte-length', 'identity', 'unsupported-mime']) {
     test('generated consumer rejects ' + failure, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true, ...generatedFixture() }); await configure(page);
