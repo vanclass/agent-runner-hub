@@ -102,10 +102,16 @@ pub struct CommandResult {
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ObservationFailure {
+    pub request_id: u64, pub status: String, pub phase: Option<String>, pub code: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub state: String, pub observation: Option<Observation>,
     pub observation_serial: u64, pub observation_age_ms: Option<u64>,
     pub results: Vec<CommandResult>, pub detail: Option<String>,
+    pub observation_failure: Option<ObservationFailure>,
     pub references: References,
     pub clipboard_staging: bool,
     pub generated_images_supported: bool,
@@ -116,7 +122,8 @@ pub struct Snapshot {
 impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
-            observation_age_ms: None, results: Vec::new(), detail: None, references: References::default(),
+            observation_age_ms: None, results: Vec::new(), detail: None, observation_failure: None,
+            references: References::default(),
             clipboard_staging: false, generated_images_supported: false, features: features::Features::default(),
             presentation_supported: false, presentation_generation: 0 }
     }
@@ -306,7 +313,12 @@ impl Protocol {
             return Ok(());
         }
         if pending.kind == RequestKind::Observe && finished {
-            if state != "accepted" { return Err("Runner observation was rejected"); }
+            if state != "accepted" {
+                self.snapshot.observation_failure = Some(ObservationFailure {
+                    request_id: id, status: status.into(), phase: phase.map(str::to_owned), code: result_code(&packet),
+                });
+                return Err("Runner observation was rejected");
+            }
             let unavailable = packet["observation"]["observation_unavailable"] == true;
             let observation = if unavailable { None } else {
                 Some(serde_json::from_value(packet["observation"].clone())
@@ -398,6 +410,12 @@ impl Protocol {
     fn disconnect(&mut self, detail: &str) {
         let unverified = self.snapshot.observation.is_none();
         self.snapshot.state = "disconnected".into();
+        let detail = match &self.snapshot.observation_failure {
+            Some(failure) => format!("{detail} (observe request {}, status {}, phase {}, code {})",
+                failure.request_id, failure.status, failure.phase.as_deref().unwrap_or("absent"),
+                failure.code.as_deref().unwrap_or("unavailable")),
+            None => detail.into(),
+        };
         self.snapshot.detail = Some(if unverified {
             format!("{detail}. The installed Runner launch entry must retain the inherited control pipes in the created process before Hub can connect.")
         } else { detail.into() });

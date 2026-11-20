@@ -113,6 +113,39 @@ fn unavailable_command_observation_preserves_acknowledgement_and_retires_freshne
     assert!(p.request(None, "private").is_ok());
 }
 #[test]
+fn rejected_observations_retain_only_authenticated_sanitized_failure_evidence() {
+    for (status, phase, code) in [("rejected", Some("completed"), "SESSION_NOT_READY"),
+        ("failure", Some("completed"), "DISPATCH_FAILED"), ("failure", Some("completed"), "SESSION_CLOSED"),
+        ("rejected", None, "AUTHENTICATION_FAILED"), ("rejected", None, "SESSION_IDENTITY_MISMATCH")] {
+        let mut p = ready();
+        let generation = p.snapshot.features.generation;
+        p.request(None, "private").unwrap();
+        let mut reply = packet(2, status, "completed");
+        if phase.is_none() { reply.as_object_mut().unwrap().remove("phase"); }
+        reply["code"] = json!(code);
+        reply["message"] = json!("private diagnostic must not escape");
+        reply["observation"] = observation();
+        let error = p.response(reply).unwrap_err();
+        p.disconnect(error);
+        let snapshot = p.public_snapshot();
+        let failure = snapshot.observation_failure.as_ref().unwrap();
+        assert_eq!((failure.request_id, failure.status.as_str(), failure.phase.as_deref(), failure.code.as_deref()),
+            (2, status, phase, Some(code)));
+        assert_eq!(snapshot.state, "disconnected");
+        assert_eq!(snapshot.observation_serial, 1);
+        assert_eq!(snapshot.features.generation, generation);
+        assert!(snapshot.detail.as_ref().unwrap().contains(code));
+        assert!(!serde_json::to_string(&snapshot).unwrap().contains("private"));
+        assert!(p.pending.is_empty());
+        assert!(p.feature_request(features::Request::Work(work::Request::Submit {
+            api_version: 1, instruction: "must not submit".into(),
+        }), "private").is_err());
+        assert!(p.feature_request(features::Request::Recovery(recovery::Request::Reference {
+            api_version: 1, observation_id: "api:559".into(),
+        }), "private").is_err());
+    }
+}
+#[test]
 fn observation_freshness_advances_only_on_authenticated_completed_observations() {
     let mut protocol = ready();
     let first = protocol.public_snapshot();
@@ -128,6 +161,24 @@ fn observation_freshness_advances_only_on_authenticated_completed_observations()
     protocol.response(completed).unwrap();
     assert_eq!(protocol.public_snapshot().observation_serial, 2);
     assert!(protocol.public_snapshot().observation_age_ms.unwrap() < 1000);
+}
+#[test]
+fn observation_failure_codes_never_publish_raw_text_or_unverified_identity() {
+    for code in [json!("private message"), json!("A".repeat(101)), Value::Null] {
+        let mut p = ready(); p.request(None, "private").unwrap();
+        let mut reply = packet(2, "failure", "completed"); reply["failure_code"] = code;
+        let error = p.response(reply).unwrap_err(); p.disconnect(error);
+        assert!(p.snapshot.observation_failure.as_ref().unwrap().code.is_none());
+        assert!(p.snapshot.detail.as_ref().unwrap().contains("code unavailable"));
+    }
+    for field in ["version", "process_id", "session_id", "connection_id", "request_id", "phase"] {
+        let mut p = ready(); p.request(None, "private").unwrap();
+        let mut reply = packet(2, "failure", "completed"); reply[field] = json!("other");
+        reply["code"] = json!("UNTRUSTED_CODE");
+        let error = p.response(reply).unwrap_err(); p.disconnect(error);
+        assert!(p.snapshot.observation_failure.is_none());
+        assert!(!p.snapshot.detail.as_ref().unwrap().contains("UNTRUSTED_CODE"));
+    }
 }
 #[test]
 fn queued_and_interaction_are_not_committed_settings() {
@@ -159,6 +210,21 @@ fn queued_and_interaction_are_not_committed_settings() {
     assert_eq!(protocol.snapshot.observation.as_ref().unwrap().selection.model, "owner-confirmed");
     let public = serde_json::to_string(&protocol.snapshot).unwrap();
     for private in ["private-key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
+}
+#[test]
+fn unknown_observation_outcome_does_not_commit_an_attached_idle_view() {
+    let mut p = ready();
+    p.request(Some("/model".into()), "private").unwrap();
+    p.request(None, "private").unwrap();
+    let mut reply = packet(3, "accepted", "completed");
+    reply["outcome_unknown"] = json!(true);
+    reply["observation"] = observation();
+    let error = p.response(reply).unwrap_err(); p.disconnect(error);
+    assert_eq!(p.snapshot.observation_serial, 1);
+    assert_eq!(p.snapshot.results[0].state, "outcome-unknown");
+    let failure = p.snapshot.observation_failure.as_ref().unwrap();
+    assert_eq!(failure.status, "accepted");
+    assert!(failure.code.is_none());
 }
 #[test]
 fn rejection_failure_and_uncertainty_remain_distinct_without_replay() {

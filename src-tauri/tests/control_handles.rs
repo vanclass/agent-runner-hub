@@ -29,6 +29,7 @@ writer=msvcrt.open_osfhandle(outgoing,os.O_WRONLY|os.O_BINARY)
 identity=dict(version=1,process_id=os.getpid(),session_id=args['--session-id'],connection_id='a'*32)
 def send(**fields): os.write(writer,(json.dumps(dict(identity,**fields))+'\n').encode())
 send(event='hello',operations=['observe','command'],interaction_owner='runner_terminal')
+reject_observation=False
 # Canonical protocol with synthetic media only, not genuine Codex generation.
 def png_chunk(kind,data):
     return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data))
@@ -146,7 +147,13 @@ while True:
             continue
         time.sleep(.2)
         assert seen_commands==json.loads(os.environ['HUB_SLASH_COMMANDS'])
+        if os.environ.get('HUB_CONTROL_OBSERVATION_FAILURE')=='1':
+            reject_observation=True
+            continue
         break
+    if reject_observation and packet['operation']=='observe':
+        send(request_id=request_id,status='failure',phase='completed',failure_code='DISPATCH_FAILED',message='private fixture diagnostic')
+        continue
     observation=dict(run_mode='issue-run',target=dict(binding_state='unbound',owner='',project=''),
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
@@ -157,10 +164,18 @@ while True:
 #[test]
 #[ignore = "Requires HUB_CONTROL_PYTHON pointing to a direct Python interpreter on Windows"]
 fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
+    authenticated_roundtrip(false);
+}
+#[test]
+#[ignore = "Requires HUB_CONTROL_PYTHON pointing to a direct Python interpreter on Windows"]
+fn authenticated_observation_rejection_preserves_diagnostics_and_disconnects() {
+    authenticated_roundtrip(true);
+}
+fn authenticated_roundtrip(observation_failure: bool) {
     let python = std::env::var("HUB_CONTROL_PYTHON").expect("absolute direct Python interpreter path");
     let security = SECURITY_ATTRIBUTES { nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: std::ptr::null_mut(), bInheritHandle: 1 };
-    let event = format!("Local\\HubControlAllowlist-{}", std::process::id());
+    let event = format!("Local\\HubControlAllowlist-{}-{observation_failure}", std::process::id());
     let wide: Vec<u16> = event.encode_utf16().chain(Some(0)).collect();
     let sentinel = unsafe { CreateEventW(&security, 1, 0, wide.as_ptr()) };
     assert!(!sentinel.is_null());
@@ -180,7 +195,7 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     });
     let job = job::Job::new().unwrap();
     let mut command = CommandBuilder::new(python);
-    let fixture = std::env::current_dir().unwrap().join("temp").join(format!("control-account-{}", std::process::id()));
+    let fixture = std::env::current_dir().unwrap().join("temp").join(format!("control-account-{}-{observation_failure}", std::process::id()));
     std::fs::create_dir_all(fixture.join("agent_runner/local/profiles/codex/accounts/pipe-test")).unwrap();
     command.cwd(fixture.canonicalize().unwrap());
     command.args(["-I", "-c", CHILD]);
@@ -189,6 +204,7 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     command.env("HUB_SLASH_COMMANDS", serde_json::to_string(&slash_commands).unwrap());
     command.env("HUB_CONTROL_SENTINEL", format!("{}", sentinel.as_raw_handle() as usize));
     command.env("HUB_CONTROL_EVENT", event);
+    command.env("HUB_CONTROL_OBSERVATION_FAILURE", if observation_failure { "1" } else { "0" });
     job.configure(&mut command);
     let launch = control::Launch::new(&mut command).unwrap();
     let private_key = command.get_env("AGENT_RUNNER_LOCAL_CONTROL_KEY").unwrap().to_string_lossy().into_owned();
@@ -354,6 +370,17 @@ fn exact_handle_allowlist_authenticated_roundtrip_and_eof_uncertainty() {
     assert!(matches!(client.feature(stage()), control::features::Admission::NotSent { .. }));
     client.command("/status".into()).unwrap();
     while client.snapshot().state != "disconnected" && Instant::now() < deadline { thread::sleep(Duration::from_millis(10)); }
+    assert_eq!(client.snapshot().state, "disconnected");
+    assert_eq!(client.snapshot().features.generation, ready.features.generation);
+    if observation_failure {
+        let snapshot = client.snapshot();
+        let failure = snapshot.observation_failure.unwrap();
+        assert_eq!(failure.status, "failure");
+        assert_eq!(failure.phase.as_deref(), Some("completed"));
+        assert_eq!(failure.code.as_deref(), Some("DISPATCH_FAILED"));
+        assert!(snapshot.detail.unwrap().contains("DISPATCH_FAILED"));
+        assert!(!serde_json::to_string(&client.snapshot()).unwrap().contains("private fixture diagnostic"));
+    } else { assert!(client.snapshot().observation_failure.is_none()); }
     assert_eq!(client.snapshot().results.last().unwrap().state, "outcome-unknown");
     assert!(matches!(client.command("/status".into()).unwrap(), control::features::Admission::NotSent { .. }));
     assert!(matches!(client.feature(stage()), control::features::Admission::NotSent { .. }));

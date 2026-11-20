@@ -50,6 +50,7 @@ export type ControlResult = { id: number; command: string;
   ownerStatus?: string | null; changed?: boolean | number | null; settingsChangeCount?: boolean | number | null };
 export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: HubText;
+  observationFailure?: { requestId: number; status: string; phase: string | null; code: string | null } | null;
   observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean;
   generatedImagesSupported?: boolean; presentationSupported?: boolean; presentationGeneration?: number; features?: FeatureSnapshot };
 

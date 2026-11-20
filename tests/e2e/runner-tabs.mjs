@@ -22,7 +22,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
   ]) {
     test(`runner tabs background ${outcome} unread and continued discovery without replay ${language}`, async ({ page }, info) => {
       await ready(page); await assign(page); await create(page);
-      await page.locator('.app-settings-trigger').click();
+      await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.keyboard.press('Escape');
       await page.evaluate(outcome => { window.__nativeFixture.sessions.get('pty-1').feature.mode = outcome; }, outcome);
@@ -41,7 +41,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await page.waitForTimeout(1700);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(before);
       await info.attach(`tab-${outcome}-${language}`, { body: await page.screenshot({ path: info.outputPath('tab-status.png') }), contentType: 'image/png' });
-      await page.locator('.app-settings-trigger').click();
+      await page.getByRole('button', { name: language === 'en' ? 'App settings' : '앱 설정', exact: true }).click();
       await page.getByRole('combobox', { name: language === 'en' ? 'Language' : '언어', exact: true }).selectOption(language === 'en' ? 'ko' : 'en');
       await page.keyboard.press('Escape');
       await expect(own.locator('.unread-completion')).toBeVisible();
@@ -65,6 +65,33 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await page.reload();
       await expect(page.locator('.unread-completion')).toHaveCount(0);
       await expect(page.locator('.status-dot.completed')).toHaveCount(0);
+    });
+  }
+  for (const observation of ['fresh', 'unavailable', 'stale', 'rejected']) {
+    test(`runner tabs completed TaskRun requires fresh authority for idle: ${observation}`, async ({ page }) => {
+      await ready(page); await assign(page);
+      const marker = row(page, 'Runner 1').locator('.status-dot');
+      await expect(marker).toHaveClass('status-dot running');
+      await expect(marker).toHaveCSS('color', 'rgb(59, 130, 246)');
+      await page.evaluate(observation => {
+        const s = window.__nativeFixture.sessions.get('pty-1');
+        s.feature.mode = 'succeeded';
+        if (observation === 'unavailable') s.control.observation = null;
+        if (observation === 'stale') s.control.age = 999999;
+        if (observation === 'rejected') Object.assign(s.control, { state: 'disconnected',
+          observationFailure: { requestId: 901, status: 'failure', phase: 'completed', code: 'DISPATCH_FAILED' },
+          detail: 'Runner observation was rejected (observe request 901, status failure, phase completed, code DISPATCH_FAILED)' });
+      }, observation);
+      await expect(marker).toHaveClass(`status-dot ${observation === 'fresh' ? 'idle' : 'unknown'}`);
+      await expect(marker).toHaveAttribute('aria-label', observation === 'fresh' ? 'Verified idle' : 'Status unknown');
+      await expect(marker).toHaveCSS('color', observation === 'fresh' ? 'rgb(34, 197, 94)' : 'rgb(156, 163, 175)');
+      if (observation !== 'fresh') {
+        const draft = page.locator('.runner-composer textarea');
+        await draft.fill('must remain unsent'); await draft.press('Enter');
+        await expect(draft).toHaveValue('must remain unsent');
+      }
+      expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
+        .filter(r => r.operation === 'work.submit').length)).toBe(1);
     });
   }
   for (const [outcome, state] of [['suspended', 'attention'], ['incomplete', 'attention'], ['unknown', 'unknown']]) {
