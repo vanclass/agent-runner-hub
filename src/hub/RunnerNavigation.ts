@@ -37,8 +37,9 @@ export class RunnerNavigation {
       this.value.affinities[id] = context as RunMode;
     }
   }
-  intent(id: string, mode?: RunMode) {
-    if (mode) { this.value.affinities[id] = mode; this.changed(); }
+  setRequestedMode(id: string, work: RunnerWork, mode: RunMode) {
+    this.observe(id, work);
+    this.value.affinities[id] = mode;
   }
   project(runners: readonly RunnerView[], display: DomainDisplay): RunnerDomain[] {
     const ordered = [...runners].sort((a, b) => {
@@ -50,11 +51,8 @@ export class RunnerNavigation {
       const mode = this.value.affinities[runner.id];
       return runModes.includes(mode as RunMode) ? mode : 'task-run';
     };
-    const modes = runModes.filter(mode => this.value.executedModes.includes(mode)
-      || ordered.some(runner => placement(runner) === mode));
-    return modes.map(mode => ({ id: mode, runners: ordered.filter(runner => {
-      return placement(runner) === mode;
-    }) }));
+    return runModes.map(mode => ({ id: mode, runners: ordered.filter(runner => placement(runner) === mode) }))
+      .filter(domain => domain.runners.length > 0);
   }
   reorder(runners: readonly RunnerView[], display: DomainDisplay, domainId: RunnerDomain['id'],
     id: string, before: string | null, expectedIds: readonly string[]) {

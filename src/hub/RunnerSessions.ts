@@ -9,7 +9,7 @@ import type { RunnerView } from './model';
 import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
 import { submitConfiguredWork } from './runnerSubmission';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
-import { RunnerNavigation } from './RunnerNavigation';
+import { RunnerNavigation, type RunMode } from './RunnerNavigation';
 import { RunnerSpare, type SpareEvent } from './RunnerSpare';
 import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './RunnerRestarts';
 import type { RunnerInstallation } from './runnerInstallation';
@@ -529,20 +529,22 @@ export class RunnerSessions {
       id => this.navigation.snapshot.affinities[id]);
   }
   getSelections(id?: string) { return id ? this.selections.get(id) : undefined; }
-  private bindSelections(session: RunnerSession, retained?: EntryDefaults) {
+  private bindSelections(session: RunnerSession, retained?: EntryDefaults, initialMode?: RunMode) {
     const id = session.view.id, saved = this.savedSelections[id];
     const defaults = retained ?? saved ?? this.entry.defaults;
     const selections = new HubSelections(() => session.control.snapshot.state === 'ready'
       && !session.control.assignmentLocked && !session.control.recovery.busy ? session.control.config : undefined,
-    this.changed, defaults, value => {
+    this.changed, defaults, (value, changedMode) => {
       if (this.sessions.get(id) !== session) return;
+      if (changedMode) this.navigation.setRequestedMode(id, session.control.work, changedMode);
       session.control.config.setDraft({});
       this.saveSelections(id, value);
     }, () => this.sessions.get(id) === session && session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing
       && !session.view.submitting && !session.submissionUncertain,
-    () => session.control.observationFresh ? session.control.snapshot.observation : undefined);
+    () => session.control.observationFresh ? session.control.snapshot.observation : undefined, initialMode);
     this.selections.set(id, selections);
     session.hubSelections = selections;
+    if (initialMode) this.navigation.setRequestedMode(id, session.control.work, initialMode);
     if (!saved && selections.initialized) this.saveSelections(id, selections.defaults);
   }
   readonly getSnapshot = () => this.snapshot;
@@ -735,19 +737,19 @@ export class RunnerSessions {
       if (session.tab.launchOnOpen) void session.open(session.tab.installationRoot);
     }
   }
-  create(location: string, token?: symbol) {
+  create(location: string, token?: symbol, initialMode?: RunMode) {
     if (this.disposed) throw new HubError(msg('spare.closed'));
     this.restore();
     const order = ++this.order;
     const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot: location, launchOnOpen: true }, this.changed);
     this.sessions.set(session.view.id, session);
-    this.bindSelections(session);
+    this.bindSelections(session, undefined, initialMode);
     if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
     this.changed();
     return { session, launched: session.open(location) };
   }
-  allocate(location: string, token?: symbol) {
+  allocate(location: string, token?: symbol, initialMode?: RunMode) {
     if (this.disposed) throw new HubError(msg('spare.closed'));
     for (const [id, item] of this.retired) {
       if (item.state !== 'idle' || item.root !== location || !item.session.reusableIdle) continue;
@@ -761,17 +763,17 @@ export class RunnerSessions {
       session.promote({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
         installationRoot: location, launchOnOpen: true }, this.changed);
       this.sessions.set(session.view.id, session);
-      this.bindSelections(session);
+      this.bindSelections(session, undefined, initialMode);
       this.changed();
       return { session, launched: Promise.resolve() };
     }
     if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location) {
-      const session = this.promoteSpare(token);
+      const session = this.promoteSpare(token, initialMode);
       return { session, launched: Promise.resolve(), promoted: true };
     }
-    return this.create(location, token);
+    return this.create(location, token, initialMode);
   }
-  promoteSpare(token?: symbol) {
+  promoteSpare(token?: symbol, initialMode?: RunMode) {
     if (this.disposed) throw new HubError(msg('spare.closed'));
     const installationRoot = this.spare.snapshot.installation?.root;
     if (!installationRoot) throw new HubError(msg('spare.verify'));
@@ -782,7 +784,7 @@ export class RunnerSessions {
       installationRoot, launchOnOpen: true };
     session.promote(tab, this.changed);
     this.sessions.set(tab.id, session);
-    this.bindSelections(session);
+    this.bindSelections(session, undefined, initialMode);
     this.lifecycle({ operation: 'spare-promoted', runner: tab.name });
     this.changed();
     this.spare.replenish();

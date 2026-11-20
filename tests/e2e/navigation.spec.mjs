@@ -9,14 +9,15 @@ test('navigation projects restored context and provisional tabs without inventin
     const work = new RunnerWork({ identity: () => undefined, available: () => false,
       submit: async () => ({ state: 'not-sent', detail: '' }) }, () => {});
     const tabs = ['restored', 'unknown', 'added'].map((id, createdOrder) => ({ id, createdOrder }));
+    nav.restore({ executedModes: ['pure-direct-run'], order: [], affinities: { unknown: 'future-mode' } });
     const empty = nav.project([], 'run-mode');
-    nav.observe('restored', work, 'direct-run'); nav.intent('added', 'issue-run');
+    nav.observe('restored', work, 'direct-run'); nav.setRequestedMode('added', work, 'issue-run');
     const initial = nav.project(tabs, 'run-mode');
     const saved = nav.snapshot; const restored = new RunnerNavigation(() => {}); restored.restore(saved);
     work.close(); return { empty, initial, saved, reloaded: restored.project(tabs, 'run-mode'),
       unified: restored.project(tabs, 'unified') };
   });
-  expect(result.empty).toEqual([]); expect(result.saved.executedModes).toEqual([]);
+  expect(result.empty).toEqual([]); expect(result.saved.executedModes).toEqual(['pure-direct-run']);
   expect(result.initial.map(d => [d.id, d.runners.map(r => r.id)])).toEqual([
     ['direct-run', ['restored']], ['task-run', ['unknown']], ['issue-run', ['added']]]);
   expect(result.reloaded).toEqual(result.initial);
@@ -40,7 +41,7 @@ test('navigation work presentation excludes settings, rejection and delayed prio
     fixture.changed(); await work.refreshInventory(); nav.observe('old', work); const rejected = nav.snapshot;
     fixture.observations.set('terminal:2', terminalWork(2, 2, { run_mode: 'task-run', terminal: true, state: 'unknown', outcome: 'unknown' }));
     await work.refreshInventory(); nav.observe('old', work); work.beginPresentation();
-    nav.intent('new', 'direct-run'); nav.observe('new', work);
+    nav.setRequestedMode('new', work, 'direct-run'); nav.observe('new', work);
     fixture.observations.set('terminal:2', terminalWork(2, 3, { run_mode: 'task-run', started_event_id: 2,
       terminal: true, state: 'unknown', outcome: 'unknown', owner_revision: 1 }));
     await work.refreshInventory(); nav.observe('new', work); const reused = nav.snapshot;
@@ -175,7 +176,10 @@ test('navigation stale drag snapshot rejects removal, membership change and canc
     const tabs = ['a', 'b', 'c'].map((id, i) => ({ id, createdOrder: i + 1, name: id, status: 'idle' }));
     nav.reorder(tabs, 'run-mode', 'issue-run', 'a', 'c', ['c']);
     nav.reorder(tabs.slice(1), 'run-mode', 'task-run', 'a', null, ['a', 'b']);
-    nav.intent('b', 'issue-run'); const afterIntent = writes;
+    const { RunnerWork } = await import('/src/hub/runnerWork.ts');
+    const work = new RunnerWork({ identity: () => undefined, available: () => false,
+      submit: async () => ({ state: 'not-sent', detail: '' }) }, () => {});
+    nav.setRequestedMode('b', work, 'issue-run'); work.close(); const afterIntent = writes;
     nav.reorder(tabs, 'run-mode', 'task-run', 'a', null, ['a', 'b']);
     return { order: nav.snapshot.order, writes, afterIntent };
   });

@@ -92,8 +92,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     launchPending.current = true;
     setLaunching(true); setLaunchError('');
     try {
-      const { session, launched } = sessions.allocate(installation.root);
-      sessions.navigation.intent(session.view.id, mode);
+      const { session, launched } = sessions.allocate(installation.root, undefined, mode);
       setSelectedId(session.view.id);
       await launched;
     } catch (reason) { setLaunchError(errorText(reason)); }

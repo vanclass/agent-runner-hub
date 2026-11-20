@@ -6,6 +6,7 @@ import { copy, same, type ConfigCatalog } from './runnerConfigContract';
 import { configToEntryDefaults } from './runnerConfigDefaults';
 import type { RunnerObservation } from './runnerControl';
 import { runModes } from './runnerWork';
+import type { RunMode } from './RunnerNavigation';
 
 /** Saved requests win; only new selections adopt verified current Runner defaults. */
 export class HubSelections {
@@ -18,15 +19,19 @@ export class HubSelections {
   private inspectionEdits?: Set<keyof EntryDefaults>;
   constructor(private readonly source: () => RunnerConfigService | undefined,
     private readonly changed: () => void, defaults: EntryDefaults = {},
-    private readonly save: (value: EntryDefaults) => void = () => {},
+    private readonly save: (value: EntryDefaults, changedMode?: RunMode) => void = () => {},
     private readonly canEdit: () => boolean = () => true,
-    private readonly observation: (service: RunnerConfigService) => RunnerObservation | undefined = () => undefined) {
+    private readonly observation: (service: RunnerConfigService) => RunnerObservation | undefined = () => undefined,
+    private readonly initialMode?: RunMode) {
     this.defaults = projectEntryDefaults(defaults) ?? {};
-    this.restoredDefaults = Object.keys(this.defaults).some(key => key !== 'allocationPolicy');
+    this.restoredDefaults = Object.keys(this.defaults).some(key => key !== 'allocationPolicy'
+      && (initialMode === undefined || key !== 'root'));
+    if (initialMode !== undefined) this.defaults.runMode = initialMode;
   }
   get editable() { return this.canEdit(); }
   get initialized() {
-    return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key));
+    return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key)
+      && (this.initialMode === undefined || key !== 'runMode'));
   }
   initialize() {
     // Inspection itself temporarily hides a busy spare from the source supplier.
@@ -57,12 +62,15 @@ export class HubSelections {
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
     if (!this.editable) return;
+    if (key === 'runMode' && (this.loadingOptions || value === undefined || !this.source())) return;
     const projected = projectEntryDefaults({ ...this.defaults, [key]: value,
       ...(!['allocationPolicy', 'root'].includes(key) ? { initialized: true } : {}) });
     if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
     this.inspectionEdits?.add(key);
+    const changedMode = key === 'runMode' && projected.runMode !== this.defaults.runMode
+      ? projected.runMode as RunMode : undefined;
     this.defaults = projected;
-    this.save(copy(projected));
+    this.save(copy(projected), changedMode);
     this.changed();
     if (key === 'accountIdentity') void this.inspectOptions();
   }
@@ -116,6 +124,7 @@ export class HubSelections {
           || !['target', 'account', 'run_mode', 'model', 'service_tier'].every(key => available[key] === true))
           throw new HubError(msg('config.incomplete'));
         const initial: EntryDefaults = { ...current, initialized: true, runMode: 'task-run' };
+        if (this.initialMode !== undefined) delete initial.root;
         // Account edits invalidate dependent model defaults, including explicit account clears.
         for (const key of edits) delete initial[key];
         if (edits.has('accountIdentity')) delete initial.model;
