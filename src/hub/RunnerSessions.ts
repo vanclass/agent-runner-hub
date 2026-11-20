@@ -534,14 +534,14 @@ export class RunnerSessions {
     const defaults = retained ?? saved ?? this.entry.defaults;
     const selections = new HubSelections(() => session.control.snapshot.state === 'ready'
       && !session.control.assignmentLocked && !session.control.recovery.busy ? session.control.config : undefined,
-    this.changed, defaults, (value, changedMode) => {
+    this.changed, defaults, value => {
       if (this.sessions.get(id) !== session) return;
-      if (changedMode) this.navigation.setRequestedMode(id, session.control.work, changedMode);
       session.control.config.setDraft({});
       this.saveSelections(id, value);
     }, () => this.sessions.get(id) === session && session.view.status === 'running' && !session.control.assignmentLocked && !session.view.closing
       && !session.view.submitting && !session.submissionUncertain,
-    () => session.control.observationFresh ? session.control.snapshot.observation : undefined, initialMode);
+    () => session.control.observationFresh ? session.control.snapshot.observation : undefined, initialMode,
+    mode => this.navigation.setRequestedMode(id, session.control.work, mode));
     this.selections.set(id, selections);
     session.hubSelections = selections;
     if (initialMode) this.navigation.setRequestedMode(id, session.control.work, initialMode);

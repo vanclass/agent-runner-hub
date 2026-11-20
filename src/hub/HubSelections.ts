@@ -19,10 +19,11 @@ export class HubSelections {
   private inspectionEdits?: Set<keyof EntryDefaults>;
   constructor(private readonly source: () => RunnerConfigService | undefined,
     private readonly changed: () => void, defaults: EntryDefaults = {},
-    private readonly save: (value: EntryDefaults, changedMode?: RunMode) => void = () => {},
+    private readonly save: (value: EntryDefaults) => void = () => {},
     private readonly canEdit: () => boolean = () => true,
     private readonly observation: (service: RunnerConfigService) => RunnerObservation | undefined = () => undefined,
-    private readonly initialMode?: RunMode) {
+    private readonly initialMode?: RunMode,
+    private readonly commitTabMode?: (mode: RunMode) => void) {
     this.defaults = projectEntryDefaults(defaults) ?? {};
     this.restoredDefaults = Object.keys(this.defaults).some(key => key !== 'allocationPolicy'
       && (initialMode === undefined || key !== 'root'));
@@ -62,7 +63,8 @@ export class HubSelections {
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
     if (!this.editable) return;
-    if (key === 'runMode' && (this.loadingOptions || value === undefined || !this.source())) return;
+    if (key === 'runMode' && this.commitTabMode
+      && (this.loadingOptions || value === undefined || !this.source())) return;
     const projected = projectEntryDefaults({ ...this.defaults, [key]: value,
       ...(!['allocationPolicy', 'root'].includes(key) ? { initialized: true } : {}) });
     if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
@@ -70,7 +72,8 @@ export class HubSelections {
     const changedMode = key === 'runMode' && projected.runMode !== this.defaults.runMode
       ? projected.runMode as RunMode : undefined;
     this.defaults = projected;
-    this.save(copy(projected), changedMode);
+    if (changedMode) this.commitTabMode?.(changedMode);
+    this.save(copy(projected));
     this.changed();
     if (key === 'accountIdentity') void this.inspectOptions();
   }

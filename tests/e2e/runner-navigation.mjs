@@ -87,11 +87,36 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(text).toHaveValue('move this existing Runner');
     await info.attach('immediate-tab-mode-move', { body: await page.screenshot(), contentType: 'image/png' });
   });
-  test('navigation Pure Direct plus initializes the selected tab from an Issue Run baseline', async ({ page }) => {
+  async function checkPureDirectPlus(page, expectedRoot) {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
     const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
+    const root = page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true });
+    const target = page.getByRole('combobox', { name: 'Requested Project / Target', exact: true });
+    if (expectedRoot) {
+      await mode.selectOption(JSON.stringify('direct-run'));
+      await root.fill(expectedRoot);
+    }
     await mode.selectOption(JSON.stringify('issue-run'));
-    await create(page);
+    await page.evaluate(() => {
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      const spareStartup = new Promise(resolve => { window.__releaseNavigationSpare = resolve; });
+      native.invoke = async (command, args) => {
+        // Park the replenished spare so this click exercises the new session's first inspection.
+        if (command === 'pty_open') {
+          const id = await invoke(command, args);
+          if (id === 'pty-2') await spareStartup;
+          return id;
+        }
+        if (command === 'runner_feature' && args.id === 'pty-3'
+          && args.request.request.operation === 'session_config.inspect') {
+          const config = window.__nativeFixture.sessions.get(args.id).feature.config;
+          if (!config.requests.length) config.holdOperation = 'session_config.inspect';
+        }
+        return invoke(command, args);
+      };
+    });
+    await page.getByRole('button', { name: 'New Runner', exact: true }).click();
+    await expect(page.locator('.runner-row.active')).toBeVisible();
     await expect(mode).toHaveValue(JSON.stringify('issue-run'));
     await publish(page, 'pty-1', 'pure-direct-run');
     await display(page, 'run-mode');
@@ -100,18 +125,43 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await pure.locator('.add-runner').click();
     const selected = pure.locator('.runner-row.active');
     await expect(selected).toBeVisible();
-    expect(await selected.getAttribute('data-runner-id')).not.toBe(previous);
-    const root = page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true });
-    await expect(mode).toHaveValue(JSON.stringify('pure-direct-run'));
-    await expect(root).toHaveValue('');
-    await expect(page.getByRole('combobox', { name: 'Requested Project / Target', exact: true })).toHaveCount(0);
-    await expect(mode.locator('option:enabled').filter({ hasText: /^Pure Direct Run$/ })).toHaveCount(1);
-    await expect(mode).toBeEnabled();
-    await expect(mode).toHaveValue(JSON.stringify('pure-direct-run'));
+    const id = await selected.getAttribute('data-runner-id');
+    expect(id).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+    expect(id).not.toBe(previous);
+    const checkRequestedSettings = async () => {
+      await expect(selected).toHaveAttribute('data-runner-id', id);
+      await expect(page.locator(`[data-runner-id="${id}"]`)).toHaveCount(1);
+      await expect(mode).toHaveValue(JSON.stringify('pure-direct-run'));
+      await expect(root).toBeVisible();
+      await expect(root).toHaveValue(expectedRoot);
+      await expect(target).toHaveCount(0);
+    };
+    await test.step('Verify the new UUID and requested settings while inspection is pending', async () => {
+      await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-3')?.feature.config
+        .features.results.find(result => result.operation === 'session_config.inspect')?.phase)).toBe('queued');
+      await expect(mode).toBeDisabled();
+      await checkRequestedSettings();
+    });
+    await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-3').feature.config;
+      config.holdOperation = '';
+      config.complete();
+    });
+    await test.step('Verify the same UUID and requested settings after options settle', async () => {
+      await expect(mode).toBeEnabled();
+      await expect(mode.locator('option:enabled').filter({ hasText: /^Pure Direct Run$/ })).toHaveCount(1);
+      await checkRequestedSettings();
+    });
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
       s.feature.config.requests.every(r => r.operation === 'session_config.inspect')
       && s.feature.requests.every(r => r.operation === 'work.list')))).toBe(true);
-  });
+    await page.evaluate(() => window.__releaseNavigationSpare());
+  }
+  for (const [rootCase, expectedRoot] of [['unset root', ''], ['explicit root', 'C:/explicit-root']]) {
+    test(`navigation Pure Direct plus initializes the selected tab from an Issue Run baseline: ${rootCase}`, async ({ page }) => {
+      await checkPureDirectPlus(page, expectedRoot);
+    });
+  }
   for (const source of ['fresh', 'retired', 'spare']) {
     test(`navigation domain allocation keeps requested mode through options: ${source}`, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true }); await page.goto('/');

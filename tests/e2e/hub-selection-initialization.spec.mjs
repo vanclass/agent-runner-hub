@@ -136,6 +136,28 @@ for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
   });
 }
 
+test('Single Entry accepts a catalog-backed Run Mode edit during an options source gap', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { SingleEntry } = await import('/src/hub/singleEntry.ts');
+    const { HubPreferences } = await import('/src/hub/preferences.ts');
+    const { service, fixture } = createConfigHarness();
+    const preferences = new HubPreferences();
+    let source = { control: { config: service } };
+    const entry = new SingleEntry(() => [], () => { throw new Error('Unexpected Runner allocation'); },
+      () => {}, { runMode: 'task-run' }, value => preferences.update({ singleEntry: value }), () => source);
+    await entry.selections.inspectOptions();
+    source = undefined;
+    entry.setDefault('runMode', 'issue-run');
+    return { catalogModes: entry.catalog?.options.run_modes, mode: entry.defaults.runMode,
+      savedMode: new HubPreferences().value.singleEntry.runMode,
+      inspectionsOnly: fixture.requests.every(request => request.operation === 'session_config.inspect') };
+  });
+  expect(result.catalogModes).toContain('issue-run');
+  expect(result).toMatchObject({ mode: 'issue-run', savedMode: 'issue-run', inspectionsOnly: true });
+});
+
 test('allocation-only preferences survive stale completion and automatically inspect the replacement', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
