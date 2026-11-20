@@ -9,7 +9,7 @@ import type { RunnerView } from './model';
 import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
 import { submitConfiguredWork } from './runnerSubmission';
 import { RunnerWorkspace, type RunnerTabRecord } from './RunnerWorkspace';
-import { RunnerNavigation, type RunMode } from './RunnerNavigation';
+import { RunnerNavigation, type DomainDisplay, type RunnerDrop, type RunMode } from './RunnerNavigation';
 import { RunnerSpare, type SpareEvent } from './RunnerSpare';
 import { RunnerRestarts, type RestartTarget, type RestartOutcome } from './RunnerRestarts';
 import type { RunnerInstallation } from './runnerInstallation';
@@ -581,6 +581,20 @@ export class RunnerSessions {
     return saved;
   };
   get(id?: string) { return id ? this.sessions.get(id) : undefined; }
+  canDropRunner(id: string, source: RunnerDrop['source']['domain'], destination: RunnerDrop['destination']['domain']) {
+    return source === destination || (destination !== 'runner' && this.getSelections(id)?.canSetTabMode(destination) === true);
+  }
+  dropRunner(fixtures: readonly RunnerView[], display: DomainDisplay, drop: RunnerDrop) {
+    const runners = [...fixtures, ...this.snapshot];
+    const { id, source, destination } = drop;
+    if (source.domain === destination.domain) {
+      this.navigation.reorder(runners, display, drop);
+      return;
+    }
+    if (display !== 'run-mode' || destination.domain === 'runner') return;
+    const commitOrder = this.navigation.prepareDropOrder(runners, display, drop);
+    if (commitOrder) this.getSelections(id)?.setTabMode(destination.domain, commitOrder);
+  }
   restartAll() {
     if (this.disposed || this.restarts.pending) return false;
     const targets = [...this.sessions].map(([id, session]) => this.restartTarget(id, session));

@@ -1,7 +1,7 @@
 import { useHubTranslation, t, tr } from './i18n';
 import type { RunnerRestarts } from './RunnerRestarts';
 import { useEffect, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
-import type { DomainDisplay, RunMode, RunnerDomain } from './RunnerNavigation';
+import type { DomainCapture, DomainDisplay, RunMode, RunnerDomain, RunnerDrop } from './RunnerNavigation';
 import { runModeLabel } from './runModeLabel';
 import type { RunnerView } from './model';
 import { RunnerTabRemoval } from './RunnerTabRemoval';
@@ -30,7 +30,8 @@ type SidebarProps = {
   domains: readonly RunnerDomain[];
   runners: readonly RunnerView[];
   domainDisplay: DomainDisplay;
-  onReorder: (domain: RunnerDomain['id'], id: string, before: string | null, expected: readonly string[]) => void;
+  canDropRunner: (id: string, source: RunnerDomain['id'], destination: RunnerDomain['id']) => boolean;
+  onDropRunner: (drop: RunnerDrop) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
@@ -100,36 +101,48 @@ function RunnerRow({ runner, active, onSelect, onRename, onRemove, drag, dropBef
   </li>;
 }
 
-export function Sidebar({ domains, runners, domainDisplay, onReorder, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
+export function Sidebar({ domains, runners, domainDisplay, canDropRunner, onDropRunner, selectedId, onSelect, onRename, onRemove, confirmRemoval, failures, onAdd, addDisabled, adding, restarts, onRestart }: SidebarProps) {
   useHubTranslation();
-  type Drag = { domain: RunnerDomain['id']; id: string; ids: string[]; before: string | null };
-  const [drag, setDrag] = useState<Drag>();
-  const dragging = useRef<Drag>();
-  const clearDrag = () => { dragging.current = undefined; setDrag(undefined); };
-  const signature = JSON.stringify(domains.map(d => [d.id, d.runners.map(r => r.id)]));
+  const dragging = useRef<{ id: string; source: DomainCapture; domains: DomainCapture[]; signature: string }>();
+  const target = useRef<RunnerDrop>();
+  const [marker, setMarker] = useState<RunnerDrop>();
+  const clearTarget = () => { target.current = undefined; setMarker(undefined); };
+  const clearDrag = () => { dragging.current = undefined; clearTarget(); };
+  const captures = domains.map(d => ({ domain: d.id, ids: d.runners.map(r => r.id) }));
+  const signature = JSON.stringify(captures);
   useEffect(() => { clearDrag(); }, [signature]);
   const [removing, setRemoving] = useState<RunnerView>();
   const restart = restarts.snapshot;
   function startDrag(event: DragEvent, domain: RunnerDomain, id: string) {
     if ((event.target as HTMLElement).closest('input, .rename-action, .remove-action')) { event.preventDefault(); return; }
-    dragging.current = { domain: domain.id, id, ids: domain.runners.map(r => r.id), before: id };
+    const source = captures.find(capture => capture.domain === domain.id);
+    if (!source) return;
+    clearTarget();
+    dragging.current = { id, source, domains: captures, signature };
     event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', id);
+    event.dataTransfer.setData('application/x-agent-runner-hub-tab', id);
   }
   function hover(event: DragEvent<HTMLUListElement>, domain: RunnerDomain) {
     const current = dragging.current;
-    if (!current || current.domain !== domain.id) { setDrag(undefined); return; }
+    const destination = current?.domains.find(capture => capture.domain === domain.id);
+    if (!current || current.signature !== signature || !destination
+      || !canDropRunner(current.id, current.source.domain, domain.id)) { clearTarget(); return; }
     event.preventDefault(); event.dataTransfer.dropEffect = 'move';
     const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('.runner-row')];
-    const target = rows.find(row => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
-    const next = { ...current, before: target?.dataset.runnerId ?? null };
-    dragging.current = next; setDrag(next);
+    const anchor = rows.find(row => event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
+    const before = anchor?.dataset.runnerId ?? null;
+    if (target.current?.destination.domain === domain.id && target.current.before === before) return;
+    const next = { id: current.id, source: current.source, destination, before };
+    target.current = next;
+    setMarker(next);
   }
   function drop(event: DragEvent, domain: RunnerDomain) {
-    event.preventDefault();
+    const intent = target.current;
     const current = dragging.current;
-    if (current?.domain === domain.id) onReorder(domain.id, current.id, current.before, current.ids);
     clearDrag();
+    if (!intent || current?.signature !== signature || intent.destination.domain !== domain.id) return;
+    event.preventDefault();
+    onDropRunner(intent);
   }
   function remove(runner: RunnerView) {
     if (confirmRemoval) setRemoving(runner);
@@ -163,11 +176,15 @@ export function Sidebar({ domains, runners, domainDisplay, onReorder, selectedId
       <div className="runner-domains" onDragEnd={clearDrag} onKeyDown={event => { if (event.key === 'Escape') clearDrag(); }}>
         {domains.map(domain => <section className="runner-domain" key={domain.id} data-domain={domain.id}>
           {domain.id !== 'runner' && <p className="sidebar-label">{runModeLabel(domain.id)}</p>}
-          <ul className={`runner-list ${drag?.domain === domain.id && drag.before === null ? 'drop-end' : ''}`}
-            onDragOver={event => hover(event, domain)} onDrop={event => drop(event, domain)}>
+          <ul className={`runner-list ${marker?.destination.domain === domain.id && marker.before === null ? 'drop-end' : ''}`}
+            onDragOver={event => hover(event, domain)} onDrop={event => drop(event, domain)}
+            onDragLeave={event => {
+              if (target.current?.destination.domain === domain.id
+                && !(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) clearTarget();
+            }}>
             {domain.runners.map(runner => <RunnerRow key={runner.id} runner={runner}
               drag={{ onDragStart: event => startDrag(event, domain, runner.id), onDragEnd: clearDrag }}
-              dropBefore={drag?.domain === domain.id && drag.before === runner.id}
+              dropBefore={marker?.destination.domain === domain.id && marker.before === runner.id}
               active={selectedId === runner.id} onSelect={() => onSelect(runner.id)} onRename={name => onRename(runner.id, name)}
               onRemove={() => remove(runner)} />)}
           </ul>

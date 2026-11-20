@@ -61,7 +61,17 @@ export class HubSelections {
     if (this.attempted === service && !recovered) return;
     void this.loadOptions(!!recovered);
   }
+  canSetTabMode(mode: RunMode) {
+    return !!(this.commitTabMode && this.editable && !this.loadingOptions && this.source()
+      && this.choiceAllowed('runMode', mode));
+  }
+  setTabMode(mode: RunMode, commitOrder: () => void) {
+    if (this.canSetTabMode(mode)) this.updateDefault('runMode', mode, commitOrder);
+  }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
+    this.updateDefault(key, value);
+  }
+  private updateDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K], commitOrder?: () => void) {
     if (!this.editable) return;
     if (key === 'runMode' && this.commitTabMode
       && (this.loadingOptions || value === undefined || !this.source())) return;
@@ -69,10 +79,11 @@ export class HubSelections {
       ...(!['allocationPolicy', 'root'].includes(key) ? { initialized: true } : {}) });
     if (!projected || value !== undefined && !this.choiceAllowed(key, value)) return;
     this.inspectionEdits?.add(key);
-    const changedMode = key === 'runMode' && projected.runMode !== this.defaults.runMode
+    const committedMode = key === 'runMode' && (commitOrder || projected.runMode !== this.defaults.runMode)
       ? projected.runMode as RunMode : undefined;
     this.defaults = projected;
-    if (changedMode) this.commitTabMode?.(changedMode);
+    if (committedMode) this.commitTabMode?.(committedMode);
+    commitOrder?.();
     this.save(copy(projected));
     this.changed();
     if (key === 'accountIdentity') void this.inspectOptions();

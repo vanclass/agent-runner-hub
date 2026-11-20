@@ -260,11 +260,16 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.executedModes)).toEqual([]);
   });
-  async function mouseMove(page, from, to, after, info) {
+  async function hoverDrop(page, from, to, after) {
     const a = await from.boundingBox(), b = await to.boundingBox();
     await page.mouse.move(a.x + 45, a.y + a.height / 2); await page.mouse.down();
     await page.mouse.move(a.x + 50, a.y + a.height / 2 + 8, { steps: 5 });
-    await page.mouse.move(b.x + 50, after ? b.y + b.height - 2 : b.y + 2, { steps: 12 });
+    const y = after ? b.y + b.height - 2 : b.y + 2;
+    await page.mouse.move(b.x + 50, y, { steps: 12 });
+    await page.mouse.move(b.x + 51, y);
+  }
+  async function mouseMove(page, from, to, after, info) {
+    await hoverDrop(page, from, to, after);
     await expect(page.locator('.drop-before, .drop-end')).toHaveCount(1);
     const marker = page.locator('.drop-before, .drop-end');
     expect(await marker.evaluate(node => {
@@ -273,6 +278,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     })).toEqual({ display: 'block', height: '3px', color: 'rgb(40, 95, 165)' });
     await info.attach('navigation-insertion', { body: await page.screenshot(), contentType: 'image/png' });
     await page.mouse.up();
+    await expect(marker).toHaveCount(0);
   }
   test('navigation production domains observe starts, persist, add and reorder without changing ownership', async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
@@ -306,15 +312,16 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await page.locator('.composer textarea').fill('navigation draft');
     const ownership = await page.evaluate(() => ({ tabs: JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs,
       native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed }));
+    const preferences = () => page.evaluate(() => localStorage.getItem('agent-runner-hub.preferences.v1'));
+    await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled();
+    const requestedBefore = await preferences();
     await mouseMove(page, rows.nth(2), rows.nth(0), false, info);
     await expect.poll(() => ids(task)).toEqual([original[2], original[0], original[1]]);
     await mouseMove(page, rows.nth(0), rows.nth(2), true, info);
     await expect.poll(() => ids(task)).toEqual(original);
     await mouseMove(page, rows.nth(0), rows.nth(1), true, info);
     await expect.poll(() => ids(task)).toEqual([original[1], original[0], original[2]]);
-    await rows.first().dragTo(domain(page, 'issue-run').locator('.runner-row'));
-    expect(await ids(task)).toEqual([original[1], original[0], original[2]]);
-    await expect(page.locator('.drop-before, .drop-end')).toHaveCount(0);
+    expect(await preferences()).toBe(requestedBefore);
     await expect(page.locator('.runner-row.active')).toHaveAttribute('data-runner-id', selected);
     await expect(page.locator('.composer textarea')).toHaveValue('navigation draft');
     const after = await page.evaluate(() => ({ tabs: JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs,
@@ -369,5 +376,178 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(domain(page, 'issue-run').locator('.runner-row')).toHaveCount(2);
     await expect(page.locator('.drop-before, .drop-end')).toHaveCount(0); await page.mouse.up();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.order)).toEqual(savedOrder);
+  });
+
+  test('navigation cross-domain pointer drops update only the dragged UUID and restore placement', async ({ page }, info) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page);
+    const mode = page.getByRole('combobox', { name: 'Requested Run Mode', exact: true });
+    const root = page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true });
+    const target = page.getByRole('combobox', { name: 'Requested Project / Target', exact: true });
+    const activeId = () => page.locator('.runner-row.active').getAttribute('data-runner-id');
+    const row = id => page.locator(`[data-runner-id="${id}"]`);
+    const select = id => row(id).locator('.nav-row').click();
+    const settings = () => page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).runnerSelections);
+    const presentation = () => page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation);
+    const ownership = () => page.evaluate(() => ({
+      tabs: JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs,
+      native: [...window.__nativeFixture.sessions.keys()], closed: window.__nativeFixture.closed,
+      work: [...window.__nativeFixture.sessions.get('pty-1').feature.observations],
+      effects: [...window.__nativeFixture.sessions.values()].flatMap(session => [
+        ...session.feature.requests.filter(r => r.operation === 'work.submit'),
+        ...session.feature.config.requests.filter(r => r.operation !== 'session_config.inspect')
+      ]),
+    }));
+    const marker = page.locator('.drop-before, .drop-end');
+
+    await create(page);
+    const moved = await activeId();
+    await mode.selectOption(JSON.stringify('direct-run'));
+    await root.fill('C:/drag-root');
+    await publish(page, 'pty-1', 'direct-run');
+    await expect.poll(async () => (await presentation()).executedModes).toContain('direct-run');
+    await page.locator('.composer textarea').fill('cross-domain draft');
+    await create(page);
+    const taskPeer = await activeId();
+    await expect(mode).toBeEnabled();
+    await create(page);
+    const purePeer = await activeId();
+    await mode.selectOption(JSON.stringify('pure-direct-run'));
+    await display(page, 'run-mode');
+    await select(moved);
+    await expect(mode).toBeEnabled();
+    const previous = await settings(), owners = await ownership();
+
+    await hoverDrop(page, row(moved), row(taskPeer), false);
+    await expect(row(taskPeer)).toHaveClass(/drop-before/);
+    const beforeCancel = await presentation();
+    await page.keyboard.press('Escape'); await page.mouse.up();
+    await expect(marker).toHaveCount(0);
+    expect(await presentation()).toEqual(beforeCancel);
+    expect(await settings()).toEqual(previous);
+
+    await mouseMove(page, row(moved), row(taskPeer), false, info);
+    await expect.poll(() => ids(domain(page, 'task-run'))).toEqual([moved, taskPeer]);
+    await expect(domain(page, 'direct-run')).toHaveCount(0);
+    await expect(row(moved)).toHaveCount(1);
+    expect(await activeId()).toBe(moved);
+    await expect(mode).toHaveValue(JSON.stringify('task-run'));
+    await expect(target).toBeVisible();
+    await expect(root).toHaveCount(0);
+    expect((await settings())[moved]).toEqual({ ...previous[moved], runMode: 'task-run' });
+
+    await select(taskPeer);
+    await hoverDrop(page, row(moved), row(purePeer), true);
+    await expect(domain(page, 'pure-direct-run').locator('.drop-end')).toBeVisible();
+    await page.mouse.up();
+    await expect(marker).toHaveCount(0);
+    await expect.poll(() => ids(domain(page, 'pure-direct-run'))).toEqual([purePeer, moved]);
+    expect(await ids(domain(page, 'task-run'))).toEqual([taskPeer]);
+    expect(await activeId()).toBe(taskPeer);
+    await expect(mode).toHaveValue(JSON.stringify('task-run'));
+    expect(await settings()).toEqual({ ...previous, [moved]: { ...previous[moved], runMode: 'pure-direct-run' } });
+    await select(moved);
+    await expect(mode).toHaveValue(JSON.stringify('pure-direct-run'));
+    await expect(root).toHaveValue('C:/drag-root');
+    await expect(target).toHaveCount(0);
+    await expect(page.locator('.composer textarea')).toHaveValue('cross-domain draft');
+    await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
+    expect(await ownership()).toEqual(owners);
+
+    await hoverDrop(page, row(moved), row(taskPeer), false);
+    await expect(row(taskPeer)).toHaveClass(/drop-before/);
+    const beforeStale = await presentation();
+    await publish(page, 'pty-3', 'task-run');
+    await expect.poll(() => ids(domain(page, 'task-run'))).toEqual([purePeer, taskPeer]);
+    await expect(marker).toHaveCount(0);
+    const changedMembership = await presentation();
+    await page.mouse.up();
+    expect(changedMembership.order).toEqual(beforeStale.order);
+    expect(await presentation()).toEqual(changedMembership);
+    expect((await settings())[moved]).toEqual({ ...previous[moved], runMode: 'pure-direct-run' });
+
+    await page.reload();
+    await expect.poll(() => ids(domain(page, 'pure-direct-run'))).toEqual([moved]);
+    await expect.poll(() => ids(domain(page, 'task-run'))).toEqual([purePeer, taskPeer]);
+    await expect(domain(page, 'direct-run')).toHaveCount(0);
+    await select(moved);
+    await expect(mode).toHaveValue(JSON.stringify('pure-direct-run'));
+    await expect(root).toHaveValue('C:/drag-root');
+    expect(await presentation()).toEqual(changedMembership);
+  });
+
+  test('navigation drop rejects locked and unsupported sessions before committing either owner', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await page.goto('/');
+    await page.evaluate(async () => {
+      const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
+      const { resolveRunnerInstallation } = await import('/src/hub/runnerInstallation.ts');
+      const location = '/fixture/install';
+      const installation = await resolveRunnerInstallation(location);
+      window.__dropSaves = [];
+      const owner = window.__dropOwner = new RunnerSessions({}, undefined, {},
+        (id, value) => window.__dropSaves.push({ id, value }));
+      owner.setInstallation(installation);
+      const source = owner.create(location, undefined, 'task-run');
+      const destination = owner.create(location, undefined, 'issue-run');
+      window.__dropSessions = [source.session, destination.session];
+      await Promise.all([source.launched, destination.launched]);
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const [session] = window.__dropSessions;
+      return window.__dropOwner.getSelections(session.view.id).canSetTabMode('issue-run');
+    })).toBe(true);
+    const rejected = await page.evaluate(() => {
+      const owner = window.__dropOwner;
+      const [session, peer] = window.__dropSessions;
+      const id = session.view.id, peerId = peer.view.id;
+      const choices = owner.getSelections(id), token = Symbol();
+      const drop = { id, source: { domain: 'task-run', ids: [id] },
+        destination: { domain: 'issue-run', ids: [peerId] }, before: peerId };
+      const read = () => ({ navigation: owner.navigation.snapshot, settings: structuredClone(choices.defaults),
+        stored: localStorage.getItem('agent-runner-hub.workspace.v1'), writes: window.__dropSaves.length });
+      window.__readDrop = read;
+      const attempt = window.__tryDrop = () => owner.dropRunner([], 'run-mode', drop);
+      const initial = read();
+      const supported = choices.catalog.options.run_modes;
+      choices.catalog.options.run_modes = supported.filter(mode => mode !== 'issue-run');
+      const unsupportedEligible = owner.canDropRunner(id, 'task-run', 'issue-run');
+      attempt();
+      const afterUnsupported = read();
+      choices.catalog.options.run_modes = supported;
+      const locked = session.reserve(token);
+      const lockedEligible = owner.canDropRunner(id, 'task-run', 'issue-run');
+      attempt();
+      const afterLock = read();
+      session.release(token);
+      return { id, peerId, locked, lockedEligible, unsupportedEligible, initial, afterLock, afterUnsupported };
+    });
+    expect(rejected.locked).toBe(true);
+    expect(rejected.lockedEligible).toBe(false);
+    expect(rejected.unsupportedEligible).toBe(false);
+    expect(rejected.afterLock).toEqual(rejected.initial);
+    expect(rejected.afterUnsupported).toEqual(rejected.initial);
+    await expect.poll(() => page.evaluate(id => window.__dropOwner.canDropRunner(id, 'task-run', 'issue-run'), rejected.id))
+      .toBe(true);
+    const result = await page.evaluate(() => {
+      const owner = window.__dropOwner;
+      const read = window.__readDrop;
+      const ready = read();
+      const observed = [];
+      const unsubscribe = owner.subscribe(() => observed.push(read()));
+      window.__tryDrop();
+      const accepted = read();
+      unsubscribe();
+      owner.dispose();
+      return { ready, observed, accepted };
+    });
+    expect(result.accepted.settings).toEqual({ ...result.ready.settings, runMode: 'issue-run' });
+    expect(result.accepted.writes).toBe(result.ready.writes + 1);
+    expect(result.accepted.navigation.order).toEqual([rejected.id, rejected.peerId]);
+    expect(result.accepted.navigation.affinities[rejected.id]).toBe('issue-run');
+    expect(result.observed.length).toBeGreaterThan(0);
+    for (const snapshot of result.observed) {
+      expect(snapshot.navigation).toEqual(result.accepted.navigation);
+      expect(snapshot.settings).toEqual(result.accepted.settings);
+    }
   });
 }

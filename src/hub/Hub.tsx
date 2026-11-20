@@ -122,7 +122,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     <div className="shell-body">
       <Sidebar domains={domains} runners={allRunners} domainDisplay={domainDisplay}
         selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
-        onReorder={(domain, id, before, expected) => sessions.navigation.reorder(allRunners, domainDisplay, domain, id, before, expected)}
+        canDropRunner={(id, source, destination) => sessions.canDropRunner(id, source, destination)}
+        onDropRunner={drop => sessions.dropRunner(fixtures, domainDisplay, drop)}
         restarts={sessions.restarts} onRestart={() => { sessions.restartAll(); }}
         onAdd={mode => void createRunner(mode)} addDisabled={!installation || launching} adding={launching}
         onRemove={closeRunner} confirmRemoval={confirmRemoval} failures={sessions.failures} />

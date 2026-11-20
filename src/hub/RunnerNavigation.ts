@@ -9,6 +9,13 @@ export type NavigationPresentation = {
   affinities: Record<string, string>;
 };
 export type RunnerDomain = { id: 'runner' | RunMode; runners: readonly RunnerView[] };
+export type DomainCapture = { domain: RunnerDomain['id']; ids: readonly string[] };
+export type RunnerDrop = {
+  id: string;
+  source: DomainCapture;
+  destination: DomainCapture;
+  before: string | null;
+};
 export const emptyPresentation = (): NavigationPresentation => ({ executedModes: [], order: [], affinities: {} });
 
 /** Presentation only: work/process identities and settings remain with their existing owners. */
@@ -54,17 +61,25 @@ export class RunnerNavigation {
     return runModes.map(mode => ({ id: mode, runners: ordered.filter(runner => placement(runner) === mode) }))
       .filter(domain => domain.runners.length > 0);
   }
-  reorder(runners: readonly RunnerView[], display: DomainDisplay, domainId: RunnerDomain['id'],
-    id: string, before: string | null, expectedIds: readonly string[]) {
-    const domain = this.project(runners, display).find(d => d.id === domainId);
-    const ids = domain?.runners.map(r => r.id);
-    if (!ids || ids.join() !== expectedIds.join() || !ids.includes(id)
-      || before === id || before !== null && !ids.includes(before)) return;
-    const reordered = ids.filter(candidate => candidate !== id);
-    reordered.splice(before === null ? reordered.length : reordered.indexOf(before), 0, id);
-    const all = this.project(runners, display).flatMap(d => d.runners.map(r => r.id));
-    let index = 0;
-    this.value.order = all.map(candidate => ids.includes(candidate) ? reordered[index++] : candidate);
+  reorder(runners: readonly RunnerView[], display: DomainDisplay, drop: RunnerDrop) {
+    if (drop.source.domain !== drop.destination.domain) return;
+    const commit = this.prepareDropOrder(runners, display, drop);
+    if (!commit) return;
+    commit();
     this.changed();
+  }
+  prepareDropOrder(runners: readonly RunnerView[], display: DomainDisplay, { id, source, destination, before }: RunnerDrop) {
+    const domains = this.project(runners, display);
+    const matches = (capture: DomainCapture) => {
+      const rows = domains.find(domain => domain.id === capture.domain)?.runners;
+      return rows?.length === capture.ids.length && rows.every((row, index) => row.id === capture.ids[index]);
+    };
+    if (!matches(source) || !matches(destination) || !source.ids.includes(id)
+      || before === id || (before !== null && !destination.ids.includes(before))) return;
+    const inserted = destination.ids.filter(candidate => candidate !== id);
+    inserted.splice(before === null ? inserted.length : inserted.indexOf(before), 0, id);
+    const order = domains.flatMap(domain => domain.id === destination.domain
+      ? inserted : domain.runners.map(row => row.id).filter(candidate => candidate !== id));
+    return () => { this.value.order = order; };
   }
 }

@@ -174,14 +174,30 @@ test('navigation stale drag snapshot rejects removal, membership change and canc
     let writes = 0; const nav = new RunnerNavigation(() => writes++);
     nav.restore({ executedModes: ['task-run', 'issue-run'], order: [], affinities: { a: 'task-run', b: 'task-run', c: 'issue-run' } });
     const tabs = ['a', 'b', 'c'].map((id, i) => ({ id, createdOrder: i + 1, name: id, status: 'idle' }));
-    nav.reorder(tabs, 'run-mode', 'issue-run', 'a', 'c', ['c']);
-    nav.reorder(tabs.slice(1), 'run-mode', 'task-run', 'a', null, ['a', 'b']);
+    const task = { domain: 'task-run', ids: ['a', 'b'] }, issue = { domain: 'issue-run', ids: ['c'] };
+    const drop = { id: 'a', before: null, source: task, destination: task };
+    nav.reorder(tabs, 'run-mode', { ...drop, source: issue, destination: issue, before: 'c' });
+    nav.reorder(tabs.slice(1), 'run-mode', drop);
+    const move = { ...drop, destination: issue, before: 'c' };
+    const prepare = candidate => nav.prepareDropOrder(tabs, 'run-mode', candidate);
+    const beforeMove = nav.snapshot;
+    const prepared = typeof prepare(move) === 'function';
+    const rejects = [
+      { ...move, source: { ...task, ids: ['b', 'a'] } },
+      { ...move, destination: { ...issue, ids: ['c', 'd'] } },
+      { ...move, destination: { domain: 'direct-run', ids: [] }, before: null },
+      { ...move, before: 'b' },
+    ].map(candidate => !prepare(candidate));
+    const afterPrepare = nav.snapshot;
     const { RunnerWork } = await import('/src/hub/runnerWork.ts');
     const work = new RunnerWork({ identity: () => undefined, available: () => false,
       submit: async () => ({ state: 'not-sent', detail: '' }) }, () => {});
     nav.setRequestedMode('b', work, 'issue-run'); work.close(); const afterIntent = writes;
-    nav.reorder(tabs, 'run-mode', 'task-run', 'a', null, ['a', 'b']);
-    return { order: nav.snapshot.order, writes, afterIntent };
+    nav.reorder(tabs, 'run-mode', drop);
+    const staleCrossDomain = !prepare(move);
+    return { order: nav.snapshot.order, writes, afterIntent, prepared, rejects, beforeMove, afterPrepare, staleCrossDomain };
   });
   expect(result.order).toEqual([]); expect(result.writes).toBe(result.afterIntent);
+  expect(result.prepared).toBe(true); expect(result.rejects).toEqual([true, true, true, true]);
+  expect(result.afterPrepare).toEqual(result.beforeMove); expect(result.staleCrossDomain).toBe(true);
 });
