@@ -65,6 +65,54 @@ fn optional_user_action_preserves_old_observations_and_opaque_fields() {
     assert_eq!(decoded.issue_run_user_action.unwrap().status, "unknown");
 }
 #[test]
+fn issue_observation_carries_live_interpreter_identity_only_from_authenticated_responses() {
+    let mut protocol = ready();
+    assert!(protocol.public_snapshot().observation.unwrap().issue_run_execution.is_none());
+    protocol.request(None, "private").unwrap();
+    let mut live = packet(2, "accepted", "completed");
+    live["observation"] = observation();
+    live["observation"]["run_mode"] = json!("issue-run");
+    live["observation"]["issue_run_execution"] = json!({
+        "schema_version":"issue-run-execution-v1", "status":"running", "issue_run_id":"ir",
+        "state_revision":5, "interpreter":{"invocation_id":"invocation","instance_id":"instance",
+            "launch_generation":2,"thread_id":"thread","turn_id":"turn","private":"not exported"}
+    });
+    let mut crossed = live.clone();
+    crossed["session_id"] = json!("different");
+    assert!(protocol.response(crossed).is_err());
+    assert!(protocol.public_snapshot().observation.unwrap().issue_run_execution.is_none());
+    protocol.response(live.clone()).unwrap();
+    let signal = protocol.public_snapshot().observation.unwrap().issue_run_execution.unwrap();
+    assert_eq!((signal.status.as_str(), signal.state_revision), ("running", Some(5)));
+    assert_eq!(signal.interpreter.as_ref().unwrap().launch_generation, 2);
+    assert!(!serde_json::to_string(&signal).unwrap().contains("private"));
+    protocol.request(None, "private").unwrap();
+    live["request_id"] = json!(3);
+    live["observation"]["issue_run_execution"]["interpreter"] = json!({"thread_id":"partial"});
+    protocol.response(live).unwrap();
+    let snapshot = protocol.public_snapshot();
+    assert_eq!(snapshot.state, "ready");
+    assert_eq!(snapshot.observation.unwrap().issue_run_execution.unwrap().status, "unknown");
+}
+
+#[test]
+fn issue_observation_requires_explicit_null_for_unbound_fields() {
+    let mut full = observation();
+    full["issue_run_user_action"] = json!({"schema_version":"issue-run-user-action-v1",
+        "status":"not_required", "issue_run_id":"", "requirements":[]});
+    full["issue_run_execution"] = json!({"schema_version":"issue-run-execution-v1",
+        "status":"idle", "issue_run_id":"", "state_revision":null});
+    let partial: Observation = serde_json::from_value(full.clone()).unwrap();
+    assert_eq!(partial.issue_run_user_action.unwrap().status, "unknown");
+    assert_eq!(partial.issue_run_execution.unwrap().status, "unknown");
+    full["issue_run_user_action"]["state_revision"] = Value::Null;
+    full["issue_run_execution"]["interpreter"] = Value::Null;
+    let complete: Observation = serde_json::from_value(full).unwrap();
+    assert_eq!(complete.issue_run_user_action.unwrap().status, "not_required");
+    assert_eq!(complete.issue_run_execution.unwrap().status, "idle");
+}
+
+#[test]
 fn hello_binds_the_actual_created_process_and_expected_session() {
     for field in ["process_id", "session_id", "version", "connection_id"] {
         let mut changed = hello(); changed[field] = json!("stale");

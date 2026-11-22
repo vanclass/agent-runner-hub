@@ -81,15 +81,38 @@ pub struct IssueRunUserAction {
 }
 fn user_action<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<IssueRunUserAction>, D::Error> {
     let raw = Value::deserialize(decoder)?;
-    Ok(Some(serde_json::from_value(raw).unwrap_or_else(|_| IssueRunUserAction {
+    let parsed = if raw.get("state_revision").is_some() { serde_json::from_value(raw).ok() } else { None };
+    Ok(Some(parsed.unwrap_or_else(|| IssueRunUserAction {
         schema_version: String::new(), status: "unknown".into(), issue_run_id: String::new(),
         state_revision: None, requirements: Vec::new(),
+    })))
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssueInterpreter {
+    pub invocation_id: String, pub instance_id: String, pub launch_generation: u64,
+    pub thread_id: String, pub turn_id: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssueRunExecution {
+    pub schema_version: String, pub status: String, pub issue_run_id: String,
+    pub state_revision: Option<u64>, pub interpreter: Option<IssueInterpreter>,
+}
+fn issue_execution<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<IssueRunExecution>, D::Error> {
+    let raw = Value::deserialize(decoder)?;
+    let parsed = if raw.get("state_revision").is_some() && raw.get("interpreter").is_some() {
+        serde_json::from_value(raw).ok()
+    } else { None };
+    Ok(Some(parsed.unwrap_or_else(|| IssueRunExecution {
+        schema_version: String::new(), status: "unknown".into(), issue_run_id: String::new(),
+        state_revision: None, interpreter: None,
     })))
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {
     #[serde(default, deserialize_with = "user_action", skip_serializing_if = "Option::is_none")]
     pub issue_run_user_action: Option<IssueRunUserAction>,
+    #[serde(default, deserialize_with = "issue_execution", skip_serializing_if = "Option::is_none")]
+    pub issue_run_execution: Option<IssueRunExecution>,
     pub run_mode: String, pub target: Target, pub selection: Selection,
     pub execution: Execution, pub attention: Attention, pub commands: Vec<CommandView>,
 }

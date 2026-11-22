@@ -30,10 +30,16 @@ export type RunnerCommand = {
 export type IssueRunUserAction = {
   schema_version: 'issue-run-user-action-v1'; status: 'required' | 'not_required' | 'unknown';
   issue_run_id: string; state_revision: number | null;
-  requirements: { kind: 'clarification' | 'approval' | 'dialogue' | 'human_request'; request_key: string; request_version: string }[];
+  requirements: { kind: 'clarification' | 'approval' | 'discussion' | 'dialogue' | 'human_request'; request_key: string; request_version: string }[];
+};
+export type IssueRunExecution = {
+  schema_version: 'issue-run-execution-v1'; status: 'running' | 'idle' | 'unknown' | 'unsupported';
+  issue_run_id: string; state_revision: number | null;
+  interpreter: { invocation_id: string; instance_id: string; launch_generation: number; thread_id: string; turn_id: string } | null;
 };
 export type RunnerObservation = {
   issue_run_user_action?: IssueRunUserAction | null;
+  issue_run_execution?: IssueRunExecution | null;
   run_mode: string;
   target: { binding_state: string; owner: string; project: string };
   selection: { account: string; model: string; reasoning_effort: string; service_tier: string; source: string;

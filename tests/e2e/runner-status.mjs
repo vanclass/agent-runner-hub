@@ -1,4 +1,64 @@
 export function registerRunnerStatus({ test, expect, transport, configure, create }) {
+  test('IssueRun live Interpreter and committed Discussion use the same sidebar row', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await configure(page); await create(page);
+    const marker = page.locator('.runner-row .status-dot');
+    const pair = (state, rev, change = {}) => page.evaluate(({ state, rev, change }) => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      const o = session.control.observation;
+      session.feature.config.current.run_mode = 'issue-run';
+      o.run_mode = 'issue-run';
+      const required = ['discussion', 'approval', 'human_request'].includes(state);
+      const keyed = state === 'human_request';
+      o.issue_run_user_action = { schema_version: 'issue-run-user-action-v1', issue_run_id: 'ir-live',
+        state_revision: rev, status: required ? 'required' : 'not_required',
+        requirements: required ? [{ kind: state, request_key: keyed ? 'key' : '', request_version: keyed ? 'v1' : '' }] : [] };
+      o.issue_run_execution = { schema_version: 'issue-run-execution-v1', issue_run_id: 'ir-live', state_revision: rev,
+        status: required ? 'idle' : state, interpreter: state === 'running'
+          ? { invocation_id: `invocation-${rev}`, instance_id: 'server', launch_generation: 2,
+              thread_id: 'thread', turn_id: `turn-${rev}` } : null, ...change };
+    }, { state, rev, change });
+    await pair('running', 5);
+    await expect(marker).toHaveAccessibleName('Running');
+    await expect(marker).toHaveCSS('color', 'rgb(59, 130, 246)');
+    await expect(marker.locator('path')).toHaveAttribute('d', 'm10 8 6 4-6 4Z');
+    await pair('discussion', 7);
+    await expect(marker).toHaveAccessibleName('IssueRun needs your response or approval');
+    await expect(marker).toHaveCSS('color', 'rgb(255, 214, 0)');
+    await expect(marker.locator('path')).toHaveAttribute('d', 'M12 7v6m0 4h.01');
+    await pair('unknown', 8);
+    await expect(marker).toHaveClass('status-dot unknown');
+    await pair('running', 9);
+    await expect(marker).toHaveAccessibleName('Running');
+    await pair('human_request', 10, { status: 'unknown', state_revision: null });
+    await expect(marker).toHaveAccessibleName('IssueRun needs your response or approval');
+    await pair('approval', 11, { status: 'unsupported' });
+    await expect(marker).toHaveAccessibleName('IssueRun needs your response or approval');
+    for (const incompatible of [{ issue_run_id: 'other' }, { state_revision: 10 },
+      { schema_version: 'future' }, { interpreter: { launch_generation: 0 } }]) {
+      await pair('running', 11, incompatible);
+      await expect(marker).toHaveClass('status-dot unknown');
+    }
+    await pair('unsupported', 12);
+    await expect(marker).toHaveClass('status-dot unknown');
+    await pair('idle', 13);
+    await expect(marker).toHaveAccessibleName('Verified idle');
+    const workFallback = await page.evaluate(async () => {
+      const { issueSidebarActivity } = await import('/src/hub/runnerWork.ts');
+      const { terminalWork } = await import('/tests/fixtures/work.ts');
+      const o = window.__nativeFixture.sessions.get('pty-1').control.observation;
+      const work = terminalWork(1, 1, { run_mode: 'issue-run', work_id: { kind: 'issue', id: 'ir-live' },
+        owner_revision: 12 });
+      const attempt = { work, uncertain: false, notSent: false };
+      return [
+        issueSidebarActivity(attempt, o),
+        issueSidebarActivity({ ...attempt, work: { ...work, owner_revision: 13 } }, o),
+        issueSidebarActivity({ ...attempt, work: { ...work, owner_revision: 13 } },
+          { ...o, issue_run_execution: { ...o.issue_run_execution, status: 'unknown' } }),
+      ];
+    });
+    expect(workFallback).toEqual(['unknown', 'running', 'unknown']);
+  });
   test('IssueRun independently sampled revisions retain identity and freshness checks', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);
@@ -44,6 +104,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
       const { terminalWork } = await import('/tests/fixtures/work.ts');
       const observation = window.__nativeFixture.sessions.get('pty-1').control.observation;
       const service = new RunnerWork({}, () => {});
+      observation.run_mode = 'issue-run';
       const attempt = { work: terminalWork(1, 1, { run_mode: 'issue-run' }), uncertain: false, notSent: false };
       service.attempts.push(attempt);
       const check = () => ({ activity: issueSidebarActivity(attempt, observation), blocked: service.blocked });
@@ -98,10 +159,10 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
       await page.evaluate(changes => { window.__nativeFixture.sessions.get('pty-1')
         .control.observation.attention.foreground_interaction_active = !changes.released; }, changes);
     };
-    // Interpreter preparation, execution, then automatic Planner work retain one Work.
+    // Preparation alone is unverified; started Work is independently observable.
     for (const [event, state] of [[1, 'instruction_admitted'], [2, 'active'], [3, 'active']]) {
       await publish({ event, work: { state, started_event_id: event === 1 ? 0 : 1 } });
-      await expect(marker).toHaveClass('status-dot running');
+      await expect(marker).toHaveClass(event === 1 ? 'status-dot unknown' : 'status-dot running');
     }
     await expect(marker).toHaveCSS('color', 'rgb(59, 130, 246)');
     await expect(marker).toHaveAttribute('aria-label', 'Running');
@@ -357,4 +418,32 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await page.evaluate(code => window.__nativeFixture.exit('pty-1', code), code);
     await expect(page.locator('.runner-row .status-dot.unknown')).toBeVisible();
   });
+  for (const mode of ['pure-direct-run', 'direct-run', 'task-run', 'issue-run', 'subagent-run']) {
+    test(`runner sidebar lifecycle for ${mode}`, async ({ page }) => {
+      await transport(page, undefined, { auto: true, work: true });
+      await configure(page); await create(page);
+      const marker = page.locator('.runner-row .status-dot');
+      async function observe(state, activity, label) {
+        await page.evaluate(({ state, mode }) => {
+          const s = window.__nativeFixture.sessions.get('pty-1');
+          s.feature.config.current.run_mode = mode;
+          s.control.state = state === 'connecting' || state === 'disconnected' ? state : 'ready';
+          s.control.age = state === 'stale' ? 999999 : 0;
+          Object.assign(s.control.observation, { run_mode: mode });
+          s.control.observation.execution.owned_execution_alive = state === 'working';
+          s.control.observation.attention.restart_confirmation_required = state === 'attention';
+        }, { state, mode });
+        await expect(marker).toHaveClass(`status-dot ${activity}`);
+        await expect(marker).toHaveAccessibleName(label);
+      }
+      await observe('connecting', 'starting', 'Starting');
+      await observe('idle', 'idle', 'Verified idle');
+      await observe('working', 'running', 'Running');
+      await observe('attention', 'attention', 'Suspended / needs attention');
+      await observe('working', 'running', 'Running');
+      await observe('stale', 'unknown', 'Status unknown');
+      await observe('idle', 'idle', 'Verified idle');
+      await observe('disconnected', 'unknown', 'Status unknown');
+    });
+  }
 }
