@@ -97,11 +97,11 @@ export async function visibleConnection(browser, runnerRoot) {
   return { ...await ownedConnection(browser, runnerRoot, identity.session), tab: identity.tab };
 }
 
-export async function ownedConnection(browser, runnerRoot, sessionId) {
+export async function ownedConnection(browser, runnerRoot, sessionId = null) {
   let connection;
   await browser.waitUntil(async () => {
     connection = await browser.execute(async sessionId => {
-      const entries = sessionId === undefined ? Object.entries(window.__wg3Observation.snapshots)
+      const entries = sessionId === null ? Object.entries(window.__wg3Observation.snapshots)
         : [[sessionId, null]];
       if (entries.length !== 1) return null;
       const [session, observed] = entries[0];

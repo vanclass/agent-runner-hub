@@ -75,7 +75,7 @@ impl TestInstallation {
         fixture
     }
     fn home(&self, profile: &str) -> std::path::PathBuf {
-        self.0.join("agent_runner/local/profiles/codex/accounts").join(profile)
+        self.0.join("local/profiles/codex/accounts").join(profile)
     }
 }
 impl Drop for TestInstallation {

@@ -156,7 +156,7 @@ source/version/runtime evidence and complete inventory. Apply the normal resourc
 before rebuilding for release eligibility; older products remain independently usable.
 The separately registered Web App Release Adapter consumes one explicitly selected retained
 result without rebuilding or changing this Tool's ownership. Its Workspace integration guide is
-agent_runner/src/runner/project_management/components/web_app/RELEASE_ADAPTER.md.
+src/runner/project_management/components/web_app/RELEASE_ADAPTER.md.
 Build staging lives in temp/staging/<id>/; failed/cancelled attempts delete only their owned
 staging directory unless it contains recoverable previous-output data. Earlier products and
 local settings survive updates/removal. To delete old products, choose the exact result

@@ -285,7 +285,7 @@
     "label": "AgentRunner location",
     "placeholder": "Local installation path",
     "verify": "Verify installation",
-    "help": "Choose the workspace containing agent_runner, or the agent_runner folder. Each new Runner uses its own terminal.",
+    "help": "Choose the installed Runner Workspace root containing src/runner/__main__.py. Each new Runner uses its own terminal.",
     "verifying": "Verifying the installed Runner and managed Python…",
     "verified": "Verified installation. Use New Runner to open an independent process."
   },

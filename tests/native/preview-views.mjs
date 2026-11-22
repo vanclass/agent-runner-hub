@@ -10,6 +10,7 @@ import { defineNativeCase, UnverifiedObservation } from '../../tools/native-prob
 import { readyInstalledHub } from './webdriver/runner-flow.mjs';
 import { generatedSource, animatedFixture, injectGeneratedImage } from './webdriver/attachment-preview.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const runnerRoot = process.env.HUB_RUNNER_ACCEPTANCE_ROOT;
 const directory = path.join(root, 'temp/preview-originals', randomUUID());
 await fs.mkdir(directory, { recursive: true });
 const image = path.join(directory, 'selected-image.png');
@@ -32,7 +33,7 @@ async function open(browser, name) {
 }
 const preview = defineNativeCase({
   id: 'preview-views', presentation: 'nonactivating',
-  ready: browser => readyInstalledHub(browser, 'D:/Codex/codex_workspace'),
+  ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
     await browser.execute(async paths => {
       const r = document.querySelector('.attachment-composer').getBoundingClientRect();
@@ -70,7 +71,7 @@ const preview = defineNativeCase({
 });
 const generated = defineNativeCase({
   id: 'generated-consumer', presentation: 'nonactivating',
-  ready: browser => readyInstalledHub(browser, 'D:/Codex/codex_workspace'),
+  ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
     const fixture = animatedFixture();
     await injectGeneratedImage(browser, fixture);
@@ -86,7 +87,7 @@ const generated = defineNativeCase({
 });
 const genuineGenerated = defineNativeCase({
   id: 'genuine-generated-consumer', presentation: 'background',
-  ready: browser => readyInstalledHub(browser, 'D:/Codex/codex_workspace'),
+  ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
     const result = await generatedSource(browser);
     throw new UnverifiedObservation(JSON.stringify(result));

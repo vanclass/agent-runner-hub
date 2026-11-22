@@ -82,7 +82,7 @@ while True:
         assert not any(key in packet for key in ['offset','account','options_revision'])
         from pathlib import Path
         root=Path.cwd().resolve().as_posix()
-        home=Path(root)/'agent_runner/local/profiles/codex/accounts/pipe-test'
+        home=Path(root)/'local/profiles/codex/accounts/pipe-test'
         assert home.is_dir()
         send(request_id=request_id,status='accepted',phase='completed',api_version=1,execution_context='test',
             account=dict(agent_id='codex',profile_name='pipe-test'),codex_home=home.as_posix(),runner_root=root,authentication='available')
@@ -196,7 +196,7 @@ fn authenticated_roundtrip(observation_failure: bool) {
     let job = job::Job::new().unwrap();
     let mut command = CommandBuilder::new(python);
     let fixture = std::env::current_dir().unwrap().join("temp").join(format!("control-account-{}-{observation_failure}", std::process::id()));
-    std::fs::create_dir_all(fixture.join("agent_runner/local/profiles/codex/accounts/pipe-test")).unwrap();
+    std::fs::create_dir_all(fixture.join("local/profiles/codex/accounts/pipe-test")).unwrap();
     command.cwd(fixture.canonicalize().unwrap());
     command.args(["-I", "-c", CHILD]);
     let slash_commands = ["  /status", "/brief\targ", "\t/brief\tbody", "\u{1c}/brief\u{85}body",

@@ -35,9 +35,15 @@ test('visible tab selects its bound PTY even when a spare is observed first', as
 test('immutable native invoke identifies owned PTY events and forwards callbacks unchanged', async () => {
   const previous = globalThis.window, callbacks = new Map(), originalSet = callbacks.set;
   const bridge = { callbacks };
-  Object.defineProperty(bridge, 'invoke', { value: async () => snapshot([]) });
+  Object.defineProperty(bridge, 'invoke', { value: async (command, { id }) => {
+    assert.equal(command, 'runner_observe');
+    assert.equal(id, 'owned-pty');
+    return { ...snapshot([]), observationSerial: 1, observationAgeMs: 0,
+      features: { ...snapshot([]).features, sessionConfig: { operations: ['session_config.inspect'] } } };
+  } });
   globalThis.window = { __TAURI_INTERNALS__: bridge };
-  const browser = { execute: async fn => fn() };
+  const browser = { execute: async (fn, ...args) => fn(...JSON.parse(JSON.stringify(args))),
+    waitUntil: async predicate => assert.ok(await predicate()) };
   try {
     await watchObservations(browser);
     let received;
@@ -46,6 +52,7 @@ test('immutable native invoke identifies owned PTY events and forwards callbacks
     callbacks.get(1)(event);
     assert.equal(received, event);
     assert.deepEqual(window.__wg3Observation.snapshots, { 'owned-pty': null });
+    assert.equal((await ownedConnection(browser)).session, 'owned-pty');
     callbacks.get(1)({ message: { type: 'exit', id: 'owned-pty' } });
     assert.deepEqual(window.__wg3Observation.snapshots, {});
     await stopWatching(browser);

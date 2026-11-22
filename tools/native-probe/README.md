@@ -81,7 +81,7 @@ Work cases submit their declared instruction directly after native/configuration
 node tools/native-probe/hub.mjs --help
 node tools/native-probe/hub.mjs --case installation-entry
 node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
-node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "D:/Codex/codex_workspace"
+node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "<absolute Runner Workspace root>"
 ```
 
 Repeat `--case` to compose only the required cases in one build; each still gets a
@@ -91,11 +91,15 @@ Installation-entry checks mandatory setup, native rejection of a relative path,
 unchanged saved installation and retry availability. Configuration-selection uses
 the ordinary authenticated account's catalog to edit and persist a Hub draft without applying
 it. Runner-read-only compares Hub selections and native inspection in the same
-observed session/generation and verifies unchanged native revision.
+observed session/generation and verifies unchanged native revision. It then closes the exact observed
+PTY and verifies removal from the native session registry.
 
 ## Existing Runner installation prerequisites
 
-Supply `--runner-root` with the existing normally configured Runner workspace root.
+Supply `--runner-root` with the existing normally configured Runner Workspace root containing
+`src/runner/__main__.py` and `local/runtime/python-env/`.
+The standalone `tests/native/preview-views.mjs` cases read this root from
+`HUB_RUNNER_ACCEPTANCE_ROOT`.
 The fresh application profile needs its own installation
 selection; no user Hub profile is copied. The actual installation form/native
 resolver verifies the managed runtime before the Hub session owner launches a new

@@ -156,7 +156,7 @@ pub fn verify_test_installation(packet: &Value, opened_root: &str) -> Result<(),
     let canonical = |value: &str| std::path::Path::new(value).canonicalize().map_err(|_| "Test account path unavailable");
     let root = canonical(&selection.runner_root)?;
     let home = canonical(&selection.codex_home)?;
-    let registered_home = root.join("agent_runner/local/profiles/codex/accounts").join(&selection.account.profile_name);
+    let registered_home = root.join("local/profiles/codex/accounts").join(&selection.account.profile_name);
     let registered = canonical(&registered_home.to_string_lossy())?;
     let spelling = |path: &std::path::Path| {
         let value = path.to_string_lossy().replace('\\', "/");

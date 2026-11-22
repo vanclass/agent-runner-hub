@@ -33,14 +33,13 @@ fn installation_path(path: &Path) -> String {
 
 pub fn resolve(location: &str) -> Result<Installation, String> {
     let selected = Path::new(location.trim());
-    if !selected.is_absolute() { return Err("Choose the absolute path to your AgentRunner installation or its workspace.".into()); }
-    let selected = selected.canonicalize().map_err(|e| format!("AgentRunner location is unavailable: {e}. Choose an installed location."))?;
-    let root = if selected.join("agent_runner/src/runner/__main__.py").is_file() { selected }
-        else if selected.join("src/runner/__main__.py").is_file() && selected.file_name().is_some_and(|name| name == "agent_runner") {
-            selected.parent().ok_or("AgentRunner workspace has no parent")?.to_path_buf()
-        } else { return Err("This location has no agent_runner/src/runner/__main__.py. Choose the installed Runner workspace or agent_runner folder.".into()); };
-    let python = root.join(if cfg!(windows) { "agent_runner/local/runtime/python-env/Scripts/python.exe" }
-        else { "agent_runner/local/runtime/python-env/bin/python" });
+    if !selected.is_absolute() { return Err("Choose the absolute path to the installed Runner Workspace root.".into()); }
+    let root = selected.canonicalize().map_err(|e| format!("Runner Workspace location is unavailable: {e}. Choose the installed Workspace root."))?;
+    if !root.join("src/runner/__main__.py").is_file() {
+        return Err("This location has no src/runner/__main__.py. Choose the installed Runner Workspace root.".into());
+    }
+    let python = root.join("local/runtime/python-env").join(if cfg!(windows) { "Scripts/python.exe" }
+        else { "bin/python" });
     if !python.is_file() { return Err("Runner's managed Python is missing. Run this installation's native bootstrap, then choose the location again.".into()); }
     let interpreter = verify_python(&root, &python)?;
     // Runner compares paths returned by its App Server, which uses ordinary DOS/UNC spelling.
@@ -48,7 +47,7 @@ pub fn resolve(location: &str) -> Result<Installation, String> {
 }
 
 fn verify_python(root: &Path, python: &Path) -> Result<String, String> {
-    const PROBE: &str = "import os,sys,runner; from pathlib import Path; root=Path(sys.argv[1]); assert os.path.samefile(sys.prefix,root/'agent_runner/local/runtime/python-env'), 'wrong managed Python environment'; assert os.path.samefile(runner.__file__,root/'agent_runner/src/runner/__init__.py'), 'Runner source registration points to another installation'; print('HUB_RUNNER_RUNTIME_OK'); print(sys._base_executable)";
+    const PROBE: &str = "import os,sys,runner; from pathlib import Path; root=Path(sys.argv[1]); assert os.path.samefile(sys.prefix,root/'local/runtime/python-env'), 'wrong managed Python environment'; assert os.path.samefile(runner.__file__,root/'src/runner/__init__.py'), 'Runner source registration points to another installation'; print('HUB_RUNNER_RUNTIME_OK'); print(sys._base_executable)";
     let mut command = Command::new(python);
     command.args(["-I", "-c", PROBE]).arg(root).current_dir(root).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     clean_environment(&mut command);
@@ -121,5 +120,34 @@ mod tests {
         assert!(resolve("crp").err().unwrap().contains("absolute path"));
         let missing = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("no-runner-installation");
         assert!(resolve(&missing.to_string_lossy()).err().unwrap().contains("unavailable"));
+    }
+
+    #[test]
+    fn incomplete_workspace_is_rejected() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("hub-resolver-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let missing_source = resolve(&root.to_string_lossy());
+        let result = (|| {
+            let source = root.join("src/runner");
+            std::fs::create_dir_all(&source)?;
+            std::fs::write(source.join("__main__.py"), [])?;
+            Ok::<_, std::io::Error>(resolve(&root.to_string_lossy()))
+        })();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(missing_source.err().unwrap().contains("src/runner/__main__.py"));
+        assert!(result.unwrap().err().unwrap().contains("managed Python is missing"));
+    }
+
+    #[test]
+    #[ignore = "Requires the normally installed Runner at HUB_RUNNER_ACCEPTANCE_ROOT"]
+    fn canonical_installation_verifies_matching_python_and_source() {
+        let location = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").expect("installed Runner Workspace root");
+        let root = Path::new(&location).canonicalize().unwrap();
+        let resolved = resolve(&location).unwrap();
+        assert_eq!(resolved.root, installation_path(&root));
+        assert_eq!(resolved.python, installation_path(&root.join(if cfg!(windows) {
+            "local/runtime/python-env/Scripts/python.exe"
+        } else { "local/runtime/python-env/bin/python" })));
     }
 }

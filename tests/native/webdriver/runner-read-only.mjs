@@ -30,10 +30,21 @@ export function runnerReadOnly(runnerRoot) {
         const observed = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke(
           'runner_observe', { id }), connection.session), connection);
         assert.deepEqual(observed.observation.selection, after.result.reply.effective);
+        await browser.execute(id => window.__TAURI_INTERNALS__.invoke('pty_close', { id }), connection.session);
+        await browser.waitUntil(() => browser.execute(async id => {
+          try {
+            await window.__TAURI_INTERNALS__.invoke('runner_observe', { id });
+            return false;
+          } catch (error) {
+            if (String(error) === 'Unknown or exited PTY') return true;
+            throw error;
+          }
+        }, connection.session), { timeout: startupMs, timeoutMsg: 'Closed Runner PTY was not removed' });
         return { method: 'actual Hub / authenticated native Runner; read-only',
           identity: { session: connection.session, generation: connection.generation },
           inspection: receiptEvidence(after), uiBound: { account: !!ui.account, model: !!ui.model },
           uiAgreesWithNative: true, revisionUnchanged: true, observationSerial: observed.observationSerial,
+          ownedShutdown: { jobEmptied: true, ptyRemoved: true },
           workAdmission: 'not exercised', workStart: 'not exercised' };
       } finally { await stopWatching(browser); }
     }

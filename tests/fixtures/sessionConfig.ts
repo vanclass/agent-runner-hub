@@ -19,7 +19,7 @@ export class ConfigFixture {
   planStatus = 'ready';
   postApplyFailure = false;
   testSelection: unknown = { api_version: 1, execution_context: 'test',
-    account: this.accounts[1], codex_home: 'D:/Runner/agent_runner/local/profiles/codex/accounts/second',
+    account: this.accounts[1], codex_home: 'D:/Runner/local/profiles/codex/accounts/second',
     runner_root: 'D:/Runner', authentication: 'available' };
   testSelectionCode = '';
   private applied = false;

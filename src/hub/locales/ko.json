@@ -285,7 +285,7 @@
     "label": "AgentRunner 위치",
     "placeholder": "로컬 설치 경로",
     "verify": "설치 검증",
-    "help": "agent_runner가 있는 작업 공간 또는 agent_runner 폴더를 선택하세요. 새 Runner는 각각 자체 터미널을 사용합니다.",
+    "help": "src/runner/__main__.py가 있는 설치된 Runner 워크스페이스의 루트 폴더를 선택하세요. 새 Runner는 각각 자체 터미널을 사용합니다.",
     "verifying": "설치된 Runner와 관리형 Python을 검증하는 중…",
     "verified": "설치를 검증했습니다. 새 Runner를 눌러 독립된 프로세스를 여세요."
   },

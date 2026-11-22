@@ -34,7 +34,7 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
       await page.keyboard.press('Escape'); await page.mouse.click(5, 5);
       await expect(dialog(page)).toBeVisible();
       expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
-      await dialog(page).getByRole('textbox').fill('/fixture/workspace/agent_runner');
+      await dialog(page).getByRole('textbox').fill('/fixture/install');
       await dialog(page).getByRole('textbox').press('Enter');
       await expect(dialog(page)).toHaveCount(0);
       await expect(page.locator('.single-entry')).toHaveAttribute('aria-current', 'page');
@@ -60,6 +60,20 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
     await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
     await expect(dialog(page).getByRole('alert').last()).toContainText('데스크톱');
     expect(errors).toEqual([]);
+  });
+  test('installation setup: an invalid saved location can be corrected', async ({ page }) => {
+    await transport(page);
+    await page.addInitScript(() => localStorage.setItem('agent-runner-hub.installation', '/missing'));
+    await page.goto('/');
+    const setup = dialog(page);
+    await expect(setup.getByRole('alert')).toContainText('managed Python');
+    const location = setup.getByRole('textbox');
+    await expect(location).toHaveValue('/missing');
+    expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(0);
+    await location.fill('/fixture/install');
+    await setup.locator('button[type=submit]').click();
+    await expect(setup).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.installation'))).toBe('/fixture/install');
   });
   test('installation setup: pending saved verification blocks restoration then starts each owner once', async ({ page }) => {
     await transport(page);
