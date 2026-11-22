@@ -100,8 +100,8 @@ export class RunnerControl {
     this.brief = new RunnerBrief({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
-      available: lease => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
-        && !this.otherControlBusyExceptAttachments && !this.assignmentLocked
+      available: (lease, statusOnly) => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
+        && (statusOnly || !this.otherControlBusyExceptAttachments && !this.assignmentLocked)
         && (!this.attachmentLease || this.attachmentLease === lease),
       stage: (id, body) => invoke<FeatureAdmission>('runner_feature', { id,
         request: { feature: 'brief', request: { operation: 'brief.stage', api_version: 1, body } } }),

@@ -352,7 +352,7 @@ export class RunnerReferenceSelection {
     candidate.phase = 'staged'; candidate.detail = undefined;
     this.changed();
   }
-  finishSubmission(delivered: boolean) {
+  finishSubmission(delivered: boolean, discardDelivered = false) {
     this.frozen = false;
     const submission = this.submission;
     if (!submission) return;
@@ -360,6 +360,7 @@ export class RunnerReferenceSelection {
       for (const candidate of submission.candidates) {
         candidate.submitted = true; candidate.image = undefined; this.releasePreview(candidate);
       }
+      if (discardDelivered) this.candidates = this.candidates.filter(item => !submission.candidates.includes(item));
       this.reviewedOthers = ''; this.otherPending = [];
     }
     this.submission = undefined; this.control.releaseAttachments(submission.lease); this.changed();

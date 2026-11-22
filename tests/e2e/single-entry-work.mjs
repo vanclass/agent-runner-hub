@@ -1,4 +1,5 @@
 import { registerInstructionPresentation } from './instruction-presentation.mjs';
+import { drop } from './composer-attachments.mjs';
 
 export function registerSingleEntryWork({ test, expect, transport, configure, create }) {
   test('work Single Entry stale cleanup cannot release a newer reservation or attachment freeze', async ({ page }) => {
@@ -30,6 +31,38 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     expect(result).toEqual({ creates: 2, releases: 1, draft: 'new draft', locked: true,
       paths: ['/owned/file'], reserved: true });
   });
+  test('Brief Run late cleanup keeps a replacement draft revision and unrelated card', async ({ page }) => {
+    await page.goto('/');
+    const evidence = await page.evaluate(async () => {
+      const { SingleEntry } = await import('/src/hub/singleEntry.ts');
+      const entry = new SingleEntry(() => [], () => { throw new Error('Unexpected allocation'); }, () => {});
+      const lease = Symbol('original lease'), token = Symbol('original assignment');
+      const releases = [];
+      const result = { status: 'completed' };
+      const control = { sessionId: 'original', brief: { result }, snapshot: {},
+        releaseAttachments: value => releases.push(value === lease ? 'lease' : 'unexpected') };
+      const session = { control, release: value => releases.push(value === token ? 'assignment' : 'unexpected') };
+      const original = { key: 1, path: '/fixture/original.png', phase: 'registered', requestId: 7 };
+      const unrelated = { key: 2, path: '/fixture/unrelated.png', phase: 'staged' };
+      entry.attachments.bind(control);
+      entry.attachments.candidates = [original, unrelated];
+      entry.attachments.submission = { lease, candidates: [original], verified: true };
+      entry.setDraft('same visible text');
+      const draftRevision = entry.draftRevision;
+      entry.setDraft('newer edit');
+      entry.instructionHistory.record('newer edit', 'same visible text');
+      entry.setDraft('same visible text');
+      entry.active = { session, token, text: 'same visible text',
+        brief: { result, draftRevision, selection: entry.attachments, lease } };
+      entry.phase = 'unknown';
+      entry.observe();
+      entry.observe();
+      return { phase: entry.phase, draft: entry.draft, paths: entry.attachments.paths, releases,
+        undo: entry.instructionHistory.move('undo', entry.draft) };
+    });
+    expect(evidence).toEqual({ phase: 'delivered', draft: 'same visible text', paths: ['/fixture/unrelated.png'],
+      releases: ['lease', 'assignment'], undo: 'newer edit' });
+  });
   registerInstructionPresentation({ test, expect, transport, configure, create });
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   const assign = page => page.locator('textarea[data-instruction]').press('Enter');
@@ -41,6 +74,8 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
   }
   test('work Single Entry defaults to a promoted spare focuses immediately and submits exactly once', async ({ page }, info) => {
     await ready(page);
+    await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
+    await drop(page, ['/fixture/ordinary.png']);
     await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toHaveCount(0);
     await page.locator('textarea[data-instruction]').fill('one instruction\n안녕 🌍');
     await page.locator('textarea[data-instruction]').focus();
@@ -51,15 +86,20 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
     await home(page);
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('');
+    await expect(page.locator('.attachment-chip')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.work.started_event_id)).toBeGreaterThan(0);
     await expect(page.getByText('Assignment evidence', { exact: true })).toHaveCount(0);
     await expect(page.locator('.xterm')).toHaveCount(0);
     const receipt = await page.evaluate(() => ({ requests: window.__nativeFixture.sessions.get('pty-1').feature.requests,
       original: window.__nativeFixture.sessions.get('pty-1').feature.work.submission_request_id,
       count: window.__nativeFixture.count(), writes: window.__nativeFixture.writes,
+      deliveries: window.__nativeFixture.deliveredSets,
+      references: window.__nativeFixture.sessions.get('pty-1').items.map(item => item.reference_id),
       tabs: JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs }));
     expect(receipt.requests.filter(r => r.operation === 'work.submit')).toHaveLength(1);
     expect(receipt.requests.find(r => r.operation === 'work.submit').instruction).toBe('one instruction\n안녕 🌍');
+    expect(receipt.references).toHaveLength(1);
+    expect(receipt.deliveries).toEqual([{ id: 'pty-1', instruction: 'one instruction\n안녕 🌍', ids: receipt.references }]);
     expect(receipt.requests.filter(r => r.operation === 'work.observe').every(r => r.observation_id === `api:${receipt.original}`)).toBeTruthy();
     expect(receipt.writes).toEqual([]);
     expect(receipt.count).toBe(2); expect(receipt.tabs).toHaveLength(1);

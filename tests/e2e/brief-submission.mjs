@@ -1,3 +1,5 @@
+import { drop } from './composer-attachments.mjs';
+
 export function registerBriefSubmission({ test, expect, transport, configure, create }) {
   async function feedback(page, tab, key) {
     await page.keyboard.press('Control+Home');
@@ -15,6 +17,67 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await expect(mode).toBeEnabled();
     await mode.selectOption(JSON.stringify('issue-run'));
   }
+  test('Brief Run Single Entry confirms late start once and clears its submitted image', async ({ page }) => {
+    await ready(page, false, { runResult: 'pending' });
+    await page.clock.install();
+    await drop(page, ['/fixture/original.png']);
+    const body = 'Late start 한글 🌍\n  original Brief  ';
+    await input(page).fill(body);
+    await input(page).press('Control+Enter');
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
+      .filter(request => request.operation === 'run.status').length)).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await page.clock.fastForward(66000);
+    await expect.poll(() => input(page).evaluate(element => {
+      let fiber = element[Object.keys(element).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        if (fiber.memoizedProps?.entry) return fiber.memoizedProps.entry.phase;
+      }
+    })).toBe('unknown');
+    await expect(input(page)).toHaveValue(body);
+    await expect(input(page)).toBeDisabled();
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    const ids = await page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      session.run.mode = 'crossed';
+      return session.items.map(item => item.reference_id);
+    });
+    expect(ids).toHaveLength(1);
+    await page.clock.runFor(1500);
+    await expect(input(page)).toHaveValue(body);
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    await page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      Object.assign(session.control.observation.execution, {
+        lifecycle_state: 'RUNNING', owned_execution_alive: true, workflow_kind: 'issue-run',
+      });
+      session.run.mode = 'started';
+    });
+    await page.clock.runFor(1500);
+    await expect(input(page)).toHaveValue('');
+    await expect(input(page)).toBeEnabled();
+    await expect(page.locator('.attachment-chip')).toHaveCount(0);
+    await input(page).press('Control+z');
+    await expect(input(page)).toHaveValue('');
+    await input(page).fill('Independent draft');
+    await drop(page, ['/fixture/new.png']);
+    const readDelivery = () => page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      return { requests: session.run.requests, staged: session.briefRequests,
+        ids: session.items.map(item => item.reference_id), active: session.control.observation.execution.owned_execution_alive };
+    });
+    const delivered = await readDelivery();
+    await page.clock.runFor(1500);
+    expect(await readDelivery()).toEqual(delivered);
+    expect(delivered.staged).toEqual([{ operation: 'brief.stage', api_version: 1, body }]);
+    expect(delivered.requests.filter(request => request.operation === 'run.invoke')).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
+    expect(new Set(delivered.requests.filter(request => request.operation === 'run.status')
+      .map(request => request.invocation_request_id))).toEqual(new Set([8001]));
+    expect(delivered.ids).toEqual(ids);
+    expect(delivered.active).toBe(true);
+    await expect(input(page)).toHaveValue('Independent draft');
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+  });
   for (const tab of [false, true]) {
     const path = tab ? 'Runner tab' : 'Single Entry';
     test(`unified composer ${path} has one input and empty Ctrl+Enter has no effects`, async ({ page }) => {

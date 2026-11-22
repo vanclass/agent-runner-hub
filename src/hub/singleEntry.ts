@@ -16,6 +16,9 @@ export type EntryDefaults = { target?: Target; model?: Model; accountIdentity?: 
 
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';
 
+type EntryAttempt = { session: RunnerSession; token: symbol; text: string; attempt?: WorkAttempt; command?: CommandAttempt;
+  brief?: { result: BriefResult; draftRevision: number; selection: RunnerReferenceSelection; lease?: symbol } };
+
 // /target availability is Runner-owned proof that retained Task/Issue authority
 // has been released. /files additionally excludes recovery and auto-resume.
 export function idleReason(session: RunnerSession, allowReferences = false) {
@@ -51,7 +54,8 @@ export class SingleEntry {
   detail: HubText = '';
   runnerId?: string;
   private submissionToken?: symbol;
-  private active?: { session: RunnerSession; token: symbol; text: string; attempt?: WorkAttempt; command?: CommandAttempt };
+  private draftRevision = 0;
+  private active?: EntryAttempt;
   constructor(private readonly list: () => readonly RunnerSession[],
     private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
@@ -72,11 +76,13 @@ export class SingleEntry {
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
   private clearDraft() {
     this.draft = '';
+    this.draftRevision++;
     this.instructionHistory.reset();
   }
   setDraft(value: string) {
     if (!this.editable) return;
     this.composerCompact = false;
+    if (value !== this.draft) this.draftRevision++;
     this.draft = value;
     this.phase = 'editing';
     this.changed();
@@ -87,6 +93,7 @@ export class SingleEntry {
     if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
     if (briefRun && this.defaults.runMode !== 'issue-run') return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
+    const draftRevision = this.draftRevision, selection = this.attachments;
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.submissionToken = token;
     this.composerCompact = true;
@@ -173,15 +180,13 @@ export class SingleEntry {
       }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined);
       if (briefRun) {
         const result = await submission as BriefResult;
+        const active = this.active;
+        if (!active || active.token !== token) return;
+        active.brief = { result, draftRevision, selection, lease: selection.deliveryLease };
         attempted = result.staged || result.status === 'unknown';
         this.detail = destination.control.brief.detail;
-        this.phase = result.status === 'completed' ? 'delivered' : attempted ? 'unknown' : 'incomplete';
-        if (result.status === 'completed') {
-          if (this.draft === text) this.clearDraft();
-          this.attachments.finishSubmission(true);
-          this.attachments = new RunnerReferenceSelection(undefined, this.changed);
-          session.release(token); this.active = undefined;
-        }
+        this.phase = attempted || result.status === 'completed' ? 'unknown' : 'incomplete';
+        if (attempted || result.status === 'completed') this.observeBrief(active);
         return;
       }
       let attempt: WorkAttempt;
@@ -228,9 +233,38 @@ export class SingleEntry {
     active?.session.release(token);
     this.changed();
   }
+  private observeBrief(active: EntryAttempt) {
+    const brief = active.brief;
+    if (!brief) return;
+    const owner = active.session.control.brief;
+    const { result, selection, lease, draftRevision } = brief;
+    if (owner.result !== result || selection.deliveryLease !== lease) return;
+    if (result.status === 'unknown') {
+      void owner.reconcile(result, lease);
+      return;
+    }
+    this.detail = owner.detail;
+    if (result.status === 'rejected') {
+      if (!result.staged) {
+        this.phase = 'incomplete';
+        this.settleUnsent(active.token);
+      }
+      return;
+    }
+    this.active = undefined;
+    this.phase = 'delivered';
+    if (this.draftRevision === draftRevision && this.draft === active.text) this.clearDraft();
+    selection.finishSubmission(true, true);
+    selection.unbind();
+    active.session.release(active.token);
+  }
   observe() {
     if (this.phase === 'incomplete' && this.active) this.settleUnsent(this.active.token);
     const active = this.active, attempt = active?.attempt;
+    if (this.phase === 'unknown' && active?.brief) {
+      this.observeBrief(active);
+      return;
+    }
     const command = active?.command;
     if (active && command && ['writing', 'unknown'].includes(this.phase)) {
       if (command.state === 'unknown') this.phase = 'unknown';
