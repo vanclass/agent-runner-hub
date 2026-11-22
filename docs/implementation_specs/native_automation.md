@@ -250,9 +250,17 @@ inspection receipts correlate request ID, session and generation; transport subm
 alone cannot pass. Verified available account/model/run-mode choices change only Hub
 draft preferences. Unbound UI choices stay unbound; current configuration and effective
 selection have distinct comparisons. The Runner configuration revision must stay unchanged.
-Cases issue only read-only inspection and never submit work. Work admission/start and
+The configuration and read-only cases never submit work. Work admission/start and
 trusted physical input remain unexercised. Missing prerequisites/capabilities block;
 uncertain native effects remain unverified without replay or presentation escalation.
+
+The explicit `issue-sidebar-lifecycle` case uses the same isolated Hub and Runner
+session owners. It submits two harmless Discussion messages through the Runner
+composer in a fresh IssueRun. It checks the same row against the authenticated
+IssueRun ID, revision and live Interpreter identity on each transition, including
+settled Discussion, renewed interpretation and retirement on owned session closure.
+The background WebView records CSS color, SVG shape and computed accessibility for
+the marker. It does not exercise desktop foreground input or approve a plan.
 
 [`wg3.test.mjs`](../../tests/native/wg3.test.mjs) covers correlation and failure boundaries;
 [`wg3.mjs`](../../tests/e2e/wg3.mjs) executes feature assertions using synthetic browser

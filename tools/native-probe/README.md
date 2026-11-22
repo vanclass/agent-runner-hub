@@ -82,6 +82,7 @@ node tools/native-probe/hub.mjs --help
 node tools/native-probe/hub.mjs --case installation-entry
 node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
 node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "<absolute Runner Workspace root>"
+node tools/native-probe/hub.mjs --case issue-sidebar-lifecycle --runner-root "<absolute Runner Workspace root>" --issue-project "<registered Project name>"
 ```
 
 Repeat `--case` to compose only the required cases in one build; each still gets a
@@ -106,7 +107,7 @@ resolver verifies the managed runtime before the Hub session owner launches a ne
 Runner. Ordinary startup account authentication and `session_config.inspect` are
 required; no saved Test account or second installation is needed. Missing authentication/capability
 remains blocked; this command never provisions accounts, copies credentials,
-injects startup authentication or adopts existing processes. Model work is confined to the explicitly selected `semantic-work` case above.
+injects startup authentication or adopts existing processes. Only explicitly selected work cases submit model instructions. The `issue-sidebar-lifecycle` case selects the verified startup account and the exact `--issue-project` in the Hub. Use a test-authorized installation and registered Project. The case checks Discussion and reply on one disposable IssueRun and records correlated sidebar states.
 Use the normally installed runtime, never an already-running Hub or Runner session.
 If startup authentication or inspection is unavailable, retain the exact blocked
 reason and complete independent installation/UI, fixture and headless checks.

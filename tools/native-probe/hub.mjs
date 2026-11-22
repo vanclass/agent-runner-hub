@@ -10,19 +10,25 @@ import { languageCase } from '../../tests/native/webdriver/language.mjs';
 import { hubLogCase } from '../../tests/native/webdriver/hub-log.mjs';
 import { subagentRun } from '../../tests/native/webdriver/subagent.mjs';
 import { semanticPresentation } from '../../tests/native/webdriver/terminal-presentation.mjs';
+import { issueSidebarLifecycle } from '../../tests/native/webdriver/issue-sidebar-lifecycle.mjs';
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--help') {
   console.log('Terminal cases (retained case IDs): semantic-presentation compares original xterm scrollback/viewport and diagnostic canonical records for /help; semantic-work submits a long bilingual read-only instruction; single-entry-work checks one original instruction in its assigned terminal. All require --runner-root and use the canonical startup account/model.');
   console.log('Additional case: hub-log (requires --runner-root); checks tab-independent capture and a fresh native process with the same isolated app data.');
+  console.log('Additional case: issue-sidebar-lifecycle (requires --runner-root and --issue-project <registered Project>); checks a disposable IssueRun on one authenticated Runner sidebar row.');
   console.log('node tools/native-probe/hub.mjs [--case <id>] [--runner-root <absolute existing Runner installation>] [--target-dir <absolute Cargo cache>]\nCases: installation-entry, configuration-selection, runner-read-only, renderer-probe, language-preference, hub-log, subagent-run, semantic-presentation, semantic-work. Default: the three WG3 cases. Repeat --case for explicit composition. Runner cases reuse the ordinary authenticated startup account in a new test-owned Hub process. Select the existing installation for the fresh Hub profile. Only explicitly selected work cases may submit their declared instruction. No automatic presentation escalation.');
 } else {
   const root = await fs.realpath(fileURLToPath(new URL('../../', import.meta.url)));
   const ids = [], values = new Map();
   for (let i = 0; i < args.length; i += 2) {
     const flag = args[i], value = args[i + 1];
-    if (!['--case', '--runner-root', '--target-dir'].includes(flag) || !value) throw new Error('Use --help');
+    if (!['--case', '--runner-root', '--target-dir', '--issue-project'].includes(flag) || !value) throw new Error('Use --help');
     if (flag === '--case') ids.push(value);
+    else if (flag === '--issue-project') {
+      if (values.has(flag) || value !== value.trim() || value.startsWith('-')) throw new Error('Use one exact Project name');
+      values.set(flag, value);
+    }
     else {
       if (values.has(flag) || !path.isAbsolute(value)) throw new Error('Use one absolute path per option; see --help');
       values.set(flag, path.resolve(value));
@@ -32,6 +38,7 @@ if (args.length === 1 && args[0] === '--help') {
   const cases = [installationEntry, configurationSelection(runnerRoot), runnerReadOnly(runnerRoot), rendererProbe, languageCase, hubLogCase(runnerRoot), subagentRun(runnerRoot), semanticPresentation(runnerRoot)];
   cases.push(semanticPresentation(runnerRoot, root));
   cases.push(semanticPresentation(runnerRoot, root, 'single-entry'));
+  cases.push(issueSidebarLifecycle(runnerRoot, values.get('--issue-project')));
   const selected = ids.length ? ids.map(id => {
     const spec = cases.find(c => c.id === id);
     if (!spec) throw new Error('Unknown case: ' + id + '; see --help');

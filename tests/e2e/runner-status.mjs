@@ -3,11 +3,12 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page);
     const marker = page.locator('.runner-row .status-dot');
-    const pair = (state, rev, change = {}) => page.evaluate(({ state, rev, change }) => {
+    const pair = (state, rev, change = {}, workAlive = false) => page.evaluate(({ state, rev, change, workAlive }) => {
       const session = window.__nativeFixture.sessions.get('pty-1');
       const o = session.control.observation;
       session.feature.config.current.run_mode = 'issue-run';
       o.run_mode = 'issue-run';
+      o.execution.owned_execution_alive = workAlive;
       const required = ['discussion', 'approval', 'human_request'].includes(state);
       const keyed = state === 'human_request';
       o.issue_run_user_action = { schema_version: 'issue-run-user-action-v1', issue_run_id: 'ir-live',
@@ -17,7 +18,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
         status: required ? 'idle' : state, interpreter: state === 'running'
           ? { invocation_id: `invocation-${rev}`, instance_id: 'server', launch_generation: 2,
               thread_id: 'thread', turn_id: `turn-${rev}` } : null, ...change };
-    }, { state, rev, change });
+    }, { state, rev, change, workAlive });
     await pair('running', 5);
     await expect(marker).toHaveAccessibleName('Running');
     await expect(marker).toHaveCSS('color', 'rgb(59, 130, 246)');
@@ -30,30 +31,36 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await expect(marker).toHaveClass('status-dot unknown');
     await pair('running', 9);
     await expect(marker).toHaveAccessibleName('Running');
-    await pair('human_request', 10, { status: 'unknown', state_revision: null });
+    await pair('human_request', 10, { status: 'unknown', state_revision: null }, true);
     await expect(marker).toHaveAccessibleName('IssueRun needs your response or approval');
-    await pair('approval', 11, { status: 'unsupported' });
+    await expect(marker).toHaveCSS('color', 'rgb(255, 214, 0)');
+    await expect(marker.locator('path')).toHaveAttribute('d', 'M12 7v6m0 4h.01');
+    await pair('unknown', 11, {}, true);
+    await expect(marker).toHaveAccessibleName('Status unknown');
+    await pair('running', 12);
+    await expect(marker).toHaveAccessibleName('Running');
+    await pair('approval', 13, { status: 'unsupported' });
     await expect(marker).toHaveAccessibleName('IssueRun needs your response or approval');
     for (const incompatible of [{ issue_run_id: 'other' }, { state_revision: 10 },
       { schema_version: 'future' }, { interpreter: { launch_generation: 0 } }]) {
-      await pair('running', 11, incompatible);
+      await pair('running', 13, incompatible);
       await expect(marker).toHaveClass('status-dot unknown');
     }
-    await pair('unsupported', 12);
+    await pair('unsupported', 14);
     await expect(marker).toHaveClass('status-dot unknown');
-    await pair('idle', 13);
+    await pair('idle', 15);
     await expect(marker).toHaveAccessibleName('Verified idle');
     const workFallback = await page.evaluate(async () => {
       const { issueSidebarActivity } = await import('/src/hub/runnerWork.ts');
       const { terminalWork } = await import('/tests/fixtures/work.ts');
       const o = window.__nativeFixture.sessions.get('pty-1').control.observation;
       const work = terminalWork(1, 1, { run_mode: 'issue-run', work_id: { kind: 'issue', id: 'ir-live' },
-        owner_revision: 12 });
+        owner_revision: 14 });
       const attempt = { work, uncertain: false, notSent: false };
       return [
         issueSidebarActivity(attempt, o),
-        issueSidebarActivity({ ...attempt, work: { ...work, owner_revision: 13 } }, o),
-        issueSidebarActivity({ ...attempt, work: { ...work, owner_revision: 13 } },
+        issueSidebarActivity({ ...attempt, work: { ...work, owner_revision: 15 } }, o),
+        issueSidebarActivity({ ...attempt, work: { ...work, owner_revision: 15 } },
           { ...o, issue_run_execution: { ...o.issue_run_execution, status: 'unknown' } }),
       ];
     });
@@ -95,6 +102,9 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     await expect(marker).toHaveClass('status-dot attention');
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
     await expect(marker).toHaveClass('status-dot failed');
+    await expect(marker).toHaveAccessibleName('Failed');
+    await expect(marker).toHaveCSS('color', 'rgb(239, 68, 68)');
+    await expect(marker.locator('path')).toHaveAttribute('d', 'm9 9 6 6m0-6-6 6');
   });
   test('IssueRun projection preserves Work safety and terminal uncertainty', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
@@ -422,19 +432,41 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
     test(`runner sidebar lifecycle for ${mode}`, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true });
       await configure(page); await create(page);
-      const marker = page.locator('.runner-row .status-dot');
-      async function observe(state, activity, label) {
-        await page.evaluate(({ state, mode }) => {
-          const s = window.__nativeFixture.sessions.get('pty-1');
+      async function activeRunner() {
+        const row = await page.locator('.runner-row.active').getAttribute('data-runner-id');
+        const id = await page.locator('.terminal-host').evaluate((host, row) => {
+          let fiber = host[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
+          for (; fiber; fiber = fiber.return) {
+            const session = fiber.memoizedProps?.session;
+            if (session?.view.id === row && session.terminal?.element?.parentElement === host)
+              return session.control.sessionId;
+          }
+        }, row);
+        expect(id).toMatch(/^pty-\d+$/);
+        return { row, id, dot: page.locator(`[data-runner-id="${row}"] .status-dot`) };
+      }
+      const first = await activeRunner();
+      const shapes = {
+        starting: 'M12 3a9 9 0 1 1-9 9',
+        running: 'm10 8 6 4-6 4Z',
+        attention: 'M12 7v6m0 4h.01',
+        unknown: 'M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 4h.01'
+      };
+      async function observe(state, activity, label, { id, dot } = first) {
+        await page.evaluate(({ state, mode, id }) => {
+          const s = window.__nativeFixture.sessions.get(id);
           s.feature.config.current.run_mode = mode;
           s.control.state = state === 'connecting' || state === 'disconnected' ? state : 'ready';
           s.control.age = state === 'stale' ? 999999 : 0;
           Object.assign(s.control.observation, { run_mode: mode });
           s.control.observation.execution.owned_execution_alive = state === 'working';
           s.control.observation.attention.restart_confirmation_required = state === 'attention';
-        }, { state, mode });
-        await expect(marker).toHaveClass(`status-dot ${activity}`);
-        await expect(marker).toHaveAccessibleName(label);
+        }, { state, mode, id });
+        await expect(dot).toBeVisible();
+        await expect(dot).toHaveClass(`status-dot ${activity}`);
+        await expect(dot).toHaveAccessibleName(label);
+        if (activity === 'idle') await expect(dot.locator('circle')).toHaveAttribute('fill', 'currentColor');
+        else await expect(dot.locator('path')).toHaveAttribute('d', shapes[activity]);
       }
       await observe('connecting', 'starting', 'Starting');
       await observe('idle', 'idle', 'Verified idle');
@@ -444,6 +476,22 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
       await observe('stale', 'unknown', 'Status unknown');
       await observe('idle', 'idle', 'Verified idle');
       await observe('disconnected', 'unknown', 'Status unknown');
+      await create(page);
+      const replacement = await activeRunner();
+      expect(replacement.id).not.toBe(first.id);
+      await observe('connecting', 'starting', 'Starting', replacement);
+      await observe('idle', 'idle', 'Verified idle', replacement);
+      await observe('working', 'running', 'Running', replacement);
+      await observe('idle', 'idle', 'Verified idle', replacement);
+      await page.evaluate(id => window.__nativeFixture.exit(id, 1), replacement.id);
+      await expect(replacement.dot).toHaveClass('status-dot failed');
+      await expect(replacement.dot).toHaveAccessibleName('Failed');
+      await expect(replacement.dot).toHaveCSS('color', 'rgb(239, 68, 68)');
+      await expect(replacement.dot.locator('path')).toHaveAttribute('d', 'm9 9 6 6m0-6-6 6');
+      await create(page);
+      const afterFailure = await activeRunner();
+      expect(afterFailure.id).not.toBe(replacement.id);
+      await observe('idle', 'idle', 'Verified idle', afterFailure);
     });
   }
 }
