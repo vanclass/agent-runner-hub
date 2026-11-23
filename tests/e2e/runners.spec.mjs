@@ -53,6 +53,7 @@ async function transport(page, freshTarget, referenceOptions) {
     const observed = new Map();
     const callbacks = new Map(), listeners = new Map();
     const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [], referenceRequests = [];
+    const logRecords = [];
     const staged = [], clipboardReads = [], imageCloses = [], deliveredSets = [], revokedUrls = [];
     const revoke = URL.revokeObjectURL.bind(URL);
     URL.revokeObjectURL = url => { revokedUrls.push(url); revoke(url); };
@@ -121,6 +122,11 @@ async function transport(page, freshTarget, referenceOptions) {
       transformCallback: handler => { callbacks.set(++callback, handler); return callback; },
       unregisterCallback: () => {},
       invoke: async (command, args) => {
+        if (command === 'hub_log' && referenceOptions?.captureHubLog) {
+          const event = args.request.event;
+          if (event) logRecords.push({ ...event, sequence: logRecords.length + 1, timestamp: Date.now() });
+          return { records: logRecords, issue: null };
+        }
         if (command === 'runner_resolve') {
           if (args.location === '/missing') throw new Error('Runner managed Python is missing. Run native bootstrap.');
           return { root: args.location === '/fixture/other' ? '/fixture/other' : '/fixture/install', python: '/fixture/python' };

@@ -202,6 +202,7 @@
       "finishAttachments": "첨부를 전송하기 전에 현재 Runner 상호작용을 마치세요.",
       "freshUnavailable": "최신 인증된 Runner 준비 상태를 확인할 수 없습니다. 지시문은 전송하지 않았습니다.",
       "unavailable": "Runner 제어를 사용할 수 없습니다.",
+      "slashCommandTooLong": "명령을 전송하지 않았습니다. Runner 슬래시 명령은 UTF-8 기준 최대 {{maxBytes}}바이트입니다. 입력한 내용은 유지됩니다.",
       "finishPending": "지원되는 Hub 제어로 대기 중인 상호작용을 마치세요. 미지원 소유자는 입력을 차단합니다.",
       "clipboardRequires": "클립보드 임시 저장에는 연결되어 인증된 Windows Runner가 필요합니다.",
       "clipboardUnsupported": "클립보드 변환 결과가 지원되는 PNG가 아닙니다(최대 64 MiB).",

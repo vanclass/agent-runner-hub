@@ -28,8 +28,10 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       await expect(page.locator('.output-label, .composer-note, .control-status')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Release unsent assignment' })).toHaveCount(0);
     });
-    for (const body of ['과검증 과설계에 주의해']) {
-      test(`Brief Run ${path} stages exact unified Korean instructions (${body ? 'both' : 'Run only'})`, async ({ page }) => {
+    const bodies = [['Korean', '과검증 과설계에 주의해']];
+    if (tab) bodies.push(['above the typed slash limit', '/run ' + '한글 '.repeat(600)]);
+    for (const [label, body] of bodies) {
+      test(`Brief Run ${path} stages exact unified instructions (${label})`, async ({ page }) => {
         await ready(page, tab, body ? {} : { brief: 'unsupported' });
         const text = body;
         await input(page).fill(body);

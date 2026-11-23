@@ -3,6 +3,9 @@ import type { ControlSnapshot } from './runnerControl';
 import { record, type ConfigIdentity, type FeatureAdmission } from './runnerConfigContract';
 import { isRunReceipt, type RunRequest } from './runnerRunContract';
 
+// Match native slash-command admission when typed Run uses feature transport.
+export const slashCommandMaxBytes = 4096;
+
 type Settlement =
   | { state: 'accepted' }
   | { state: 'not-sent' | 'rejected' | 'unknown'; detail: HubText };
@@ -35,7 +38,12 @@ export class RunnerTypedRun {
       && snapshot.state === 'ready' && (!snapshot.observation || snapshot.observation.run_mode === 'issue-run');
   }
 
-  async submit(identity: ConfigIdentity, text: string) {
+  async submit(identity: ConfigIdentity, draft: string, text: string) {
+    if (new TextEncoder().encode(draft).length > slashCommandMaxBytes) {
+      this.finish({ state: 'not-sent',
+        detail: msg('runtime.control.slashCommandTooLong', { maxBytes: slashCommandMaxBytes }) });
+      return;
+    }
     const attempt: Attempt = { identity };
     this.result = undefined;
     this.attempt = attempt;

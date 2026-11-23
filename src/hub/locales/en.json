@@ -202,6 +202,7 @@
       "finishAttachments": "Finish the current Runner interaction before sending attachments.",
       "freshUnavailable": "Fresh authenticated Runner readiness is unavailable. Instruction unsent.",
       "unavailable": "Runner control is unavailable.",
+      "slashCommandTooLong": "Command unsent. Runner slash commands are limited to {{maxBytes}} UTF-8 bytes. Draft retained.",
       "finishPending": "Finish the pending interaction using supported Hub controls. Unsupported owners block input.",
       "clipboardRequires": "Clipboard staging requires an available authenticated Windows Runner.",
       "clipboardUnsupported": "Clipboard conversion did not produce a supported PNG (maximum 64 MiB).",

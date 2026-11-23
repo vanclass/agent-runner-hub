@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { i18n, t, type MessageKey } from './i18n';
+import { slashCommandMaxBytes } from './RunnerTypedRun';
 
 export type HubEvent = { component: string; operation: string; runner: string; target: string;
   expected: string; actual: string; code: string; nextAction: string };
@@ -32,13 +33,17 @@ export function formatHubTimestamp(timestamp: number) {
 }
 
 export function formatHubRecord(record: HubEvent) {
-  const modern = ['system', 'task', 'settings'].includes(record.component) && record.expected === 'confirmed-outcome';
+  const oversizedTypedRun = record.component === 'delivery' && record.operation === 'typed-run'
+    && record.actual === 'not-sent' && record.code === 'runtime.control.slashCommandTooLong';
+  const modern = oversizedTypedRun
+    || ['system', 'task', 'settings'].includes(record.component) && record.expected === 'confirmed-outcome';
   const category = record.component === 'settings' || record.component === 'configuration' ? 'settings'
     : record.component === 'task' || record.component === 'work' ? 'task' : 'system';
   const label = eventLabels[record.operation];
   const outcome = outcomeLabels[record.actual] ?? 'hubLog.outcomes.unknown';
   const contextual = ['runner-lifecycle', 'connection', 'work-outcome', 'work-submission', 'configuration-apply'].includes(record.operation);
-  let message = modern && label ? t(label) : t('hubLog.events.other');
+  let message = oversizedTypedRun ? t('runtime.control.slashCommandTooLong', { maxBytes: slashCommandMaxBytes })
+    : modern && label ? t(label) : t('hubLog.events.other');
   if (modern && contextual) message += ` · ${t(outcome)}`;
   if (!modern) {
     const component = ['assignment', 'allocation', 'restoration', 'runner', 'connection', 'configuration', 'work', 'delivery',

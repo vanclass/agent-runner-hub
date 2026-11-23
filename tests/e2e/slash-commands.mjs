@@ -1,7 +1,9 @@
 // Production composers; synthetic native transport, not installed-host acceptance.
+import { drop } from './composer-attachments.mjs';
+
 export function registerSlashCommands({ test, expect, transport, configure, create, entry }) {
   async function typedRun(page, fault) {
-    await transport(page, undefined, { auto: true, work: true, brief: 'accepted' });
+    await transport(page, undefined, { auto: true, work: true, brief: 'accepted', captureHubLog: true });
     await configure(page);
     await create(page);
     await page.evaluate(fault => {
@@ -32,6 +34,9 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
         if (fault === 'wrong-generation') return { ...admission, generation: admission.generation + 1 };
         if (fault === 'wrong-request') receipt.reply.run.invocation_request_id--;
         if (fault === 'unknown') receipt.state = 'outcome-unknown';
+        if (fault === 'rejected') {
+          Object.assign(receipt, { state: 'rejected', reply: { outcome_unknown: false } });
+        }
         if (fault === 'held') {
           fixture.typedReceipt = structuredClone(receipt);
           Object.assign(receipt, { state: 'queued', phase: 'queued', reply: undefined });
@@ -54,13 +59,22 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
     return { requests: session.run.requests, staged: session.briefRequests ?? [],
       commands: fixture.commands, writes: fixture.writes };
   });
+  const height = input => input.evaluate(node => node.getBoundingClientRect().height);
+  const releaseTypedReceipt = page => page.evaluate(() => {
+    const f = window.__nativeFixture;
+    const results = f.sessions.get(f.typedSessionId).control.features.results;
+    Object.assign(results.find(result => result.id === f.typedReceipt.id), f.typedReceipt);
+  });
 
   test('typed Run clears and reopens the focused editor at the matching receipt', async ({ page }) => {
     const input = await typedRun(page, 'held');
-    const args = '  한글 "quoted" tail\t  ';
+    const base = await height(input);
+    const args = '  한글 "quoted" tail\t  '.repeat(50);
     await input.fill(' \t/run\t' + args);
+    expect(await height(input)).toBeGreaterThan(base);
     await input.press('Enter');
     await expect(input).toHaveAttribute('readonly', '');
+    expect(await height(input)).toBeCloseTo(base, 0);
     await input.press('Enter');
     await expect.poll(() => requestTrace(page)).toEqual({
       requests: [{ operation: 'run.invoke', api_version: 1, text: args }], staged: [], commands: [], writes: [],
@@ -72,10 +86,7 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
     });
     await expect(input).toHaveAttribute('readonly', '');
     await expect(input).toHaveValue(' \t/run\t' + args);
-    await page.evaluate(() => {
-      const f = window.__nativeFixture;
-      Object.assign(f.sessions.get(f.typedSessionId).control.features.results.find(r => r.id === f.typedReceipt.id), f.typedReceipt);
-    });
+    await releaseTypedReceipt(page);
     await expect(input).toHaveValue('');
     await expect(input).toBeEditable();
     await expect(input).toBeFocused();
@@ -92,25 +103,119 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
     });
   });
 
-  for (const fault of ['not-sent', 'unknown', 'wrong-generation', 'wrong-request']) {
+  for (const fault of ['rejected', 'not-sent', 'unknown', 'wrong-generation', 'wrong-request']) {
     test(`typed Run ${fault} preserves the draft and never falls back`, async ({ page }) => {
       const input = await typedRun(page, fault);
-      await input.fill('/run');
+      const base = await height(input);
+      const text = 'retained 한글 '.repeat(100);
+      const draft = '/run ' + text;
+      await input.fill(draft);
+      expect(await height(input)).toBeGreaterThan(base);
       await input.press('Enter');
-      const trace = { requests: [{ operation: 'run.invoke', api_version: 1 }], staged: [], commands: [], writes: [] };
+      const trace = { requests: [{ operation: 'run.invoke', api_version: 1, text }], staged: [], commands: [], writes: [] };
       await expect.poll(() => requestTrace(page)).toEqual(trace);
-      await expect(input).toHaveValue('/run');
-      if (fault === 'not-sent') {
+      await expect(input).toHaveValue(draft);
+      if (fault === 'not-sent' || fault === 'rejected') {
         await expect(input).toBeEditable();
+        expect(await height(input)).toBeCloseTo(base, 0);
+        await input.fill(draft + 'edited');
+        expect(await height(input)).toBeGreaterThan(base);
+        await input.press('Control+z');
+        await expect(input).toHaveValue(draft);
         await input.press('Control+z');
         await expect(input).toHaveValue('');
       } else {
         await expect(input).toBeDisabled();
+        expect(await height(input)).toBeCloseTo(base, 0);
         await input.dispatchEvent('keydown', { key: 'Enter', bubbles: true });
       }
       expect(await requestTrace(page)).toEqual(trace);
     });
   }
+
+  for (const [kind, args] of [['ASCII', 'a'.repeat(4089)], ['multibyte', '한'.repeat(1363)]]) {
+    test(`typed Run applies the complete UTF-8 command limit to ${kind} text`, async ({ page }) => {
+      const input = await typedRun(page);
+      const atLimit = ' \t/run\t' + args;
+      const oversized = atLimit + ' ';
+      expect(Buffer.byteLength(atLimit)).toBe(4096);
+      expect(Buffer.byteLength(oversized)).toBe(4097);
+      await input.fill(oversized);
+      await input.press('Enter');
+      await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+      await expect(page.locator('.hub-log-records')).toContainText(
+        'Command unsent. Runner slash commands are limited to 4096 UTF-8 bytes. Draft retained.');
+      await page.locator('.runner-row .nav-row').click();
+      await expect(input).toHaveValue(oversized);
+      await expect(input).toBeEditable();
+      expect(await requestTrace(page)).toEqual({ requests: [], staged: [], commands: [], writes: [] });
+
+      await input.fill(atLimit);
+      await input.press('Enter');
+      await expect(input).toHaveValue('');
+      await expect.poll(() => requestTrace(page)).toEqual({
+        requests: [{ operation: 'run.invoke', api_version: 1, text: args }], staged: [], commands: [], writes: [],
+      });
+    });
+  }
+
+  test('typed Run keeps independent Runner and Single Entry selections with their drafts', async ({ page }) => {
+    const input = await typedRun(page, 'held');
+    const activeTabId = () => page.locator('.runner-row.active').getAttribute('data-runner-id');
+    const tab = id => page.locator(`.runner-row[data-runner-id="${id}"] .nav-row`);
+    const submittingId = await activeTabId();
+    await create(page);
+    const otherId = await activeTabId();
+    expect(otherId).not.toBe(submittingId);
+    const single = page.getByRole('button', { name: 'Single Entry', exact: true });
+    const editor = page.locator('textarea[data-instruction]');
+    const selections = page.locator('.attachment-chip .attachment-open');
+    const selectedPaths = () => selections.evaluateAll(items => items.map(item => item.title));
+    const owners = [
+      { open: tab(otherId), draft: 'Other Runner draft', path: '/fixture/runner-note.txt' },
+      { open: single, draft: 'Single Entry draft', path: '/fixture/entry-note.txt' },
+    ];
+    for (const { open, draft, path } of owners) {
+      await open.click();
+      await editor.fill(draft);
+      await drop(page, [path]);
+      await expect.poll(selectedPaths).toEqual([path]);
+    }
+    await tab(submittingId).click();
+    await expect(selections).toHaveCount(0);
+    await input.fill('/run one delivery');
+    await input.press('Enter');
+    await expect(input).toHaveAttribute('readonly', '');
+    await drop(page, ['/fixture/ignored-pending-drop.txt']);
+    await expect(selections).toHaveCount(0);
+
+    for (const { open, draft, path } of owners) {
+      await open.click();
+      await expect(editor).toHaveValue(draft);
+      await expect.poll(selectedPaths).toEqual([path]);
+    }
+    await releaseTypedReceipt(page);
+    await tab(submittingId).click();
+    await expect(input).toHaveValue('');
+    await expect(input).toBeEditable();
+    await expect(selections).toHaveCount(0);
+    for (const { open, draft, path } of owners) {
+      await open.click();
+      await expect(editor).toHaveValue(draft);
+      await expect.poll(selectedPaths).toEqual([path]);
+    }
+    expect(await requestTrace(page)).toEqual({
+      requests: [{ operation: 'run.invoke', api_version: 1, text: 'one delivery' }],
+      staged: [], commands: [], writes: [],
+    });
+    expect(await page.evaluate(() => {
+      const f = window.__nativeFixture;
+      return {
+        references: f.referenceRequests.filter(r => r.request.operation !== 'references.list'),
+        otherRuns: [...f.sessions].filter(([id]) => id !== f.typedSessionId).flatMap(([, s]) => s.run.requests),
+      };
+    })).toEqual({ references: [], otherRuns: [] });
+  });
 
   for (const path of ['Runner', 'Single Entry']) {
     for (const [text, fault] of [

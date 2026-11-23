@@ -233,7 +233,7 @@ export class RunnerControl {
     if (this.snapshot.observation?.run_mode !== 'issue-run' || !commandNamed(this.snapshot, '/run')
       || !features || !supportsRun(features.run)) throw new HubError(msg('runtime.control.unavailable'));
     // Runner applies the live Run gate, including its fresh IssueRun text admission.
-    return this.typedRun.submit({ session, generation: features.generation }, text);
+    return this.typedRun.submit({ session, generation: features.generation }, draft, text);
   }
   async command(text: string) {
     const id = this.commandSession(text);

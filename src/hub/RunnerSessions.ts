@@ -434,6 +434,7 @@ export class RunnerSession {
     if (!ordinary && this.control.snapshot.observation?.run_mode === 'issue-run') {
       const text = typedRunArguments(draft);
       if (text !== undefined) {
+        this.composerCompact = true;
         this.submittedRun = { tabId: this.view.id, draft, revision: this.draftRevision };
         try {
           const admission = this.control.runTyped(draft, text);
