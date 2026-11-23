@@ -51,7 +51,7 @@ export function prepareTaskRunInstruction(instruction: string, target: EntryDefa
 /** Both entry points use the destination's authenticated configuration and work owners. */
 export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfigService, work: RunnerWork,
   defaults: EntryDefaults, instruction: string, admit: () => Promise<symbol | void>,
-  deliver?: (lease?: symbol) => Promise<T>): Promise<T> {
+  deliver?: (lease?: symbol) => Promise<T>, onWorkAttempt?: (attempt: WorkAttempt) => void): Promise<T> {
   if ((!deliver && !work.supports('work.submit', defaults.runMode)) || work.blocked || work.busy)
     throw new HubError(msg('work.unavailable'));
   if (config.busy || config.uncertain) throw new HubError(msg('config.partial'));
@@ -87,5 +87,5 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
   if (deliver && (defaults.runMode !== 'issue-run' || inspection.current.run_mode !== 'issue-run'))
     throw new HubError(msg('brief.unavailable'));
   return deliver ? deliver(attachmentLease || undefined)
-    : work.submit(prepared, attachmentLease || undefined) as Promise<T>;
+    : work.submit(prepared, attachmentLease || undefined, onWorkAttempt) as Promise<T>;
 }

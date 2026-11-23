@@ -65,6 +65,21 @@ fn optional_user_action_preserves_old_observations_and_opaque_fields() {
     assert_eq!(decoded.issue_run_user_action.unwrap().status, "unknown");
 }
 #[test]
+fn issue_execution_projection_is_optional_and_excludes_private_fields() {
+    let mut payload = observation();
+    assert!(serde_json::from_value::<Observation>(payload.clone()).unwrap().issue_run_execution.is_none());
+    payload["issue_run_execution"] = json!({
+        "schema_version":"issue-run-execution-v1", "status":"running", "issue_run_id":"ir-1", "state_revision":5,
+        "interpreter":{"invocation_id":"main", "launch_generation":2, "thread_id":"thread", "turn_id":"turn",
+            "instance_id":"instance", "opaque":"private"}
+    });
+    let view = serde_json::from_value::<Observation>(payload.clone()).unwrap();
+    assert_eq!(view.issue_run_execution.as_ref().unwrap().interpreter.as_ref().unwrap().launch_generation, 2);
+    assert!(!serde_json::to_string(&view).unwrap().contains("private"));
+    payload["issue_run_execution"]["interpreter"]["launch_generation"] = json!("bad");
+    assert!(serde_json::from_value::<Observation>(payload).unwrap().issue_run_execution.is_none());
+}
+#[test]
 fn hello_binds_the_actual_created_process_and_expected_session() {
     for field in ["process_id", "session_id", "version", "connection_id"] {
         let mut changed = hello(); changed[field] = json!("stale");

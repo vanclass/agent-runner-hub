@@ -128,6 +128,7 @@
     "configuring": "Allocated {{name}} · verifying requested settings…",
     "observing": "{{name}} · submitted once; waiting for Runner admission and start evidence…",
     "started": "{{name}} · Runner verified start (event {{event}}). Full output is in its tab.",
+    "liveStarted": "{{name}} · Discussion has started. Full output is in its tab.",
     "retained": "Runner work: {{state}}. Ownership retained; do not resend. Continue in the owning Runner tab.",
     "rejected": "Instruction unsent or admission rejected: {{code}}. Draft retained.",
     "unavailable": "Work is unavailable, busy or owns unfinished work. Verify that Runner supports submit, status and API/terminal discovery, or review the existing work. Instruction was not resubmitted.",

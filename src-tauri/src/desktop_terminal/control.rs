@@ -87,9 +87,25 @@ fn user_action<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<Is
     })))
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssueRunInterpreter {
+    pub invocation_id: String, pub launch_generation: u64,
+    pub thread_id: String, pub turn_id: String, pub instance_id: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IssueRunExecution {
+    pub schema_version: String, pub status: String, pub issue_run_id: String,
+    pub state_revision: Option<u64>, pub interpreter: Option<IssueRunInterpreter>,
+}
+fn issue_execution<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<IssueRunExecution>, D::Error> {
+    let raw = Value::deserialize(decoder)?;
+    Ok(serde_json::from_value(raw).ok())
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {
     #[serde(default, deserialize_with = "user_action", skip_serializing_if = "Option::is_none")]
     pub issue_run_user_action: Option<IssueRunUserAction>,
+    #[serde(default, deserialize_with = "issue_execution", skip_serializing_if = "Option::is_none")]
+    pub issue_run_execution: Option<IssueRunExecution>,
     pub run_mode: String, pub target: Target, pub selection: Selection,
     pub execution: Execution, pub attention: Attention, pub commands: Vec<CommandView>,
 }

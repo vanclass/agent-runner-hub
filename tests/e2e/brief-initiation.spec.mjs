@@ -114,11 +114,18 @@ for (const fault of ['disconnected', 'generation', 'capability', 'lost-completio
       brief.observe(snapshot); window.__brief = { brief, fixture, promise: brief.submit('original') };
     }, fault);
     await page.clock.runFor(66000);
-    const result = await page.evaluate(async () => {
+    const result = await page.evaluate(async fault => {
       const { brief, fixture, promise } = window.__brief; const result = await promise;
-      await brief.submit('duplicate'); return { result, blocked: brief.blocked, requests: fixture.requests };
-    });
+      await brief.submit('duplicate');
+      const before = fixture.requests.length;
+      if (fault === 'generation') {
+        fixture.mode = 'started';
+        await brief.reconcile(result);
+      }
+      return { result, blocked: brief.blocked, requests: fixture.requests, before };
+    }, fault);
     expect(result.result.status).toBe('unknown'); expect(result.blocked).toBe(true);
+    expect(result.requests).toHaveLength(result.before);
     expect(result.requests.filter(r => r.operation === 'run.invoke')).toHaveLength(1);
   });
 }

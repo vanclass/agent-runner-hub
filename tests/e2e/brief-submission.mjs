@@ -1,10 +1,20 @@
+import { drop } from './composer-attachments.mjs';
+
 export function registerBriefSubmission({ test, expect, transport, configure, create }) {
   async function feedback(page, tab, key) {
-    await page.keyboard.press('Control+Home');
-    await expect(page.locator('.hub-log-records')).toContainText(key, { timeout: 35000 });
-    if (tab) await page.keyboard.press('Control+End');
+    if (!tab) await home(page);
+    await expect.poll(() => input(page).evaluate((element, tab) => {
+      let fiber = element[Object.keys(element).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        const props = fiber.memoizedProps;
+        if (tab && props?.session) return [props.session.control.brief.detail?.key, props.session.view.detail?.key];
+        if (!tab && props?.entry) return [props.entry.progress?.key, props.entry.detail?.key];
+      }
+      return [];
+    }, tab), { timeout: 35000 }).toContain(key);
   }
   const input = page => page.locator('.composer-area textarea[data-instruction]');
+  const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   async function ready(page, tab, options = {}) {
     await transport(page, undefined, { auto: true, work: true, brief: 'accepted', ...options });
     await configure(page);
@@ -15,6 +25,67 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await expect(mode).toBeEnabled();
     await mode.selectOption(JSON.stringify('issue-run'));
   }
+  test('Brief Run Single Entry confirms late start once and clears its submitted image', async ({ page }) => {
+    await ready(page, false, { runResult: 'pending' });
+    await page.clock.install();
+    await drop(page, ['/fixture/original.png']);
+    const body = 'Late start 한글 🌍\n  original Brief  ';
+    await input(page).fill(body);
+    await input(page).press('Control+Enter');
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
+      .filter(request => request.operation === 'run.status').length)).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await page.clock.fastForward(66000);
+    await expect.poll(() => input(page).evaluate(element => {
+      let fiber = element[Object.keys(element).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        if (fiber.memoizedProps?.entry) return fiber.memoizedProps.entry.phase;
+      }
+    })).toBe('unknown');
+    await expect(input(page)).toHaveValue(body);
+    await expect(input(page)).toBeDisabled();
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    const ids = await page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      session.run.mode = 'crossed';
+      return session.items.map(item => item.reference_id);
+    });
+    expect(ids).toHaveLength(1);
+    await page.clock.runFor(1500);
+    await expect(input(page)).toHaveValue(body);
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    await page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      Object.assign(session.control.observation.execution, {
+        lifecycle_state: 'RUNNING', owned_execution_alive: true, workflow_kind: 'issue-run',
+      });
+      session.run.mode = 'started';
+    });
+    await page.clock.runFor(1500);
+    await expect(input(page)).toHaveValue('');
+    await expect(input(page)).toBeEnabled();
+    await expect(page.locator('.attachment-chip')).toHaveCount(0);
+    await input(page).press('Control+z');
+    await expect(input(page)).toHaveValue('');
+    await input(page).fill('Independent draft');
+    await drop(page, ['/fixture/new.png']);
+    const readDelivery = () => page.evaluate(() => {
+      const session = window.__nativeFixture.sessions.get('pty-1');
+      return { requests: session.run.requests, staged: session.briefRequests,
+        ids: session.items.map(item => item.reference_id), active: session.control.observation.execution.owned_execution_alive };
+    });
+    const delivered = await readDelivery();
+    await page.clock.runFor(1500);
+    expect(await readDelivery()).toEqual(delivered);
+    expect(delivered.staged).toEqual([{ operation: 'brief.stage', api_version: 1, body }]);
+    expect(delivered.requests.filter(request => request.operation === 'run.invoke')).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
+    expect(new Set(delivered.requests.filter(request => request.operation === 'run.status')
+      .map(request => request.invocation_request_id))).toEqual(new Set([8001]));
+    expect(delivered.ids).toEqual(ids);
+    expect(delivered.active).toBe(true);
+    await expect(input(page)).toHaveValue('Independent draft');
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+  });
   for (const tab of [false, true]) {
     const path = tab ? 'Runner tab' : 'Single Entry';
     test(`unified composer ${path} has one input and empty Ctrl+Enter has no effects`, async ({ page }) => {
@@ -39,7 +110,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await run.press('Control+Enter');
         await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
           .filter(r => r.operation === 'run.invoke')), { timeout: 35000 }).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await expect(input(page)).toHaveValue(''); await expect(run).toHaveValue('');
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? []))
           .toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
@@ -53,13 +124,13 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await input(page).fill(body); await run.press('Control+Enter');
         await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
           .filter(r => r.operation === 'run.status').length), { timeout: 35000 }).toBeGreaterThan(0);
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await expect(input(page)).toBeDisabled(); await expect(input(page)).toHaveValue(body);
         await expect(run).toHaveValue(body);
         await page.keyboard.press('Control+Enter');
         await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });
         await feedback(page, tab, 'brief.requested');
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await expect(input(page)).toHaveValue(''); await expect(run).toHaveValue('');
         await expect(input(page)).toBeEnabled();
         const evidence = await page.evaluate(() => {
@@ -76,7 +147,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         expect(evidence.writes).toEqual([]); expect(evidence.commands).toEqual([]);
         await expect(page.getByRole('combobox', { name: 'Requested Run Mode', exact: true })).toBeEnabled({ timeout: 35000 });
         await input(page).fill('ordinary Send remains unavailable'); await input(page).press('Enter');
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await feedback(page, tab, 'work.unavailable');
         await expect(input(page)).toHaveValue('ordinary Send remains unavailable');
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
@@ -91,7 +162,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await ready(page, tab, { runResult });
         const run = input(page);
         await input(page).fill(body); await run.press('Control+Enter');
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await feedback(page, tab, 'brief.unavailable');
         await expect(input(page)).toHaveValue(body); await expect(run).toHaveValue(body);
         if (!tab) {
@@ -118,7 +189,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       await input(page).fill(body); await input(page).focus();
       await page.keyboard.down('Control'); await page.keyboard.down('Enter'); await page.keyboard.down('Enter');
       await page.keyboard.up('Enter'); await page.keyboard.up('Control');
-      if (!tab) await page.keyboard.press('Control+Home');
+      if (!tab) await page.keyboard.press('Control+Shift+Home');
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
         .filter(r => r.operation === 'run.status').length), { timeout: 35000 }).toBeGreaterThan(0);
       await expect(input(page)).toBeDisabled();
@@ -136,7 +207,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       expect(original.work.filter(r => r.operation === 'work.submit')).toEqual([]); expect(original.writes).toEqual([]);
       await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });
       await feedback(page, tab, 'brief.requested');
-      if (!tab) await page.keyboard.press('Control+Home');
+      if (!tab) await page.keyboard.press('Control+Shift+Home');
       await expect(input(page)).toHaveValue('');
       await expect(input(page)).toBeEnabled();
       await info.attach('brief-run-confirmed', { body: await page.screenshot(), contentType: 'image/png' });
@@ -160,10 +231,10 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       test(`Brief Run ${path} never runs after ${brief} staging`, async ({ page }) => {
         await ready(page, tab, { brief });
         await input(page).fill('  retained 한글\ntrailing  \n'); await input(page).press('Control+Enter');
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         const label = brief === 'rejected' ? 'brief.stageRejected' : brief === 'unsupported' ? 'brief.unavailable' : 'brief.stageUnknown';
         await feedback(page, tab, label);
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await expect(input(page)).toHaveValue('  retained 한글\ntrailing  \n');
         if (!['rejected', 'unsupported'].includes(brief)) await page.keyboard.press('Control+Enter');
         expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
@@ -175,9 +246,9 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     test(`Brief Run ${path} keeps staged Brief when Run is rejected`, async ({ page }) => {
       await ready(page, tab, { runResult: 'rejected' });
       await input(page).fill('staged draft'); await input(page).press('Control+Enter');
-      if (!tab) await page.keyboard.press('Control+Home');
+      if (!tab) await page.keyboard.press('Control+Shift+Home');
       await feedback(page, tab, 'brief.runRejected');
-      if (!tab) await page.keyboard.press('Control+Home');
+      if (!tab) await page.keyboard.press('Control+Shift+Home');
       await expect(input(page)).toHaveValue('staged draft');
       await page.keyboard.press('Control+Enter');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests.filter(r => r.operation === 'run.invoke').length)).toBe(1);
@@ -201,7 +272,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit')))
         .toMatchObject([{ instruction: 'first\nsecond' }]);
       expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
-      if (!tab) await page.keyboard.press('Control+Home');
+      if (!tab) await page.keyboard.press('Control+Shift+Home');
       await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
     });
     for (const [runResult, label] of [['human', 'brief.attention'], ['paused', 'brief.attention'],
@@ -211,7 +282,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       test(`Brief Run ${path} retains ownership after ${runResult}`, async ({ page }) => {
         await ready(page, tab, { runResult });
         await input(page).fill('retained invocation'); await input(page).press('Control+Enter');
-        if (!tab) await page.keyboard.press('Control+Home');
+        if (!tab) await page.keyboard.press('Control+Shift+Home');
         await feedback(page, tab, label);
         await expect(input(page)).toHaveValue('retained invocation');
         if (runResult !== 'unsupported') await page.keyboard.press('Control+Enter');
@@ -224,7 +295,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     test(`Brief Run ${path} never replays an uncertain Run`, async ({ page }) => {
       await ready(page, tab, { runResult: 'outcome-unknown' });
       await input(page).fill('retained after Run'); await input(page).press('Control+Enter');
-      if (!tab) await page.keyboard.press('Control+Home');
+      if (!tab) await page.keyboard.press('Control+Shift+Home');
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
         .filter(r => r.operation === 'run.invoke').length), { timeout: 35000 }).toBe(1);
       if (tab) await page.keyboard.press('Control+End');
@@ -240,7 +311,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await page.evaluate(() => {
       window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true;
     });
-    await page.keyboard.press('Control+Home');
+    await page.keyboard.press('Control+Shift+Home');
     await expect(page.locator('.hub-log-records')).toContainText(/runtime.entry.attentionUnsettled|interaction.usePanel/);
     await page.keyboard.press('Control+End');
     await expect(input(page)).toHaveValue('Brief must stay out of PTY');
@@ -254,7 +325,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await page.keyboard.press('Control+PageDown'); await expect(input(page)).toBeVisible();
     await input(page).fill('entry retained'); await create(page); await create(page); await create(page);
     const rows = page.locator('.runner-row .nav-row');
-    await page.keyboard.press('Control+Home'); await page.keyboard.press('Control+PageUp');
+    await page.keyboard.press('Control+Shift+Home'); await page.keyboard.press('Control+PageUp');
     await expect(input(page)).toHaveValue('entry retained');
     await page.keyboard.press('Control+PageDown'); await expect(rows.nth(0)).toHaveAttribute('aria-current', 'page');
     await input(page).fill('tab retained'); await page.keyboard.press('Control+PageDown');

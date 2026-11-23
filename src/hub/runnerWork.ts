@@ -150,6 +150,23 @@ export class RunnerWork {
   hasConfirmedStart(attempt: WorkAttempt) {
     return !attempt.notSent && this.confirmedStarts.has(attempt);
   }
+  hasLiveIssueStart(attempt: WorkAttempt, observation: RunnerObservation) {
+    const { work, submissionId, identity } = attempt;
+    if (this.closed || attempt.notSent || attempt.uncertain || !positive(submissionId)
+      || !same(identity, this.identity) || !same(identity, this.transport.identity())
+      || !work || work.origin !== 'api' || work.observation_id !== `api:${submissionId}`
+      || work.submission_request_id !== submissionId || work.run_mode !== 'issue-run'
+      || work.terminal || work.admission !== 'admitted' || work.started_event_id !== 0
+      || work.work_id?.kind !== 'issue' || observation.run_mode !== 'issue-run') return false;
+    const live = observation.issue_run_execution;
+    const native = live?.interpreter;
+    return live?.schema_version === 'issue-run-execution-v1' && live.status === 'running'
+      && !!live.issue_run_id && live.issue_run_id === work.work_id.id
+      && positive(live.state_revision) && live.state_revision === work.owner_revision
+      && !!native && positive(native.launch_generation)
+      && [native.invocation_id, native.thread_id, native.turn_id, native.instance_id]
+        .every(id => typeof id === 'string' && id.length > 0);
+  }
   get presentedAttempts() {
     return this.attempts.filter(a => !this.previousAttempts.has(a)
       && (!a.work || a.work.event_id > this.presentationAfter));
@@ -377,13 +394,14 @@ export class RunnerWork {
       }, () => finish(unknown()));
     });
   }
-  async submit(instruction: string, attachmentLease?: symbol) {
+  async submit(instruction: string, attachmentLease?: symbol, onAttempt?: (attempt: WorkAttempt) => void) {
     if (this.blocked || this.busy || !instruction.trim() || instruction.includes('\0') || instruction.trimStart().startsWith('/'))
       throw new HubError(msg('work.unavailable'));
     const identity = this.transport.identity();
     if (!identity || !this.supported) throw new HubError(msg('work.unavailable'));
     const attempt: WorkAttempt = { identity: copy(identity), instruction, uncertain: false, notSent: true };
     this.attempts.push(attempt);
+    onAttempt?.(attempt);
     try {
       const result = await this.request({ operation: 'work.submit', api_version: 1, instruction }, attempt, attachmentLease);
       attempt.submission = copy(result);

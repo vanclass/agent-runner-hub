@@ -16,6 +16,10 @@ export type EntryDefaults = { target?: Target; model?: Model; accountIdentity?: 
 
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';
 
+type EntryAttempt = { session: RunnerSession; token: symbol; text: string; draftRevision: number;
+  selection: RunnerReferenceSelection; attempt?: WorkAttempt; command?: CommandAttempt;
+  brief?: { result: BriefResult; lease?: symbol } };
+
 // /target availability is Runner-owned proof that retained Task/Issue authority
 // has been released. /files additionally excludes recovery and auto-resume.
 export function idleReason(session: RunnerSession, allowReferences = false) {
@@ -51,7 +55,8 @@ export class SingleEntry {
   detail: HubText = '';
   runnerId?: string;
   private submissionToken?: symbol;
-  private active?: { session: RunnerSession; token: symbol; text: string; attempt?: WorkAttempt; command?: CommandAttempt };
+  private draftRevision = 0;
+  private active?: EntryAttempt;
   constructor(private readonly list: () => readonly RunnerSession[],
     private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
@@ -72,11 +77,13 @@ export class SingleEntry {
   get editable() { return this.phase === 'editing' || this.phase === 'delivered'; }
   private clearDraft() {
     this.draft = '';
+    this.draftRevision++;
     this.instructionHistory.reset();
   }
   setDraft(value: string) {
     if (!this.editable) return;
     this.composerCompact = false;
+    if (value !== this.draft) this.draftRevision++;
     this.draft = value;
     this.phase = 'editing';
     this.changed();
@@ -87,6 +94,7 @@ export class SingleEntry {
     if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
     if (briefRun && this.defaults.runMode !== 'issue-run') return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
+    const draftRevision = this.draftRevision, selection = this.attachments;
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.submissionToken = token;
     this.composerCompact = true;
@@ -121,7 +129,7 @@ export class SingleEntry {
         session = created.session;
         launched = created.launched;
       }
-      this.active = { session, token, text };
+      this.active = { session, token, text, draftRevision, selection };
       this.runnerId = session.view.id;
       focus(this.runnerId);
       this.detail = msg('work.configuring', { name: session.view.name });
@@ -151,7 +159,6 @@ export class SingleEntry {
       if (!briefRun && !session.control.work.supported) throw new HubError(msg('work.unavailable'));
       const destination = session;
       this.attachments.bind(destination.control);
-      const previous = session.control.work.current;
       const submission = submitConfiguredWork<WorkAttempt | BriefResult>(session.control.config, session.control.work, defaults, text, async () => {
         await destination.control.fresh(true);
         await destination.references.verifyAssignment();
@@ -167,46 +174,41 @@ export class SingleEntry {
           { reason: attachmentReason || msg('runtime.entry.inputUnsettled') }));
         this.phase = 'writing';
         this.detail = msg('work.observing', { name: destination.view.name });
-        attempted = true;
+        attempted = briefRun;
         this.changed();
         return this.attachments.deliveryLease;
-      }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined);
+      }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined, attempt => {
+        if (this.active?.token === token) {
+          this.active.attempt = attempt;
+          attempted = true;
+        }
+      });
       if (briefRun) {
         const result = await submission as BriefResult;
+        const active = this.active;
+        if (!active || active.token !== token) return;
+        active.brief = { result, lease: selection.deliveryLease };
         attempted = result.staged || result.status === 'unknown';
         this.detail = destination.control.brief.detail;
-        this.phase = result.status === 'completed' ? 'delivered' : attempted ? 'unknown' : 'incomplete';
-        if (result.status === 'completed') {
-          if (this.draft === text) this.clearDraft();
-          this.attachments.finishSubmission(true);
-          this.attachments = new RunnerReferenceSelection(undefined, this.changed);
-          session.release(token); this.active = undefined;
-        }
+        this.phase = attempted || result.status === 'completed' ? 'unknown' : 'incomplete';
+        if (attempted || result.status === 'completed') this.observeBrief(active);
         return;
       }
-      let attempt: WorkAttempt;
-      try { attempt = await submission as WorkAttempt; }
-      finally {
-        attempted = attempted && session.control.work.current !== previous;
-        if (attempted && this.active) this.active.attempt = session.control.work.current;
-      }
+      const attempt = await submission as WorkAttempt;
+      const active = this.active;
+      if (active?.token !== token || active.attempt !== attempt) return;
       if (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id) {
         attempted = false;
         this.phase = 'incomplete';
         this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
       } else if (attempt.work?.started_event_id) {
-        this.phase = 'delivered';
-        this.detail = msg('work.started', { name: session.view.name, event: attempt.work.started_event_id });
-        if (this.draft === text) this.clearDraft();
-        this.attachments.finishSubmission(true);
-        this.attachments = new RunnerReferenceSelection(undefined, this.changed);
-        session.release(token);
-        this.active = undefined;
+        this.settleDelivered(active, msg('work.started', { name: session.view.name, event: attempt.work.started_event_id }));
       } else {
         this.phase = 'unknown';
         this.detail = msg('work.retained', { state: attempt.work?.state || 'unknown' });
       }
     } catch (reason) {
+      if (this.submissionToken !== token || attempted && this.active?.token !== token) return;
       this.phase = attempted ? 'unknown' : 'incomplete';
       this.detail = errorText(reason);
     } finally {
@@ -228,9 +230,44 @@ export class SingleEntry {
     active?.session.release(token);
     this.changed();
   }
+  private observeBrief(active: EntryAttempt) {
+    const brief = active.brief;
+    if (!brief) return;
+    const owner = active.session.control.brief;
+    const { result, lease } = brief;
+    if (owner.result !== result || active.selection.deliveryLease !== lease) return;
+    if (result.status === 'unknown') {
+      void owner.reconcile(result, lease);
+      return;
+    }
+    this.detail = owner.detail;
+    if (result.status === 'rejected') {
+      if (!result.staged) {
+        this.phase = 'incomplete';
+        this.settleUnsent(active.token);
+      }
+      return;
+    }
+    this.settleDelivered(active, owner.detail);
+  }
+  private settleDelivered(active: EntryAttempt, detail: HubText) {
+    if (this.active !== active || this.submissionToken !== active.token) return;
+    this.active = undefined;
+    this.phase = 'delivered';
+    this.detail = detail;
+    if (this.draftRevision === active.draftRevision && this.draft === active.text) this.clearDraft();
+    active.selection.finishSubmission(true, true);
+    active.selection.unbind();
+    active.session.release(active.token);
+    this.changed();
+  }
   observe() {
     if (this.phase === 'incomplete' && this.active) this.settleUnsent(this.active.token);
     const active = this.active, attempt = active?.attempt;
+    if (this.phase === 'unknown' && active?.brief) {
+      this.observeBrief(active);
+      return;
+    }
     const command = active?.command;
     if (active && command && ['writing', 'unknown'].includes(this.phase)) {
       if (command.state === 'unknown') this.phase = 'unknown';
@@ -248,7 +285,15 @@ export class SingleEntry {
       }
       this.changed(); return;
     }
-    if (this.phase !== 'unknown' || !active || !attempt) return;
+    if (!active || !attempt) return;
+    const { control, view } = active.session;
+    const observation = control.snapshot.observation;
+    if ((this.phase === 'writing' || this.phase === 'unknown') && observation && control.observationFresh
+      && control.work.hasLiveIssueStart(attempt, observation)) {
+      this.settleDelivered(active, msg('work.liveStarted', { name: view.name }));
+      return;
+    }
+    if (this.phase !== 'unknown') return;
     if (!attempt.uncertain && (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id)) {
       this.phase = 'incomplete';
       this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
@@ -256,12 +301,6 @@ export class SingleEntry {
       return;
     }
     if (!attempt.work?.started_event_id) return;
-    this.active = undefined;
-    this.phase = 'delivered';
-    if (this.draft === active.text) this.clearDraft();
-    this.attachments.finishSubmission(true);
-    this.attachments = new RunnerReferenceSelection(undefined, this.changed);
-    this.detail = msg('work.started', { name: active.session.view.name, event: attempt.work.started_event_id });
-    active.session.release(active.token);
+    this.settleDelivered(active, msg('work.started', { name: view.name, event: attempt.work.started_event_id }));
   }
 }

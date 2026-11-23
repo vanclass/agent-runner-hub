@@ -42,6 +42,12 @@ export type IssueRunUserAction = {
 };
 export type RunnerObservation = {
   issue_run_user_action?: IssueRunUserAction | null;
+  issue_run_execution?: {
+    schema_version: 'issue-run-execution-v1'; status: 'running' | 'idle' | 'unknown' | 'unsupported';
+    issue_run_id: string; state_revision: number | null;
+    interpreter: { invocation_id: string; launch_generation: number; thread_id: string;
+      turn_id: string; instance_id: string } | null;
+  };
   run_mode: string;
   target: { binding_state: string; owner: string; project: string };
   selection: { account: string; model: string; reasoning_effort: string; service_tier: string; source: string;
@@ -113,8 +119,8 @@ export class RunnerControl {
     this.brief = new RunnerBrief({
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
-      available: lease => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
-        && !this.otherControlBusyExceptAttachments && !this.assignmentLocked
+      available: (lease, statusOnly) => !this.stopped && !this.tabClosing && this.snapshot.state === 'ready'
+        && (statusOnly || !this.otherControlBusyExceptAttachments && !this.assignmentLocked)
         && (!this.attachmentLease || this.attachmentLease === lease),
       stage: (id, body) => invoke<FeatureAdmission>('runner_feature', { id,
         request: { feature: 'brief', request: { operation: 'brief.stage', api_version: 1, body } } }),
