@@ -6,7 +6,7 @@ import type { SingleEntry } from './singleEntry';
 
 export function runnerAttachmentsDisabled(session: RunnerSession) {
   return !!session.view.closing || !!session.view.submitting || session.control.commandPending
-    || session.assignmentReserved || session.submissionUncertain;
+    || session.control.typedRun.pending || session.assignmentReserved || session.submissionUncertain;
 }
 export function entryAttachmentsDisabled(entry: SingleEntry) {
   return entry.pending || entry.phase === 'unknown';

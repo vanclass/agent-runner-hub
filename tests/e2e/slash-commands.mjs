@@ -1,5 +1,117 @@
 // Production composers; synthetic native transport, not installed-host acceptance.
 export function registerSlashCommands({ test, expect, transport, configure, create, entry }) {
+  async function typedRun(page, fault) {
+    await transport(page, undefined, { auto: true, work: true, brief: 'accepted' });
+    await configure(page);
+    await create(page);
+    await page.evaluate(fault => {
+      const fixture = window.__nativeFixture;
+      const host = document.querySelector('.terminal-host');
+      const tab = document.querySelector('.runner-row.active').dataset.runnerId;
+      let fiber = host[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        const session = fiber.memoizedProps?.session;
+        if (session?.view?.id === tab && session.terminal?.element?.parentElement === host) {
+          fixture.typedSessionId = session.control.sessionId;
+          fixture.typedSession = session;
+          break;
+        }
+      }
+      const { run, control, feature } = fixture.sessions.get(fixture.typedSessionId);
+      const features = control.features;
+      feature.config.current.run_mode = 'issue-run';
+      control.observation.commands.push({ id: 'run', text: '/run', visible: true, enabled: true, aliases: [], children: [] });
+      const submit = run.submit.bind(run);
+      run.submit = async request => {
+        if (fault === 'not-sent') {
+          run.requests.push(request);
+          return { state: 'not-sent', detail: 'Fixture proven unsent' };
+        }
+        const admission = await submit(request);
+        const receipt = features.results.find(r => r.id === admission.id);
+        if (fault === 'wrong-generation') return { ...admission, generation: admission.generation + 1 };
+        if (fault === 'wrong-request') receipt.reply.run.invocation_request_id--;
+        if (fault === 'unknown') receipt.state = 'outcome-unknown';
+        if (fault === 'held') {
+          fixture.typedReceipt = structuredClone(receipt);
+          Object.assign(receipt, { state: 'queued', phase: 'queued', reply: undefined });
+        }
+        return admission;
+      };
+    }, fault);
+    await expect.poll(() => page.evaluate(() => {
+      const fixture = window.__nativeFixture;
+      const observed = fixture.typedSession.control.snapshot;
+      return !fixture.typedSession.control.busy && observed?.observation?.run_mode === 'issue-run'
+        && observed.features.run.operations.includes('run.invoke')
+        && observed.observation.commands.some(c => c.text === '/run');
+    })).toBe(true);
+    return page.locator('.runner-composer textarea');
+  }
+  const requestTrace = page => page.evaluate(() => {
+    const fixture = window.__nativeFixture;
+    const session = fixture.sessions.get(fixture.typedSessionId);
+    return { requests: session.run.requests, staged: session.briefRequests ?? [],
+      commands: fixture.commands, writes: fixture.writes };
+  });
+
+  test('typed Run clears and reopens the focused editor at the matching receipt', async ({ page }) => {
+    const input = await typedRun(page, 'held');
+    const args = '  한글 "quoted" tail\t  ';
+    await input.fill(' \t/run\t' + args);
+    await input.press('Enter');
+    await expect(input).toHaveAttribute('readonly', '');
+    await input.press('Enter');
+    await expect.poll(() => requestTrace(page)).toEqual({
+      requests: [{ operation: 'run.invoke', api_version: 1, text: args }], staged: [], commands: [], writes: [],
+    });
+    await page.evaluate(() => {
+      const f = window.__nativeFixture;
+      f.emit(f.typedSessionId, '\x1b[?9001l\x1b[?2004l');
+      f.sessions.get(f.typedSessionId).control.features.results.push({ ...f.typedReceipt, id: f.typedReceipt.id + 1 });
+    });
+    await expect(input).toHaveAttribute('readonly', '');
+    await expect(input).toHaveValue(' \t/run\t' + args);
+    await page.evaluate(() => {
+      const f = window.__nativeFixture;
+      Object.assign(f.sessions.get(f.typedSessionId).control.features.results.find(r => r.id === f.typedReceipt.id), f.typedReceipt);
+    });
+    await expect(input).toHaveValue('');
+    await expect(input).toBeEditable();
+    await expect(input).toBeFocused();
+    await input.press('Control+z');
+    await expect(input).toHaveValue('');
+    await page.keyboard.insertText('next 한글 draft');
+    await page.evaluate(() => {
+      const f = window.__nativeFixture;
+      f.sessions.get(f.typedSessionId).control.features.results.find(r => r.id === f.typedReceipt.id).reply.run.dispatch_status = 'returned';
+    });
+    await expect(input).toHaveValue('next 한글 draft');
+    await expect.poll(() => requestTrace(page)).toEqual({
+      requests: [{ operation: 'run.invoke', api_version: 1, text: args }], staged: [], commands: [], writes: [],
+    });
+  });
+
+  for (const fault of ['not-sent', 'unknown', 'wrong-generation', 'wrong-request']) {
+    test(`typed Run ${fault} preserves the draft and never falls back`, async ({ page }) => {
+      const input = await typedRun(page, fault);
+      await input.fill('/run');
+      await input.press('Enter');
+      const trace = { requests: [{ operation: 'run.invoke', api_version: 1 }], staged: [], commands: [], writes: [] };
+      await expect.poll(() => requestTrace(page)).toEqual(trace);
+      await expect(input).toHaveValue('/run');
+      if (fault === 'not-sent') {
+        await expect(input).toBeEditable();
+        await input.press('Control+z');
+        await expect(input).toHaveValue('');
+      } else {
+        await expect(input).toBeDisabled();
+        await input.dispatchEvent('keydown', { key: 'Enter', bubbles: true });
+      }
+      expect(await requestTrace(page)).toEqual(trace);
+    });
+  }
+
   for (const path of ['Runner', 'Single Entry']) {
     for (const [text, fault] of [
       ['/status', 'completed'], ['/brief  a brief with   spaces  ', 'completed'],

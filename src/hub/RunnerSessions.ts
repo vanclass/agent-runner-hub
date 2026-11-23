@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { openPty, type Pty } from '../../.project-config/managed/web-app-desktop/terminal/bridge';
 import { RunnerInput } from './runnerInput';
-import { RunnerControl, commandNamed, isRunnerCommand, type ControlSnapshot, type CommandAttempt } from './runnerControl';
+import { RunnerControl, commandNamed, isRunnerCommand, typedRunArguments, type ControlSnapshot, type CommandAttempt } from './runnerControl';
 import { RunnerReferenceSelection } from './referenceSelection';
 import type { RunnerView } from './model';
 import { SingleEntry, idleReason, type EntryDefaults } from './singleEntry';
@@ -26,6 +26,9 @@ export class RunnerSession {
   hubSelections?: HubSelections;
   private submittedAttempt?: { attempt: WorkAttempt; draft: string };
   private submittedCommand?: { attempt: CommandAttempt; draft: string };
+  private submittedRun?: { tabId: string; draft: string; revision: number };
+  private deliveredRunTab?: string;
+  private draftRevision = 0;
   readonly fit = new FitAddon();
   readonly input: RunnerInput;
   readonly control: RunnerControl;
@@ -45,7 +48,10 @@ export class RunnerSession {
   private get nativeSettled() { return this.nativeState === 'settled'; }
   get terminationSettled() { return this.nativeSettled; }
   private get exitObserved() { return this.nativeState === 'settled' || this.nativeState === 'failed'; }
-  get submissionUncertain() { return this.deliveryUnknown || this.control.commandUnresolved || this.control.brief.blocked; }
+  get submissionUncertain() {
+    return this.deliveryUnknown || this.control.commandUnresolved || this.control.brief.blocked || this.control.typedRun.uncertain;
+  }
+  get typedRunCanEdit() { return this.deliveredRunTab === this.view.id && this.control.typedRun.canEdit; }
   view: RunnerView;
   composerCompact = false;
   private tabRecord?: RunnerTabRecord;
@@ -313,15 +319,28 @@ export class RunnerSession {
   rename(name: string) { this.tabRecord = { ...this.tab, name }; this.update({ name }); }
   setDraft(draft: string) {
     if (!this.view.submitting && !this.view.closing) {
+      if (this.view.draft !== draft) this.draftRevision++;
       this.composerCompact = false;
       this.update({ draft });
     }
   }
   private clearDraft() {
+    this.draftRevision++;
     this.instructionHistory.reset();
     this.view = { ...this.view, draft: '' };
   }
   private observeSubmission() {
+    const run = this.submittedRun, settlement = this.control.typedRun.settlement;
+    if (run && settlement) {
+      this.submittedRun = undefined;
+      if (run.tabId === this.view.id && !this.view.closing) {
+        if (settlement.state === 'accepted') {
+          this.deliveredRunTab = run.tabId;
+          if (this.draftRevision === run.revision && this.view.draft === run.draft) this.clearDraft();
+          this.view = { ...this.view, detail: msg('interaction.runDelivered') };
+        } else this.view = { ...this.view, detail: settlement.detail };
+      }
+    }
     const command = this.submittedCommand;
     if (command && command.attempt.state === 'completed') {
       if (command.attempt.result?.state === 'accepted' && this.view.draft === command.draft)
@@ -401,7 +420,7 @@ export class RunnerSession {
     try {
     if (this.view.closing) throw new HubError(msg('tabs.closing'));
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
-    if (this.view.submitting) throw new HubError(msg('runtime.session.submissionPending'));
+    if (this.view.submitting || this.control.typedRun.pending) throw new HubError(msg('runtime.session.submissionPending'));
     if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
     if (this.foregroundInteraction) throw new HubError(msg('interaction.foregroundBlocked'));
     if (this.submissionUncertain) throw new HubError(msg('runtime.session.previousUnknown'));
@@ -412,6 +431,21 @@ export class RunnerSession {
     if ((!ordinary || this.foregroundInteraction) && this.references.candidates.some(item =>
       !item.submitted && !['cancelled', 'removed'].includes(this.references.state(item))))
       throw new HubError(msg('attachments.instructionOnly'));
+    if (!ordinary && this.control.snapshot.observation?.run_mode === 'issue-run') {
+      const text = typedRunArguments(draft);
+      if (text !== undefined) {
+        this.submittedRun = { tabId: this.view.id, draft, revision: this.draftRevision };
+        try {
+          const admission = this.control.runTyped(draft, text);
+          if (this.control.typedRun.pending) this.update({ detail: msg('brief.runRequesting') });
+          await admission;
+        } catch (reason) {
+          this.submittedRun = undefined;
+          throw reason;
+        }
+        return;
+      }
+    }
     const defaults = copy(this.hubSelections?.defaults ?? {});
     if (ordinary && !this.foregroundInteraction) this.references.freeze();
     let delivered = false;

@@ -53,7 +53,8 @@
   },
   "interaction": {
     "foregroundBlocked": "Runner requires foreground attention. Structured interaction support in Hub is deferred.",
-    "commandSubmitted": "Command submitted through authenticated control. Check its final receipt."
+    "commandSubmitted": "Command submitted through authenticated control. Check its final receipt.",
+    "runDelivered": "Runner accepted the Run request."
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

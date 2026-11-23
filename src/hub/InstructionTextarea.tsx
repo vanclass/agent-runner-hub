@@ -26,7 +26,7 @@ export function InstructionTextarea({ history, value, edit, submit, ...props }: 
     }}
     onBlur={() => history.finishComposition()}
     onKeyDown={event => {
-      if (history.composing) return;
+      if (props.readOnly || history.composing) return;
       instructionKey(event, submit, action => {
         const next = history.move(action, value);
         if (next !== undefined) edit(next);

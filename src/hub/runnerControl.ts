@@ -5,6 +5,8 @@ import { RunnerImages } from './runnerImages';
 import { RunnerConfigService } from './RunnerConfigService';
 import { RunnerWork } from './runnerWork';
 import { RunnerBrief } from './RunnerBrief';
+import { RunnerTypedRun } from './RunnerTypedRun';
+import { supportsRun, type RunRequest } from './runnerRunContract';
 import { RunnerRecovery } from './RunnerRecovery';
 import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
 
@@ -17,6 +19,12 @@ function runnerCommandCandidate(text: string) {
   return text.slice(start);
 }
 export function isRunnerCommand(text: string) { return runnerCommandCandidate(text).startsWith('/'); }
+export function typedRunArguments(text: string) {
+  const candidate = runnerCommandCandidate(text);
+  // Match the canonical slash parser: consume one separator, preserve the full argument.
+  if (candidate === '/run') return '';
+  if (candidate.length > 4 && candidate.startsWith('/run') && runnerWhitespace.test(candidate[4])) return candidate.slice(5);
+}
 
 export const controlTiming = Object.freeze({ pollMs: 500, freshnessMs: 2500,
   connectMs: 35000, refreshMs: 5000, completionMs: 65000, settleMs: 50 });
@@ -62,6 +70,7 @@ export class RunnerControl {
   readonly config: RunnerConfigService;
   readonly work: RunnerWork;
   readonly brief: RunnerBrief;
+  readonly typedRun: RunnerTypedRun;
   readonly recovery: RunnerRecovery;
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
@@ -92,6 +101,10 @@ export class RunnerControl {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
   constructor(private readonly changed: () => boolean | void) {
+    const run = (id: string, request: RunRequest) =>
+      invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'run', request } });
+    this.typedRun = new RunnerTypedRun(() => ({ session: this.id, snapshot: this.snapshot }),
+      run, controlTiming.completionMs, changed);
     this.recovery = new RunnerRecovery(undefined, false, {
       completionMs: controlTiming.completionMs,
       observeMs: controlTiming.refreshMs,
@@ -105,7 +118,7 @@ export class RunnerControl {
         && (!this.attachmentLease || this.attachmentLease === lease),
       stage: (id, body) => invoke<FeatureAdmission>('runner_feature', { id,
         request: { feature: 'brief', request: { operation: 'brief.stage', api_version: 1, body } } }),
-      run: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'run', request } }),
+      run,
       completionMs: controlTiming.completionMs,
       pollMs: controlTiming.pollMs,
     }, changed);
@@ -155,6 +168,7 @@ export class RunnerControl {
       this.snapshot = snapshot;
       this.receivedAt = performance.now();
       this.observeCommand();
+      this.typedRun.observe();
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features);
       this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
@@ -168,7 +182,8 @@ export class RunnerControl {
       this.receivedAt = performance.now();
       this.changed();
       if (snapshot.state === 'disconnected') return;
-      const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing || this.brief.busy;
+      const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing
+        || this.brief.busy || this.typedRun.pending;
       this.timer = setTimeout(() => void this.refresh(), foreground ? controlTiming.settleMs : controlTiming.pollMs);
     } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
   }
@@ -185,7 +200,7 @@ export class RunnerControl {
   }
   private get otherControlBusyWithoutRecovery() {
     return !!this.snapshot.observation?.attention.foreground_interaction_active
-      || this.sending || this.commandUnresolved || this.referenceAdmissions > 0
+      || this.sending || this.commandUnresolved || this.typedRun.pending || this.typedRun.uncertain || this.referenceAdmissions > 0
       || this.snapshot.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state))
       || (this.snapshot.references?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)) ?? false);
   }
@@ -206,10 +221,22 @@ export class RunnerControl {
     [ordered[index], ordered[next]] = [ordered[next], ordered[index]];
     this.order = ordered; this.changed();
   }
-  async command(text: string) {
+  private commandSession(text: string) {
     if (this.stopped || !this.id || this.snapshot.state !== 'ready') throw new HubError(msg('runtime.control.unavailable'));
     if (this.busy) throw new HubError(msg('runtime.control.finishPending'));
     if (/[\x00-\x08\n\r\x0e-\x1b\x7f-\x84\x86-\x9f]/.test(text)) throw new HubError(msg('runtime.control.unavailable'));
+    return this.id;
+  }
+  runTyped(draft: string, text: string) {
+    const session = this.commandSession(draft);
+    const features = this.snapshot.features;
+    if (this.snapshot.observation?.run_mode !== 'issue-run' || !commandNamed(this.snapshot, '/run')
+      || !features || !supportsRun(features.run)) throw new HubError(msg('runtime.control.unavailable'));
+    // Runner applies the live Run gate, including its fresh IssueRun text admission.
+    return this.typedRun.submit({ session, generation: features.generation }, text);
+  }
+  async command(text: string) {
+    const id = this.commandSession(text);
     // Python str.isspace() boundaries used by Runner; match identity only, never arguments.
     const candidate = runnerCommandCandidate(text);
     const commands = flattenCommands(this.snapshot.observation?.commands ?? []);
@@ -221,7 +248,7 @@ export class RunnerControl {
     if (!command?.visible || !command.enabled) throw new HubError(msg('runtime.control.unavailable'));
     this.sending = true; this.changed();
     try {
-      const admission = await invoke<FeatureAdmission>('runner_command', { id: this.id, command: text });
+      const admission = await invoke<FeatureAdmission>('runner_command', { id, command: text });
       const attempt: CommandAttempt = { admission, state: admission.state === 'submitted' ? 'pending'
         : admission.state === 'not-sent' ? 'not-sent' : 'unknown' };
       this.commandAttempt = attempt;
@@ -295,6 +322,7 @@ export class RunnerControl {
       results: final.results.map(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)
         ? { ...result, state: 'outcome-unknown' } : result) };
     this.observeCommand();
+    this.typedRun.observe();
     this.brief.observe(this.snapshot);
     if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
     this.config.close();

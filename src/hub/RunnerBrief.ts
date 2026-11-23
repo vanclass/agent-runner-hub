@@ -1,7 +1,7 @@
 import { msg, type HubText } from './i18n';
 import { record, same, type ConfigIdentity, type FeatureAdmission } from './runnerConfigContract';
 import type { ControlSnapshot } from './runnerControl';
-import { supportsRun, isRunObservation, type RunObservation, type RunRequest } from './runnerRunContract';
+import { supportsRun, isRunObservation, isRunReceipt, type RunObservation, type RunRequest } from './runnerRunContract';
 
 export type BriefResult = { brief: true; staged: boolean; status: 'completed' | 'rejected' | 'unknown';
   identity?: ConfigIdentity; stagingRequest?: FeatureAdmission; runRequest?: FeatureAdmission;
@@ -121,7 +121,7 @@ export class RunnerBrief {
             evidence.code = result?.code;
             if (status === 'completed') {
               const reply = result?.reply;
-              status = record(reply) && reply.receipt === 'request_accepted' && isRunObservation(reply.run, runRequest.id)
+              status = isRunReceipt(reply, runRequest.id)
                 ? await this.initiation(identity, runRequest.id, evidence) : 'unknown';
             }
           }

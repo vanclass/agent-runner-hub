@@ -15,6 +15,9 @@ export type RunObservation = {
 export function supportsRun(cap?: RunCapability | null, operation: RunRequest['operation'] = 'run.invoke') {
   return cap?.version === 1 && cap.operations.includes(operation);
 }
+export function isRunReceipt(reply: unknown, original: number): reply is { receipt: 'request_accepted'; run: RunObservation } {
+  return record(reply) && reply.receipt === 'request_accepted' && isRunObservation(reply.run, original);
+}
 export function isRunObservation(v: unknown, original: number): v is RunObservation {
   if (!record(v) || v.invocation_request_id !== original || !Number.isSafeInteger(original) || original < 1
     || v.request_status !== 'accepted' || !['dispatching', 'returned', 'unknown'].includes(String(v.dispatch_status))

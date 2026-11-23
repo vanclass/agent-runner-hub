@@ -47,6 +47,9 @@ export function createHubLogCapture(log: HubLog) {
         once(`${instance}:lifetime:${view.status}`, event('system', 'runner-lifecycle', view.status, code(view.detail) || view.status));
       if (snapshot.state !== 'connecting') observe(`${instance}:connection`,
         event('system', 'connection', snapshot.state, code(snapshot.detail) || snapshot.state));
+      const run = session.control.typedRun.settlement;
+      if (run) once(`${instance}:typed-run:${identity(run)}`, event('delivery', 'typed-run', run.state,
+        run.state === 'accepted' ? 'request_accepted' : code(run.detail) || run.state));
       for (const application of session.control.config.applications) {
         const receipt = application.receipt;
         const outcome = application.result?.outcome_unknown ? 'unknown' : application.result?.apply_status
