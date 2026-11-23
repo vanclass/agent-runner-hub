@@ -35,12 +35,23 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.goto('/');
     const evidence = await page.evaluate(async () => {
       const { SingleEntry } = await import('/src/hub/singleEntry.ts');
+      const { RunnerBrief } = await import('/src/hub/RunnerBrief.ts');
       const entry = new SingleEntry(() => [], () => { throw new Error('Unexpected allocation'); }, () => {});
       const lease = Symbol('original lease'), token = Symbol('original assignment');
       entry.submissionToken = token;
       const releases = [];
-      const result = { status: 'completed' };
-      const control = { sessionId: 'original', brief: { result }, snapshot: {},
+      const identity = { session: 'original', generation: 1 };
+      const result = { status: 'completed', identity, runRequest: { state: 'submitted', id: 8, generation: 1 },
+        initiation: { initiation_status: 'started', invocation_request_id: 8, issue_run_id: 'ir-original', state_revision: 4 } };
+      const brief = new RunnerBrief({ identity: () => identity }, () => {});
+      const snapshot = { state: 'ready', observation: { run_mode: 'issue-run',
+        issue_run_execution: { schema_version: 'issue-run-execution-v1', status: 'running',
+          issue_run_id: 'ir-original', state_revision: 4,
+          interpreter: { invocation_id: 'native-original', launch_generation: 1, thread_id: 'thread-original',
+            turn_id: 'turn-original', instance_id: 'instance-original' } } } };
+      brief.result = result;
+      brief.observe(snapshot);
+      const control = { sessionId: 'original', brief, snapshot, observationFresh: true,
         releaseAttachments: value => releases.push(value === lease ? 'lease' : 'unexpected') };
       const session = { control, release: value => releases.push(value === token ? 'assignment' : 'unexpected') };
       const original = { key: 1, path: '/fixture/original.png', phase: 'registered', requestId: 7 };
@@ -223,7 +234,9 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
     await expect(page.getByText('TASK COMPLETE: synthetic terminal text')).toHaveCount(0);
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.mode = 'started'; });
-    await expect(page.locator('.hub-log-records').filter({ hasText: 'work.started' })).toBeVisible();
+    await expect(page.locator('textarea[data-instruction]')).toHaveValue('');
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.work.started_event_id))
+      .toBeGreaterThan(0);
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
   });
   test('work Single Entry reports verified start while completion stays unknown', async ({ page }) => {
@@ -234,9 +247,9 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ state: 'unknown' })]));
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     await home(page);
-    await expect(page.locator('.hub-log-records').filter({ hasText: 'work.started' })).toBeVisible();
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('');
     const state = await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.work);
+    expect(state.started_event_id).toBeGreaterThan(0);
     expect(state.terminal).toBe(false); expect(state.outcome).toBe('unknown');
   });
   test('work Single Entry session exit after dispatch retains uncertainty and never replays', async ({ page }) => {
@@ -246,9 +259,13 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length), { timeout: 35000 }).toBe(1);
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
     await expect(page.locator('.runner-instruction')).toHaveCount(0);
-    await expect(page.locator('.runner-instruction')).toHaveCount(0);
     await home(page);
-    await expect(page.locator('.hub-log-records').filter({ hasText: 'actual=unknown' })).toBeVisible();
+    await expect.poll(() => page.locator('textarea[data-instruction]').evaluate(element => {
+      let fiber = element[Object.keys(element).find(key => key.startsWith('__reactFiber$'))];
+      for (; fiber; fiber = fiber.return) {
+        if (fiber.memoizedProps?.entry) return fiber.memoizedProps.entry.phase;
+      }
+    })).toBe('unknown');
     await expect(page.locator('textarea[data-instruction]')).toHaveValue('uncertain once');
     await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);

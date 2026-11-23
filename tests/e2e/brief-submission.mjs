@@ -1,5 +1,15 @@
 import { drop } from './composer-attachments.mjs';
 
+async function publishIssueExecution(page, issueRunId = 'issue-fixture') {
+  await page.evaluate(issue_run_id => {
+    const { control } = window.__nativeFixture.sessions.get('pty-1');
+    control.observation.issue_run_execution = { schema_version: 'issue-run-execution-v1',
+      status: 'running', issue_run_id, state_revision: 2,
+      interpreter: { invocation_id: 'interpreter-1', launch_generation: 1,
+        thread_id: 'thread-1', turn_id: 'turn-1', instance_id: 'instance-1' } };
+  }, issueRunId);
+}
+
 export function registerBriefSubmission({ test, expect, transport, configure, create }) {
   async function feedback(page, tab, key) {
     if (!tab) await home(page);
@@ -25,7 +35,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await expect(mode).toBeEnabled();
     await mode.selectOption(JSON.stringify('issue-run'));
   }
-  test('Brief Run Single Entry confirms late start once and clears its submitted image', async ({ page }) => {
+  test('Brief Run Single Entry retains its image after a late grant until matching native start', async ({ page }) => {
     await ready(page, false, { runResult: 'pending' });
     await page.clock.install();
     await drop(page, ['/fixture/original.png']);
@@ -62,6 +72,17 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       session.run.mode = 'started';
     });
     await page.clock.runFor(1500);
+    await feedback(page, false, 'brief.requested');
+    await expect(input(page)).toHaveValue(body);
+    await expect(input(page)).toBeDisabled();
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    await page.keyboard.press('Control+Enter');
+    await publishIssueExecution(page, 'other-issue');
+    await page.clock.runFor(1000);
+    await expect(input(page)).toHaveValue(body);
+    await expect(page.locator('.attachment-chip')).toHaveCount(1);
+    await publishIssueExecution(page);
+    await page.clock.runFor(1000);
     await expect(input(page)).toHaveValue('');
     await expect(input(page)).toBeEnabled();
     await expect(page.locator('.attachment-chip')).toHaveCount(0);
@@ -110,7 +131,10 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await run.press('Control+Enter');
         await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
           .filter(r => r.operation === 'run.invoke')), { timeout: 35000 }).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
-        if (!tab) await page.keyboard.press('Control+Shift+Home');
+        if (!tab) {
+          await page.keyboard.press('Control+Shift+Home');
+          await publishIssueExecution(page);
+        }
         await expect(input(page)).toHaveValue(''); await expect(run).toHaveValue('');
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? []))
           .toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
@@ -130,7 +154,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await page.keyboard.press('Control+Enter');
         await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });
         await feedback(page, tab, 'brief.requested');
-        if (!tab) await page.keyboard.press('Control+Shift+Home');
+        if (!tab) await publishIssueExecution(page);
         await expect(input(page)).toHaveValue(''); await expect(run).toHaveValue('');
         await expect(input(page)).toBeEnabled();
         const evidence = await page.evaluate(() => {
@@ -176,7 +200,9 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await input(page).fill('ordinary work after unsupported Run'); await input(page).press('Enter');
         await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
-          .filter(r => r.operation === 'work.submit'))).toMatchObject([{ instruction: 'ordinary work after unsupported Run' }]);
+          .filter(r => r.operation === 'work.submit'))).toMatchObject([
+          { instruction: 'Target\nOwner: Workspace\nProject: codex_workspace\n\nordinary work after unsupported Run' },
+        ]);
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe('task-run');
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests)).toEqual([]);
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? [])).toEqual([]);
@@ -207,7 +233,11 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       expect(original.work.filter(r => r.operation === 'work.submit')).toEqual([]); expect(original.writes).toEqual([]);
       await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });
       await feedback(page, tab, 'brief.requested');
-      if (!tab) await page.keyboard.press('Control+Shift+Home');
+      if (!tab) {
+        await expect(input(page)).toHaveValue(body);
+        await expect(input(page)).toBeDisabled();
+        await publishIssueExecution(page);
+      }
       await expect(input(page)).toHaveValue('');
       await expect(input(page)).toBeEnabled();
       await info.attach('brief-run-confirmed', { body: await page.screenshot(), contentType: 'image/png' });

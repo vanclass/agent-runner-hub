@@ -233,7 +233,8 @@ export class SingleEntry {
   private observeBrief(active: EntryAttempt) {
     const brief = active.brief;
     if (!brief) return;
-    const owner = active.session.control.brief;
+    const { control } = active.session;
+    const owner = control.brief;
     const { result, lease } = brief;
     if (owner.result !== result || active.selection.deliveryLease !== lease) return;
     if (result.status === 'unknown') {
@@ -248,7 +249,10 @@ export class SingleEntry {
       }
       return;
     }
-    this.settleDelivered(active, owner.detail);
+    const observation = control.snapshot.observation;
+    if (control.observationFresh && observation && owner.hasLiveIssueStart(result, observation)) {
+      this.settleDelivered(active, owner.detail);
+    }
   }
   private settleDelivered(active: EntryAttempt, detail: HubText) {
     if (this.active !== active || this.submissionToken !== active.token) return;

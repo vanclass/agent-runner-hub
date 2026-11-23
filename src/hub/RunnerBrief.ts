@@ -1,6 +1,6 @@
 import { msg, type HubText } from './i18n';
 import { record, same, type ConfigIdentity, type FeatureAdmission } from './runnerConfigContract';
-import type { ControlSnapshot } from './runnerControl';
+import type { ControlSnapshot, RunnerObservation } from './runnerControl';
 import { supportsRun, isRunObservation, isRunReceipt, type RunObservation, type RunRequest } from './runnerRunContract';
 
 export type BriefResult = { brief: true; staged: boolean; status: 'completed' | 'rejected' | 'unknown';
@@ -59,6 +59,22 @@ export class RunnerBrief {
   }
   private current(identity: ConfigIdentity) {
     return same(identity, this.port.identity()) && this.snapshot?.state === 'ready';
+  }
+  hasLiveIssueStart(attempt: BriefResult, observation: RunnerObservation) {
+    const { identity, runRequest, initiation } = attempt;
+    if (this.result !== attempt || attempt.status !== 'completed' || !identity || !this.current(identity)
+      || runRequest?.state !== 'submitted' || runRequest.generation !== identity.generation
+      || initiation?.initiation_status !== 'started' || initiation.lifecycle_terminal
+      || initiation.invocation_request_id !== runRequest.id || observation.run_mode !== 'issue-run') return false;
+
+    const live = observation.issue_run_execution;
+    const native = live?.interpreter;
+    return live?.schema_version === 'issue-run-execution-v1' && live.status === 'running'
+      && live.issue_run_id === initiation.issue_run_id && live.state_revision !== null
+      && Number.isSafeInteger(live.state_revision) && live.state_revision >= initiation.state_revision
+      && !!native && Number.isSafeInteger(native.launch_generation) && native.launch_generation > 0
+      && [native.invocation_id, native.thread_id, native.turn_id, native.instance_id]
+        .every(id => typeof id === 'string' && id.length > 0);
   }
   private async readInitiation(identity: ConfigIdentity, original: number, evidence: Partial<BriefResult>) {
     const admission = await this.port.run(identity.session,
