@@ -38,7 +38,7 @@ export type RunnerCommand = {
 export type IssueRunUserAction = {
   schema_version: 'issue-run-user-action-v1'; status: 'required' | 'not_required' | 'unknown';
   issue_run_id: string; state_revision: number | null;
-  requirements: { kind: 'clarification' | 'approval' | 'dialogue' | 'human_request'; request_key: string; request_version: string }[];
+  requirements: { kind: 'clarification' | 'approval' | 'discussion' | 'dialogue' | 'human_request'; request_key: string; request_version: string }[];
 };
 export type RunnerObservation = {
   issue_run_user_action?: IssueRunUserAction | null;

@@ -77,11 +77,25 @@ Presentation cases click the ordinary Add Runner action before waiting for a con
 
 Work cases submit their declared instruction directly after native/configuration readiness; they do not require an unrelated `/help` command to produce PTY text. The separate command case retains that observation and its own failure boundary.
 
+On Windows, `issue-sidebar-lifecycle` uses one fresh IssueRun on the explicitly
+authorized Project. It observes live Interpretation and a committed ordinary
+Discussion, then checks the current native Run capability and exact owned
+binding before dispatching one read-only reply. The case retains the request
+and generation, links the exact reply to the committed Discussion artifacts,
+and checks the successor Interpreter and eventual genuine user wait on the
+same row. The producer can initiate ordinary Run after the reply. Dispatch
+requires dedicated fixture installation and Project checkouts beneath the
+Candidate's `temp` directory, each with independent Git state and no remotes.
+With a shared installation, the case still checks the initial markers and
+reports the continuation as blocked. A missing readiness condition or uncertain
+outcome is recorded without replay.
+
 ```text
 node tools/native-probe/hub.mjs --help
 node tools/native-probe/hub.mjs --case installation-entry
 node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
 node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "<absolute Runner Workspace root>"
+node tools/native-probe/hub.mjs --case issue-sidebar-lifecycle --runner-root "<absolute Runner Workspace root>" --issue-target "<authorized registered Project ID>" --producer-revision "<accepted Workspace SHA>"
 ```
 
 Repeat `--case` to compose only the required cases in one build; each still gets a
@@ -106,7 +120,8 @@ resolver verifies the managed runtime before the Hub session owner launches a ne
 Runner. Ordinary startup account authentication and `session_config.inspect` are
 required; no saved Test account or second installation is needed. Missing authentication/capability
 remains blocked; this command never provisions accounts, copies credentials,
-injects startup authentication or adopts existing processes. Model work is confined to the explicitly selected `semantic-work` case above.
+injects startup authentication or adopts existing processes. Model work is
+confined to explicitly selected work cases.
 Use the normally installed runtime, never an already-running Hub or Runner session.
 If startup authentication or inspection is unavailable, retain the exact blocked
 reason and complete independent installation/UI, fixture and headless checks.

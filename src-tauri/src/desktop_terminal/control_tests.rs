@@ -77,7 +77,44 @@ fn issue_execution_projection_is_optional_and_excludes_private_fields() {
     assert_eq!(view.issue_run_execution.as_ref().unwrap().interpreter.as_ref().unwrap().launch_generation, 2);
     assert!(!serde_json::to_string(&view).unwrap().contains("private"));
     payload["issue_run_execution"]["interpreter"]["launch_generation"] = json!("bad");
-    assert!(serde_json::from_value::<Observation>(payload).unwrap().issue_run_execution.is_none());
+    let malformed = serde_json::from_value::<Observation>(payload).unwrap().issue_run_execution.unwrap();
+    assert_eq!(malformed.status, "unknown");
+    assert!(malformed.schema_version.is_empty());
+}
+#[test]
+fn issue_observation_binds_live_interpreter_and_handles_incomplete_native_fields() {
+    let mut protocol = ready();
+    assert!(protocol.public_snapshot().observation.unwrap().issue_run_execution.is_none());
+    protocol.request(None, "private").unwrap();
+    let mut live = packet(2, "accepted", "completed");
+    live["observation"] = observation();
+    live["observation"]["run_mode"] = json!("issue-run");
+    live["observation"]["issue_run_execution"] = json!({
+        "schema_version":"issue-run-execution-v1", "status":"running", "issue_run_id":"ir",
+        "state_revision":5, "interpreter":{"invocation_id":"invocation","instance_id":"instance",
+            "launch_generation":2,"thread_id":"thread","turn_id":"turn"}
+    });
+    let mut crossed = live.clone();
+    crossed["session_id"] = json!("different");
+    assert!(protocol.response(crossed).is_err());
+    assert!(protocol.public_snapshot().observation.unwrap().issue_run_execution.is_none());
+    protocol.response(live).unwrap();
+    let signal = protocol.public_snapshot().observation.unwrap().issue_run_execution.unwrap();
+    assert_eq!((signal.status.as_str(), signal.state_revision), ("running", Some(5)));
+
+    let mut unbound = observation();
+    unbound["issue_run_user_action"] = json!({"schema_version":"issue-run-user-action-v1",
+        "status":"not_required", "issue_run_id":"", "requirements":[]});
+    unbound["issue_run_execution"] = json!({"schema_version":"issue-run-execution-v1",
+        "status":"idle", "issue_run_id":"", "state_revision":null});
+    let partial: Observation = serde_json::from_value(unbound.clone()).unwrap();
+    assert_eq!(partial.issue_run_user_action.unwrap().status, "unknown");
+    assert_eq!(partial.issue_run_execution.unwrap().status, "unknown");
+    unbound["issue_run_user_action"]["state_revision"] = Value::Null;
+    unbound["issue_run_execution"]["interpreter"] = Value::Null;
+    let complete: Observation = serde_json::from_value(unbound).unwrap();
+    assert_eq!(complete.issue_run_user_action.unwrap().status, "not_required");
+    assert_eq!(complete.issue_run_execution.unwrap().status, "idle");
 }
 #[test]
 fn hello_binds_the_actual_created_process_and_expected_session() {

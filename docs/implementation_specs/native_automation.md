@@ -99,6 +99,19 @@ visibility and long bilingual composer geometry through the normal UI. See
 [`runner-flow.mjs`](../../tests/native/webdriver/runner-flow.mjs) and
 [`semantic-work.mjs`](../../tests/native/webdriver/semantic-work.mjs).
 
+The Windows `issue-sidebar-lifecycle` case binds the mounted sidebar row to its
+authenticated Runner generation on the supplied accepted producer revision.
+It records the executable and mounted assets, live Interpreter, and committed
+ordinary Discussion before checking the same row's native Run capability. An
+eligible case with an isolated installation and disposable registered target
+sends one read-only reply through the window-owned Run feature with empty
+Brief staging. The producer can initiate ordinary Run after the reply, so
+the probe withholds dispatch when the installation or target is shared. It
+correlates the transport receipt, retained input and response, successor
+Interpreter identity, and eventual user wait with the rendered marker and
+computed accessible label. Missing or uncertain observations remain
+unverified. See [the native probe procedure](../../tools/native-probe/README.md).
+
 Each case records its identity, invocation, host, architecture, presentation and
 observations independently. Prerequisite blocks, failures and unverified observations
 are distinct outcomes; cleanup failures prevent a pass. The suite cannot continue
