@@ -81,7 +81,8 @@ pub struct IssueRunUserAction {
 }
 fn user_action<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<IssueRunUserAction>, D::Error> {
     let raw = Value::deserialize(decoder)?;
-    Ok(Some(serde_json::from_value(raw).unwrap_or_else(|_| IssueRunUserAction {
+    let parsed = if raw.get("state_revision").is_some() { serde_json::from_value(raw).ok() } else { None };
+    Ok(Some(parsed.unwrap_or_else(|| IssueRunUserAction {
         schema_version: String::new(), status: "unknown".into(), issue_run_id: String::new(),
         state_revision: None, requirements: Vec::new(),
     })))
@@ -98,7 +99,13 @@ pub struct IssueRunExecution {
 }
 fn issue_execution<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<IssueRunExecution>, D::Error> {
     let raw = Value::deserialize(decoder)?;
-    Ok(serde_json::from_value(raw).ok())
+    let parsed = if raw.get("state_revision").is_some() && raw.get("interpreter").is_some() {
+        serde_json::from_value(raw).ok()
+    } else { None };
+    Ok(Some(parsed.unwrap_or_else(|| IssueRunExecution {
+        schema_version: String::new(), status: "unknown".into(), issue_run_id: String::new(),
+        state_revision: None, interpreter: None,
+    })))
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {

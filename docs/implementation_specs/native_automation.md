@@ -182,6 +182,18 @@ the language selector's React handler, document language and persisted preferenc
 then observes those values after nonactivating display through the same lifecycle.
 Windows cases start hidden; background cases never display a native window.
 
+[`issue-sidebar-lifecycle`](../../tests/native/webdriver/issue-sidebar-lifecycle.mjs)
+uses the background Windows WebView2 path to correlate the sidebar row and computed
+accessible marker with authentic Local Control observations. The case stages the
+accepted Runner producer revision in its own installation and uses the real Hub
+resolver and inherited handles. The producer exercises ordinary Work, Discussion
+commit and activity projection with the existing scripted App Server peer and a
+disposable Workspace and local publication remote. The fixture submits its fixed
+reply once through the existing Discussion harness after observing the same
+authenticated binding in a committed wait. This procedure exercises the
+fixture-provider path. Installed-provider and physical desktop input properties
+require their own observations.
+
 Session deletion precedes native close. The Windows adapter sends `WM_CLOSE` only
 to its process-owned main HWND, waits, and uses its retained process handle only if
 forced cleanup is necessary. Forced exit is not a passing probe. Listener release

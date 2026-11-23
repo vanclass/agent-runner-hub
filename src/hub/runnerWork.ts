@@ -34,10 +34,9 @@ export function issueUserAction(attempt: WorkAttempt | undefined, observation: R
     || typeof signal.issue_run_id !== 'string' || !unbound && (!signal.issue_run_id
       || !Number.isSafeInteger(signal.state_revision) || Number(signal.state_revision) < 0)
     || !Array.isArray(signal.requirements) || !signal.requirements.every(r => r
-      && ['clarification', 'approval', 'dialogue', 'human_request'].includes(r.kind)
-      && typeof r.request_key === 'string' && typeof r.request_version === 'string'
-      && (['clarification', 'approval'].includes(r.kind) ? r.request_key === '' && r.request_version === ''
-        : !!r.request_key && !!r.request_version))
+      && (['clarification', 'approval', 'discussion'].includes(r.kind)
+        ? r.request_key === '' && r.request_version === ''
+        : ['dialogue', 'human_request'].includes(r.kind) && nonempty(r.request_key) && nonempty(r.request_version)))
     || (signal.status === 'required' ? !signal.requirements.length : !!signal.requirements.length)
     // Work discovery and the authenticated user-action projection sample independently.
     || work && !unbound && (work.run_mode !== 'issue-run'
@@ -45,15 +44,37 @@ export function issueUserAction(attempt: WorkAttempt | undefined, observation: R
       || work.owner_revision > Number(signal.state_revision))) return 'unknown';
   return signal.status;
 }
+const nonempty = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+function issueExecution(observation: RunnerObservation, action: ReturnType<typeof issueUserAction>) {
+  const signal = observation.issue_run_execution;
+  const wait = observation.issue_run_user_action;
+  if (!signal || !wait || action === 'unknown' || signal.schema_version !== 'issue-run-execution-v1'
+    || signal.issue_run_id !== wait.issue_run_id) return undefined;
+  // The producer can prove a committed wait while native execution is indeterminate.
+  if (signal.status === 'unknown' && signal.state_revision === null && signal.interpreter === null) return 'unknown';
+  if (signal.state_revision !== wait.state_revision) return undefined;
+  if (signal.status === 'running') {
+    const i = signal.interpreter;
+    return signal.issue_run_id && i && positive(i.launch_generation)
+      && [i.invocation_id, i.instance_id, i.thread_id, i.turn_id].every(nonempty) ? 'running' : undefined;
+  }
+  return ['idle', 'unknown', 'unsupported'].includes(signal.status) && signal.interpreter === null
+    ? signal.status : undefined;
+}
 /** Presentation only: IssueRun foreground ownership is not a user-handoff signal. */
 export function issueSidebarActivity(attempt: WorkAttempt | undefined, observation: RunnerObservation): WorkActivity {
+  if (observation.run_mode !== 'issue-run') return 'unknown';
   const { execution, attention } = observation;
   if (attention.restart_confirmation_required || attention.termination_confirmation_active
     || attention.account_setup_required) return 'attention';
   const userAction = issueUserAction(attempt, observation);
+  const hasActivity = observation.issue_run_execution !== undefined;
+  const interpreter = issueExecution(observation, userAction);
+  if (hasActivity && interpreter === undefined) return 'unknown';
   if (userAction === 'required') return 'attention';
-  if (execution.owned_execution_alive === true) return 'running';
   if (observation.issue_run_user_action !== undefined && userAction === 'unknown') return 'unknown';
+  if (interpreter === 'running' || !hasActivity && execution.owned_execution_alive === true) return 'running';
+  if (hasActivity && interpreter !== 'idle') return 'unknown';
   const work = attempt?.work;
   // Work v1 conflates automatic next_action and user dialogue in incomplete.
   if (attention.awaiting_user_command_reason || attention.suspension_status !== 'inactive'
@@ -66,8 +87,10 @@ export function issueSidebarActivity(attempt: WorkAttempt | undefined, observati
     || ['unknown', 'suspended', 'incomplete'].includes(work.state)) return 'unknown';
   if (work.terminal) return released && ['succeeded', 'failed', 'interrupted', 'rejected'].includes(work.outcome)
     ? 'idle' : 'unknown';
-  if (work.admission !== 'admitted') return 'unknown';
-  return ['instruction_admitted', 'execution_started', 'active'].includes(work.state)
+  // A prior started Work can be marked active during a successor's reservation.
+  if (hasActivity && work.owner_revision !== observation.issue_run_execution?.state_revision) return 'unknown';
+  return work.admission === 'admitted' && positive(work.started_event_id)
+    && ['execution_started', 'active'].includes(work.state)
     ? 'running' : 'unknown';
 }
 export interface WorkTransport {

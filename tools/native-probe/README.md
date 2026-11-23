@@ -94,6 +94,24 @@ it. Runner-read-only compares Hub selections and native inspection in the same
 observed session/generation and verifies unchanged native revision. It then closes the exact observed
 PTY and verifies removal from the native session registry.
 
+## Isolated IssueRun sidebar case
+
+The Windows `issue-sidebar-lifecycle` case stages a disposable producer from the
+accepted Workspace Git object. Supply an absolute local repository containing
+that object. The setup uses Git, Windows tar and Python with the installed Runner
+Python dependencies available for local copying. It creates an independent
+interpreter environment, fixture account, Workspace and local publication remote.
+
+```text
+node tools/native-probe/hub.mjs --case issue-sidebar-lifecycle --producer-source "<absolute local producer Git repository>"
+```
+
+The case checks initial authenticated idle, Work admission, early live
+Interpretation, committed Discussion, and one canonical fixture reply. Its
+evidence includes the exact native build, marker shape, color and computed
+accessible name, IssueRun/Thread/Turn correlation, and owned settlement. Results
+apply to the scripted App Server peer and background WebView2 composition.
+
 ## Existing Runner installation prerequisites
 
 Supply `--runner-root` with the existing normally configured Runner Workspace root containing

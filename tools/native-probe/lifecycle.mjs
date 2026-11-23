@@ -38,7 +38,7 @@ export async function executeCase(spec, environment, resources) {
     evidence.stages.connected = await owner.request('snapshot');
     noActivation(evidence.stages.connected);
     evidence.stage = 'readiness';
-    await testCase.ready(browser);
+    await testCase.ready(browser, { profile: environment.profile, executable: environment.executable });
     resources.signal.throwIfAborted();
     if (focusRequired) {
       evidence.stage = 'presentation';
@@ -66,7 +66,7 @@ export async function executeCase(spec, environment, resources) {
       await until(async () => (await owner.request('listener')).listeners.length, resources.signal);
       browser = await resources.connect();
       noActivation(await owner.request('snapshot'));
-      await testCase.ready(browser);
+      await testCase.ready(browser, { profile: environment.profile, executable: environment.executable });
       evidence.restartObservations = await testCase.afterRestart(browser, evidence.observations);
     }
     evidence.stages.afterActions = await owner.request('snapshot');
