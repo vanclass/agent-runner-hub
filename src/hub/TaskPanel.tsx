@@ -30,7 +30,8 @@ export function TaskPanel({ entry, control, scope, selections }: {
     </button>
     <div id="task-panel-body" className="task-panel-body" hidden={collapsed}>
       <div key={scope}>
-        {control ? selections && <HubSelectionSettings entry={selections} observedAgentId={control.config.observedAgentId} />
+        {control ? selections && <HubSelectionSettings entry={selections} observedAgentId={control.config.observedAgentId}
+          configuredStartupAgentId={control.observationFresh ? control.snapshot.observation?.configured_startup_agent_id : undefined} />
           : scope === 'single-entry' ? <SingleEntrySettings entry={entry} /> : <p>{t('common.notConnected')}</p>}
       </div>
     </div>

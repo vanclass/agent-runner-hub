@@ -120,9 +120,19 @@ fn installed_session_config_read_only_discovery() {
     let actual = inspect(&mut harness, &session);
     assert!(config::digest(&actual.revision));
     assert!(capability.test_account_selection, "Runner must support Settings > Test settings.");
-    assert_eq!(snapshot.observation.unwrap().selection.agent_id, actual.effective.agent_id);
+    let observation = snapshot.observation.expect("Authenticated observation");
+    assert_eq!(observation.selection.agent_id, actual.effective.agent_id);
+    println!("CONFIGURED_STARTUP_PROVIDER {:?}", observation.configured_startup_agent_id);
     println!("INSTALLED_PROVIDER {:?}, account candidates={}, model candidates={}, catalog={}",
         actual.effective.agent_id, actual.options_page.totals["accounts"], actual.options_page.totals["models"], actual.model_catalog_status);
+    if let Some(provider @ ("codex" | "claude")) = actual.effective.agent_id.as_deref() {
+        assert_eq!(actual.current.account.agent_id, provider);
+        assert_eq!(actual.model_options_account, actual.current.account);
+        assert!(actual.options.accounts.iter().any(|account| account == &actual.current.account));
+        assert_eq!(actual.model_catalog_status, "available");
+        assert!(!actual.options.models.is_empty());
+        println!("INSTALLED_CATALOG {provider} current account and its model candidates verified");
+    }
     for provider in ["codex", "claude"] {
         assert!(capability.test_account_providers.iter().any(|id| id == provider));
         let selected = test_selection(&mut harness, &session, provider);
@@ -136,6 +146,51 @@ fn installed_session_config_read_only_discovery() {
     session.close().unwrap(); harness.exited(&id);
     assert!(harness.sessions.sessions.lock().unwrap().is_empty());
     println!("Installed Runner authenticated current Session Config/Work discovery and read-only inspect verified; owned session closed.");
+}
+
+#[test]
+#[ignore = "Observe an externally coordinated startup Provider change on the installed Runner"]
+fn installed_retained_session_observes_startup_provider_change() {
+    use control::StartupProvider;
+    let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();
+    let destination = std::env::var("HUB_EXPECTED_STARTUP_PROVIDER").unwrap();
+    let expected: StartupProvider = serde_json::from_value(serde_json::Value::String(destination.clone())).unwrap();
+    let mut harness = Harness::new();
+    let retained_id = harness.open_runner(&root);
+    let retained = harness.sessions.owned(&retained_id, "test-window").unwrap();
+    let initial = wait_for_startup(&mut harness, &retained, |value| value.is_some());
+    let original = initial.observation.unwrap();
+    assert_ne!(original.configured_startup_agent_id, Some(expected));
+    println!("RETAINED_PROVIDER_READY {:?}", original.selection.agent_id);
+    let changed = wait_for_startup(&mut harness, &retained, |value| value == Some(expected));
+    assert_eq!(changed.features.generation, initial.features.generation);
+    let observed = changed.observation.unwrap();
+    assert_eq!(observed.selection.agent_id, original.selection.agent_id);
+    assert_eq!(observed.selection.account, original.selection.account);
+    assert_eq!(observed.selection.model, original.selection.model);
+    let fresh_id = harness.open_runner(&root);
+    let fresh = harness.sessions.owned(&fresh_id, "test-window").unwrap();
+    let fresh_snapshot = wait_for_startup(&mut harness, &fresh, |value| value == Some(expected));
+    assert_eq!(fresh_snapshot.observation.unwrap().selection.agent_id.as_deref(), Some(destination.as_str()));
+    assert_ne!(fresh_snapshot.features.generation, initial.features.generation);
+    println!("RETAINED_AND_FRESH_PROVIDERS {:?}/{destination} verified", observed.selection.agent_id);
+    retained.close().unwrap(); harness.exited(&retained_id);
+    assert_eq!(fresh.control_snapshot().unwrap().state, "ready");
+    fresh.close().unwrap(); harness.exited(&fresh_id);
+}
+
+fn wait_for_startup(harness: &mut Harness, session: &Arc<Session>,
+    matches: impl Fn(Option<control::StartupProvider>) -> bool) -> control::Snapshot {
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        let snapshot = session.control_snapshot().unwrap();
+        if let Some(observation) = &snapshot.observation {
+            if snapshot.state == "ready" && matches(observation.configured_startup_agent_id) { return snapshot; }
+        }
+        assert!(snapshot.state != "disconnected" && Instant::now() < deadline,
+            "Expected startup Provider observation was unavailable, control state: {}", snapshot.state);
+        harness.pump_for(Duration::from_millis(50));
+    }
 }
 
 #[test]

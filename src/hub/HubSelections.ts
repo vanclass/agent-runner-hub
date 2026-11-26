@@ -34,6 +34,10 @@ export class HubSelections {
   get effectiveAgentId() {
     return this.source()?.observedAgentId ?? this.catalog?.inspection.effective.agent_id;
   }
+  get configuredStartupAgentId() {
+    const service = this.source();
+    return service && this.observation(service)?.configured_startup_agent_id;
+  }
   get initialized() {
     return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key)
       && (this.initialMode === undefined || key !== 'runMode'));

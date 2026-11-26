@@ -136,7 +136,7 @@
   },
   "config": {
     "effectiveProvider": "Effective Provider: {{provider}}",
-    "startupProviderUnavailable": "Startup Provider: Unavailable",
+    "startupProvider": "Configured Startup Provider: {{provider}}",
     "providerNone": "None",
     "providerUnavailable": "Unavailable",
     "testAccountFailed": "{{diagnostic}}. Configure the test account under Settings > Test settings in the opened Runner installation.",

@@ -41,6 +41,7 @@ export type IssueRunUserAction = {
   requirements: { kind: 'clarification' | 'approval' | 'discussion' | 'dialogue' | 'human_request'; request_key: string; request_version: string }[];
 };
 export type RunnerObservation = {
+  configured_startup_agent_id?: 'codex' | 'claude' | 'none' | null;
   issue_run_user_action?: IssueRunUserAction | null;
   issue_run_execution?: {
     schema_version: 'issue-run-execution-v1'; status: 'running' | 'idle' | 'unknown' | 'unsupported';

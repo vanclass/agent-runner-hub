@@ -30,6 +30,37 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
       s.feature.requests.every(r => r.operation !== 'work.submit')
       && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
   });
+  test('authenticated startup Provider observations refresh both settings surfaces', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await page.addInitScript(() => {
+      window.__startupProvider = 'codex';
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        const result = await invoke(command, args);
+        if (command === 'runner_observe' && result.observation)
+          result.observation.configured_startup_agent_id = window.__startupProvider;
+        return result;
+      };
+    });
+    await configure(page);
+    const account = page.locator('.account-settings');
+    await expect(account).toContainText('Effective Provider: Codex');
+    await expect(account).toContainText('Configured Startup Provider: Codex');
+    await page.evaluate(() => { window.__startupProvider = 'claude'; });
+    await expect(account).toContainText('Configured Startup Provider: Claude');
+    await expect(account).toContainText('Effective Provider: Codex');
+    await page.evaluate(() => { window.__startupProvider = 'codex'; });
+    await create(page);
+    await expect(account).toContainText('Configured Startup Provider: Codex');
+    for (const [value, label] of [['claude', 'Claude'], ['none', 'None'],
+      [undefined, 'Unavailable'], ['codex', 'Codex'], [null, 'Unavailable'],
+      ['claude', 'Claude'], ['unsupported', 'Unavailable']]) {
+      await page.evaluate(v => { window.__startupProvider = v; }, value);
+      await expect(account).toContainText(`Configured Startup Provider: ${label}`);
+      await expect(account).toContainText('Effective Provider: Codex');
+    }
+    await expect(requested(page, 'Model')).toHaveValue(/"agent_id":"codex"/);
+  });
   test('a fresh Claude tab offers only Claude choices and preserves independent selections', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
     await page.addInitScript(() => {
@@ -49,7 +80,7 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await create(page);
     await create(page);
     await expect(page.locator('.account-settings')).toContainText('Effective Provider: Claude');
-    await expect(page.locator('.account-settings')).toContainText('Startup Provider: Unavailable');
+    await expect(page.locator('.account-settings')).toContainText('Configured Startup Provider: Unavailable');
     await expect(requested(page, 'Account').getByRole('option', { name: 'claude / first', exact: true })).toBeAttached();
     await expect(requested(page, 'Account').getByRole('option', { name: 'codex / second', exact: true })).toHaveCount(0);
     await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();

@@ -39,6 +39,7 @@ export function configurationSelection(runnerRoot) {
         const connection = await ownedConnection(browser, runnerRoot);
         const before = await inspection(browser, connection);
         const provider = before.result.reply.effective.agent_id;
+        const providerLabel = id => ({ codex: 'Codex', claude: 'Claude', none: 'None' })[id] ?? 'Unavailable';
         const account = before.result.reply.options.accounts.find(value => value.agent_id === provider
           && JSON.stringify(value) === JSON.stringify(before.result.reply.current.account));
         if (!account || !before.result.reply.availability.account) throw new BlockedPrerequisite(
@@ -96,6 +97,14 @@ export function configurationSelection(runnerRoot) {
             await browser.waitUntil(async () => browser.execute(() =>
               !!document.querySelector('.runner-composer textarea[data-instruction]')), { timeout: startupMs });
           }
+          await browser.waitUntil(async () => browser.execute(label => {
+            const settings = document.querySelector('.account-settings');
+            return settings?.textContent.includes(`Effective Provider: ${label}`);
+          }, providerLabel(provider)), { timeout: startupMs });
+          const startupLabel = providerLabel(process.env.HUB_EXPECTED_STARTUP_PROVIDER ?? provider);
+          await browser.waitUntil(async () => browser.execute(label =>
+            document.querySelector('.account-settings')?.textContent.includes(`Configured Startup Provider: ${label}`),
+          startupLabel), { timeout: startupMs });
           const focus = await browser.execute(() => {
             const input = document.querySelector('textarea[data-instruction]');
             input.focus();

@@ -50,6 +50,25 @@ fn ready() -> Protocol {
     protocol
 }
 #[test]
+fn authenticated_observation_updates_providers_independently() {
+    let mut protocol = ready();
+    for (id, (input, expected)) in (2..).zip([(Some(json!("codex")), json!("codex")),
+        (Some(json!("claude")), json!("claude")), (Some(json!("none")), json!("none")),
+        (None, Value::Null), (Some(Value::Null), Value::Null),
+        (Some(json!("other")), Value::Null), (Some(json!({"id":"claude"})), Value::Null)]) {
+        protocol.request(None, "private-key").unwrap();
+        let mut observed = packet(id, "accepted", "completed");
+        observed["observation"] = observation();
+        observed["observation"]["selection"]["agent_id"] = json!("codex");
+        if let Some(value) = input { observed["observation"]["configured_startup_agent_id"] = value; }
+        protocol.response(observed).unwrap();
+        let snapshot = serde_json::to_value(protocol.public_snapshot()).unwrap();
+        assert_eq!(snapshot["state"], "ready");
+        assert_eq!(snapshot["observation"]["selection"]["agent_id"], "codex");
+        assert_eq!(snapshot["observation"]["configured_startup_agent_id"], expected);
+    }
+}
+#[test]
 fn optional_user_action_preserves_old_observations_and_opaque_fields() {
     let old: Observation = serde_json::from_value(observation()).unwrap();
     assert!(old.issue_run_user_action.is_none());

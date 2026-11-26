@@ -10,7 +10,14 @@ import { runModeLabel } from './runModeLabel';
 import { runModes } from './runnerWork';
 import { entryAttachmentsDisabled } from './hubFileDrop';
 
-export function HubSelectionSettings({ entry, observedAgentId }: { entry: HubSelections; observedAgentId?: string }) {
+function providerLabel(id: unknown) {
+  return id === 'codex' ? 'Codex' : id === 'claude' ? 'Claude'
+    : t(id === 'none' ? 'config.providerNone' : 'config.providerUnavailable');
+}
+
+export function HubSelectionSettings({ entry, observedAgentId, configuredStartupAgentId }: {
+  entry: HubSelections; observedAgentId?: string; configuredStartupAgentId: unknown;
+}) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
   const provider = observedAgentId ?? entry.effectiveAgentId;
   const providerOptions = provider === catalog?.inspection.effective.agent_id ? options : undefined;
@@ -35,9 +42,8 @@ export function HubSelectionSettings({ entry, observedAgentId }: { entry: HubSel
   return <section>
     <div className="settings-grid">
     <section className="settings-group account-settings"><h2>{t('fields.account')}</h2>
-      <p className="scope-note">{t('config.effectiveProvider', { provider: provider === 'codex' ? 'Codex'
-        : provider === 'claude' ? 'Claude' : t(provider === 'none' ? 'config.providerNone' : 'config.providerUnavailable') })}</p>
-      <p className="scope-note">{t('config.startupProviderUnavailable')}</p>
+      <p className="scope-note">{t('config.effectiveProvider', { provider: providerLabel(provider) })}</p>
+      <p className="scope-note">{t('config.startupProvider', { provider: providerLabel(configuredStartupAgentId) })}</p>
       {select('accountIdentity', t('fields.account'), providerOptions?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
     </section>
     <section className="settings-group execution-settings"><h2>{t('panel.execution')}</h2>
@@ -82,7 +88,7 @@ export function HubSelectionSettings({ entry, observedAgentId }: { entry: HubSel
 export function SingleEntrySettings({ entry }: { entry: SingleEntry }) {
   useHubTranslation();
   return <section className="context-settings" aria-label={t('entry.defaultsLabel')} title={t('entry.defaultsHelp')}>
-    <HubSelectionSettings entry={entry.selections} />
+    <HubSelectionSettings entry={entry.selections} configuredStartupAgentId={entry.selections.configuredStartupAgentId} />
   </section>;
 }
 

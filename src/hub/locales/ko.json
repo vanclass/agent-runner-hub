@@ -136,7 +136,7 @@
   },
   "config": {
     "effectiveProvider": "실제 Provider: {{provider}}",
-    "startupProviderUnavailable": "시작 Provider: 확인할 수 없음",
+    "startupProvider": "설정된 시작 Provider: {{provider}}",
     "providerNone": "없음",
     "providerUnavailable": "확인할 수 없음",
     "testAccountFailed": "{{diagnostic}}. 현재 Runner 설치의 설정 > 테스트 설정에서 테스트 계정을 설정하세요.",

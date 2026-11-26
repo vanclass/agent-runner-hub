@@ -109,8 +109,17 @@ fn issue_execution<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Optio
         state_revision: None, interpreter: None,
     })))
 }
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartupProvider { Codex, Claude, None }
+
+fn startup_provider<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<StartupProvider>, D::Error> {
+    Ok(serde_json::from_value(Value::deserialize(decoder)?).ok())
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {
+    #[serde(default, deserialize_with = "startup_provider", skip_serializing_if = "Option::is_none")]
+    pub configured_startup_agent_id: Option<StartupProvider>,
     #[serde(default, deserialize_with = "user_action", skip_serializing_if = "Option::is_none")]
     pub issue_run_user_action: Option<IssueRunUserAction>,
     #[serde(default, deserialize_with = "issue_execution", skip_serializing_if = "Option::is_none")]
