@@ -201,7 +201,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests
           .filter(r => r.operation === 'work.submit'))).toMatchObject([
-          { instruction: 'Target\nOwner: Workspace\nProject: codex_workspace\n\nordinary work after unsupported Run' },
+          { instruction: 'Target\nOwner: Workspace\nProject: agent-workspace\n\nordinary work after unsupported Run' },
         ]);
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe('task-run');
         expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests)).toEqual([]);
@@ -328,7 +328,6 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       if (!tab) await page.keyboard.press('Control+Shift+Home');
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
         .filter(r => r.operation === 'run.invoke').length), { timeout: 35000 }).toBe(1);
-      if (tab) await page.keyboard.press('Control+End');
       await expect(input(page)).toHaveValue('retained after Run');
       await page.keyboard.press('Control+Enter');
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests.filter(r => r.operation === 'run.invoke').length)).toBe(1);
@@ -341,30 +340,31 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await page.evaluate(() => {
       window.__nativeFixture.sessions.get('pty-1').control.observation.attention.foreground_interaction_active = true;
     });
-    await page.keyboard.press('Control+Shift+Home');
-    await expect(page.locator('.hub-log-records')).toContainText(/runtime.entry.attentionUnsettled|interaction.usePanel/);
-    await page.keyboard.press('Control+End');
+    await expect(page.locator('.runner-row.active .nav-row')).toHaveAccessibleName(/Suspended \/ needs attention/);
+    await expect(input(page)).toBeDisabled();
     await expect(input(page)).toHaveValue('Brief must stay out of PTY');
     expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').briefRequests ?? [])).toEqual([]);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests)).toEqual([]);
   });
   test('navigation endpoints and adjacent keys do not wrap or affect processes and drafts', async ({ page }) => {
     await ready(page, false);
-    await page.keyboard.press('Control+End'); await expect(input(page)).toBeVisible();
-    await page.keyboard.press('Control+PageDown'); await expect(input(page)).toBeVisible();
+    const entry = page.getByRole('button', { name: 'Single Entry', exact: true });
+    await page.keyboard.press('Control+Shift+End'); await expect(entry).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Control+Shift+PageDown'); await expect(entry).toHaveAttribute('aria-current', 'page');
     await input(page).fill('entry retained'); await create(page); await create(page); await create(page);
     const rows = page.locator('.runner-row .nav-row');
-    await page.keyboard.press('Control+Shift+Home'); await page.keyboard.press('Control+PageUp');
+    await page.keyboard.press('Control+Shift+Home'); await page.keyboard.press('Control+Shift+PageUp');
     await expect(input(page)).toHaveValue('entry retained');
-    await page.keyboard.press('Control+PageDown'); await expect(rows.nth(0)).toHaveAttribute('aria-current', 'page');
-    await input(page).fill('tab retained'); await page.keyboard.press('Control+PageDown');
+    await page.keyboard.press('Control+Shift+PageDown'); await expect(rows.nth(0)).toHaveAttribute('aria-current', 'page');
+    await input(page).fill('tab retained'); await page.keyboard.press('Control+Shift+PageDown');
     await expect(rows.nth(1)).toHaveAttribute('aria-current', 'page');
-    await page.keyboard.press('Control+End'); await page.keyboard.press('Control+PageDown');
+    await page.keyboard.press('Control+Shift+End'); await page.keyboard.press('Control+Shift+PageDown');
     await expect(rows.nth(2)).toHaveAttribute('aria-current', 'page');
-    await page.keyboard.press('Control+PageUp'); await page.keyboard.press('Control+PageUp');
+    await page.keyboard.press('Control+Shift+PageUp'); await page.keyboard.press('Control+Shift+PageUp');
     await expect(input(page)).toHaveValue('tab retained');
-    await page.keyboard.press('Control+PageUp'); await expect(input(page)).toHaveValue('entry retained');
+    await page.keyboard.press('Control+Shift+PageUp'); await expect(input(page)).toHaveValue('entry retained');
     expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
     expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
   });

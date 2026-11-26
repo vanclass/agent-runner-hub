@@ -45,6 +45,8 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
     });
     expect(prevented).toBe(false);
     await page.keyboard.press('Control+Home');
+    await expect(input).toBeFocused();
+    await page.keyboard.press('Control+Shift+Home');
     await expect(page.getByRole('textbox', { name: 'Single Entry instructions', exact: true })).toBeVisible();
   });
 }

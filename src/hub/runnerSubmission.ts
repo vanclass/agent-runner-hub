@@ -35,7 +35,7 @@ export function prepareTaskRunInstruction(instruction: string, target: EntryDefa
     && option.owner === target.owner && option.project === target.project);
   if (matches.length !== 1) throw new HubError(msg('config.defaultsUnresolved', { fields: 'target' }));
   const selected = matches[0];
-  const values = { owner: selected.owner, project: selected.owner === 'Workspace' ? 'codex_workspace' : selected.project };
+  const values = { owner: selected.owner, project: selected.owner === 'Workspace' ? 'agent-workspace' : selected.project };
   const eol = instruction.match(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/)?.[0] ?? '\n';
   const additions = missing.map(key => `${key === 'owner' ? 'Owner' : 'Project'}: ${values[key as keyof typeof values]}${eol}`).join('');
   if (!leading) {

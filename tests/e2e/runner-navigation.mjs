@@ -2,6 +2,11 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
   const modes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'];
   const domain = (page, mode) => page.locator(`[data-domain="${mode}"]`);
   const ids = locator => locator.locator('.runner-row').evaluateAll(rows => rows.map(r => r.dataset.runnerId));
+  async function selectedPty(page) {
+    const output = page.locator('.xterm-rows');
+    await expect(output).toContainText(/pty-\d+:/);
+    return (await output.innerText()).match(/pty-\d+/)[0];
+  }
   async function display(page, value) {
     await page.getByRole('button', { name: 'App settings', exact: true }).click();
     await page.getByRole('combobox', { name: 'Domain display', exact: true }).selectOption(value);
@@ -328,16 +333,17 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(page.locator('.single-entry')).toBeVisible();
     await display(page, 'unified');
     await create(page);
+    const firstPty = await selectedPty(page);
     await display(page, 'run-mode');
     await expect(page.locator('.runner-row')).toHaveCount(1);
     await expect(page.locator('.runner-section-label .sidebar-label')).toHaveCount(0);
-    await publish(page, 'pty-1', 'issue-run', false);
+    await publish(page, firstPty, 'issue-run', false);
     await page.waitForTimeout(2100);
     await expect(page.locator('.runner-row')).toHaveCount(1);
-    await publish(page, 'pty-1', modes[0]);
+    await publish(page, firstPty, modes[0]);
     await expect(domain(page, modes[0])).toBeVisible();
     for (let i = 1; i < modes.length; i++) {
-      await display(page, 'unified'); await create(page); await publish(page, `pty-${i + 1}`, modes[i]);
+      await display(page, 'unified'); await create(page); await publish(page, await selectedPty(page), modes[i]);
       await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.executedModes.length)).toBe(i + 1);
     }
     await display(page, 'run-mode');
@@ -345,6 +351,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     const beforeAdd = await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => r.operation === 'work.submit').length);
     await domain(page, 'task-run').locator('.add-runner').click();
     await expect(domain(page, 'task-run').locator('.runner-row')).toHaveCount(2);
+    const addedTaskId = await domain(page, 'task-run').locator('.runner-row.active').getAttribute('data-runner-id');
     await domain(page, 'task-run').locator('.add-runner').click();
     await expect(domain(page, 'task-run').locator('.runner-row')).toHaveCount(3);
     const task = domain(page, 'task-run'), rows = task.locator('.runner-row');
@@ -412,8 +419,11 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     const savedOrder = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.order);
     await startHover(); await page.keyboard.press('Escape'); await page.mouse.up();
     await expect(page.locator('.drop-before, .drop-end')).toHaveCount(0);
-    await startHover(); await publish(page, 'pty-6', 'issue-run');
+    await task.locator(`[data-runner-id="${addedTaskId}"] .nav-row`).click();
+    const restoredPty = await selectedPty(page);
+    await startHover(); await publish(page, restoredPty, 'issue-run');
     await expect(domain(page, 'issue-run').locator('.runner-row')).toHaveCount(2);
+    await expect(domain(page, 'issue-run').locator(`[data-runner-id="${addedTaskId}"]`)).toBeVisible();
     await expect(page.locator('.drop-before, .drop-end')).toHaveCount(0); await page.mouse.up();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).presentation.order)).toEqual(savedOrder);
   });
@@ -451,6 +461,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect(mode).toBeEnabled();
     await create(page);
     const purePeer = await activeId();
+    const purePeerPty = await selectedPty(page);
     await mode.selectOption(JSON.stringify('pure-direct-run'));
     await display(page, 'run-mode');
     await select(moved);
@@ -496,7 +507,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await hoverDrop(page, row(moved), row(taskPeer), false);
     await expect(row(taskPeer)).toHaveClass(/drop-before/);
     const beforeStale = await presentation();
-    await publish(page, 'pty-3', 'task-run');
+    await publish(page, purePeerPty, 'task-run');
     await expect.poll(() => ids(domain(page, 'task-run'))).toEqual([purePeer, taskPeer]);
     await expect(marker).toHaveCount(0);
     const changedMembership = await presentation();

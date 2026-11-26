@@ -45,10 +45,8 @@
     "categories": {"system":"System","task":"Task","settings":"Settings"},
     "label": "Hub log",
     "retention": "Hub log retention (days)",
-    "older": "Show older records",
     "loading": "Restoring Hub history…",
     "empty": "No retained Hub events.",
-    "unsaved": "Not confirmed saved — keep this window open to retain these events.",
     "storageFailed": "Hub log storage is unavailable ({{code}}). Existing history is preserved. Check app-local storage before restarting."
   },
   "interaction": {

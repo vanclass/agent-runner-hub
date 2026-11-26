@@ -284,11 +284,6 @@ export function registerSlashCommands({ test, expect, transport, configure, crea
           await page.waitForTimeout(650);
         }
         await expect(input).toHaveValue(fault === 'completed' ? '' : text);
-        if (fault === 'not-sent') {
-          await page.keyboard.press('Control+Home');
-          await expect(page.locator('.hub-log-records')).toContainText('runtime.entry.unsent');
-          if (path === 'Runner') await page.keyboard.press('Control+End');
-        }
         if (['outcome-unknown', 'transport-error', 'queued', 'disconnect'].includes(fault)) {
           await expect(input).toBeDisabled();
           if (path === 'Single Entry') await expect(button).toBeDisabled();

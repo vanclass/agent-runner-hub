@@ -46,7 +46,8 @@ test('capture survives presentation detach, deduplicates refresh and projects sa
     } };
     const log = new HubLog(30), bind = createHubLogCapture(log);
     const view = { id: 'one', name: 'Runner 1', status: 'running' };
-    const control = { snapshot: { state: 'ready', results: [] }, config: { applications: [] }, work: { attempts: [] } };
+    const control = { snapshot: { state: 'ready', results: [] }, config: { applications: [] },
+      work: { attempts: [] }, typedRun: { settlement: undefined } };
     const source = { subscribe: fn => { refresh = fn; return () => {}; },
       subscribeLifecycle: fn => { lifecycle = fn; return () => {}; },
       getSnapshot: () => [view], get: () => session, getFailure: () => undefined,
@@ -74,7 +75,8 @@ test('capture retains independent task and apply outcomes while ignoring inspect
     const { createHubLogCapture } = await import('/src/hub/HubLogCapture.ts');
     const events = []; let refresh;
     const config = { applications: [], progress: { operation: 'session_config.inspect', state: 'failure' } };
-    const work = { attempts: [] }, session = { control: { config, work, snapshot: { state: 'ready', results: [] } } };
+    const work = { attempts: [] };
+    const session = { control: { config, work, typedRun: { settlement: undefined }, snapshot: { state: 'ready', results: [] } } };
     const view = { id: 'one', name: 'Runner 1', status: 'running' };
     const source = { subscribe: fn => { refresh = fn; return () => {}; }, subscribeLifecycle: () => () => {},
       getSnapshot: () => [view], get: () => session,

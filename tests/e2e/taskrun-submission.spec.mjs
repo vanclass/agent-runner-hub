@@ -14,8 +14,18 @@ test('TaskRun generated boundary agrees with canonical Runner parser', async ({ 
       body, prepared: prepareTaskRunInstruction(body, { binding_state: 'bound', owner: 'Workspace', project: '' }, service.catalog),
     }));
   });
-  const script = `import json, sys\nfrom runner.session.target import parse_target_block_from_text\nfor case in json.load(sys.stdin):\n t = parse_target_block_from_text(case['prepared'], source_path='hub-integration')\n eol = '\r\n' if '\r\n' in case['body'] else '\n'\n expected = case['body'] if case['body'].startswith('Goal') else 'Goal' + eol + case['body']\n assert t.instruction_text.encode('utf-8') == expected.encode('utf-8')\n assert (t.owner, t.project, t.reasoning) == ('Workspace', 'codex_workspace', None)\nprint('canonical parser cases:', len(json.loads(sys.argv[1])))`;
-  const result = spawnSync(process.env.RUNNER_PYTHON, ['-c', script, JSON.stringify(cases)], {
+  const script = String.raw`import json, sys
+from runner.session.target import parse_target_block_from_text
+cases = json.load(sys.stdin)
+for case in cases:
+    target = parse_target_block_from_text(case['prepared'], source_path='hub-integration')
+    body = case['body']
+    eol = '\r\n' if '\r\n' in body else '\n'
+    expected = body if body.startswith('Goal') else 'Goal' + eol + body
+    assert target.instruction_text.encode('utf-8') == expected.encode('utf-8')
+    assert (target.owner, target.project, target.reasoning) == ('Workspace', 'agent-workspace', None)
+print('canonical parser cases:', len(cases))`;
+  const result = spawnSync(process.env.RUNNER_PYTHON, ['-c', script], {
     input: JSON.stringify(cases), encoding: 'utf8', windowsHide: true,
     env: { ...process.env, PYTHONPATH: process.env.RUNNER_SOURCE_ROOT, PYTHONDONTWRITEBYTECODE: '1' },
   });
@@ -40,8 +50,8 @@ test('TaskRun complete identity needs no defaults; ambiguous defaults reject and
     return { complete, explicit, workspace, bare, ambiguous };
   });
   expect(result.explicit).toBe(result.complete);
-  expect(result.workspace).toBe('Target\nOwner: Workspace\nProject: codex_workspace\n\nGoal\n안녕');
-  expect(result.bare).toBe('Target\nOwner: Workspace\nProject: codex_workspace\n');
+  expect(result.workspace).toBe('Target\nOwner: Workspace\nProject: agent-workspace\n\nGoal\n안녕');
+  expect(result.bare).toBe('Target\nOwner: Workspace\nProject: agent-workspace\n');
   expect(result.ambiguous).toBe(true);
 });
 

@@ -177,12 +177,13 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await page.locator('textarea[data-instruction]').fill('always new');
     await assign(page);
     await expect(page.locator('.runner-row .nav-row[aria-current="page"]')).toContainText('Runner 2');
-    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
-      .filter(s => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === 'always new'))
-      .map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
-    const newSubmission = await page.evaluate(() => [...window.__nativeFixture.sessions]
-      .filter(([, s]) => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === 'always new'))
-      .map(([id, s]) => ({ id, count: s.feature.requests.filter(r => r.operation === 'work.submit').length })));
+    const instruction = 'Target\nOwner: Workspace\nProject: agent-workspace\n\nalways new';
+    await expect.poll(() => page.evaluate(instruction => [...window.__nativeFixture.sessions.values()]
+      .filter(s => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === instruction))
+      .map(s => s.feature.work).filter(Boolean), instruction), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
+    const newSubmission = await page.evaluate(instruction => [...window.__nativeFixture.sessions]
+      .filter(([, s]) => s.feature.requests.some(r => r.operation === 'work.submit' && r.instruction === instruction))
+      .map(([id, s]) => ({ id, count: s.feature.requests.filter(r => r.operation === 'work.submit').length })), instruction);
     expect(newSubmission).toHaveLength(1); expect(newSubmission[0].id).not.toBe('pty-1'); expect(newSubmission[0].count).toBe(1);
     await expect(page.locator('.xterm-rows')).toContainText(newSubmission[0].id);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.allocationPolicy)).toBe('always-new');
@@ -191,7 +192,8 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await transport(page, undefined, { work: true, auto: true }); await page.goto('/');
     const result = await page.evaluate(async () => {
       const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
-      const owner = new RunnerSessions({ accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run' });
+      const owner = new RunnerSessions({ accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
+        target: { binding_state: 'bound', owner: 'Workspace', project: '' } });
       owner.entry.setDraft('fresh launch once');
       await owner.entry.submit('/fixture/install');
       if (owner.entry.phase !== 'delivered') throw new Error(JSON.stringify(owner.entry.detail));
@@ -214,7 +216,8 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       const { SingleEntry } = await import('/src/hub/singleEntry.ts');
       const owner = window.__owners, list = () => owner.getSnapshot().map(v => owner.get(v.id));
       const entries = [1, 2].map(() => new SingleEntry(list, (root, token) => owner.create(root, token),
-        () => {}, { allocationPolicy: 'reuse-idle', accountIdentity: { agent_id: 'codex', profile_name: 'first' } }));
+        () => {}, { allocationPolicy: 'reuse-idle', accountIdentity: { agent_id: 'codex', profile_name: 'first' },
+          runMode: 'task-run', target: { binding_state: 'bound', owner: 'Workspace', project: '' } }));
       entries[0].setDraft('first'); entries[1].setDraft('second');
       await Promise.all(entries.map(e => e.submit('/fixture/install')));
       const result = { phases: entries.map(e => e.phase), ids: entries.map(e => e.runnerId),
@@ -337,7 +340,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       await page.reload();
       await expect(page.locator('.spare-status')).toHaveCount(0);
       await page.locator('textarea[data-instruction]').fill(mode === 'task-run'
-        ? 'Target\nOwner: Workspace\nProject: codex_workspace\nGoal\nmode once' : 'mode once'); await assign(page);
+        ? 'Target\nOwner: Workspace\nProject: agent-workspace\nGoal\nmode once' : 'mode once'); await assign(page);
       await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.current.run_mode)).toBe(mode);
     });
