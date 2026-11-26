@@ -13,9 +13,14 @@ export type ConfigDesired = Partial<ConfigSettings>;
 export type ConfigTarget = { id: string; owner: string; project: string };
 export type ConfigModelOption = { id: string; reasoning_efforts: string[]; service_tiers: string[] };
 export type ConfigOptions = { targets: ConfigTarget[]; accounts: ConfigAccount[]; models: ConfigModelOption[]; run_modes: string[] };
-export type ConfigCapability = { version: 1; operations: string[]; options_page_size: number; options_revision: boolean; test_account_selection?: boolean };
-export type ConfigTestSelection = { api_version: 1; execution_context: 'test'; account: ConfigAccount;
-  codex_home: string; runner_root: string; authentication: 'available' };
+export type ConfigCapability = { version: 1; operations: string[]; options_page_size: number; options_revision: boolean;
+  test_account_selection?: boolean; test_account_providers?: string[] };
+export type SessionProvider = 'codex' | 'claude';
+export const isSessionProvider = (value: unknown): value is SessionProvider => value === 'codex' || value === 'claude';
+export type ConfigTestSelection = { api_version: 1; execution_context: 'test';
+  runner_root: string; authentication: 'available' } & (
+    | { account: ConfigAccount & { agent_id: 'codex' }; codex_home: string; claude_config_dir?: never }
+    | { account: ConfigAccount & { agent_id: 'claude' }; claude_config_dir: string; codex_home?: never });
 export type BoundTestSelection = { identity: ConfigIdentity; selection: ConfigTestSelection };
 export type ConfigInspect = { api_version: 1; revision: string; options_revision: string;
   current: ConfigSettings; effective: RunnerObservation['selection']; runner_kind: string; setup_required: boolean;
@@ -33,7 +38,8 @@ export type ConfigApply = { api_version: 1; apply_status: 'applied' | 'partial' 
   atomic: false; results: ConfigReceipt[]; outcome_unknown: boolean; inspection_unavailable?: boolean | null;
   current?: ConfigSettings | null; revision?: string | null; code?: string | null; plan?: ConfigPlan | null };
 export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 1; execution_context?: never; account?: ConfigAccount; offset: number; options_revision?: string }
-  | { operation: 'session_config.inspect'; api_version: 1; execution_context: 'test'; account?: never; offset?: never; options_revision?: never }
+  | { operation: 'session_config.inspect'; api_version: 1; execution_context: 'test'; agent_id: SessionProvider;
+      account?: never; offset?: never; options_revision?: never }
   | { operation: 'session_config.plan'; api_version: 1; desired: ConfigDesired }
   | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string };
 export type FeatureResult = { id: number; feature: 'recovery' | 'session_config' | 'work' | 'brief' | 'run' | 'interaction'; operation: RecoveryRequest['operation'] | ConfigRequest['operation'] | WorkRequest['operation'] | RunRequest['operation'] | InteractionRequest['operation'] | 'brief.stage';
@@ -69,7 +75,9 @@ export function isTestSelection(v: unknown): v is ConfigTestSelection {
     && !s.includes('\\') && !s.split('/').some(part => part === '.' || part === '..');
   return record(v) && v.api_version === 1 && v.execution_context === 'test' && isAccount(v.account)
     && text(v.account.agent_id) && text(v.account.profile_name) && v.authentication === 'available'
-    && path(v.codex_home) && path(v.runner_root);
+    && !/[\\/:]/.test(v.account.profile_name) && !['.', '..'].includes(v.account.profile_name)
+    && path(v.runner_root) && (v.account.agent_id === 'codex' && path(v.codex_home) && !('claude_config_dir' in v)
+      || v.account.agent_id === 'claude' && path(v.claude_config_dir) && !('codex_home' in v));
 }
 export function sameInstallation(a: string, b: string) {
   const normalize = (s: string) => {
@@ -86,7 +94,8 @@ export function isInspection(v: unknown): v is ConfigInspect {
   if (!record(v) || v.api_version !== 1 || !isDigest(v.revision) || !isDigest(v.options_revision) || !isSettings(v.current)
     || !isAccount(v.model_options_account) || !record(v.options) || !record(v.options_page)
     || !record(v.availability) || !strings(v.constraints) || !record(v.root_requirements)
-    || !record(v.effective) || typeof v.runner_kind !== 'string' || typeof v.setup_required !== 'boolean'
+    || !record(v.effective) || (v.effective.agent_id !== undefined && typeof v.effective.agent_id !== 'string')
+    || typeof v.runner_kind !== 'string' || typeof v.setup_required !== 'boolean'
     || typeof v.model_catalog_status !== 'string') return false;
   const o = v.options, p = v.options_page;
   return Array.isArray(o.targets) && o.targets.every(x => record(x) && typeof x.id === 'string'
@@ -130,7 +139,9 @@ export function isApply(v: unknown, plan: ConfigPlan, current: ConfigSettings): 
 export function validatePage(page: ConfigInspect, first: ConfigInspect, offset: number, size: number) {
   if (page.options_page.offset !== offset || !same(page.model_options_account, first.model_options_account)
     || page.revision !== first.revision || !same(page.options_page.totals, first.options_page.totals)
-    || !same(page.options.run_modes, first.options.run_modes) || page.model_catalog_status !== 'available'
+    || !same(page.options.run_modes, first.options.run_modes) || page.effective.agent_id !== first.effective.agent_id
+    || page.model_catalog_status !== first.model_catalog_status
+    || (page.model_catalog_status !== 'available' && (page.model_catalog_status !== 'unavailable' || page.options_page.totals.models !== 0))
     || !isDigest(page.options_revision) || page.options_revision !== first.options_revision) return false;
   const lists = ['targets', 'accounts', 'models'] as const;
   if (lists.some(k => page.options[k].length !== Math.min(size, Math.max(0, first.options_page.totals[k] - offset)))) return false;
@@ -150,7 +161,8 @@ export function validDesired(desired: ConfigDesired, current: ConfigSettings, ca
   if (desired.root !== undefined && (!final.root || !['direct-run', 'pure-direct-run'].includes(final.run_mode))) return false;
   if (desired.account || desired.model || desired.service_tier) {
     const model = options.models.find(m => m.id === final.model.id);
-    return same(final.account, catalog.inspection.model_options_account) && options.accounts.some(a => same(a, final.account))
+    return final.account.agent_id === catalog.inspection.effective.agent_id
+      && same(final.account, catalog.inspection.model_options_account) && options.accounts.some(a => same(a, final.account))
       && !!model && model.reasoning_efforts.includes(final.model.reasoning_effort) && model.service_tiers.includes(final.service_tier);
   }
   return true;

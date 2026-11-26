@@ -26,7 +26,8 @@ pub enum Request {
     Inspect { api_version: u32, #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")] account: Option<Account>,
         #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")] offset: Option<u32>,
         #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")] options_revision: Option<String>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")] execution_context: Option<String> },
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")] execution_context: Option<String>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")] agent_id: Option<String> },
     #[serde(rename = "session_config.plan")]
     Plan { api_version: u32, desired: Desired },
     #[serde(rename = "session_config.apply")]
@@ -53,10 +54,14 @@ impl Request {
     } }
     pub fn validate(&self) -> Result<(), &'static str> {
         let valid = match self {
-            Self::Inspect { api_version, account: selected, offset, options_revision, execution_context } => *api_version == 1
+            Self::Inspect { api_version, account: selected, offset, options_revision, execution_context, agent_id } => *api_version == 1
                 && selected.as_ref().is_none_or(account) && options_revision.as_deref().is_none_or(digest)
-                && execution_context.as_ref().is_none_or(|context| context == "test"
-                    && selected.is_none() && offset.is_none() && options_revision.is_none()),
+                && match execution_context.as_deref() {
+                    None => agent_id.is_none(),
+                    Some("test") => matches!(agent_id.as_deref(), Some("codex" | "claude"))
+                        && selected.is_none() && offset.is_none() && options_revision.is_none(),
+                    _ => false,
+                },
             Self::Plan { api_version, desired } => *api_version == 1 && desired.valid(),
             Self::Apply { api_version, desired, revision, plan_id } => *api_version == 1
                 && desired.valid() && digest(revision) && digest(plan_id),
@@ -72,9 +77,11 @@ impl Request {
     }
     pub fn response(&self, packet: &Value) -> Result<Response, &'static str> {
         let parse = || match self {
-            Self::Inspect { execution_context: Some(_), .. } if packet["status"] == "accepted" => {
+            Self::Inspect { execution_context: Some(_), agent_id, .. } if packet["status"] == "accepted" => {
                 let selection: TestSelection = serde_json::from_value(packet.clone())?;
-                if !selection.valid() { return Err(serde::de::Error::custom("Invalid test account evidence")); }
+                if agent_id.as_deref() != Some(selection.account.agent_id.as_str()) || !selection.valid() {
+                    return Err(serde::de::Error::custom("Invalid test account evidence"));
+                }
                 Ok(Response::TestSelection(selection))
             },
             Self::Inspect { .. } if packet["status"] == "accepted" || packet.get("options").is_some() => {
@@ -137,13 +144,24 @@ pub enum Response { Inspect(Inspection), TestSelection(TestSelection), Plan(Plan
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TestSelection { pub api_version: u32, pub execution_context: String,
-    pub account: Account, pub codex_home: String, pub runner_root: String, pub authentication: String }
+    pub account: Account,
+    #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub codex_home: Option<String>,
+    #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+    pub claude_config_dir: Option<String>,
+    pub runner_root: String, pub authentication: String }
 impl TestSelection {
+    pub fn home(&self) -> Option<&str> {
+        match (self.account.agent_id.as_str(), self.codex_home.as_deref(), self.claude_config_dir.as_deref()) {
+            ("codex", Some(home), None) | ("claude", None, Some(home)) => Some(home),
+            _ => None,
+        }
+    }
     fn valid(&self) -> bool {
-        self.api_version == 1 && self.execution_context == "test" && self.account.agent_id == "codex"
+        self.api_version == 1 && self.execution_context == "test"
             && text(&self.account.profile_name) && self.account.profile_name != "." && self.account.profile_name != ".."
             && !self.account.profile_name.contains(['/', '\\', ':'])
-            && self.authentication == "available" && canonical_path(&self.codex_home) && canonical_path(&self.runner_root)
+            && self.authentication == "available" && self.home().is_some_and(canonical_path) && canonical_path(&self.runner_root)
     }
 }
 fn canonical_path(value: &str) -> bool {
@@ -155,8 +173,10 @@ pub fn verify_test_installation(packet: &Value, opened_root: &str) -> Result<(),
     if !selection.valid() { return Err("Unverified test account evidence"); }
     let canonical = |value: &str| std::path::Path::new(value).canonicalize().map_err(|_| "Test account path unavailable");
     let root = canonical(&selection.runner_root)?;
-    let home = canonical(&selection.codex_home)?;
-    let registered_home = root.join("local/profiles/codex/accounts").join(&selection.account.profile_name);
+    let reported_home = selection.home().ok_or("Unverified test account path")?;
+    let home = canonical(reported_home)?;
+    let registered_home = root.join("local/profiles").join(&selection.account.agent_id)
+        .join("accounts").join(&selection.account.profile_name);
     let registered = canonical(&registered_home.to_string_lossy())?;
     let spelling = |path: &std::path::Path| {
         let value = path.to_string_lossy().replace('\\', "/");
@@ -166,7 +186,7 @@ pub fn verify_test_installation(packet: &Value, opened_root: &str) -> Result<(),
     };
     if root != canonical(opened_root)? || !root.is_dir() || !home.is_dir() || home != registered
         || spelling(&registered) != spelling(&registered_home)
-        || spelling(&home) != spelling(std::path::Path::new(&selection.codex_home))
+        || spelling(&home) != spelling(std::path::Path::new(reported_home))
         || spelling(&root) != spelling(std::path::Path::new(&selection.runner_root)) {
         return Err("Test account installation mismatch");
     }

@@ -1,8 +1,8 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
-import { copy, same, record, isInspection, isTestSelection, sameInstallation, isPlan, isApply, validatePage, uniqueOptions, validDesired,
+import { copy, same, record, isInspection, isTestSelection, isSessionProvider, sameInstallation, isPlan, isApply, validatePage, uniqueOptions, validDesired,
   type ConfigAccount, type ConfigCapability, type ConfigCatalog, type ConfigDesired, type ConfigIdentity,
   type ConfigInspect, type ConfigPlan, type ConfigApply, type ConfigSettings, type ConfigRequest, type FeatureSnapshot,
-  type FeatureAdmission, type FeatureResult, type BoundTestSelection } from './runnerConfigContract';
+  type FeatureAdmission, type FeatureResult, type BoundTestSelection, type SessionProvider } from './runnerConfigContract';
 
 export interface ConfigTransport {
   identity(): ConfigIdentity | undefined;
@@ -40,6 +40,8 @@ export class RunnerConfigService {
     this.previousProgress = this.progress;
   }
   private identity?: ConfigIdentity;
+  private agentId?: string;
+  get observedAgentId() { return this.agentId; }
   private draftVersion = 0;
   private planned?: { identity: ConfigIdentity; draftVersion: number };
   private closed = false;
@@ -61,9 +63,16 @@ export class RunnerConfigService {
       && same(this.planned.identity, this.transport.identity()) && this.transport.available();
   }
   getReceipt(id: number) { return this.receipts.get(id); }
-  observe(session: string, state: string, snapshot?: FeatureSnapshot) {
+  observe(session: string, state: string, snapshot?: FeatureSnapshot, agentId?: string) {
     if (this.closed) return;
-    const previousCapability = this.capability;
+    const previousCapability = this.capability, previousAgentId = this.observedAgentId;
+    this.agentId = state === 'ready' ? agentId : undefined;
+    if (previousAgentId !== this.observedAgentId) {
+      this.draftVersion++;
+      this.catalog = undefined;
+      this.plan = undefined;
+      this.planned = undefined;
+    }
     const previousUnsupported = this.inspectionUnsupported;
     let applicationChanged = false;
     const identity = state === 'ready' && snapshot && snapshot.generation > 0
@@ -92,7 +101,7 @@ export class RunnerConfigService {
     this.deliver();
     if (state === 'disconnected') this.close();
     else if (applicationChanged || this.waiting || previousUnsupported !== this.inspectionUnsupported
-      || !same(previousCapability, this.capability)) this.changed();
+      || previousAgentId !== this.observedAgentId || !same(previousCapability, this.capability)) this.changed();
   }
   private deliver() {
     const wait = this.waiting;
@@ -106,6 +115,7 @@ export class RunnerConfigService {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.agentId = undefined;
     this.inspectionUnsupported = false;
     this.capability = undefined;
     this.catalog = undefined;
@@ -176,15 +186,16 @@ export class RunnerConfigService {
     return copy(reply);
   }
   /** Read-only admission evidence for explicit native acceptance, never a preference. */
-  async selectTestAccount(): Promise<BoundTestSelection | undefined> {
+  async selectTestAccount(provider: SessionProvider): Promise<BoundTestSelection | undefined> {
     if (this.busy || this.closed || this.uncertain) return;
     const identity = this.transport.identity(), root = this.snapshot?.runnerRoot;
     this.activity = 'inspecting'; this.error = ''; this.changed();
     try {
-      if (!identity || !root || !this.transport.available() || this.capability?.test_account_selection !== true)
+      if (!identity || !root || !this.transport.available() || !isSessionProvider(provider)
+        || this.capability?.test_account_selection !== true || !this.capability.test_account_providers?.includes(provider))
         throw new Error('TEST_ACCOUNT_SELECTION_UNSUPPORTED');
       this.assertIdentity(identity);
-      const receipt = await this.request({ operation: 'session_config.inspect', api_version: 1, execution_context: 'test' });
+      const receipt = await this.request({ operation: 'session_config.inspect', api_version: 1, execution_context: 'test', agent_id: provider });
       this.assertIdentity(identity);
       const reply = this.completion(receipt);
       if (receipt.state !== 'accepted' || !isTestSelection(reply)) {
@@ -192,11 +203,15 @@ export class RunnerConfigService {
           .filter((s): s is string => typeof s === 'string' && !!s) : [];
         throw new Error([receipt.code ?? 'TEST_ACCOUNT_EVIDENCE_UNVERIFIED', ...details].join('. '));
       }
+      if (reply.account.agent_id !== provider) throw new Error('TEST_ACCOUNT_PROVIDER_MISMATCH');
       if (this.snapshot?.runnerRoot !== root || !sameInstallation(reply.runner_root, root))
         throw new Error('TEST_ACCOUNT_INSTALLATION_MISMATCH');
+      const home = reply.codex_home ?? reply.claude_config_dir;
+      const expectedHome = `${reply.runner_root.replace(/\/$/, '')}/local/profiles/${provider}/accounts/${reply.account.profile_name}`;
+      if (!sameInstallation(home, expectedHome)) throw new Error('TEST_ACCOUNT_PROFILE_MISMATCH');
       return { identity: copy(identity), selection: copy(reply) };
     } catch (reason) {
-      this.error = `${String(reason instanceof Error ? reason.message : reason)}. Configure /account → Test account settings in the opened Runner installation.`;
+      this.error = msg('config.testAccountFailed', { diagnostic: String(reason instanceof Error ? reason.message : reason) });
       return undefined;
     } finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
@@ -215,22 +230,23 @@ export class RunnerConfigService {
       if (!identity) throw new HubError(msg('config.notReady'));
       const cap = this.capability;
       if (!cap || !this.supports('inspect')) throw new HubError(msg('config.unsupported'));
-      const first = await this.page(identity, account);
+      const observedAgentId = this.observedAgentId;
+      const selected = account && (observedAgentId === undefined || account.agent_id === observedAgentId) ? account : undefined;
+      const first = await this.page(identity, selected);
       this.actual = first;
       for (const application of this.applications) {
         if (application.result && application.verification === 'unavailable') {
           application.verification = 'verified'; application.inspection = copy(first);
         }
       }
-      if (account && !same(first.model_options_account, account)) throw new HubError(msg('config.identityChanged'));
-      if (!account && !same(first.model_options_account, first.current.account)) throw new HubError(msg('config.identityChanged'));
+      if (!same(first.model_options_account, selected ?? first.current.account)) throw new HubError(msg('config.identityChanged'));
       const options = copy(first.options);
       let page = first, offset = 0;
       for (;;) {
         if (!validatePage(page, first, offset, cap.options_page_size)) throw new HubError(msg('config.incomplete'));
         if (page.options_page.next_offset === null) break;
         offset = page.options_page.next_offset;
-        page = await this.page(identity, account, offset, first.options_revision);
+        page = await this.page(identity, selected, offset, first.options_revision);
         for (const key of ['targets', 'accounts', 'models'] as const) {
           // Concatenate only after validating this page; publish only at terminal null.
           if (!validatePage(page, first, offset, cap.options_page_size)) throw new HubError(msg('config.incomplete'));
@@ -238,11 +254,18 @@ export class RunnerConfigService {
         }
         if (!uniqueOptions(options)) throw new HubError(msg('config.identityChanged'));
       }
-      if (!uniqueOptions(options) || (account && !options.accounts.some(a => same(a, account))))
+      if (!uniqueOptions(options) || (selected && !options.accounts.some(a => same(a, selected))))
         throw new HubError(msg('config.identityChanged'));
       this.assertIdentity(identity);
       if (version !== this.draftVersion) throw new HubError(msg('config.draftChanged'));
-      this.catalog = { identity: copy(identity), account: copy(account), inspection: first, options };
+      if (observedAgentId !== this.observedAgentId) throw new HubError(msg('config.identityChanged'));
+      const provider = first.effective.agent_id;
+      if (observedAgentId !== undefined && provider !== undefined && observedAgentId !== provider)
+        throw new HubError(msg('config.identityChanged'));
+      const applicable = isSessionProvider(provider);
+      options.accounts = applicable ? options.accounts.filter(a => a.agent_id === provider) : [];
+      if (!applicable || first.model_options_account.agent_id !== provider) options.models = [];
+      this.catalog = { identity: copy(identity), account: copy(selected), inspection: first, options };
     } catch (reason) { this.catalog = undefined; this.error = errorText(reason); }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
@@ -300,7 +323,8 @@ export class RunnerConfigService {
     try {
       const latest = await this.page(identity);
       this.actual = latest;
-      if (version !== this.draftVersion || latest.revision !== plan.revision) throw new HubError(msg('config.stalePlan'));
+      if (version !== this.draftVersion || latest.revision !== plan.revision
+        || latest.effective.agent_id !== this.catalog?.inspection.effective.agent_id) throw new HubError(msg('config.stalePlan'));
       this.activity = 'applying'; this.changed();
       const receipt = await this.request({ operation: 'session_config.apply', api_version: 1,
         desired: copy(plan.desired), revision: plan.revision, plan_id: plan.plan_id! });

@@ -44,7 +44,7 @@ recovery_cap=dict(version=1,operations=['recovery.reference','recovery.recover',
     outcomes=['recovered','absent','blocked','identity_conflict','interaction_required','unverified','partial'])
 run=None
 interaction_cap=dict(version=1,operations=['interaction.observe','interaction.respond'],dispatch_boundary='foreground_input',automatic_replay=False,lifetime='current_owner')
-config_cap=dict(version=1,operations=['session_config.inspect'],options_page_size=32,options_revision=True,test_account_selection=True,interaction_owner='runner_terminal',automatic_retry=False)
+config_cap=dict(version=1,operations=['session_config.inspect'],options_page_size=32,options_revision=True,test_account_selection=True,test_account_providers=['codex'],interaction_owner='runner_terminal',automatic_retry=False)
 foreground=None
 initiating=None
 staged=0
@@ -78,7 +78,7 @@ while True:
         send(request_id=request_id,status='accepted',phase='completed',reference=reference,recovery_status='recovered',outcome_unknown=False)
         continue
     if packet['operation']=='session_config.inspect':
-        assert packet['api_version']==1 and packet['execution_context']=='test'
+        assert packet['api_version']==1 and packet['execution_context']=='test' and packet['agent_id']=='codex'
         assert not any(key in packet for key in ['offset','account','options_revision'])
         from pathlib import Path
         root=Path.cwd().resolve().as_posix()
@@ -262,7 +262,7 @@ fn authenticated_roundtrip(observation_failure: bool) {
         assert!(Instant::now() < deadline, "{snapshot:?}"); thread::sleep(Duration::from_millis(10));
     }
     let select = control::features::Request::SessionConfig(serde_json::from_value(serde_json::json!({
-        "operation":"session_config.inspect","api_version":1,"execution_context":"test"})).unwrap());
+        "operation":"session_config.inspect","api_version":1,"execution_context":"test","agent_id":"codex"})).unwrap());
     let control::features::Admission::Submitted { id, generation } = client.feature(select) else { panic!("Test selection not admitted") };
     assert_eq!(generation, ready.features.generation);
     loop {

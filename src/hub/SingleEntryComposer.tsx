@@ -10,9 +10,12 @@ import { runModeLabel } from './runModeLabel';
 import { runModes } from './runnerWork';
 import { entryAttachmentsDisabled } from './hubFileDrop';
 
-export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
+export function HubSelectionSettings({ entry, observedAgentId }: { entry: HubSelections; observedAgentId?: string }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
-  const models = same(defaults.accountIdentity, catalog?.inspection.model_options_account) ? options?.models : [];
+  const provider = observedAgentId ?? entry.effectiveAgentId;
+  const providerOptions = provider === catalog?.inspection.effective.agent_id ? options : undefined;
+  const models = same(defaults.accountIdentity, catalog?.inspection.model_options_account) ? providerOptions?.models : [];
+  const compatible = !!provider && defaults.model?.agent_id === provider ? defaults.model : undefined;
   const blocked = !entry.editable || entry.loadingOptions;
   const select = <K extends keyof EntryDefaults>(key: K, title: string, values: { value: EntryDefaults[K]; label: string }[]) => {
     const current = defaults[key], selected = current === undefined ? '' : JSON.stringify(current);
@@ -28,11 +31,14 @@ export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
       {values.map(v => <option key={JSON.stringify(v.value)} value={JSON.stringify(v.value)}>{v.label}</option>)}
     </select></label>;
   };
-  const model = models?.find(m => m.id === defaults.model?.model);
+  const model = models?.find(m => m.id === compatible?.model);
   return <section>
     <div className="settings-grid">
     <section className="settings-group account-settings"><h2>{t('fields.account')}</h2>
-      {select('accountIdentity', t('fields.account'), options?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
+      <p className="scope-note">{t('config.effectiveProvider', { provider: provider === 'codex' ? 'Codex'
+        : provider === 'claude' ? 'Claude' : t(provider === 'none' ? 'config.providerNone' : 'config.providerUnavailable') })}</p>
+      <p className="scope-note">{t('config.startupProviderUnavailable')}</p>
+      {select('accountIdentity', t('fields.account'), providerOptions?.accounts.map(v => ({ value: v, label: `${v.agent_id} / ${v.profile_name}` })) ?? [])}
     </section>
     <section className="settings-group execution-settings"><h2>{t('panel.execution')}</h2>
     {select('runMode', t('fields.runMode'), options?.run_modes.filter(value => runModes.includes(value as typeof runModes[number]))
@@ -49,8 +55,8 @@ export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
     </section>
     <section className="settings-group model-settings"><h2>{t('panel.model')}</h2>
     {select('model', t('fields.model'), models?.map(v => ({ label: v.id, value: { model: v.id,
-      reasoning_effort: defaults.model?.reasoning_effort ?? v.reasoning_efforts[0],
-      service_tier: defaults.model?.service_tier ?? 'default' } })) ?? [])}
+      reasoning_effort: compatible?.reasoning_effort ?? v.reasoning_efforts[0],
+      service_tier: compatible?.service_tier ?? v.service_tiers[0], agent_id: provider } })) ?? [])}
     <label className="setting"><span>{t('config.reasoning')}</span><select aria-label={t('entry.field', { field: t('config.reasoning') })}
       disabled={blocked || !model} value={defaults.model?.reasoning_effort ?? ''} onChange={e =>
         defaults.model && entry.setDefault('model', { ...defaults.model, reasoning_effort: e.target.value })}>
@@ -60,7 +66,7 @@ export function HubSelectionSettings({ entry }: { entry: HubSelections }) {
       {model?.reasoning_efforts.map(v => <option key={v}>{v}</option>)}
     </select></label>
     <label className="fast-option"><input type="checkbox" aria-label={t('panel.fast')}
-      checked={defaults.model?.service_tier === 'fast'}
+      checked={compatible?.service_tier === 'fast'}
       disabled={blocked || !model?.service_tiers.includes('fast') || !model.service_tiers.includes('default')}
       onChange={e => defaults.model && entry.setDefault('model', { ...defaults.model,
         service_tier: e.target.checked ? 'fast' : 'default' })} />{t('panel.fast')}</label>

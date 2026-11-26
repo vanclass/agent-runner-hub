@@ -56,6 +56,8 @@ pub struct CommandView {
 pub struct Target { pub binding_state: String, pub owner: String, pub project: String }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Selection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     pub account: String, pub model: String, pub reasoning_effort: String,
     pub service_tier: String, pub source: String, pub next_model: String,
     pub next_reasoning_effort: String, pub next_service_tier: String,

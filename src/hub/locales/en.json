@@ -135,6 +135,11 @@
     "status": "Runner work"
   },
   "config": {
+    "effectiveProvider": "Effective Provider: {{provider}}",
+    "startupProviderUnavailable": "Startup Provider: Unavailable",
+    "providerNone": "None",
+    "providerUnavailable": "Unavailable",
+    "testAccountFailed": "{{diagnostic}}. Configure the test account under Settings > Test settings in the opened Runner installation.",
     "finalInspectFailed": "Confirmed receipts were retained, but final inspection failed: {{diagnostic}}",
     "confirmation": "Use the supported Runner interaction controls for explicit confirmation, then inspect and plan again. Unsupported owners block input.",
     "partial": "Some settings committed. Earlier successful receipts are preserved; no rollback was attempted.",

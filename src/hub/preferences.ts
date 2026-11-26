@@ -46,9 +46,11 @@ export function projectEntryDefaults(value: unknown): EntryDefaults | undefined 
   }
   if (value.model !== undefined) {
     const model = value.model;
-    if (!object(model) || !keys(model, ['model', 'reasoning_effort', 'service_tier'])
-      || !text(model.model) || !text(model.reasoning_effort) || !text(model.service_tier)) return;
-    result.model = { model: model.model, reasoning_effort: model.reasoning_effort, service_tier: model.service_tier };
+    if (!object(model) || !keys(model, ['model', 'reasoning_effort', 'service_tier', 'agent_id'])
+      || !text(model.model) || !text(model.reasoning_effort) || !text(model.service_tier)
+      || (model.agent_id !== undefined && !text(model.agent_id))) return;
+    result.model = { model: model.model, reasoning_effort: model.reasoning_effort, service_tier: model.service_tier,
+      ...(model.agent_id !== undefined ? { agent_id: model.agent_id } : {}) };
   }
   for (const key of ['runMode'] as const) {
     if (value[key] !== undefined) { if (!text(value[key])) return; result[key] = value[key]; }

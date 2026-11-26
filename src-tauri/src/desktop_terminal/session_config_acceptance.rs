@@ -20,7 +20,7 @@ fn call(harness: &mut Harness, session: &Arc<Session>, request: config::Request)
     }
 }
 fn inspect(harness: &mut Harness, session: &Arc<Session>) -> config::Inspection {
-    let result = call(harness, session, config::Request::Inspect { api_version:1, account:None, offset:Some(0), options_revision:None, execution_context:None });
+    let result = call(harness, session, config::Request::Inspect { api_version:1, account:None, offset:Some(0), options_revision:None, execution_context:None, agent_id:None });
     match result.reply.unwrap() { features::Response::SessionConfig(config::Response::Inspect(value)) => value, value => panic!("inspect: {value:?}") }
 }
 fn plan(harness: &mut Harness, session: &Arc<Session>, desired: config::Desired) -> config::Plan {
@@ -36,22 +36,26 @@ fn plan(harness: &mut Harness, session: &Arc<Session>, desired: config::Desired)
 fn apply_request(plan: &config::Plan) -> config::Request {
     config::Request::Apply { api_version:1, desired:plan.desired.clone(), revision:plan.revision.clone(), plan_id:plan.plan_id.clone().unwrap() }
 }
-pub(super) fn test_selection(harness: &mut Harness, session: &Arc<Session>) -> config::TestSelection {
+fn test_selection(harness: &mut Harness, session: &Arc<Session>, provider: &str) -> config::TestSelection {
     let result = call(harness, session, config::Request::Inspect { api_version:1, account:None,
-        offset:None, options_revision:None, execution_context:Some("test".into()) });
-    assert_eq!(result.state, "accepted", "{result:?}. Configure /account → Test account settings.");
+        offset:None, options_revision:None, execution_context:Some("test".into()), agent_id:Some(provider.into()) });
+    assert_eq!(result.state, "accepted", "{provider}: {result:?}. Configure Settings > Test settings.");
     match result.reply.unwrap() {
-        features::Response::SessionConfig(config::Response::TestSelection(value)) => value,
-        other => panic!("Unverified test selection: {other:?}. Configure /account → Test account settings."),
+        features::Response::SessionConfig(config::Response::TestSelection(value)) => {
+            assert_eq!(value.account.agent_id, provider);
+            value
+        },
+        other => panic!("Unverified test selection: {other:?}. Configure Settings > Test settings."),
     }
 }
 pub(super) fn configure_test_session(harness: &mut Harness, session: &Arc<Session>) -> config::TestSelection {
-    let selection = test_selection(harness, session);
     let before = inspect(harness, session);
+    let provider = before.effective.agent_id.as_deref().expect("Missing effective Provider");
+    let selection = test_selection(harness, session, provider);
     let mut models = Vec::new(); let mut offset = Some(0); let mut guard = None;
     while let Some(next) = offset {
         let result = call(harness, session, config::Request::Inspect { api_version:1, account:Some(selection.account.clone()),
-            offset:Some(next), options_revision:guard.clone(), execution_context:None });
+            offset:Some(next), options_revision:guard.clone(), execution_context:None, agent_id:None });
         let Some(features::Response::SessionConfig(config::Response::Inspect(page))) = result.reply else { panic!("Missing test model catalog") };
         assert_eq!(result.state, "accepted"); assert_eq!(page.model_catalog_status, "available");
         assert_eq!(page.model_options_account, selection.account); assert_eq!(page.revision, before.revision);
@@ -90,8 +94,9 @@ pub(super) fn configure_test_session(harness: &mut Harness, session: &Arc<Sessio
     assert_eq!(after.current.target, "workspace"); assert_eq!(after.current.root.replace('\\', "/"), selection.runner_root);
     assert_eq!(after.effective.model, model.id); assert_eq!(after.effective.reasoning_effort, *effort);
     assert_eq!(after.effective.service_tier, *tier);
-    assert!(!after.setup_required); assert_eq!(serde_json::to_value(test_selection(harness, session)).unwrap(), serde_json::to_value(&selection).unwrap());
-    println!("TEST_RUNNER_CONFIG account={:?}, CODEX_HOME={}, root={}, receipts={:?}, effective={:?}", selection.account, selection.codex_home, selection.runner_root, receipt.results, after.effective);
+    assert_eq!(after.effective.agent_id.as_deref(), Some(provider));
+    assert!(!after.setup_required); assert_eq!(serde_json::to_value(test_selection(harness, session, provider)).unwrap(), serde_json::to_value(&selection).unwrap());
+    println!("TEST_RUNNER_CONFIG provider={provider}, settings receipts verified");
     selection
 }
 
@@ -114,12 +119,20 @@ fn installed_session_config_read_only_discovery() {
     assert_eq!(capability.version, 1); assert!(capability.options_revision);
     let actual = inspect(&mut harness, &session);
     assert!(config::digest(&actual.revision));
-    assert!(capability.test_account_selection, "Configure /account → Test account settings; Runner must support test selection.");
-    let selected = test_selection(&mut harness, &session);
+    assert!(capability.test_account_selection, "Runner must support Settings > Test settings.");
+    assert_eq!(snapshot.observation.unwrap().selection.agent_id, actual.effective.agent_id);
+    println!("INSTALLED_PROVIDER {:?}, account candidates={}, model candidates={}, catalog={}",
+        actual.effective.agent_id, actual.options_page.totals["accounts"], actual.options_page.totals["models"], actual.model_catalog_status);
+    for provider in ["codex", "claude"] {
+        assert!(capability.test_account_providers.iter().any(|id| id == provider));
+        let selected = test_selection(&mut harness, &session, provider);
+        assert!(selected.home().is_some());
+        println!("READ_ONLY_TEST_SELECTION {provider} verified");
+    }
     let unchanged = inspect(&mut harness, &session);
     assert_eq!(actual.revision, unchanged.revision);
     assert_eq!(actual.current.account, unchanged.current.account);
-    println!("READ_ONLY_TEST_SELECTION {:?}", selected);
+
     session.close().unwrap(); harness.exited(&id);
     assert!(harness.sessions.sessions.lock().unwrap().is_empty());
     println!("Installed Runner authenticated current Session Config/Work discovery and read-only inspect verified; owned session closed.");
@@ -166,7 +179,7 @@ fn installed_session_config_two_sessions_and_authoritative_receipts() {
     let stale = call(&mut harness, &first, apply_request(&planned));
     assert_eq!(stale.code.as_deref(), Some("CONFIG_REVISION_STALE"));
     let stale_options = call(&mut harness, &first, config::Request::Inspect { api_version:1, account:None, offset:Some(0),
-        options_revision:Some(original.options_revision.clone()), execution_context:None });
+        options_revision:Some(original.options_revision.clone()), execution_context:None, agent_id:None });
     assert_eq!(stale_options.code.as_deref(), Some("CONFIG_OPTIONS_REVISION_STALE"));
     for (mode, direct_root) in [("direct-run", Some(root.clone())), ("task-run", None)] {
         let planned = plan(&mut harness, &first, config::Desired { run_mode:Some(mode.into()), root:direct_root, ..Default::default() });

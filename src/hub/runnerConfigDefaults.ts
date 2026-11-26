@@ -18,7 +18,8 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
   }
   if (defaults.model) {
     const model = options.models.find(m => m.id === defaults.model?.model);
-    if (model && model.reasoning_efforts.includes(defaults.model.reasoning_effort)
+    if (defaults.model.agent_id && defaults.model.agent_id === catalog.inspection.effective.agent_id
+      && model && model.reasoning_efforts.includes(defaults.model.reasoning_effort)
       && model.service_tiers.includes(defaults.model.service_tier)
       && !unresolved.includes('accountIdentity')) {
       desired.model = { id: model.id, reasoning_effort: defaults.model.reasoning_effort };
@@ -46,10 +47,13 @@ export function configToEntryDefaults(settings: ConfigSettings, catalog: ConfigC
     || !model.service_tiers.includes(settings.service_tier) || !catalog.options.run_modes.includes(settings.run_mode)
     || !same(settings.account, catalog.inspection.model_options_account)
     || !catalog.options.accounts.some(a => same(a, settings.account))
-    || !observation || observation.selection.account !== settings.account.profile_name
+    || !observation || observation.selection.agent_id !== settings.account.agent_id
+    || catalog.inspection.effective.agent_id !== settings.account.agent_id
+    || observation.selection.account !== settings.account.profile_name
     || !same(settings.account, catalog.inspection.current.account)) return;
   return { ...(target ? { target: { binding_state: 'bound', owner: target.owner, project: target.project } } : {}),
     accountIdentity: { ...settings.account }, runMode: settings.run_mode,
     ...(['pure-direct-run', 'direct-run'].includes(settings.run_mode) && settings.root ? { root: settings.root } : {}),
-    model: { model: model.id, reasoning_effort: settings.model.reasoning_effort, service_tier: settings.service_tier } };
+    model: { model: model.id, reasoning_effort: settings.model.reasoning_effort, service_tier: settings.service_tier,
+      agent_id: settings.account.agent_id } };
 }

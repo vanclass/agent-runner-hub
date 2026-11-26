@@ -81,7 +81,8 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
     if (config.error || !config.catalog) throw new HubError(config.error || msg('config.incomplete'));
   }
   const inspection = config.actual;
-  if (!inspection || inspection.setup_required || !Object.entries(mapped.desired).every(([key, value]) =>
+  if (!inspection || inspection.setup_required || inspection.effective.agent_id !== defaults.accountIdentity.agent_id
+    || !Object.entries(mapped.desired).every(([key, value]) =>
     same(inspection.current[key as keyof typeof inspection.current], value))) throw new HubError(msg('config.stalePlan'));
   const attachmentLease = await admit();
   if (deliver && (defaults.runMode !== 'issue-run' || inspection.current.run_mode !== 'issue-run'))

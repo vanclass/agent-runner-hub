@@ -10,6 +10,8 @@ test('unbound startup with an unavailable empty model catalog preserves explicit
     fixture.inspection = (...args) => {
       const reply = inspect(...args);
       reply.model_catalog_status = 'unavailable'; reply.options.models = []; reply.options_page.totals.models = 0;
+      reply.options_page.next_offset = reply.options_page.totals.accounts > reply.options_page.offset + 2
+        ? reply.options_page.offset + 2 : null;
       return reply;
     };
     const saved = { initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } };
@@ -21,8 +23,29 @@ test('unbound startup with an unavailable empty model catalog preserves explicit
       actual: service.actual.model_catalog_status, requests, after: fixture.requests.length };
   });
   expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
-  expect(result).toMatchObject({ catalog: false, detail: { key: 'config.incomplete' }, actual: 'unavailable' });
+  expect(result).toMatchObject({ catalog: true, detail: '', actual: 'unavailable' });
   expect(result.after).toBe(result.requests);
+});
+
+for (const agentId of ['none', undefined]) test(`unknown Provider keeps only independent configuration choices: ${agentId}`, async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async agentId => {
+    const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+    const inspect = fixture.inspection.bind(fixture);
+    fixture.inspection = (...args) => {
+      const reply = inspect(...args);
+      reply.effective.agent_id = agentId;
+      return reply;
+    };
+    await service.inspect();
+    return { options: service.catalog.options, effective: service.actual.effective.agent_id, requests: fixture.requests };
+  }, agentId);
+  expect(result.effective).toBe(agentId);
+  expect(result.options.accounts).toEqual([]);
+  expect(result.options.models).toEqual([]);
+  expect(result.options.targets).toHaveLength(2);
+  expect(result.options.run_modes).toContain('task-run');
+  expect(result.requests.every(r => r.operation === 'session_config.inspect')).toBe(true);
 });
 
 for (const changedRevision of [false, true]) test('configured no-op submission uses canonical revision after complete paging: ' + changedRevision, async ({ page }) => {
@@ -247,7 +270,7 @@ test('saved defaults map exact candidate IDs and refuse to infer account identit
     const { service } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness(); await service.inspect();
     const { entryDefaultsToDesired, configToEntryDefaults } = await import('/src/hub/runnerConfigDefaults.ts');
     const defaults = { target: { binding_state: 'bound', owner: 'Project', project: 'Exact' }, account: 'second',
-      model: { model: 'm0', reasoning_effort: 'high', service_tier: 'fast' }, runMode: 'direct-run' };
+      model: { model: 'm0', reasoning_effort: 'high', service_tier: 'fast', agent_id: 'codex' }, runMode: 'direct-run' };
     const unproven = entryDefaultsToDesired(defaults, service.catalog);
     const observation = { selection: service.actual.effective };
     const matchingLabel = entryDefaultsToDesired({ ...defaults, account: 'first' }, service.catalog);
@@ -262,5 +285,5 @@ test('saved defaults map exact candidate IDs and refuse to infer account identit
   expect(result.explicitIds.desired.model).toEqual({ id: 'm0', reasoning_effort: 'high' });
   expect(result.explicitIds.desired.service_tier).toBe('fast');
   expect(result.saved).toEqual({ target: { binding_state: 'bound', owner: 'Workspace', project: '' }, accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
-    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } });
+    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default', agent_id: 'codex' } });
 });

@@ -1,7 +1,8 @@
 use super::*;
 fn capability() -> Value {
     json!({"version":1,"operations":["session_config.inspect","session_config.plan","session_config.apply"],
-        "options_page_size":32,"options_revision":true,"interaction_owner":"runner_terminal","automatic_retry":false})
+        "options_page_size":32,"options_revision":true,"interaction_owner":"runner_terminal","automatic_retry":false,
+        "test_account_providers":["codex","claude"]})
 }
 fn configured() -> Protocol {
     let mut protocol = ready();
@@ -10,11 +11,11 @@ fn configured() -> Protocol {
 }
 fn inspect() -> features::Request {
     features::Request::SessionConfig(session_config::Request::Inspect { api_version:1, account:None,
-        offset:Some(0), options_revision:None, execution_context:None })
+        offset:Some(0), options_revision:None, execution_context:None, agent_id:None })
 }
 fn test_inspect() -> features::Request {
     serde_json::from_value(json!({"feature":"session_config","request":{
-        "operation":"session_config.inspect","api_version":1,"execution_context":"test"}})).unwrap()
+        "operation":"session_config.inspect","api_version":1,"execution_context":"test","agent_id":"codex"}})).unwrap()
 }
 fn selected(id: u64) -> Value {
     let mut value = packet(id, "accepted", "completed");
@@ -32,7 +33,7 @@ fn test_selection_is_exclusive_and_capability_gated() {
     let mut cap = capability(); cap["test_account_selection"] = json!(true);
     protocol.snapshot.features.discover(&json!({"session_config":cap}));
     let wire: Value = serde_json::from_slice(&protocol.feature_request(request, "private").unwrap()).unwrap();
-    assert_eq!(wire["execution_context"], "test"); assert!(wire.get("offset").is_none());
+    assert_eq!(wire["execution_context"], "test"); assert_eq!(wire["agent_id"], "codex"); assert!(wire.get("offset").is_none());
     for (key, value) in [("offset", json!(0)), ("account", json!(null)), ("options_revision", json!("a".repeat(64)))] {
         let mut raw = test_inspect().fields(); raw[key] = value;
         let parsed = serde_json::from_value::<session_config::Request>(raw);
@@ -54,11 +55,11 @@ fn test_selection_completion_rejects_incomplete_or_unverified_success_and_keeps_
     }
     let mut rejected = packet(2, "rejected", "completed"); rejected["code"] = json!("TEST_ACCOUNT_PREREQUISITE");
     rejected["actual_result"] = json!("Test profile missing");
-    rejected["recommended_next_action"] = json!("Configure /account → Test account settings");
+    rejected["recommended_next_action"] = json!("Configure Settings > Test settings");
     let features::Response::SessionConfig(session_config::Response::Error(error)) = request.response(&rejected, 2).unwrap() else { panic!() };
     assert_eq!(error.code.as_deref(), Some("TEST_ACCOUNT_PREREQUISITE"));
     assert_eq!(error.actual_result.as_deref(), Some("Test profile missing"));
-    assert!(error.recommended_next_action.unwrap().contains("/account"));
+    assert!(error.recommended_next_action.unwrap().contains("Test settings"));
     let mut protocol = configured();
     let mut cap = capability(); cap["test_account_selection"] = json!(true);
     protocol.snapshot.features.discover(&json!({"session_config":cap}));
@@ -66,6 +67,31 @@ fn test_selection_completion_rejects_incomplete_or_unverified_success_and_keeps_
     let mut foreign = reply; foreign["session_id"] = json!("foreign"); assert!(protocol.response(foreign).is_err());
     protocol.response(rejected).unwrap(); assert_eq!(protocol.snapshot.state, "ready");
 }
+#[test]
+fn claude_selection_binds_provider_profile_path_and_installation() {
+    let fixture = TestInstallation::new();
+    let root = fixture.0.canonicalize().unwrap();
+    let canonical = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/").trim_start_matches("//?/").to_owned();
+    let home = root.join("local/profiles/claude/accounts/test");
+    std::fs::create_dir_all(&home).unwrap();
+    let mut reply = selected(2);
+    reply["runner_root"] = json!(canonical(&root));
+    reply["account"]["agent_id"] = json!("claude");
+    reply["claude_config_dir"] = json!(canonical(&home));
+    assert!(test_inspect().response(&reply, 2).is_err());
+    reply.as_object_mut().unwrap().remove("codex_home");
+    assert!(test_inspect().response(&reply, 2).is_err());
+
+    let mut fields = test_inspect().fields();
+    fields["agent_id"] = json!("claude");
+    let request: session_config::Request = serde_json::from_value(fields).unwrap();
+    assert!(request.validate().is_ok());
+    assert!(request.response(&reply).is_ok());
+    assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_ok());
+    reply["claude_config_dir"] = json!(canonical(&fixture.home("test")));
+    assert!(session_config::verify_test_installation(&reply, &root.to_string_lossy()).is_err());
+}
+
 struct TestInstallation(std::path::PathBuf);
 impl TestInstallation {
     fn new() -> Self {
@@ -183,7 +209,7 @@ fn capabilities_require_implemented_version_operations_and_options_guard() {
     protocol.snapshot.features.discover(&json!({"session_config":cap}));
     assert!(protocol.feature_request(plan(), "private").is_err());
     let guarded = features::Request::SessionConfig(session_config::Request::Inspect { api_version:1, account:None,
-        offset:Some(32), options_revision:Some("a".repeat(64)), execution_context:None });
+        offset:Some(32), options_revision:Some("a".repeat(64)), execution_context:None, agent_id:None });
     assert!(protocol.feature_request(guarded, "private").is_err());
     assert!(protocol.feature_request(inspect(), "private").is_err());
     for value in [Value::Null, json!("true")] {

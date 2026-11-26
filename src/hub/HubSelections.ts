@@ -16,6 +16,7 @@ export class HubSelections {
   detail: HubText = '';
   readonly restoredDefaults: boolean;
   private attempted?: RunnerConfigService;
+  private attemptedAgentId?: string;
   private inspectionEdits?: Set<keyof EntryDefaults>;
   constructor(private readonly source: () => RunnerConfigService | undefined,
     private readonly changed: () => void, defaults: EntryDefaults = {},
@@ -30,6 +31,9 @@ export class HubSelections {
     if (initialMode !== undefined) this.defaults.runMode = initialMode;
   }
   get editable() { return this.canEdit(); }
+  get effectiveAgentId() {
+    return this.source()?.observedAgentId ?? this.catalog?.inspection.effective.agent_id;
+  }
   get initialized() {
     return this.restoredDefaults || Object.keys(this.defaults).some(key => !['allocationPolicy', 'root'].includes(key)
       && (this.initialMode === undefined || key !== 'runMode'));
@@ -42,8 +46,14 @@ export class HubSelections {
     if (same(this.detail, unsupported) && !service?.inspectionUnsupported) {
       this.detail = ''; this.changed();
     }
-    if (!service || !service.supports('inspect') || this.attempted && this.attempted !== service)
+    if (!service || !service.supports('inspect') || this.attempted && this.attempted !== service) {
       this.attempted = undefined;
+      this.catalog = undefined;
+    }
+    if (this.attempted && service?.observedAgentId !== this.attemptedAgentId) {
+      this.attempted = undefined;
+      this.catalog = undefined;
+    }
     if (this.loadingOptions || !this.editable || !service) return;
     if (!service.supports('inspect')) {
       if (service.inspectionUnsupported && !this.detail) {
@@ -97,10 +107,12 @@ export class HubSelections {
     if (key === 'runMode') return runModes.includes(value as typeof runModes[number]) && options.run_modes.includes(String(value));
     if (key === 'model') {
       const model = value as NonNullable<EntryDefaults['model']>;
-      return same(this.defaults.accountIdentity, catalog.inspection.model_options_account)
+      const previous = this.defaults.model?.agent_id === model.agent_id ? this.defaults.model : undefined;
+      return !!model.agent_id && model.agent_id === this.effectiveAgentId
+        && same(this.defaults.accountIdentity, catalog.inspection.model_options_account)
         && options.models.some(m => m.id === model.model
-          && (m.reasoning_efforts.includes(model.reasoning_effort) || model.reasoning_effort === this.defaults.model?.reasoning_effort)
-          && (m.service_tiers.includes(model.service_tier) || model.service_tier === this.defaults.model?.service_tier));
+          && (m.reasoning_efforts.includes(model.reasoning_effort) || model.reasoning_effort === previous?.reasoning_effort)
+          && (m.service_tiers.includes(model.service_tier) || model.service_tier === previous?.service_tier));
     }
     return false;
   }
@@ -110,6 +122,7 @@ export class HubSelections {
     const before = this.defaults, initialize = !this.initialized, service = this.source();
     if (service?.busy) { this.attempted = undefined; return; }
     this.attempted = service;
+    this.attemptedAgentId = service?.observedAgentId;
     const edits = this.inspectionEdits = new Set<keyof EntryDefaults>();
     this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
     try {

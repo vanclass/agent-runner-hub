@@ -18,13 +18,19 @@ export function registerWG3({ test, expect, transport, configure }) {
       await configure(page);
       await watchObservations(browser);
       await page.evaluate(() => {
+        const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+        native.invoke = (command, args) => {
+          if (command === 'runner_observe' && window.__nativeFixture.closed.includes(args.id))
+            return Promise.reject('Unknown or exited PTY');
+          return invoke(command, args);
+        };
         const session = window.__nativeFixture.sessions.get('pty-1');
         session.feature.features.runnerRoot = '/fixture/install';
         delete session.feature.features.sessionConfig.test_account_selection;
         const fixture = session.feature.config, inspect = fixture.inspection.bind(fixture);
         fixture.inspection = (...args) => {
           const reply = inspect(...args), current = fixture.current;
-          reply.effective = { account: current.account.profile_name, model: current.model.id,
+          reply.effective = { agent_id: current.account.agent_id, account: current.account.profile_name, model: current.model.id,
             reasoning_effort: current.model.reasoning_effort, service_tier: current.service_tier,
             source: 'configuration', next_model: current.model.id,
             next_reasoning_effort: current.model.reasoning_effort, next_service_tier: current.service_tier };

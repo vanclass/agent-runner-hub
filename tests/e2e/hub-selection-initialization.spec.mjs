@@ -105,7 +105,7 @@ for (const field of ['root', 'target', 'accountIdentity', 'runMode', 'model']) {
       preferences.saveRunner(id, tab);
       const selections = new HubSelections(() => service, () => {}, {}, value => {
         commits.push(value); preferences.update({ singleEntry: value });
-      }, () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+      }, () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
       fixture.hold = true;
       const pending = selections.inspectOptions();
       if (field === 'root') selections.setDefault('root', 'C:\\explicit-root');
@@ -166,7 +166,7 @@ test('allocation-only preferences survive stale completion and automatically ins
     const first = createConfigHarness(), next = createConfigHarness();
     let source = first.service;
     const commits = [];
-    const selections = new HubSelections(() => source, () => {}, { allocationPolicy: 'reuse-idle' }, v => commits.push(v), () => true, () => ({ selection: { account: (source === first.service ? first : next).fixture.current.account.profile_name } }));
+    const selections = new HubSelections(() => source, () => {}, { allocationPolicy: 'reuse-idle' }, v => commits.push(v), () => true, () => ({ selection: { agent_id: 'codex', account: (source === first.service ? first : next).fixture.current.account.profile_name } }));
     first.fixture.hold = true;
     next.fixture.hold = true;
     selections.initialize();
@@ -208,9 +208,9 @@ for (const unbound of [false, true]) test(`verified same-session readiness recov
     const initial = { defaults: selections.defaults, catalog: !!selections.catalog, verified: !!service.catalog, detail: selections.detail };
     const requests = fixture.requests.length;
     editable = true;
-    observation = { selection: { account: 'unrelated' } }; selections.initialize();
+    observation = { selection: { agent_id: 'codex', account: 'unrelated' } }; selections.initialize();
     const unrelated = { ...selections.defaults };
-    observation = { selection: { account: fixture.current.account.profile_name }, target: { binding_state: 'unset', owner: '', project: '' } }; selections.initialize();
+    observation = { selection: { agent_id: 'codex', account: fixture.current.account.profile_name }, target: { binding_state: 'unset', owner: '', project: '' } }; selections.initialize();
     return { initial, unrelated, defaults: selections.defaults, catalog: !!selections.catalog, requests, after: fixture.requests.length };
   }, unbound);
   expect(result.initial).toMatchObject({ defaults: {}, catalog: false, verified: true, detail: { key: 'config.incomplete' } });
@@ -236,7 +236,7 @@ for (const available of [true, false]) {
       fixture.current = { ...fixture.current, account: fixture.accounts[1], target: 'project:Exact',
         model: { id: 's2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'issue-run' };
       const selection = new HubSelections(() => service, () => {}, {}, value => commits.push(value), () => true,
-        () => available ? { selection: { account: fixture.current.account.profile_name } } : undefined);
+        () => available ? { selection: { agent_id: 'codex', account: fixture.current.account.profile_name } } : undefined);
       await selection.inspectOptions();
       return { defaults: selection.defaults, commits, detail: selection.detail, requests: fixture.requests };
     }, available);
@@ -244,7 +244,7 @@ for (const available of [true, false]) {
     if (available) {
       expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' },
         accountIdentity: { agent_id: 'codex', profile_name: 'second' }, runMode: 'task-run',
-        model: { model: 's2', reasoning_effort: 'high', service_tier: 'fast' } });
+        model: { model: 's2', reasoning_effort: 'high', service_tier: 'fast', agent_id: 'codex' } });
       expect(result.commits).toHaveLength(1);
     } else {
       expect(result.defaults).toEqual({}); expect(result.commits).toEqual([]); expect(result.detail).toBeTruthy();

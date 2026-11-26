@@ -21,8 +21,12 @@ export function runnerReadOnly(runnerRoot) {
           model: JSON.parse(document.querySelector('.context-settings .model-settings select').value || 'null') }));
         const after = await inspection(browser, connection);
         assert.equal(before.result.reply.revision, after.result.reply.revision, 'Read-only inspection cannot mutate configuration');
-        if (ui.account) assert.deepEqual(ui.account, after.result.reply.current.account);
+        if (ui.account) {
+          assert.deepEqual(ui.account, after.result.reply.current.account);
+          assert.equal(ui.account.agent_id, after.result.reply.effective.agent_id);
+        }
         if (ui.model) {
+          assert.equal(ui.model.agent_id, after.result.reply.effective.agent_id);
           assert.equal(ui.model.model, after.result.reply.current.model.id);
           assert.equal(ui.model.reasoning_effort, after.result.reply.current.model.reasoning_effort);
           assert.equal(ui.model.service_tier, after.result.reply.current.service_tier);

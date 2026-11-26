@@ -38,15 +38,19 @@ export function configurationSelection(runnerRoot) {
       try {
         const connection = await ownedConnection(browser, runnerRoot);
         const before = await inspection(browser, connection);
-        const account = before.result.reply.options.accounts.find(value =>
-          JSON.stringify(value) === JSON.stringify(before.result.reply.current.account));
+        const provider = before.result.reply.effective.agent_id;
+        const account = before.result.reply.options.accounts.find(value => value.agent_id === provider
+          && JSON.stringify(value) === JSON.stringify(before.result.reply.current.account));
         if (!account || !before.result.reply.availability.account) throw new BlockedPrerequisite(
-          'Ordinary startup account is unavailable in the authenticated catalog.');
+          'The effective Provider has no current account available in the authenticated catalog.');
         const accountSelector = '.task-panel .account-settings select';
         await browser.waitUntil(async () => browser.execute((selector, account) => {
           const select = document.querySelector(selector);
           return select && !select.disabled && [...select.options].some(o => o.value === JSON.stringify(account));
-        }, accountSelector, account), { timeout: startupMs, timeoutMsg: 'Verified startup account absent from Hub catalog' });
+        }, accountSelector, account), { timeout: startupMs, timeoutMsg: 'Verified current account absent from Hub catalog' });
+        const providers = await browser.execute(selector => [...document.querySelector(selector).options]
+          .filter(option => option.value && !option.disabled).map(option => JSON.parse(option.value).agent_id), accountSelector);
+        assert.ok(providers.every(id => id === provider));
         await changeValue(browser, accountSelector, JSON.stringify(account));
         await browser.waitUntil(async () => browser.execute(selector => !document.querySelector(selector).disabled,
           accountSelector), { timeout: startupMs });
@@ -66,6 +70,7 @@ export function configurationSelection(runnerRoot) {
           .find(option => option.value && !option.disabled)?.value, modelSelector);
         if (!candidate) throw new BlockedPrerequisite('No selectable authenticated model candidate');
         const model = JSON.parse(candidate);
+        assert.equal(model.agent_id, provider);
         assert.ok(catalog.result.reply.options.models.some(value => value.id === model.model
           && value.reasoning_efforts.includes(model.reasoning_effort) && value.service_tiers.includes(model.service_tier)));
         await changeValue(browser, modelSelector, candidate);

@@ -85,7 +85,7 @@ async function transport(page, freshTarget, referenceOptions) {
       }
     };
     const canonical = id => ({ run_mode: 'task-run', target: freshTarget ?? { binding_state: 'bound', owner: 'Project', project: id },
-      selection: { account: id, model: 'effective-model', reasoning_effort: 'medium', service_tier: 'default', source: 'execution',
+      selection: { agent_id: 'codex', account: id, model: 'effective-model', reasoning_effort: 'medium', service_tier: 'default', source: 'execution',
         next_model: alignNew ? 'effective-model' : 'configured-model', next_reasoning_effort: alignNew ? 'medium' : 'high', next_service_tier: 'default' },
       execution: { lifecycle_state: 'INTERACTIVE_READY', owned_execution_alive: false, workflow_kind: '' },
       attention: { foreground_interaction_active: false, restart_confirmation_required: false,
@@ -185,7 +185,7 @@ async function transport(page, freshTarget, referenceOptions) {
           if (current && session.control.observation) {
             Object.assign(session.control.observation, { run_mode: current.run_mode, target: { binding_state: 'bound',
               owner: current.target === 'workspace' ? 'Workspace' : 'Project', project: current.target === 'workspace' ? '' : 'Exact' } });
-            Object.assign(session.control.observation.selection, { account: current.account.profile_name,
+            Object.assign(session.control.observation.selection, { agent_id: current.account.agent_id, account: current.account.profile_name,
               model: current.model.id, reasoning_effort: current.model.reasoning_effort, service_tier: current.service_tier,
               source: 'configuration', next_model: current.model.id, next_reasoning_effort: current.model.reasoning_effort,
               next_service_tier: current.service_tier });
@@ -750,18 +750,18 @@ test('Single Entry toggles Fast without a default-tier button and preserves reta
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
   await expect(page.getByRole('button', { name: 'Use default tier', exact: true })).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).uncheck();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.model)).toEqual({ model: 'm0', reasoning_effort: 'high', service_tier: 'default' });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.model)).toEqual({ model: 'm0', reasoning_effort: 'high', service_tier: 'default', agent_id: 'codex' });
   await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
   await model.selectOption({ label: 'm1' });
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
   await expect(page.getByRole('status').filter({ hasText: 'Saved value retained: fast' })).toBeVisible();
-  await page.locator('.app-settings-trigger').click();
+  await page.getByRole('button', { name: 'App settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: '기본 서비스 등급 사용', exact: true })).toHaveCount(0);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry);
-  expect(saved.model).toEqual({ model: 'm1', reasoning_effort: 'high', service_tier: 'fast' });
+  expect(saved.model).toEqual({ model: 'm1', reasoning_effort: 'high', service_tier: 'fast', agent_id: 'codex' });
   expect(saved.runMode).toBe('issue-run');
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);

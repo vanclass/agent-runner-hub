@@ -30,6 +30,39 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
       s.feature.requests.every(r => r.operation !== 'work.submit')
       && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
   });
+  test('a fresh Claude tab offers only Claude choices and preserves independent selections', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true });
+    await page.addInitScript(() => {
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        const result = await invoke(command, args);
+        if (command === 'pty_open' && result !== 'pty-1') {
+          const config = window.__nativeFixture.sessions.get(result).feature.config;
+          config.current.account = config.accounts.find(a => a.agent_id === 'claude');
+        }
+        return result;
+      };
+    });
+    await configure(page);
+    await expect(requested(page, 'Model')).toHaveValue(/"agent_id":"codex"/);
+    await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
+    await create(page);
+    await create(page);
+    await expect(page.locator('.account-settings')).toContainText('Effective Provider: Claude');
+    await expect(page.locator('.account-settings')).toContainText('Startup Provider: Unavailable');
+    await expect(requested(page, 'Account').getByRole('option', { name: 'claude / first', exact: true })).toBeAttached();
+    await expect(requested(page, 'Account').getByRole('option', { name: 'codex / second', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
+    await requested(page, 'Account').selectOption({ label: 'claude / first' });
+    await requested(page, 'Model').selectOption({ label: 'm0', exact: true });
+    await expect(requested(page, 'Model')).toHaveValue(/"agent_id":"claude"/);
+    await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).not.toBeChecked();
+    await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+    await expect(requested(page, 'Model')).toHaveValue(/"agent_id":"codex"/);
+    await page.locator('.runner-row').first().locator('.nav-row').click();
+    await expect(page.locator('.account-settings')).toContainText('Effective Provider: Codex');
+    await expect(requested(page, 'Model')).toHaveValue(/"agent_id":"codex"/);
+  });
   test('pending Hub initialization preserves the allocation policy edit', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
     await page.evaluate(() => {
@@ -67,7 +100,7 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     const initial = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry, key);
     expect(initial).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Workspace', project: '' },
       accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
-      model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } });
+      model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default', agent_id: 'codex' } });
     await expect(page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Refresh available choices' })).toHaveCount(0);
     await create(page);

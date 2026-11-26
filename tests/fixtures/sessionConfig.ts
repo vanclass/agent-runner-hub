@@ -8,7 +8,7 @@ export class ConfigFixture {
   readonly features: FeatureSnapshot;
   readonly requests: ConfigRequest[] = [];
   readonly accounts = [{ agent_id: 'codex', profile_name: 'first' }, { agent_id: 'codex', profile_name: 'second' },
-    { agent_id: 'other', profile_name: 'first' }];
+    { agent_id: 'claude', profile_name: 'first' }];
   current = { target: 'workspace', account: this.accounts[0], model: { id: 'm0', reasoning_effort: 'medium' },
     service_tier: 'default', run_mode: 'task-run', root: '' };
   revision = 'a'.repeat(64);
@@ -29,6 +29,7 @@ export class ConfigFixture {
   constructor(session = 'fixture-a', generation = 1) {
     this.session = session;
     this.features = { generation, runnerRoot: 'D:/Runner', sessionConfig: { version: 1, test_account_selection: true,
+      test_account_providers: ['codex', 'claude'],
       operations: ['session_config.inspect', 'session_config.plan', 'session_config.apply'],
       options_page_size: 2, options_revision: true }, results: [] };
   }
@@ -39,7 +40,8 @@ export class ConfigFixture {
     const options = { targets: targets.slice(offset, offset + 2), accounts: this.accounts.slice(offset, offset + 2),
       models: models.slice(offset, offset + 2), run_modes: ['pure-direct-run', 'direct-run', 'task-run', 'issue-run', 'subagent-run'] };
     return { api_version: 1, revision: this.revision, options_revision: 'b'.repeat(64), current: copy(this.current),
-      effective: { account: this.current.account.profile_name, model: 'running-model', reasoning_effort: 'medium', service_tier: 'default',
+      effective: { agent_id: this.current.account.agent_id, account: this.current.account.profile_name,
+        model: 'running-model', reasoning_effort: 'medium', service_tier: 'default',
         source: 'execution', next_model: this.current.model.id, next_reasoning_effort: this.current.model.reasoning_effort,
         next_service_tier: this.current.service_tier }, runner_kind: 'existing', setup_required: false,
       availability: { target: true, account: true, model: true, service_tier: true, run_mode: true }, constraints: [],

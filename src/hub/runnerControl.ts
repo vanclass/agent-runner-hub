@@ -50,7 +50,7 @@ export type RunnerObservation = {
   };
   run_mode: string;
   target: { binding_state: string; owner: string; project: string };
-  selection: { account: string; model: string; reasoning_effort: string; service_tier: string; source: string;
+  selection: { agent_id?: string; account: string; model: string; reasoning_effort: string; service_tier: string; source: string;
     next_model: string; next_reasoning_effort: string; next_service_tier: string };
   execution: { lifecycle_state: string; owned_execution_alive: boolean; workflow_kind: string };
   attention: { foreground_interaction_active: boolean; restart_confirmation_required: boolean;
@@ -176,7 +176,7 @@ export class RunnerControl {
       this.observeCommand();
       this.typedRun.observe();
       this.brief.observe(snapshot);
-      this.config.observe(this.id, snapshot.state, snapshot.features);
+      this.config.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.selection.agent_id);
       this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
       this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
         !this.assignmentLocked && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery

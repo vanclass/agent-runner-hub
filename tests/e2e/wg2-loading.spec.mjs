@@ -10,7 +10,7 @@ for (const restored of [false, true]) for (const fail of [false, true]) {
       const saved = restored ? { initialized: true, runMode: 'obsolete-mode', accountIdentity: { agent_id: 'codex', profile_name: 'first' } } : {};
       const commits = [];
       const choices = new HubSelections(() => ready ? service : undefined, () => {}, saved, v => commits.push(v), () => true,
-        () => ({ selection: { account: fixture.current.account.profile_name } }));
+        () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
       for (let i = 0; i < 5; i++) choices.initialize();
       const before = { detail: choices.detail, requests: fixture.requests.length };
       ready = true; fixture.hold = true; fixture.fault = fail ? 'missing' : '';

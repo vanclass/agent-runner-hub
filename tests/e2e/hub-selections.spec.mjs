@@ -107,7 +107,7 @@ for (const draft of [{ allocationPolicy: 'reuse-idle' }, { root: 'C:/explicit' }
       const { HubSelections } = await import('/src/hub/HubSelections.ts');
       const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
       const { service, fixture } = createConfigHarness(), commits = [];
-      const choices = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+      const choices = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
       for (const [key, value] of Object.entries(draft)) choices.setDefault(key, value);
       const initialized = choices.initialized;
       await choices.inspectOptions();
@@ -135,11 +135,11 @@ for (const account of ['first', 'second', { obsolete: true }]) for (const extra 
       const store = new HubPreferences(), { service, fixture } = createConfigHarness(), commits = [];
       const choices = new HubSelections(() => service, () => {}, store.value.singleEntry, v => {
         commits.push(v); store.update({ singleEntry: v });
-      }, () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+      }, () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
       await choices.inspectOptions(); choices.initialize();
       const tabCommits = [], tab = new HubSelections(() => service, () => {}, store.value.runnerSelections[id], v => {
         tabCommits.push(v); store.saveRunner(id, v);
-      }, () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+      }, () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
       await tab.inspectOptions(); tab.initialize();
       const restored = { defaults: choices.defaults, desired: entryDefaultsToDesired(choices.defaults, choices.catalog).desired,
         raw, after: localStorage.getItem(key), commits: commits.length, issue: store.issue, tab: tab.defaults, tabCommits };
@@ -187,7 +187,7 @@ test('a removed saved account stays visible while interaction can choose a verif
     const { service, fixture } = createConfigHarness(), commits = [];
     const saved = { accountIdentity: { agent_id: 'removed', profile_name: 'retained' },
       model: { model: 'retained-model', reasoning_effort: 'high', service_tier: 'fast' } };
-    const selections = new HubSelections(() => service, () => {}, saved, value => commits.push(value), () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+    const selections = new HubSelections(() => service, () => {}, saved, value => commits.push(value), () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
     await selections.inspectOptions();
     return { defaults: selections.defaults, accounts: selections.catalog?.options.accounts, commits, detail: selections.detail };
   });
@@ -226,7 +226,7 @@ test('Hub initializes from current account rather than the first candidate and r
     const preferences = new HubPreferences(), commits = [];
     const selections = new HubSelections(() => service, () => {}, {}, value => {
       commits.push(value); preferences.update({ singleEntry: value });
-    }, () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+    }, () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
     window.__selection = { selections, fixture, preferences, commits, HubSelections, HubPreferences };
     selections.initialize();
   });
@@ -239,7 +239,7 @@ test('Hub initializes from current account rather than the first candidate and r
   });
   const expected = { initialized: true, target: { binding_state: 'bound', owner: 'Workspace', project: '' },
     accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
-    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } };
+    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default', agent_id: 'codex' } };
   expect(result.defaults).toEqual(expected); expect(result.restored).toEqual(expected); expect(result.commits).toEqual([expected]);
   expect(result.requests.every(r => r.operation === 'session_config.inspect')).toBe(true);
   expect(result.requests).toHaveLength(3);
@@ -256,7 +256,7 @@ test('Hub preserves partial and unsupported saved values across initialization a
     const { service, fixture } = createConfigHarness(), commits = [];
     const saved = { target: { binding_state: 'bound', owner: 'Project', project: 'exact/SAVED' },
       model: { model: 'removed', reasoning_effort: 'unsupported', service_tier: 'retained' } };
-    const selections = new HubSelections(() => service, () => {}, saved, v => commits.push(v), () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+    const selections = new HubSelections(() => service, () => {}, saved, v => commits.push(v), () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
     selections.initialize(); const startupRequests = fixture.requests.length;
     await selections.inspectOptions();
     return { saved, defaults: selections.defaults, startupRequests, commits };
@@ -272,7 +272,7 @@ for (const fault of ['token', 'unavailable', 'missing']) {
       const { HubSelections } = await import('/src/hub/HubSelections.ts');
       const { service, fixture } = createConfigHarness(), commits = [];
       fixture.fault = fault;
-      const selections = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+      const selections = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
       await selections.inspectOptions(); const failed = { defaults: selections.defaults, detail: selections.detail, commits: commits.length };
       fixture.fault = ''; await selections.inspectOptions();
       return { failed, defaults: selections.defaults, commits, requests: fixture.requests };
@@ -290,7 +290,7 @@ test('Hub completes delayed initialization after a newer allocation edit', async
     const { HubSelections } = await import('/src/hub/HubSelections.ts');
     const { service, fixture } = createConfigHarness(), commits = [];
     fixture.hold = true;
-    const selections = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+    const selections = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
     const pending = selections.inspectOptions();
     selections.setDefault('allocationPolicy', 'reuse-idle');
     fixture.hold = false; fixture.complete(); await pending;
@@ -298,7 +298,7 @@ test('Hub completes delayed initialization after a newer allocation edit', async
   });
   expect(result.defaults).toMatchObject({ allocationPolicy: 'reuse-idle', initialized: true,
     accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
-    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default' } });
+    model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default', agent_id: 'codex' } });
   expect(result.defaults.target.owner).toBe('Workspace');
   expect(result.defaults).not.toHaveProperty('root');
   expect(result.commits).toHaveLength(2);
@@ -315,7 +315,7 @@ test('Hub rejects incomplete availability and requires explicit Direct Root', as
     const { service, fixture } = createConfigHarness(), commits = [];
     const inspection = fixture.inspection.bind(fixture);
     fixture.inspection = (...args) => { const r = inspection(...args); r.availability.model = false; return r; };
-    const selections = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { account: fixture.current.account.profile_name } }));
+    const selections = new HubSelections(() => service, () => {}, {}, v => commits.push(v), () => true, () => ({ selection: { agent_id: 'codex', account: fixture.current.account.profile_name } }));
     await selections.inspectOptions(); const blocked = { defaults: selections.defaults, commits: commits.length };
     fixture.inspection = inspection; await selections.inspectOptions();
     return { blocked, unresolved: entryDefaultsToDesired({ ...selections.defaults, runMode: 'direct-run' }, selections.catalog).unresolved };

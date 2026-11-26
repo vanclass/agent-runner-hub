@@ -31,7 +31,8 @@ impl Request {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Capability { pub version: u32, pub operations: Vec<String>, pub options_page_size: u32,
     pub options_revision: bool,
-    #[serde(default)] pub test_account_selection: bool }
+    #[serde(default)] pub test_account_selection: bool,
+    #[serde(default)] pub test_account_providers: Vec<String> }
 impl Capability {
     fn read(value: &Value) -> Option<Self> {
         let mut cap: Self = serde_json::from_value(value.clone()).ok()?;
@@ -45,7 +46,8 @@ impl Capability {
     pub fn supports(&self, request: &Request) -> bool {
         self.operations.iter().any(|op| op == request.operation())
             && match request {
-                Request::SessionConfig(session_config::Request::Inspect { execution_context: Some(_), .. }) => self.test_account_selection,
+                Request::SessionConfig(session_config::Request::Inspect { execution_context: Some(_), agent_id, .. }) =>
+                    self.test_account_selection && agent_id.as_ref().is_some_and(|id| self.test_account_providers.contains(id)),
                 _ => true,
             }
     }
