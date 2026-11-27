@@ -3,6 +3,7 @@ import { PNG } from 'pngjs';
 import { imageBackdrop, registerOrdinaryBackdrops } from './dialog-backdrops.mjs';
 import { HubActions } from '../native/webdriver/hub-actions.mjs';
 import { testBrowser } from './test-browser.mjs';
+import { animationFrames, animatedFixture } from '../native/webdriver/attachment-preview.mjs';
 const png = [...PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640 * 320 * 4, 180) })];
 const original = '  첫 번째 줄\n# 원문 <script>window.previewExecuted=true</script>\n{"값": "한글"}\n  ';
 const source = '\tconst start = "Find.Me";\r\n' + '// 공백 유지\r\n'.repeat(64)
@@ -30,21 +31,37 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
   registerOrdinaryBackdrops({ test, expect, ready });
   async function setup(page, entry = false) {
     await ready(page);
-    await page.evaluate(({ png, original, source }) => {
+    await page.evaluate(({ png, gif, original, source }) => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'local_file_preview') return invoke(command, args);
-        if (args.path.endsWith('.png')) return { kind: 'image', path: args.path, base64: btoa(String.fromCharCode(...png)) };
+        if (args.path.endsWith('.png')) return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...png)) };
+        if (args.path.endsWith('.gif')) return { kind: 'image', path: args.path, mime: 'image/gif', base64: btoa(String.fromCharCode(...gif)) };
         if (/\.(txt|md|json)$/.test(args.path) && !args.path.includes('missing')) return { kind: 'text', path: args.path, text: original };
         if (args.path.endsWith('.ts')) return { kind: 'text', path: args.path, text: source };
         if (args.path.endsWith('/.gitignore') || args.path.endsWith('.log')) return { kind: 'text', path: args.path, text: '  # exact\n/dist/\n' };
         return { kind: 'unavailable', path: args.path, reason: 'unsupported' };
       };
-    }, { png, original, source });
+    }, { png, gif: animatedFixture().bytes, original, source });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   }
   for (const entry of [false, true]) {
     const label = entry ? 'Single Entry' : 'Runner';
+    test('focused preview ' + label + ' animates GIF thumbnails and focused images', async ({ page }) => {
+      await setup(page, entry);
+      await drop(page, ['/fixture/two-frames.gif']);
+      const opener = page.getByRole('button', { name: 'Open attachment two-frames.gif', exact: true });
+      const thumbnail = opener.locator('img');
+      await expect(thumbnail).toHaveJSProperty('naturalWidth', 2);
+      expect(await thumbnail.evaluate(async img => (await (await fetch(img.src)).blob()).type)).toBe('image/gif');
+      const browser = testBrowser(page, expect);
+      await animationFrames(browser, '.attachment-chip img');
+      await opener.click();
+      await expect(page.locator('.focused-image-viewport img')).toHaveJSProperty('naturalWidth', 2);
+      await animationFrames(browser, '.focused-image-viewport img');
+      await page.keyboard.press('Escape');
+      await expect(opener).toBeFocused();
+    });
     test('dialog backdrop attachment ' + label + ' protects gestures and returns focus', async ({ page }) => {
       await setup(page, entry); await drop(page, ['/fixture/backdrop.png']);
       const opener = page.getByRole('button', { name: 'Open attachment backdrop.png', exact: true });
@@ -166,7 +183,8 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(dialog).toContainText('no local content preview');
     await expect(dialog).toContainText('Attachment eligibility is separate');
     await expect(dialog).toContainText('UTF-8');
-    await expect(dialog).toContainText('never execute');
+    await expect(dialog).toContainText('GIFs animate in thumbnails and in the focused viewer');
+    await expect(dialog).toContainText('without scripts');
     await info.attach('catalog-help', { body: await page.screenshot(), contentType: 'image/png' });
     await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await expect(help).toBeFocused();
     await chooseAppPreference(page, 'view', 'theme', 'black');
@@ -177,6 +195,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     const localized = page.getByRole('dialog', { name: '파일 미리 보기 안내', exact: true });
     await expect(localized).toHaveCSS('background-color', 'rgb(17, 18, 20)');
     await expect(localized.getByText('.gitignore', { exact: true })).toBeVisible();
+    await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });
 }

@@ -14,7 +14,7 @@ tauri = { version = "=2.12.2", features = [] }
 
 [features]
 default = []
-desktop-terminal = ["dep:portable-pty", "dep:serde", "dep:serde_json", "dep:windows-sys", "dep:png", "dep:gif", "dep:base64", "dep:sha2"]
+desktop-terminal = ["dep:portable-pty", "dep:serde", "dep:serde_json", "dep:windows-sys", "dep:png", "dep:gif", "dep:base64", "dep:sha2", "dep:image", "dep:resvg", "dep:roxmltree"]
 native-io = ["dep:tauri-plugin-clipboard-manager", "dep:tauri-plugin-dialog"]
 native-webdriver = ["dep:tauri-plugin-wdio-webdriver"]
 
@@ -26,6 +26,9 @@ serde_json = { version = "1", optional = true }
 base64 = { version = "0.22", optional = true }
 png = { version = "0.18", optional = true }
 gif = { version = "=0.14.2", default-features = false, features = ["std"], optional = true }
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "webp", "bmp", "ico"], optional = true }
+resvg = { version = "=0.47.0", default-features = false, optional = true }
+roxmltree = { version = "=0.21.2", optional = true }
 tauri-plugin-clipboard-manager = { version = "2", optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 

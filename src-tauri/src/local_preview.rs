@@ -1,45 +1,48 @@
 //! Read-only previews of explicitly selected local files; no Runner registration.
-use std::{fs::File, io::{Cursor, Read}, path::Path, sync::OnceLock};
+use std::{fs::File, io::Read, path::Path, sync::OnceLock};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Deserialize)]
+#[path = "local_image.rs"]
+mod image;
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum Category { Image, Text }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Format {
     category: Category,
+    mime: Option<String>,
+    preview_mime: Option<String>,
     #[serde(default)]
     extensions: Vec<String>,
     #[serde(default)]
     filenames: Vec<String>,
 }
 
-fn classify(path: &str) -> Option<Category> {
+fn classify(path: &str) -> Option<&'static Format> {
     static FORMATS: OnceLock<Vec<Format>> = OnceLock::new();
     let formats = FORMATS.get_or_init(|| serde_json::from_str(include_str!("preview_formats.json"))
         .expect("checked-in preview format catalog"));
     let name = path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next()?;
     if let Some(format) = formats.iter().find(|format| format.filenames.iter().any(|item| item.eq_ignore_ascii_case(name))) {
-        return Some(format.category);
+        return Some(format);
     }
     let (stem, extension) = name.rsplit_once('.')?;
     if stem.is_empty() { return None; }
     formats.iter().find(|format| format.extensions.iter().any(|item| item.eq_ignore_ascii_case(extension)))
-        .map(|format| format.category)
 }
 
 // Bound IPC payload and decoder allocation independently; never truncate a successful preview.
 const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_TEXT_BYTES: usize = 1024 * 1024;
-const MAX_PIXELS: u64 = 32 * 1024 * 1024;
-const MAX_DECODED_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Serialize, Debug)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Preview {
-    Image { path: String, base64: String },
+    Image { path: String, base64: String, mime: &'static str },
     Text { path: String, text: String },
     Unavailable { path: String, reason: &'static str },
 }
@@ -52,8 +55,9 @@ pub fn read(path: String) -> Preview {
 }
 
 fn content(path: &str) -> Result<Preview, &'static str> {
-    match classify(path).ok_or("unsupported")? {
-        Category::Image => read_png(path),
+    let format = classify(path).ok_or("unsupported")?;
+    match format.category {
+        Category::Image => read_image(path, format),
         Category::Text => read_text(path),
     }
 }
@@ -76,18 +80,15 @@ fn read_text(path: &str) -> Result<Preview, &'static str> {
     Ok(Preview::Text { path: path.into(), text })
 }
 
-fn read_png(path: &str) -> Result<Preview, &'static str> {
+fn read_image(path: &str, format: &'static Format) -> Result<Preview, &'static str> {
+    let mime = format.mime.as_deref().ok_or("unsupported")?;
     let bytes = read_bounded(path, MAX_FILE_BYTES)?;
-    let mut decoder = png::Decoder::new(Cursor::new(&bytes));
-    decoder.set_limits(png::Limits { bytes: MAX_DECODED_BYTES });
-    let mut reader = decoder.read_info().map_err(|_| "decoding")?;
-    let info = reader.info();
-    if info.width == 0 || info.height == 0 || u64::from(info.width) * u64::from(info.height) > MAX_PIXELS
-        || info.animation_control.is_some() { return Err("decoding"); }
-    let size = reader.output_buffer_size().filter(|s| *s <= MAX_DECODED_BYTES).ok_or("oversize")?;
-    reader.next_frame(&mut vec![0; size]).map_err(|_| "decoding")?;
-    reader.finish().map_err(|_| "decoding")?;
-    Ok(Preview::Image { path: path.into(), base64: STANDARD.encode(bytes) })
+    let bytes = image::decode(bytes, mime, MAX_FILE_BYTES)?;
+    Ok(Preview::Image {
+        path: path.into(),
+        base64: STANDARD.encode(bytes),
+        mime: format.preview_mime.as_deref().unwrap_or(mime),
+    })
 }
 
 #[cfg(test)]

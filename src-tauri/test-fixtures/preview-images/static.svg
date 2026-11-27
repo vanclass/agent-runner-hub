@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8" onload="document.documentElement.remove()">
+  <rect width="16" height="8" fill="#ff0000">
+    <animate attributeName="fill" to="#0000ff" dur="0.2s" repeatCount="indefinite"/>
+  </rect>
+  <script>document.documentElement.remove()</script>
+  <image href="sample.bmp" width="16" height="8"/>
+  <image href="https://example.invalid/image.png" width="16" height="8"/>
+</svg>

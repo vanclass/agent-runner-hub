@@ -22,7 +22,7 @@
     "otherLimits": "Folders, PDFs, Office documents, archives, and other unlisted formats have no local content preview.",
     "eligibility": "Attachment eligibility is separate from preview support. Eligible items can stay attached even when a preview is unavailable.",
     "limitations": "Preview limitations",
-    "limits": "Previews show the complete image or original UTF-8 text within size limits. Unreadable, invalid, or oversized files show an unavailable message. Previews never execute file contents."
+    "limits": "GIFs animate in thumbnails and in the focused viewer. PNG and WebP previews are static. SVGs render as static images without scripts, linked or embedded images, fonts, filters, patterns, or masks. Unreadable, unsupported, invalid, or oversized previews are unavailable. Text previews show the original UTF-8 text."
   },
   "menu": {
     "label": "Application menus",

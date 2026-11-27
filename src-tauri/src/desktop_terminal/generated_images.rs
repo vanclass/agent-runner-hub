@@ -3,7 +3,8 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashSet, io::Cursor, sync::Mutex};
+use std::{collections::HashSet, sync::Mutex};
+use crate::image_validation::{validate_gif, validate_png};
 
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_IMAGES: u64 = 128;
@@ -201,7 +202,13 @@ fn verify(image: &Metadata, bytes: &[u8]) -> Result<()> {
         return Err(Failure::failed("Image length or SHA-256 verification failed"));
     }
     match image.mime_type.as_str() {
-        "image/gif" => return verify_gif(image, bytes),
+        "image/gif" => {
+            let invalid = || Failure::failed("Image is not a complete supported GIF");
+            if bytes.len() as u64 > MAX_BYTES { return Err(invalid()); }
+            return validate_gif(bytes, MAX_PIXELS, None, |width, height| {
+                width == image.width && height == image.height
+            }).map_err(|_| invalid());
+        }
         "image/png" => {},
         _ => return Err(Failure::failed("Unsupported image MIME type")),
     }
@@ -217,57 +224,11 @@ fn verify(image: &Metadata, bytes: &[u8]) -> Result<()> {
             break;
         }
     }
-    let mut decoder = png::Decoder::new(Cursor::new(bytes));
-    decoder.set_limits(png::Limits { bytes: (MAX_PIXELS * 4 + 65536) as usize });
-    let mut reader = decoder.read_info().map_err(|_| invalid())?;
-    let info = reader.info();
-    if info.width != image.width || info.height != image.height || info.interlaced
-        || info.bit_depth != png::BitDepth::Eight || !matches!(info.color_type, png::ColorType::Rgb | png::ColorType::Rgba)
-        || info.animation_control.is_some() { return Err(invalid()); }
-    let size = reader.output_buffer_size().filter(|size| *size <= (MAX_PIXELS * 4) as usize).ok_or_else(invalid)?;
-    reader.next_frame(&mut vec![0; size]).map_err(|_| invalid())?;
-    reader.finish().map_err(|_| invalid())?;
-    Ok(())
-}
-
-fn verify_gif(image: &Metadata, bytes: &[u8]) -> Result<()> {
-    let invalid = || Failure::failed("Image is not a complete supported GIF");
-    if bytes.len() as u64 > MAX_BYTES { return Err(invalid()); }
-    let mut options = gif::DecodeOptions::new();
-    options.set_color_output(gif::ColorOutput::Indexed);
-    options.set_memory_limit(gif::MemoryLimit::Bytes(std::num::NonZeroU64::new(MAX_PIXELS).unwrap()));
-    options.check_frame_consistency(true);
-    options.check_lzw_end_code(true);
-    options.allow_unknown_blocks(false);
-    let mut reader = options.read_info(Cursor::new(bytes)).map_err(|_| invalid())?;
-    if u32::from(reader.width()) != image.width || u32::from(reader.height()) != image.height
-        || image.width == 0 || image.height == 0
-        || u64::from(image.width) * u64::from(image.height) > MAX_PIXELS {
-        return Err(invalid());
-    }
-    let mut pixels = Vec::new();
-    let mut frames = 0;
-    // Each raster is validated and discarded; encoded bytes remain untouched.
-    while let Some(frame) = reader.next_frame_info().map_err(|_| invalid())? {
-        let count = u64::from(frame.width) * u64::from(frame.height);
-        let transparent = frame.transparent;
-        if count == 0 || count > MAX_PIXELS { return Err(invalid()); }
-        pixels.resize(count as usize, 0);
-        let colors = reader.palette().map_err(|_| invalid())?.len() / 3;
-        reader.read_into_buffer(&mut pixels).map_err(|_| invalid())?;
-        if pixels.iter().any(|index| usize::from(*index) >= colors)
-            || transparent.is_some_and(|index| usize::from(index) >= colors) {
-            return Err(invalid());
-        }
-        // Drain through LZW termination, rejecting excess raster data as well.
-        if reader.fill_buffer(&mut [0]).map_err(|_| invalid())? { return Err(invalid()); }
-        frames += 1;
-    }
-    let mut input = reader.into_inner();
-    if frames == 0 || std::io::Read::read(&mut input, &mut [0]).map_err(|_| invalid())? != 0 {
-        return Err(invalid());
-    }
-    Ok(())
+    validate_png(bytes, (MAX_PIXELS * 4 + 65536) as usize, (MAX_PIXELS * 4) as usize, |info| {
+        info.width == image.width && info.height == image.height && !info.interlaced
+            && info.bit_depth == png::BitDepth::Eight
+            && matches!(info.color_type, png::ColorType::Rgb | png::ColorType::Rgba)
+    }).map_err(|_| invalid())
 }
 
 #[cfg(test)]

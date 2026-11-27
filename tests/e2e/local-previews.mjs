@@ -14,7 +14,7 @@ async function reader(page) {
       if (command !== 'local_file_preview') return invoke(command, args);
       window.__localPreview.reads.push(args.path);
       if (window.__localPreview.gate) await window.__localPreview.gate;
-      return { kind: 'image', path: args.path, base64: btoa(String.fromCharCode(...bytes)) };
+      return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...bytes)) };
     };
   }, selected);
 }
@@ -141,6 +141,11 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       previews.load(1,'/right.png');
       while(previews.get(1)?.kind === 'loading') await new Promise(r=>setTimeout(r,5));
       const mismatch = previews.get(1);
+      native.invoke = async (command, args) => command === 'local_file_preview'
+        ? { kind: 'image', path: args.path, mime: 'image/svg+xml', base64: '' } : invoke(command, args);
+      previews.load(3,'/unrasterized.svg');
+      while(previews.get(3)?.kind === 'loading') await new Promise(r=>setTimeout(r,5));
+      const wrongMime = previews.get(3);
       native.invoke = async (command, args) => {
         if (command === 'local_file_preview') throw Error('unreadable');
         return invoke(command, args);
@@ -152,19 +157,21 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       const declared = previewFormats.flatMap(({ category, extensions, filenames }) =>
         [...(extensions ?? []).map(extension => 'sample.' + extension), ...(filenames ?? [])]
           .map(name => ({ name, category, dispatched: kind('C:\\selected\\' + name.toUpperCase()) })));
-      return { mismatch, missing, declared, kinds: ['x.pdf','folder','png','.json','Dockerfile.pdf'].map(kind),
+      return { mismatch, wrongMime, missing, declared, kinds: ['x.pdf','folder','png','.json','Dockerfile.pdf'].map(kind),
         allocated: window.__localPreview.allocated };
     });
     expect(result.kinds).toEqual(Array(5).fill('unsupported'));
     const textSelectors = ['txt','md','json','c','cpp','h','hpp','cs','py','js','jsx','ts','tsx','rs','java','sql',
       'xml','yaml','yml','toml','ini','cfg','csv','tsv','jsonl','sh','bat','cmd','ps1','html','css','scss','log','diff','patch']
       .map(extension => 'sample.' + extension).concat('Dockerfile', 'Makefile', '.gitignore');
-    expect(result.declared.map(entry => entry.name).sort()).toEqual(['sample.png', ...textSelectors].sort());
+    const imageSelectors = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'gif', 'svg'].map(extension => 'sample.' + extension);
+    expect(result.declared.map(entry => entry.name).sort()).toEqual([...imageSelectors, ...textSelectors].sort());
     for (const entry of result.declared) {
-      expect(entry.category).toBe(entry.name === 'sample.png' ? 'image' : 'text');
+      expect(entry.category).toBe(imageSelectors.includes(entry.name) ? 'image' : 'text');
       expect(entry.dispatched).toBe(entry.category);
     }
     expect(result.mismatch).toEqual({ kind:'unavailable',reason:'unreadable' });
+    expect(result.wrongMime).toEqual({ kind:'unavailable',reason:'unreadable' });
     expect(result.missing).toEqual({ kind:'unavailable',reason:'unreadable' });
     expect(result.allocated).toEqual([]);
     await drop(page, ['/fixture/missing.png']);

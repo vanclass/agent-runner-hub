@@ -6,6 +6,8 @@ type PreviewFormat = {
   extensions?: readonly string[];
   filenames?: readonly string[];
   syntax?: string;
+  mime?: string;
+  previewMime?: string;
 };
 
 export const previewFormats: readonly PreviewFormat[] = catalog as PreviewFormat[];

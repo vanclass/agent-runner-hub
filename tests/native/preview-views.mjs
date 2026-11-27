@@ -7,8 +7,8 @@ import { after } from 'node:test';
 import { PNG } from 'pngjs';
 import { nativeSuite } from '../../tools/native-probe/suite.mjs';
 import { defineNativeCase, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
-import { readyInstalledHub } from './webdriver/runner-flow.mjs';
-import { generatedSource, animatedFixture, injectGeneratedImage } from './webdriver/attachment-preview.mjs';
+import { readyInstalledHub, visibleConnection } from './webdriver/runner-flow.mjs';
+import { generatedSource, animatedFixture, injectGeneratedImage, animationFrames } from './webdriver/attachment-preview.mjs';
 import { HubActions } from './webdriver/hub-actions.mjs';
 import { readFileSync } from 'node:fs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -18,22 +18,67 @@ const directory = path.join(root, 'temp/preview-originals', randomUUID());
 await fs.mkdir(directory, { recursive: true });
 const image = path.join(directory, 'selected-image.png');
 await fs.writeFile(image, PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640*320*4,180) }));
+const imageFiles = ['sample.jpg', 'sample.jpeg', 'sample.webp', 'sample.bmp', 'sample.ico', 'animated.gif', 'static.svg']
+  .map(name => path.join(directory, name));
+for (const file of imageFiles) {
+  const name = path.basename(file).replace(/\.jpeg$/, '.jpg');
+  await fs.copyFile(path.join(root, 'src-tauri/test-fixtures/preview-images', name), file);
+}
 const original = '첫 줄\n  둘째 줄\t{"value":42}\n';
 const files = ['original.txt','original.md','original.json','original.ts','Dockerfile','.gitignore']
   .map(name => path.join(directory, name));
 for (const file of files) await fs.writeFile(file, original, 'utf8');
 after(async () => {
-  for (const file of [image,...files]) await fs.unlink(file);
+  for (const file of [image, ...imageFiles, ...files]) await fs.unlink(file);
   await fs.rmdir(directory);
   await fs.rmdir(path.dirname(directory)).catch(error => { if (error.code !== 'ENOTEMPTY') throw error; });
 });
 const background = process.env.HUB_PREVIEW_BACKGROUND_ONLY === '1';
+async function exerciseImages(browser, hub, surface) {
+  const { attachments } = hub, { viewer } = attachments;
+  const results = [];
+  for (const file of imageFiles) {
+    const gif = file.endsWith('.gif'), svg = file.endsWith('.svg'), width = gif ? 2 : 16;
+    await attachments.dropPaths(surface, [file]);
+    await hub.wait(async () => (await attachments.inventory(surface))?.items[0]?.thumbnail?.width === width, 'Native thumbnail did not load: ' + file);
+    assert.equal((await attachments.inventory(surface)).items[0].path, file);
+    await attachments.openPreview(surface, 0);
+    await hub.wait(async () => (await viewer.state())?.image?.naturalWidth === width, 'Native focused image did not load: ' + file);
+    if (svg) {
+      const png = await browser.execute(async () => {
+        const response = await fetch(document.querySelector('.focused-image-viewport img').src);
+        return { mime: response.headers.get('content-type'), bytes: [...new Uint8Array(await response.arrayBuffer())] };
+      });
+      assert.equal(png.mime, 'image/png');
+      assert.deepEqual(PNG.sync.read(Buffer.from(png.bytes)).data, Buffer.from(Array.from({ length: 128 }, () => [255, 0, 0, 255]).flat()));
+    }
+    await viewer.close();
+    await hub.wait(async () => !await viewer.state(), 'Native focused image did not close');
+    await attachments.remove(surface, 0);
+    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 0, 'Native image attachment did not retire');
+    results.push({ name: path.basename(file), width });
+  }
+  return results;
+}
+
+async function observeLocalGif(browser, hub, surface) {
+  const { attachments } = hub, { viewer } = attachments;
+  await attachments.dropPaths(surface, [imageFiles.find(file => file.endsWith('.gif'))]);
+  await hub.wait(async () => (await attachments.inventory(surface))?.items[0]?.thumbnail?.width === 2,
+    'Animated GIF thumbnail did not load');
+  const thumbnail = await animationFrames(browser, '.attachment-chip img[alt="animated.gif"]');
+  await attachments.openPreview(surface, 0);
+  await hub.wait(async () => (await viewer.state())?.image?.naturalWidth === 2,
+    'Animated GIF viewer did not load');
+  return { thumbnail, focused: await animationFrames(browser, '.focused-image-viewport img') };
+}
 const preview = defineNativeCase({
   id: 'preview-views', presentation: background ? 'background' : 'nonactivating',
   ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
     const hub = new HubActions(browser);
     const attachments = hub.attachments, viewer = attachments.viewer, surface = 'single-entry';
+    const images = await exerciseImages(browser, hub, surface);
     await attachments.dropPaths(surface, [image, ...files, directory]);
     await hub.wait(async () => (await attachments.inventory(surface))?.items.length === files.length + 2, 'Native drop did not stage paths');
     assert.deepEqual((await attachments.inventory(surface)).items.map(item => item.path), [image, ...files, directory]);
@@ -73,7 +118,7 @@ const preview = defineNativeCase({
     assert.equal(state.name, 'selected-image.png');
     assert.equal(state.buttons, 0);
     assert.equal((await attachments.inventory(surface)).items.length, files.length + 1);
-    return { texts, help, state, method: 'Actual native filesystem IPC and production DOM consumer; scripted drop and clicks',
+    return { images, texts, help, state, method: 'Actual native filesystem IPC and production DOM consumer; scripted drop and clicks',
       physicalGestures: 'unverified; browser gesture evidence is separate' };
   },
   async observe(browser) {
@@ -83,14 +128,35 @@ const preview = defineNativeCase({
         backdrop:getComputedStyle(dialog,'::backdrop').backgroundColor,title:dialog.querySelector('header').textContent };
     });
     assert.equal(state.visibility,'visible');assert.ok(state.contained);assert.equal(state.width/state.height,2);assert.equal(state.title,'selected-image.png');
-    return state;
+    const hub = new HubActions(browser);
+    await hub.attachments.viewer.close();
+    await hub.wait(async () => !await hub.attachments.viewer.state(), 'Native PNG viewer did not close');
+    for (let index = files.length; index >= 0; index--) {
+      await hub.attachments.remove('single-entry', index);
+      await hub.wait(async () => (await hub.attachments.inventory('single-entry'))?.items.length === index,
+        'Previous preview attachment did not retire');
+    }
+    const animation = await observeLocalGif(browser, hub, 'single-entry');
+    return { state, animation };
   }
+});
+const runnerPreview = defineNativeCase({
+  id: 'runner-local-images', presentation: background ? 'background' : 'nonactivating',
+  ready: browser => readyInstalledHub(browser, runnerRoot),
+  async run(browser) {
+    const hub = new HubActions(browser);
+    await hub.addRunner();
+    await visibleConnection(browser, runnerRoot);
+    return exerciseImages(browser, hub, 'runner');
+  },
+  observe: browser => observeLocalGif(browser, new HubActions(browser), 'runner'),
 });
 const generated = defineNativeCase({
   id: 'generated-consumer', presentation: background ? 'background' : 'nonactivating',
   ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
-    const fixture = animatedFixture();
+    // A larger fixture keeps inline centers measurable at fractional display scaling.
+    const fixture = animatedFixture(await fs.readFile(path.join(root, 'src-tauri/test-fixtures/preview-images/generated-animation.gif')));
     await injectGeneratedImage(browser, fixture);
     const classification = 'Synthetic image IPC only; no genuine Codex generation provenance';
     if (!background) return { classification };
@@ -117,5 +183,6 @@ const genuineGenerated = defineNativeCase({
     return result;
   }
 });
-nativeSuite(background ? [preview, generated] : process.env.GENERATED_GIF_ONLY === '1' ? [generated] : [preview, generated, genuineGenerated],
+nativeSuite(background ? [preview, runnerPreview, generated] : process.env.GENERATED_GIF_ONLY === '1' ? [generated]
+  : [preview, runnerPreview, generated, genuineGenerated],
   { root, target: process.env.CARGO_TARGET_DIR || path.join(root,'local/hub-native/target') });

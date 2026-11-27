@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Cursor;
 fn gif_fixture() -> (Metadata, Vec<u8>) {
     // Hand-authored GIF89a: two full 2x1 red/blue frames, 200ms each, infinite loop.
     let bytes = STANDARD.decode("R0lGODlhAgABAIAAAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAAAgABAAACAgQKACH5BAAUAAAALAAAAAACAAEAAAICTAoAOw==").unwrap();

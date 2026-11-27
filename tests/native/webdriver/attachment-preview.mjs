@@ -8,12 +8,14 @@ import { RunnerTabs } from './runner-tabs.mjs';
 import { observeConnection } from './runner-observations.mjs';
 
 const digest = bytes => createHash('sha256').update(Buffer.from(bytes)).digest('hex');
-export function animatedFixture() {
-  // Hand-authored GIF89a, identical to Rust gif_fixture: red/blue, 2x1, 200ms, loop forever.
-  const bytes = [...Buffer.from('R0lGODlhAgABAIAAAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAAAgABAAACAgQKACH5BAAUAAAALAAAAAACAAEAAAICTAoAOw==', 'base64')];
-  return { bytes, image: { imageId: 'a'.repeat(32), sourceSequence: 1, outputIndex: 0,
+export function animatedFixture(bytes) {
+  // Default to the same 2×1 looping red and blue GIF used by the Rust verification tests.
+  bytes ??= Buffer.from(
+    'R0lGODlhAgABAIAAAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAAAgABAAACAgQKACH5BAAUAAAALAAAAAACAAEAAAICTAoAOw==',
+    'base64');
+  return { bytes: [...bytes], image: { imageId: 'a'.repeat(32), sourceSequence: 1, outputIndex: 0,
     source: 'codex.imageGeneration', mimeType: 'image/gif', byteLength: bytes.length,
-    sha256: digest(bytes), width: 2, height: 1 } };
+    sha256: digest(bytes), width: bytes.readUInt16LE(6), height: bytes.readUInt16LE(8) } };
 }
 export async function injectGeneratedImage(browser, fixture) {
   await browser.execute(({ image, bytes }) => {
@@ -63,14 +65,20 @@ export async function injectGeneratedImage(browser, fixture) {
   }, fixture);
 }
 export async function animationFrames(browser, selector) {
+  await browser.execute(selector => {
+    document.querySelector(selector).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, selector);
   const colors = new Set();
   for (let sample = 0; sample < 24 && colors.size < 2; sample++) {
     const point = await browser.execute(selector => {
-      const r = document.querySelector(selector).getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2,
+      const image = document.querySelector(selector), r = image.getBoundingClientRect();
+      const x = r.x + r.width / 2, y = r.y + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, unobscured: hit === image || hit === image.parentElement,
         width: innerWidth, height: innerHeight, visible: document.visibilityState };
     }, selector);
     assert.equal(point.visible, 'visible');
+    assert.ok(point.unobscured, 'GIF frame sample must be inside the visible image: ' + selector);
     const png = PNG.sync.read(Buffer.from(await browser.takeScreenshot(), 'base64'));
     const x = Math.floor(point.x * png.width / point.width), y = Math.floor(point.y * png.height / point.height);
     const pixel = [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
@@ -78,7 +86,7 @@ export async function animationFrames(browser, selector) {
     if (pixel[2] > 220 && pixel[0] < 35 && pixel[1] < 35) colors.add('blue');
     await new Promise(resolve => setTimeout(resolve, 75));
   }
-  assert.deepEqual([...colors].sort(), ['blue', 'red'], 'Actual rendered pixels must show both GIF frames');
+  assert.deepEqual([...colors].sort(), ['blue', 'red'], 'Actual rendered pixels must show both GIF frames: ' + selector);
   return { colors: [...colors], method: 'WebView screenshot center pixels over time' };
 }
 
