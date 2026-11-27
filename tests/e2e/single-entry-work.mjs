@@ -84,6 +84,24 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.locator('.spare-status')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
   }
+  test('Single Entry promotes its Provider-refreshed hidden spare and submits with that account', async ({ page }) => {
+    await ready(page);
+    await page.evaluate(() => {
+      const spare = window.__nativeFixture.sessions.get('pty-1');
+      spare.feature.config.current.account = { agent_id: 'claude', profile_name: 'first' };
+      spare.feature.config.current.model = { id: 'm1', reasoning_effort: 'high' };
+    });
+    await expect(page.locator('.account-settings')).toContainText('Effective Provider: Claude');
+    await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toHaveValue(/m1/);
+    const editor = page.locator('textarea[data-instruction]');
+    await editor.fill('Check the promoted Claude Runner');
+    await assign(page);
+    await expect.poll(() => page.evaluate(() => {
+      const { sessions } = window.__nativeFixture;
+      return [...sessions.entries()].flatMap(([id, session]) => session.feature.requests
+        .filter(r => r.operation === 'work.submit').map(() => [id, session.feature.config.current.account.agent_id]));
+    })).toEqual([['pty-1', 'claude']]);
+  });
   test('work Single Entry clears on fresh matching Discussion before the Work start marker', async ({ page }) => {
     await ready(page, { workMode: 'dispatch' });
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('issue-run'));
@@ -299,13 +317,13 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation !== 'work.list'))).toEqual([]);
     });
     test('work Single Entry catalogs configure exact account model Direct Root in ' + language, async ({ page }, info) => {
-      await ready(page);
+      await ready(page, { captureHubLog: true });
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
 
       await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
-      await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'other', profile_name: 'first' }));
+      await page.getByRole('combobox', { name: 'Requested Account', exact: true }).selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'second' }));
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })).toBeEnabled();
-      await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 'm2' });
+      await page.getByRole('combobox', { name: 'Requested Model', exact: true }).selectOption({ label: 's2' });
       await page.getByRole('combobox', { name: 'Requested Reasoning effort', exact: true }).selectOption('high');
       await page.getByRole('checkbox', { name: 'Fast', exact: true }).check();
       await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).selectOption(JSON.stringify({ binding_state: 'bound', owner: 'Project', project: 'Exact' }));
@@ -317,17 +335,17 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       const result = await page.evaluate(() => ({ current: window.__nativeFixture.sessions.get('pty-1').feature.config.current,
         requests: window.__nativeFixture.sessions.get('pty-1').feature.config.requests,
         safe: JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry }));
-      expect(result.current).toEqual({ target: 'project:Exact', account: { agent_id: 'other', profile_name: 'first' },
-        model: { id: 'm2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'direct-run', root: 'C:/explicit-root' });
+      expect(result.current).toEqual({ target: 'project:Exact', account: { agent_id: 'codex', profile_name: 'second' },
+        model: { id: 's2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'direct-run', root: 'C:/explicit-root' });
       expect(result.safe.accountIdentity).toEqual(result.current.account); expect(result.safe).not.toHaveProperty('account');
       const apply = result.requests.find(r => r.operation === 'session_config.apply');
       expect(apply.desired.account).toEqual(result.current.account);
-      await page.locator('.app-settings-trigger').click();
+      await page.getByRole('button', { name: 'App settings', exact: true }).click();
       await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
       await page.keyboard.press('Escape');
       await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
       await home(page);
-      await expect(page.locator('.hub-log-records')).toContainText('work.started');
+      await expect(page.locator('.hub-log-records')).toContainText(language === 'ko' ? '작업 시작' : 'Task started');
       await info.attach('single-entry-work-' + language, { body: await page.screenshot(), contentType: 'image/png' });
     });
   }

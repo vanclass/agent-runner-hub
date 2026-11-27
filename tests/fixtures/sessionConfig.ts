@@ -133,7 +133,7 @@ export function createConfigHarness(session = 'fixture-a', generation = 1) {
   const identity = { session, generation };
   const service = new RunnerConfigService({ identity: () => identity, available: () => true,
     submit: (session, request) => fixture.submit(session, request) }, () => {});
-  fixture.changed = () => service.observe(session, 'ready', copy(fixture.features));
+  fixture.changed = () => service.observe(session, 'ready', copy(fixture.features), fixture.current.account.agent_id);
   fixture.changed();
   return { fixture, service, identity };
 }

@@ -42,6 +42,8 @@ export class RunnerConfigService {
   private identity?: ConfigIdentity;
   private agentId?: string;
   get observedAgentId() { return this.agentId; }
+  private effectiveRevision = 0;
+  get providerRevision() { return this.effectiveRevision; }
   private draftVersion = 0;
   private planned?: { identity: ConfigIdentity; draftVersion: number };
   private closed = false;
@@ -68,10 +70,14 @@ export class RunnerConfigService {
     const previousCapability = this.capability, previousAgentId = this.observedAgentId;
     this.agentId = state === 'ready' ? agentId : undefined;
     if (previousAgentId !== this.observedAgentId) {
+      this.effectiveRevision++;
       this.draftVersion++;
+      this.actual = undefined;
       this.catalog = undefined;
       this.plan = undefined;
       this.planned = undefined;
+      const { account, model, service_tier, ...independent } = this.draft;
+      this.draft = independent;
     }
     const previousUnsupported = this.inspectionUnsupported;
     let applicationChanged = false;
@@ -86,7 +92,10 @@ export class RunnerConfigService {
       && Array.isArray(cap.operations) && cap.operations.includes('session_config.inspect') ? cap : undefined;
     // Native ready snapshots publish capabilities from a completed authenticated observation.
     this.inspectionUnsupported = !!identity && !this.supports('inspect');
-    if (!this.capability) { this.catalog = undefined; this.plan = undefined; this.planned = undefined; }
+    if (!this.capability) {
+      if (previousCapability) this.effectiveRevision++;
+      this.actual = undefined; this.catalog = undefined; this.plan = undefined; this.planned = undefined;
+    }
     for (const receipt of snapshot?.results ?? []) {
       if (receipt.feature !== 'session_config') continue;
       if (terminal(receipt)) this.receipts.set(receipt.id, copy(receipt));
@@ -115,9 +124,11 @@ export class RunnerConfigService {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.effectiveRevision++;
     this.agentId = undefined;
     this.inspectionUnsupported = false;
     this.capability = undefined;
+    this.actual = undefined;
     this.catalog = undefined;
     this.plan = undefined;
     this.planned = undefined;
@@ -177,12 +188,16 @@ export class RunnerConfigService {
   }
   private async page(identity: ConfigIdentity, account?: ConfigAccount, offset = 0, guard?: string) {
     this.assertIdentity(identity);
+    const revision = this.providerRevision;
     const receipt = await this.request({ operation: 'session_config.inspect', api_version: 1, offset,
       ...(account ? { account: copy(account) } : {}), ...(guard ? { options_revision: guard } : {}) });
     this.assertIdentity(identity);
+    if (revision !== this.providerRevision) throw new HubError(msg('config.identityChanged'));
     const reply = this.completion(receipt);
     if (receipt.state !== 'accepted' || !isInspection(reply))
       throw new HubError(msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_INSPECTION_FAILED' }));
+    if (this.observedAgentId !== undefined && reply.effective.agent_id !== this.observedAgentId)
+      throw new HubError(msg('config.identityChanged'));
     return copy(reply);
   }
   /** Read-only admission evidence for explicit native acceptance, never a preference. */
@@ -225,20 +240,15 @@ export class RunnerConfigService {
     this.planned = undefined;
     this.changed();
     const version = this.draftVersion;
+    const providerRevision = this.providerRevision;
     try {
       const identity = this.transport.identity();
       if (!identity) throw new HubError(msg('config.notReady'));
       const cap = this.capability;
       if (!cap || !this.supports('inspect')) throw new HubError(msg('config.unsupported'));
       const observedAgentId = this.observedAgentId;
-      const selected = account && (observedAgentId === undefined || account.agent_id === observedAgentId) ? account : undefined;
+      const selected = account?.agent_id === observedAgentId ? account : undefined;
       const first = await this.page(identity, selected);
-      this.actual = first;
-      for (const application of this.applications) {
-        if (application.result && application.verification === 'unavailable') {
-          application.verification = 'verified'; application.inspection = copy(first);
-        }
-      }
       if (!same(first.model_options_account, selected ?? first.current.account)) throw new HubError(msg('config.identityChanged'));
       const options = copy(first.options);
       let page = first, offset = 0;
@@ -258,13 +268,17 @@ export class RunnerConfigService {
         throw new HubError(msg('config.identityChanged'));
       this.assertIdentity(identity);
       if (version !== this.draftVersion) throw new HubError(msg('config.draftChanged'));
-      if (observedAgentId !== this.observedAgentId) throw new HubError(msg('config.identityChanged'));
-      const provider = first.effective.agent_id;
-      if (observedAgentId !== undefined && provider !== undefined && observedAgentId !== provider)
-        throw new HubError(msg('config.identityChanged'));
-      const applicable = isSessionProvider(provider);
-      options.accounts = applicable ? options.accounts.filter(a => a.agent_id === provider) : [];
-      if (!applicable || first.model_options_account.agent_id !== provider) options.models = [];
+      if (providerRevision !== this.providerRevision) throw new HubError(msg('config.identityChanged'));
+      const applicable = isSessionProvider(observedAgentId) && first.effective.agent_id === observedAgentId;
+      options.accounts = applicable ? options.accounts.filter(a => a.agent_id === observedAgentId) : [];
+      if (!applicable || first.model_options_account.agent_id !== observedAgentId) options.models = [];
+      this.actual = first;
+      for (const application of this.applications) {
+        if (application.result && application.verification === 'unavailable'
+          && application.before.account.agent_id === observedAgentId) {
+          application.verification = 'verified'; application.inspection = copy(first);
+        }
+      }
       this.catalog = { identity: copy(identity), account: copy(selected), inspection: first, options };
     } catch (reason) { this.catalog = undefined; this.error = errorText(reason); }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
@@ -299,6 +313,7 @@ export class RunnerConfigService {
     this.plan = undefined;
     this.planned = undefined;
     const identity = this.transport.identity(), version = this.draftVersion, desired = copy(this.draft);
+    const providerRevision = this.providerRevision;
     if (!identity || !this.actual || !this.catalog || !same(identity, this.catalog.identity)
       || !validDesired(desired, this.actual.current, this.catalog) || !this.transport.available()) {
       this.error = msg('config.invalidCombination'); this.changed(); return;
@@ -310,7 +325,8 @@ export class RunnerConfigService {
       const reply = this.completion(receipt);
       if (!isPlan(reply) || !same(reply.desired, desired) || (reply.plan_status === 'ready' && receipt.state !== 'accepted'))
         throw new HubError(msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_PLAN_MISMATCH' }));
-      if (version !== this.draftVersion) throw new HubError(msg('config.draftChanged'));
+      if (version !== this.draftVersion || providerRevision !== this.providerRevision)
+        throw new HubError(msg('config.draftChanged'));
       this.plan = copy(reply);
       this.planned = { identity: copy(identity), draftVersion: version };
     } catch (reason) { this.error = errorText(reason); }
@@ -319,12 +335,13 @@ export class RunnerConfigService {
   async apply() {
     if (!this.canApply || !this.plan || !this.planned) return;
     const plan = copy(this.plan), identity = copy(this.planned.identity), version = this.draftVersion;
+    const providerRevision = this.providerRevision;
     this.activity = 'verifying'; this.error = ''; this.changed();
     try {
       const latest = await this.page(identity);
-      this.actual = latest;
-      if (version !== this.draftVersion || latest.revision !== plan.revision
+      if (providerRevision !== this.providerRevision || version !== this.draftVersion || latest.revision !== plan.revision
         || latest.effective.agent_id !== this.catalog?.inspection.effective.agent_id) throw new HubError(msg('config.stalePlan'));
+      this.actual = latest;
       this.activity = 'applying'; this.changed();
       const receipt = await this.request({ operation: 'session_config.apply', api_version: 1,
         desired: copy(plan.desired), revision: plan.revision, plan_id: plan.plan_id! });
@@ -340,9 +357,10 @@ export class RunnerConfigService {
       if (!valid) this.error = receipt.state === 'not-sent' ? msg('config.notSent') : receipt.admission === 'rejected'
         ? msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_REQUEST_REJECTED' }) : msg('config.receiptUnknown');
       this.activity = this.closed ? 'closed' : 'verifying'; this.changed();
-      if (!this.closed) {
+      if (!this.closed && providerRevision === this.providerRevision) {
         try {
           const observed = await this.page(identity);
+          if (providerRevision !== this.providerRevision) throw new HubError(msg('config.stalePlan'));
           this.actual = observed;
           application.inspection = observed;
           if (application.verification !== 'unknown') application.verification = 'verified';

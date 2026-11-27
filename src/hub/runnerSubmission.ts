@@ -55,6 +55,7 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
   if ((!deliver && !work.supports('work.submit', defaults.runMode)) || work.blocked || work.busy)
     throw new HubError(msg('work.unavailable'));
   if (config.busy || config.uncertain) throw new HubError(msg('config.partial'));
+  const providerRevision = config.providerRevision;
   config.resetDraft();
   await config.inspect(defaults.accountIdentity);
   if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
@@ -85,6 +86,8 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
     || !Object.entries(mapped.desired).every(([key, value]) =>
     same(inspection.current[key as keyof typeof inspection.current], value))) throw new HubError(msg('config.stalePlan'));
   const attachmentLease = await admit();
+  if (providerRevision !== config.providerRevision || config.observedAgentId !== defaults.accountIdentity.agent_id)
+    throw new HubError(msg('config.stalePlan'));
   if (deliver && (defaults.runMode !== 'issue-run' || inspection.current.run_mode !== 'issue-run'))
     throw new HubError(msg('brief.unavailable'));
   return deliver ? deliver(attachmentLease || undefined)

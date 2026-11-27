@@ -237,7 +237,7 @@ test('Hub initializes from current account rather than the first candidate and r
     restored.initialize();
     return { defaults: selections.defaults, restored: restored.defaults, commits, requests: fixture.requests };
   });
-  const expected = { initialized: true, target: { binding_state: 'bound', owner: 'Workspace', project: '' },
+  const expected = { initialized: true, providerPreferences: {}, target: { binding_state: 'bound', owner: 'Workspace', project: '' },
     accountIdentity: { agent_id: 'codex', profile_name: 'first' }, runMode: 'task-run',
     model: { model: 'm0', reasoning_effort: 'medium', service_tier: 'default', agent_id: 'codex' } };
   expect(result.defaults).toEqual(expected); expect(result.restored).toEqual(expected); expect(result.commits).toEqual([expected]);

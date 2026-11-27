@@ -1,5 +1,55 @@
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
+test('late inspection and plan replies cannot cross a Provider change and return', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { fixture, service } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+    const switchAwayAndBack = () => {
+      service.observe(fixture.session, 'ready', fixture.features, 'claude');
+      service.observe(fixture.session, 'ready', fixture.features, 'codex');
+    };
+    const complete = async operation => {
+      switchAwayAndBack();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      fixture.complete();
+      await operation;
+    };
+    fixture.holdOperation = 'session_config.inspect';
+    await complete(service.inspect());
+    const staleRead = [!!service.actual, !!service.catalog];
+    fixture.holdOperation = '';
+    await service.inspect();
+    service.setDraft({ model: { id: 'm2', reasoning_effort: 'high' }, run_mode: 'issue-run' });
+    fixture.holdOperation = 'session_config.plan';
+    await complete(service.createPlan());
+    await service.apply();
+    return { staleRead, plan: !!service.plan, draft: service.draft, canApply: service.canApply,
+      attempts: fixture.requests.filter(r => r.operation === 'session_config.apply').length };
+  });
+  expect(result).toEqual({ staleRead: [false, false], plan: false, canApply: false, draft: { run_mode: 'issue-run' }, attempts: 0 });
+});
+
+test('a Provider change during attachment admission leaves the work unsent', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { fixture, service } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+    const { submitConfiguredWork } = await import('/src/hub/runnerSubmission.ts');
+    let submitted = 0, admitted = false;
+    const work = { supports: () => true, blocked: false, busy: false, submit: () => { submitted++; } };
+    const defaults = { accountIdentity: fixture.current.account, runMode: 'task-run' };
+    try {
+      await submitConfiguredWork(service, work, defaults, 'Target\nOwner: Project\nProject: Explicit\nGoal\nExample', async () => {
+        admitted = true;
+        service.observe(fixture.session, 'ready', fixture.features, 'claude');
+      });
+    } catch (error) {
+      return { submitted, admitted, key: error.text?.key };
+    }
+    return { submitted, admitted };
+  });
+  expect(result).toEqual({ submitted: 0, admitted: true, key: 'config.stalePlan' });
+});
+
 test('unbound startup with an unavailable empty model catalog preserves explicit intent without retries', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
@@ -31,16 +81,18 @@ for (const agentId of ['none', undefined]) test(`unknown Provider keeps only ind
   await page.goto('/');
   const result = await page.evaluate(async agentId => {
     const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
+    fixture.changed = () => service.observe(fixture.session, 'ready', structuredClone(fixture.features), agentId);
+    fixture.changed();
     const inspect = fixture.inspection.bind(fixture);
     fixture.inspection = (...args) => {
       const reply = inspect(...args);
-      reply.effective.agent_id = agentId;
+      if (agentId !== undefined) reply.effective.agent_id = agentId;
       return reply;
     };
     await service.inspect();
     return { options: service.catalog.options, effective: service.actual.effective.agent_id, requests: fixture.requests };
   }, agentId);
-  expect(result.effective).toBe(agentId);
+  expect(result.effective).toBe(agentId ?? 'codex');
   expect(result.options.accounts).toEqual([]);
   expect(result.options.models).toEqual([]);
   expect(result.options.targets).toHaveLength(2);
@@ -105,7 +157,7 @@ test('session config binds identity only after an authenticated ready snapshot',
     const service = new RunnerConfigService({ identity: () => identity, available: () => true,
       submit: (id, request) => fixture.submit(id, request) }, () => {});
     service.observe('startup', 'connecting', { generation: 0, sessionConfig: null, results: [] });
-    fixture.changed = () => service.observe('startup', 'ready', structuredClone(fixture.features));
+    fixture.changed = () => service.observe('startup', 'ready', structuredClone(fixture.features), fixture.current.account.agent_id);
     fixture.changed(); await service.inspect();
     return { activity: service.activity, identity: service.catalog.identity };
   });

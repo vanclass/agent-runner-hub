@@ -572,7 +572,7 @@ export class RunnerSessions {
     private readonly savedSelections: Record<string, EntryDefaults> = {},
     private readonly saveSelections: (id: string, value: EntryDefaults) => void = () => {}) {
     this.entry = new SingleEntry(() => [...this.sessions.values()],
-      (location, token) => this.allocate(location, token), () => this.changed(), defaults, saveDefaults,
+      (location, token, provider) => this.allocate(location, token, undefined, provider), () => this.changed(), defaults, saveDefaults,
       () => this.spare.optionsSource ?? [...this.sessions.values()].find(s => s.assignmentAvailable),
       id => this.navigation.snapshot.affinities[id]);
   }
@@ -811,11 +811,12 @@ export class RunnerSessions {
     this.changed();
     return { session, launched: session.open(location) };
   }
-  allocate(location: string, token?: symbol, initialMode?: RunMode) {
+  allocate(location: string, token?: symbol, initialMode?: RunMode, provider?: string) {
     if (this.disposed) throw new HubError(msg('spare.closed'));
     for (const [id, item] of this.retired) {
       if (item.state !== 'idle' || item.root !== location || !item.session.reusableIdle) continue;
       const session = item.session;
+      if (provider && session.control.config.observedAgentId !== provider) continue;
       item.state = 'checking';
       if (token && !session.reserve(token)) { item.state = 'idle'; continue; }
       this.retired.delete(id);
@@ -829,7 +830,8 @@ export class RunnerSessions {
       this.changed();
       return { session, launched: Promise.resolve() };
     }
-    if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location) {
+    if (this.spare.snapshot.state === 'ready' && this.spare.snapshot.installation?.root === location
+      && (!provider || this.spare.optionsSource?.control.config.observedAgentId === provider)) {
       const session = this.promoteSpare(token, initialMode);
       return { session, launched: Promise.resolve(), promoted: true };
     }

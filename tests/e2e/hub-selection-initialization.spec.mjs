@@ -24,7 +24,7 @@ for (const outcome of ['supported', 'unsupported', 'failure']) {
       if (outcome === 'failure') fixture.fault = 'missing';
       const snapshot = structuredClone(fixture.features);
       if (outcome === 'unsupported') snapshot.sessionConfig = null;
-      service.observe(fixture.session, 'ready', snapshot);
+      service.observe(fixture.session, 'ready', snapshot, fixture.current.account.agent_id);
       choices.initialize();
       const active = hubActivityKey(choices);
       if (outcome !== 'unsupported') { fixture.hold = false; fixture.complete(); }
@@ -242,7 +242,7 @@ for (const available of [true, false]) {
     }, available);
     expect(result.requests.every(r => r.operation === 'session_config.inspect')).toBe(true);
     if (available) {
-      expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' },
+      expect(result.defaults).toEqual({ initialized: true, providerPreferences: {}, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' },
         accountIdentity: { agent_id: 'codex', profile_name: 'second' }, runMode: 'task-run',
         model: { model: 's2', reasoning_effort: 'high', service_tier: 'fast', agent_id: 'codex' } });
       expect(result.commits).toHaveLength(1);

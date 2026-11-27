@@ -16,6 +16,7 @@ import { issueSidebarLifecycle } from '../../tests/native/webdriver/issue-sideba
 import { domInteractions } from '../../tests/native/webdriver/dom-interactions.mjs';
 import { attachmentWorkCase } from '../../tests/native/webdriver/attachment-work.mjs';
 import { backgroundWorkspace } from '../../tests/native/webdriver/background-workspace.mjs';
+import { providerSwitchCase } from '../../tests/native/webdriver/provider-switch.mjs';
 
 export async function runProbe(args, { smoke = false } = {}) {
   const root = await fs.realpath(fileURLToPath(new URL('../../', import.meta.url)));
@@ -46,6 +47,8 @@ export async function runProbe(args, { smoke = false } = {}) {
   cases.push(issueSidebarLifecycle(values.get('--producer-source')));
   cases.push(attachmentWorkCase(runnerRoot, root));
   cases.push(backgroundWorkspace(runnerRoot));
+  cases.push(providerSwitchCase(runnerRoot));
+  cases.push(providerSwitchCase(runnerRoot, true));
   if (help) {
     console.log('npm run test:native:probe -- [--case <id>] [--runner-root <absolute existing Runner installation>] [--target-dir <absolute Cargo cache>]');
     console.log('Repeat --case to select cases. Without selectors the npm entry runs the displayed smoke cases; the direct hub.mjs entry runs the installation/configuration/read-only cases.');

@@ -3,7 +3,7 @@ import { HubSelections } from './HubSelections';
 import type { RunnerSession } from './RunnerSessions';
 import { commandNamed, isRunnerCommand, type RunnerObservation, type CommandAttempt } from './runnerControl';
 import { submitConfiguredWork } from './runnerSubmission';
-import { copy, type ConfigAccount } from './runnerConfigContract';
+import { copy, type ConfigAccount, type SessionProvider } from './runnerConfigContract';
 import type { WorkAttempt } from './runnerWork';
 import type { BriefResult } from './RunnerBrief';
 import { RunnerReferenceSelection } from './referenceSelection';
@@ -11,7 +11,9 @@ import { InstructionHistory } from './instructionHistory';
 
 type Target = RunnerObservation['target'];
 type Model = Pick<RunnerObservation['selection'], 'model' | 'reasoning_effort' | 'service_tier' | 'agent_id'>;
+export type ProviderPreferences = Partial<Record<SessionProvider, { accountIdentity?: ConfigAccount | null; model?: Model | null }>>;
 export type EntryDefaults = { target?: Target; model?: Model; accountIdentity?: ConfigAccount;
+  providerPreferences?: ProviderPreferences;
   runMode?: string; root?: string; allocationPolicy?: 'always-new' | 'reuse-idle' | 'reuse-same-mode'; initialized?: true };
 
 export type EntryPhase = 'editing' | 'preparing' | 'writing' | 'incomplete' | 'delivered' | 'unknown';
@@ -58,7 +60,7 @@ export class SingleEntry {
   private draftRevision = 0;
   private active?: EntryAttempt;
   constructor(private readonly list: () => readonly RunnerSession[],
-    private readonly create: (location: string, token: symbol) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
+    private readonly create: (location: string, token: symbol, provider?: string) => { session: RunnerSession; launched: Promise<void>; promoted?: boolean },
     private readonly changed: () => void, defaults: EntryDefaults = {},
     saveDefaults: (value: EntryDefaults) => void = () => {},
     optionsSource: () => RunnerSession | undefined = () => this.list()[0],
@@ -94,6 +96,7 @@ export class SingleEntry {
     if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
     if (briefRun && this.defaults.runMode !== 'issue-run') return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
+    const provider = briefRun || !isRunnerCommand(text) ? defaults.accountIdentity?.agent_id : undefined;
     const draftRevision = this.draftRevision, selection = this.attachments;
     try { this.attachments.freeze(); } catch (reason) { this.detail = errorText(reason); this.changed(); return; }
     this.submissionToken = token;
@@ -113,6 +116,7 @@ export class SingleEntry {
           }
           if (!candidate.assignmentAvailable) continue;
           try { await candidate.control.fresh(); } catch { continue; }
+          if (provider && candidate.control.config.observedAgentId !== provider) continue;
           const reason = idleReason(candidate);
           if (reason || !candidate.assignmentAvailable) continue;
           if (this.allocationPolicy === 'reuse-same-mode'
@@ -125,7 +129,7 @@ export class SingleEntry {
       let launched: Promise<void> | undefined;
       if (!session) {
         if (!location) throw new HubError(msg('runtime.entry.noEligible'));
-        const created = this.create(location, token);
+        const created = this.create(location, token, provider);
         session = created.session;
         launched = created.launched;
       }
@@ -174,10 +178,12 @@ export class SingleEntry {
           { reason: attachmentReason || msg('runtime.entry.inputUnsettled') }));
         this.phase = 'writing';
         this.detail = msg('work.observing', { name: destination.view.name });
-        attempted = briefRun;
         this.changed();
         return this.attachments.deliveryLease;
-      }, briefRun ? lease => destination.control.brief.submit(text, lease) : undefined, attempt => {
+      }, briefRun ? lease => {
+        attempted = true;
+        return destination.control.brief.submit(text, lease);
+      } : undefined, attempt => {
         if (this.active?.token === token) {
           this.active.attempt = attempt;
           attempted = true;

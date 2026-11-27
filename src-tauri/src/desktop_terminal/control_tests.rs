@@ -69,6 +69,32 @@ fn authenticated_observation_updates_providers_independently() {
     }
 }
 #[test]
+fn same_connection_replaces_provider_commands_and_capabilities() {
+    let mut protocol = ready();
+    for (id, (provider, model_enabled)) in (2..).zip([
+        ("codex", true), ("claude", true), ("none", false), ("codex", true),
+    ]) {
+        protocol.request(None, "private-key").unwrap();
+        let mut reply = packet(id, "accepted", "completed");
+        reply["observation"] = observation();
+        reply["observation"]["selection"]["agent_id"] = json!(provider);
+        reply["observation"]["configured_startup_agent_id"] = json!("codex");
+        reply["observation"]["commands"] = json!([{"id":"model","text":"/model","aliases":[],
+            "enabled":model_enabled,"visible":model_enabled,"disabled_reason":"","description":"","children":[]}]);
+        if model_enabled {
+            reply["capabilities"]["session_config"] = json!({"version":1,"operations":["session_config.inspect"],
+                "options_page_size":2,"options_revision":true,"interaction_owner":"runner_terminal","automatic_retry":false});
+        }
+        protocol.response(reply).unwrap();
+        let snapshot = protocol.public_snapshot();
+        let view = snapshot.observation.unwrap();
+        assert_eq!(view.selection.agent_id.as_deref(), Some(provider));
+        assert_eq!(view.configured_startup_agent_id, Some(StartupProvider::Codex));
+        assert_eq!(view.commands[0].enabled, model_enabled);
+        assert_eq!(snapshot.features.session_config.is_some(), model_enabled);
+    }
+}
+#[test]
 fn optional_user_action_preserves_old_observations_and_opaque_fields() {
     let old: Observation = serde_json::from_value(observation()).unwrap();
     assert!(old.issue_run_user_action.is_none());

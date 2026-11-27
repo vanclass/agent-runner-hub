@@ -1,7 +1,7 @@
 import { useHubTranslation, t } from './i18n';
 import type { SingleEntry, EntryDefaults } from './singleEntry';
 import type { HubSelections } from './HubSelections';
-import { same } from './runnerConfigContract';
+import { isSessionProvider, same } from './runnerConfigContract';
 import { DirectoryInput } from './DirectoryInput';
 import { ComposerAttachments } from './ComposerAttachments';
 import { ComposerPresentation } from './ComposerPresentation';
@@ -20,7 +20,7 @@ export function HubSelectionSettings({ entry, observedAgentId, configuredStartup
 }) {
   const defaults = entry.defaults, catalog = entry.catalog, options = catalog?.options;
   const provider = observedAgentId ?? entry.effectiveAgentId;
-  const providerOptions = provider === catalog?.inspection.effective.agent_id ? options : undefined;
+  const providerOptions = isSessionProvider(provider) && provider === catalog?.inspection.effective.agent_id ? options : undefined;
   const models = same(defaults.accountIdentity, catalog?.inspection.model_options_account) ? providerOptions?.models : [];
   const compatible = !!provider && defaults.model?.agent_id === provider ? defaults.model : undefined;
   const blocked = !entry.editable || entry.loadingOptions;

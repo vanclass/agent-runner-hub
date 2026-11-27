@@ -101,7 +101,7 @@ test('explicit test consumer configures before one work submission through ordin
     const work = new RunnerWork({ identity: () => identity, available: () => true,
       submit: (_, request) => fixture.submit(request) }, () => {});
     fixture.changed = () => {
-      config.observe(identity.session, 'ready', structuredClone(fixture.features));
+      config.observe(identity.session, 'ready', structuredClone(fixture.features), fixture.config.current.account.agent_id);
       work.observe(identity.session, 'ready', structuredClone(fixture.features));
     };
     fixture.changed();

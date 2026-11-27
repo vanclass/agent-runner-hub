@@ -1,4 +1,5 @@
 import type { EntryDefaults } from './singleEntry';
+import { isSessionProvider } from './runnerConfigContract';
 import type { DomainDisplay } from './RunnerNavigation';
 import { defaultRetentionDays, validRetentionDays } from './HubLog';
 import { msg, errorText, type HubText } from './i18n';
@@ -17,7 +18,7 @@ const keys = (value: Record<string, unknown>, allowed: string[]) => Object.keys(
 
 // Only the nonsecret selection projection crosses the preferences boundary.
 export function projectEntryDefaults(value: unknown): EntryDefaults | undefined {
-  if (!object(value) || !keys(value, ['target', 'model', 'account', 'runMode', 'accountIdentity', 'root', 'allocationPolicy', 'initialized'])) return;
+  if (!object(value) || !keys(value, ['target', 'model', 'account', 'runMode', 'accountIdentity', 'root', 'allocationPolicy', 'initialized', 'providerPreferences'])) return;
   const result: EntryDefaults = {};
   if (value.initialized !== undefined) {
     if (value.initialized !== true) return;
@@ -54,6 +55,22 @@ export function projectEntryDefaults(value: unknown): EntryDefaults | undefined 
   }
   for (const key of ['runMode'] as const) {
     if (value[key] !== undefined) { if (!text(value[key])) return; result[key] = value[key]; }
+  }
+  if (value.providerPreferences !== undefined) {
+    if (!object(value.providerPreferences)) return;
+    result.providerPreferences = {};
+    for (const [provider, choices] of Object.entries(value.providerPreferences)) {
+      if (!isSessionProvider(provider) || !object(choices) || !keys(choices, ['accountIdentity', 'model'])) return;
+      const projected = projectEntryDefaults({
+        accountIdentity: choices.accountIdentity ?? undefined, model: choices.model ?? undefined,
+      });
+      if (!projected || (projected.accountIdentity && projected.accountIdentity.agent_id !== provider)
+        || (projected.model && projected.model.agent_id !== provider)) return;
+      result.providerPreferences[provider] = {
+        accountIdentity: choices.accountIdentity === null ? null : projected.accountIdentity,
+        model: choices.model === null ? null : projected.model,
+      };
+    }
   }
   // A previously populated saved selection must not become a fresh auto-initialization.
   if (Object.keys(value).length > 0 && (Object.keys(result).length === 0
