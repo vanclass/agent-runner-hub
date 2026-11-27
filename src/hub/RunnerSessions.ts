@@ -19,6 +19,7 @@ import { issueSidebarActivity, issueUserAction, type WorkAttempt } from './runne
 import type { BriefResult } from './RunnerBrief';
 import { HubSelections } from './HubSelections';
 import { InstructionHistory } from './instructionHistory';
+import { terminalPalettes, type TerminalTheme } from './terminalTheme';
 import '@xterm/xterm/css/xterm.css';
 
 const recoveryMessages = {
@@ -32,7 +33,9 @@ const recoveryMessages = {
 
 export class RunnerSession {
   readonly instructionHistory = new InstructionHistory();
-  readonly terminal = new Terminal({ cursorBlink: false, scrollback: 10000 });
+  readonly terminal = new Terminal({ cursorBlink: false, scrollback: 10000,
+    fontFamily: 'Consolas, "Malgun Gothic", Menlo, monospace',
+    minimumContrastRatio: 4.5, theme: terminalPalettes.light });
   hubSelections?: HubSelections;
   private submittedAttempt?: { attempt: WorkAttempt; draft: string };
   private submittedCommand?: { attempt: CommandAttempt; draft: string };
@@ -600,11 +603,11 @@ export class RunnerSession {
     finally { if (!this.disposed) this.update({ closing: true }); }
   }
   closeFailure(reason: unknown) { this.update({ detail: errorText(reason) }); }
-  attach(container: HTMLElement, theme: 'light' | 'black') {
+  attach(container: HTMLElement) {
     if (this.terminal.element) container.appendChild(this.terminal.element);
     else this.terminal.open(container);
     this.syncTerminalInput();
-    this.setTheme(theme);
+    this.syncTerminalBackground();
     const fit = () => {
       if (container.clientWidth > 0 && container.clientHeight > 0) this.fit.fit();
     };
@@ -613,10 +616,12 @@ export class RunnerSession {
     fit();
     return () => observer.disconnect();
   }
-  setTheme(theme: 'light' | 'black') {
-    this.terminal.options.theme = theme === 'black'
-      ? { background: '#111214', foreground: '#eeeeef', cursor: '#eeeeef', selectionBackground: '#38577f' }
-      : { background: '#ffffff', foreground: '#23272e', cursor: '#23272e', selectionBackground: '#c4d9f5' };
+  setTheme(theme: TerminalTheme) {
+    this.terminal.options.theme = terminalPalettes[theme];
+    this.syncTerminalBackground();
+  }
+  private syncTerminalBackground() {
+    this.terminal.element?.style.setProperty('background-color', this.terminal.options.theme!.background!);
   }
   dispose(leaveNativeCleanup = false) {
     if (this.disposed) return this.cleanup ?? Promise.resolve();
@@ -658,6 +663,7 @@ export class RunnerSessions {
   readonly workspace = new RunnerWorkspace();
   readonly restarts = new RunnerRestarts(() => this.changed());
   private consumers = 0;
+  private terminalTheme: TerminalTheme = 'light';
   private readonly spare = new RunnerSpare(
     (installationRoot, changed) => {
       const session = new RunnerSession({ installationRoot }, () => {
@@ -668,6 +674,12 @@ export class RunnerSessions {
     }, () => this.changed(),
     (session, root) => this.retainRestartFailure(session, root), event => this.lifecycle(event));
   get spareSnapshot() { return this.spare.snapshot; }
+  setTerminalTheme(theme: TerminalTheme) {
+    if (this.terminalTheme === theme) return;
+    this.terminalTheme = theme;
+    for (const session of this.sessions.values()) session.setTheme(theme);
+    for (const { session } of this.retired.values()) session.setTheme(theme);
+  }
   setInstallation(installation: RunnerInstallation | null) {
     if (this.disposed) return;
     if (installation) this.restore();
@@ -772,6 +784,7 @@ export class RunnerSessions {
   }
   private retainRestartFailure(session: RunnerSession, root: string) {
     if (this.disposed) { void session.dispose(true); return; }
+    session.setTheme(this.terminalTheme);
     this.retired.set(crypto.randomUUID(), { session, root, state: 'restart-failed' });
     this.changed();
   }
@@ -858,6 +871,7 @@ export class RunnerSessions {
     }
     if (!owns()) return 'removed';
     const replacement = new RunnerSession(tab, this.changed, !hidden);
+    replacement.setTheme(this.terminalTheme);
     replacement.setDraft(session.view.draft ?? '');
     if (hidden) {
       this.retired.set(id, { session: replacement, root, state: 'restarting' });
@@ -961,6 +975,7 @@ export class RunnerSessions {
     this.navigation.restore(this.workspace.presentation);
     for (const tab of tabs) {
       const session = new RunnerSession(tab, this.changed, true);
+      session.setTheme(this.terminalTheme);
       this.sessions.set(tab.id, session);
       this.bindSelections(session);
       this.order = Math.max(this.order, tab.createdOrder);
@@ -976,6 +991,7 @@ export class RunnerSessions {
     const order = ++this.order;
     const session = new RunnerSession({ id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,
       installationRoot: location, launchOnOpen: true }, this.changed);
+    session.setTheme(this.terminalTheme);
     this.sessions.set(session.view.id, session);
     this.bindSelections(session, undefined, initialMode);
     if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
@@ -1013,6 +1029,7 @@ export class RunnerSessions {
     const installationRoot = this.spare.snapshot.installation?.root;
     if (!installationRoot) throw new HubError(msg('spare.verify'));
     const session = this.spare.take();
+    session.setTheme(this.terminalTheme);
     if (token && !session.reserve(token)) throw new HubError(msg('runtime.session.reservationFailed'));
     const order = ++this.order;
     const tab = { id: crypto.randomUUID(), createdOrder: order, name: `Runner ${order}`,

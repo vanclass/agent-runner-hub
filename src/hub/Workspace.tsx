@@ -12,9 +12,9 @@ import { SingleEntryComposer } from './SingleEntryComposer';
 import { HubActivity } from './HubActivity';
 import type { HubSelections } from './HubSelections';
 
-export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog, selections,
+export function Workspace({ runner, session, installation, entry, onSelectRunner, hubLog, selections,
   fileDropActive = false, fileDropUnavailable = false, failureActions }: {
-  runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
+  runner?: RunnerView; session?: RunnerSession;
   installation: RunnerInstallation | null;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
   hubLog: HubLog;
@@ -31,7 +31,7 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
     {fileDropUnavailable && <p className="attachment-drop-hint" role="alert">{t('attachments.fallback')}</p>}
     <section className="output" aria-label={t('workspace.outputLabel')}>
       {singleEntry && <HubLogView log={hubLog} />}
-      {session ? <RunnerTerminal session={session} theme={theme} failureActions={failureActions} /> : !singleEntry && <div className="empty-workspace">
+      {session ? <RunnerTerminal session={session} failureActions={failureActions} /> : !singleEntry && <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">›_</div>
         <h2>{t('workspace.connection')}</h2>
         <p>{t('workspace.noStream')}</p>

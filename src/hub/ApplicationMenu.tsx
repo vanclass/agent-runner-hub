@@ -8,6 +8,7 @@ import { ShortcutSettings } from './ShortcutSettings';
 import { RetentionPopover } from './RetentionPopover';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { HubLanguage } from './preferences';
+import type { TerminalThemePreference } from './terminalTheme';
 import type { ShortcutMap } from './shortcuts';
 import './applicationMenu.css';
 
@@ -21,6 +22,7 @@ export type ApplicationPreferences = {
   allocationPolicy: Allocation; reuseEditable: boolean; onAllocationPolicy: (value: Allocation) => void;
   confirmRemoval: boolean; onConfirmRemoval: (value: boolean) => void;
   theme: Theme; onTheme: (value: Theme) => void;
+  terminalTheme: TerminalThemePreference; onTerminalTheme: (value: TerminalThemePreference) => void;
   domainDisplay: Display; onDomainDisplay: (value: Display) => void;
   onLanguage: (value: HubLanguage) => void;
   retentionDays: number; onRetentionDays: (value: number) => void;
@@ -32,9 +34,14 @@ type Group = keyof typeof groupLabels;
 const groups = Object.keys(groupLabels) as Group[];
 type Trigger = Group | 'compact';
 type Editor = 'installation' | 'shortcuts' | 'preview';
-type Submenu = 'allocation' | 'theme' | 'domain' | 'language' | 'retention';
+type Submenu = 'allocation' | 'theme' | 'terminal-theme' | 'domain' | 'language' | 'retention';
 type MenuPath = { trigger: Trigger; group?: Group; submenu?: Submenu; focusItem?: string };
 const themes: Choice<Theme> = [{ value: 'light', label: 'preferences.light' }, { value: 'black', label: 'preferences.black' }];
+const terminalThemes: Choice<TerminalThemePreference> = [
+  { value: 'follow', label: 'preferences.followAppTheme' },
+  { value: 'light', label: 'preferences.light' },
+  { value: 'dark', label: 'preferences.dark' },
+];
 const languages: Choice<HubLanguage> = [{ value: 'en', label: 'menu.english' }, { value: 'ko', label: 'menu.korean' }];
 
 export function ApplicationMenu({ workspace, ...props }: ApplicationPreferences & { workspace: RefObject<HTMLDivElement> }) {
@@ -158,6 +165,7 @@ export function ApplicationMenu({ workspace, ...props }: ApplicationPreferences 
     </>,
     view: () => <>
       {choiceItem('theme', 'preferences.theme', '◐', themes, props.theme, props.onTheme)}
+      {choiceItem('terminal-theme', 'preferences.terminalTheme', '▣', terminalThemes, props.terminalTheme, props.onTerminalTheme)}
       {choiceItem('domain', 'sidebar.domainDisplay', '▤', domainOptions, props.domainDisplay, props.onDomainDisplay)}
     </>,
     settings: () => <>
@@ -176,6 +184,8 @@ export function ApplicationMenu({ workspace, ...props }: ApplicationPreferences 
     if (submenu === 'allocation') return choiceItem('allocation', 'work.allocationPolicy', '', allocationOptions,
       props.allocationPolicy, props.onAllocationPolicy, !props.reuseEditable);
     if (submenu === 'theme') return choiceItem('theme', 'preferences.theme', '', themes, props.theme, props.onTheme);
+    if (submenu === 'terminal-theme') return choiceItem('terminal-theme', 'preferences.terminalTheme', '', terminalThemes,
+      props.terminalTheme, props.onTerminalTheme);
     if (submenu === 'domain') return choiceItem('domain', 'sidebar.domainDisplay', '', domainOptions, props.domainDisplay, props.onDomainDisplay);
     if (submenu === 'language') return choiceItem('language', 'preferences.language', '', languages, language, props.onLanguage);
     return <MenuPanel label={t(group ? groupLabels[group] : 'menu.label')} focusItem={path?.focusItem}>

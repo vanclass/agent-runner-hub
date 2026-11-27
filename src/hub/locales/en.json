@@ -334,6 +334,9 @@
     "loadFailed": "Hub preferences could not be restored: {{diagnostic}}. Defaults are used; saved data was retained.",
     "saveFailed": "Hub preferences could not be saved: {{diagnostic}}. Changes apply to this window; the last saved preferences were retained.",
     "theme": "Application theme",
+    "terminalTheme": "Terminal Theme",
+    "followAppTheme": "Follow App Theme",
+    "dark": "Dark",
     "light": "Light",
     "black": "Black",
     "language": "Language"

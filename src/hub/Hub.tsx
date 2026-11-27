@@ -8,6 +8,7 @@ import { HubLog } from './HubLog';
 import { createHubLogCapture } from './HubLogCapture';
 import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
+import { resolveTerminalTheme } from './terminalTheme';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { ApplicationMenu, type ApplicationPreferences } from './ApplicationMenu';
 import { InstallationDialog } from './InstallationDialog';
@@ -24,9 +25,13 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     return store;
   });
   const { t, tr } = useHubTranslation();
-  const [sessions] = useState(() => new RunnerSessions(preferences.value.singleEntry,
-    singleEntry => preferences.update({ singleEntry }), preferences.value.runnerSelections,
-    (id, value) => preferences.saveRunner(id, value), id => preferences.forgetRunner(id)));
+  const [sessions] = useState(() => {
+    const owner = new RunnerSessions(preferences.value.singleEntry,
+      singleEntry => preferences.update({ singleEntry }), preferences.value.runnerSelections,
+      (id, value) => preferences.saveRunner(id, value), id => preferences.forgetRunner(id));
+    owner.setTerminalTheme(resolveTerminalTheme(preferences.terminalTheme, preferences.value.theme));
+    return owner;
+  });
   const liveRunners = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot);
   const [hubLog] = useState(() => new HubLog(preferences.logRetentionDays));
   const [retentionDays, setRetentionDays] = useState(preferences.logRetentionDays);
@@ -66,6 +71,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   });
   useEffect(() => { sessions.view(selectedId); return () => sessions.view(null); }, [sessions, selectedId]);
   const [theme, setTheme] = useState<'light' | 'black'>(preferences.value.theme);
+  const [terminalTheme, setTerminalTheme] = useState(preferences.terminalTheme);
   const [confirmRemoval, setConfirmRemoval] = useState(preferences.value.confirmRunnerRemoval);
   const selected = allRunners.find(runner => runner.id === selectedId) ?? sessions.failures.find(runner => runner.id === selectedId);
   const dropHost = useRef<HTMLDivElement>(null);
@@ -103,7 +109,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     setSelectedId(current => current === id ? next?.id ?? null : current);
   }
   const appPreferences: ApplicationPreferences = {
-    installation, theme, confirmRemoval, domainDisplay, retentionDays, shortcuts,
+    installation, theme, terminalTheme, confirmRemoval, domainDisplay, retentionDays, shortcuts,
     allocationPolicy: sessions.entry.allocationPolicy, reuseEditable: sessions.entry.editable,
     onAllocationPolicy: value => sessions.entry.setDefault('allocationPolicy', value),
     onShortcutsSave: value => {
@@ -119,7 +125,16 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     onDomainDisplay: value => { preferences.update({ domainDisplay: value }); setDomainDisplay(value); },
     onConfirmRemoval: value => { preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value); },
     onLanguage: language => { preferences.update({ language }); initializeHubLanguage(language); },
-    onTheme: value => { preferences.update({ theme: value }); setTheme(value); },
+    onTheme: value => {
+      preferences.update({ theme: value });
+      sessions.setTerminalTheme(resolveTerminalTheme(terminalTheme, value));
+      setTheme(value);
+    },
+    onTerminalTheme: value => {
+      preferences.update({ terminalTheme: value });
+      sessions.setTerminalTheme(resolveTerminalTheme(value, theme));
+      setTerminalTheme(value);
+    },
     onVerified: value => {
       sessions.setInstallation(value);
       if (setupRequired) { setSetupRequired(false); setSelectedId(null); }
@@ -149,7 +164,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
           retry: () => sessions.retryFailure(selectedId),
           dismiss: () => sessions.dismissFailure(selectedId),
         } : undefined}
-        theme={theme} installation={installation} hubLog={hubLog} selections={sessions.getSelections(selectedId ?? undefined)}
+        installation={installation} hubLog={hubLog} selections={sessions.getSelections(selectedId ?? undefined)}
         entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}
         control={sessions.get(selectedId ?? undefined)?.control}

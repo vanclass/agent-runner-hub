@@ -22,9 +22,13 @@ Semantic records establish accepted presentation, not physical terminal publicat
 
 The session-owned terminal preserves scrollback, resizing, selection, colors and tab identity across workspace attachment. Internal protocol replies remain enabled while user-origin bytes are blocked by `RunnerInput`. Hub does not subscribe to semantic presentation; the underlying native protocol remains available unchanged. Close/dispose retains the existing canonical PTY termination owner.
 
+### Terminal theme and viewport
 
+`terminalTheme.ts` owns the Light and Dark xterm palettes. The resolved theme travels from the [Hub preference](hub_preferences.md#independent-preference-storage) through `RunnerSessions` to mounted, retained and restored Runner tabs. Live changes update the existing xterm options in place, preserving the process, buffer and scrollback.
 
-Focused browser evidence lives in `pty-viewport.mjs`, `log-viewport.mjs` and `composer-submission.mjs`. Native `presentation_tests.rs` covers protocol transport. The installed-Runner `terminal-commands` case checks scrollback and canonical records in a hidden Hub on the exact session and generation. `semantic-presentation` adds displayed terminal and composer layout. The separate Work and Work presentation selections are documented in the [native probe guide](../../tools/native-probe/README.md#actual-hub-cases-and-explicit-selection).
+The palettes define the default text, selection, ANSI colors and active scrollbar. Xterm applies a minimum contrast ratio of 4.5 to ordinary glyph rendering, including indexed and RGB foregrounds. Xterm retains its own dim and background-glyph semantics. The font stack prefers Consolas with Malgun Gothic coverage for Korean on Windows, followed by Menlo and the system monospace. The terminal colors the full backing viewport so space outside fitted whole rows matches the terminal background. Xterm's scrollable element still owns overflow and its scrollbar.
+
+Focused browser evidence lives in `pty-viewport.mjs`, `log-viewport.mjs` and `composer-submission.mjs`. Native `presentation_tests.rs` covers protocol transport. The installed-Runner `terminal-commands` case checks scrollback and canonical records in a hidden Hub on the exact session and generation. `semantic-presentation` adds displayed terminal and composer layout, both terminal backgrounds, and buffer retention during a live theme change. The separate Work and Work presentation selections are documented in the [native probe guide](../../tools/native-probe/README.md#actual-hub-cases-and-explicit-selection).
 
 ## Hub keyboard navigation
 

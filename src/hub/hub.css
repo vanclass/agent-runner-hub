@@ -35,6 +35,8 @@
 .terminal-tools { display: flex; align-items: center; flex-shrink: 0; gap: 6px; padding-bottom: 8px; font-size: 10px; }
 .terminal-host { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .terminal-host .xterm { height: 100%; }
+/* The backing viewport shows through wherever the fitted xterm rows end. */
+.terminal-host .xterm .xterm-viewport { background-color: inherit; overflow: hidden; }
 .hub button:focus-visible, .hub input:focus-visible, .hub select:focus-visible, .hub textarea:focus-visible {
   outline: 2px solid var(--focus); outline-offset: 2px;
 }

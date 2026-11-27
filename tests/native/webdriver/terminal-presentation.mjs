@@ -77,6 +77,27 @@ export function terminalCommands(runnerRoot, displayed = false) {
       return { connection, startup, helpReceipt, publication, canonical, errorReceipt, after, scroll, editors };
     },
     async observe(browser) {
+      const { settings, terminal } = new HubActions(browser);
+      const colors = () => browser.execute(() => {
+        const host = document.querySelector('.terminal-host');
+        const background = selector => getComputedStyle(host.querySelector(selector)).backgroundColor;
+        return { app: document.querySelector('.hub').dataset.theme,
+          viewport: background('.xterm-viewport'), rows: background('.xterm-scrollable-element') };
+      });
+      const light = await colors();
+      assert.deepEqual(light, { app: 'light', viewport: 'rgb(255, 255, 255)', rows: 'rgb(255, 255, 255)' });
+      const before = await terminal.buffer();
+      const rejection = /RUNNER_COMMAND_USAGE_INVALID|UNKNOWN_SLASH_BLOCKED_BY_STATE/.exec(before.full);
+      assert.ok(rejection, 'The earlier command rejection is present before the theme change');
+      const durableEnd = before.full.indexOf('\n', rejection.index);
+      assert.ok(durableEnd > 0);
+      await settings.edit('terminalTheme', 'dark');
+      const dark = await colors();
+      assert.deepEqual(dark, { app: 'light', viewport: 'rgb(17, 18, 20)', rows: 'rgb(17, 18, 20)' });
+      assert.ok((await terminal.buffer()).full.startsWith(before.full.slice(0, durableEnd)),
+        'Earlier command output remains intact across a theme change');
+      await settings.edit('terminalTheme', 'follow');
+      assert.deepEqual(await colors(), light);
       const observation = await browser.execute(() => {
         const terminal = document.querySelector('.terminal-host'), rect = terminal.getBoundingClientRect();
         const input = document.querySelector('.runner-composer textarea'), composer = input.getBoundingClientRect();
@@ -87,7 +108,7 @@ export function terminalCommands(runnerRoot, displayed = false) {
       assert.ok(observation.width > 0 && observation.height > 100);
       assert.equal(observation.visibility, 'visible'); assert.ok(observation.composerBelowTerminal);
       assert.equal(observation.semanticRenderers, 0);
-      return observation;
+      return { ...observation, light, dark };
     }
   });
 }

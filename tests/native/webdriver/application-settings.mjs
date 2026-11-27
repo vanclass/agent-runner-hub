@@ -6,6 +6,7 @@ const entries = {
   confirmRemoval: ['runner', 'removal'],
   allocationPolicy: ['runner', 'allocation'],
   domainDisplay: ['view', 'domain'],
+  terminalTheme: ['view', 'terminal-theme'],
   retentionDays: ['settings', 'retention'],
 };
 const shortcutControls = {

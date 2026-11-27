@@ -4,15 +4,14 @@ import type { RunnerSession } from './RunnerSessions';
 
 export type FailureActions = { retry: () => void; dismiss: () => void };
 
-export function RunnerTerminal({ session, theme, failureActions }: {
-  session: RunnerSession; theme: 'light' | 'black'; failureActions?: FailureActions;
+export function RunnerTerminal({ session, failureActions }: {
+  session: RunnerSession; failureActions?: FailureActions;
 }) {
   const { tr } = useHubTranslation();
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (host.current) return session.attach(host.current, theme);
+    if (host.current) return session.attach(host.current);
   }, [session]);
-  useEffect(() => session.setTheme(theme), [session, theme]);
   const diagnostics = session.diagnostics;
   return <section className="runner-terminal" aria-label={t('terminal.label')}>
     {session.view.status === 'exited' && session.view.exitCode === 0 && !session.view.detail
