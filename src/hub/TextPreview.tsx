@@ -2,8 +2,15 @@ import { useState } from 'react';
 import { t } from './i18n';
 import { RawTextPreview } from './RawTextPreview';
 import { JsonPreview, JsonlPreview } from './StructuredTextPreview';
+import { MarkdownPreview } from './MarkdownPreview';
 import type { StructuredTextMode } from './previewCatalog';
 import './textPreview.css';
+
+const structuredViews = {
+  json: { label: 'preview.jsonView', View: JsonPreview },
+  records: { label: 'preview.recordView', View: JsonlPreview },
+  markdown: { label: 'preview.markdownView', View: MarkdownPreview },
+} as const;
 
 export function TextPreview({ name, text, syntax, structuredMode, onDismiss }: {
   name: string; text: string; syntax?: string; structuredMode?: StructuredTextMode; onDismiss: () => void;
@@ -11,6 +18,7 @@ export function TextPreview({ name, text, syntax, structuredMode, onDismiss }: {
   const [mode, setMode] = useState<'raw' | 'structured'>();
   const [copyState, setCopyState] = useState<'copied' | 'copyFailed'>();
   const structured = mode === 'structured';
+  const view = structuredMode && structuredViews[structuredMode];
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -25,12 +33,12 @@ export function TextPreview({ name, text, syntax, structuredMode, onDismiss }: {
       <header className="preview-text-toolbar">
         <strong title={name}>{name}</strong>
         <div className="preview-text-controls">
-          {structuredMode && <div className="preview-text-modes" role="group" aria-label={t('preview.viewMode')}>
+          {view && <div className="preview-text-modes" role="group" aria-label={t('preview.viewMode')}>
             <button type="button" aria-pressed={!structured} onClick={() => { if (structured) setMode('raw'); }}>
               {t('preview.rawView')}
             </button>
             <button type="button" aria-pressed={structured} onClick={() => setMode('structured')}>
-              {t(structuredMode === 'json' ? 'preview.jsonView' : 'preview.recordView')}
+              {t(view.label)}
             </button>
           </div>}
           {rawControls}
@@ -41,8 +49,8 @@ export function TextPreview({ name, text, syntax, structuredMode, onDismiss }: {
       {copyState && <span className="preview-copy-status" role="status">{copyState === 'copied'
         ? t('preview.copied') : t('preview.copyFailed')}</span>}
     </>} />
-    {mode && structuredMode && <div hidden={!structured}>
-      {structuredMode === 'json' ? <JsonPreview text={text} /> : <JsonlPreview text={text} />}
+    {mode && view && <div hidden={!structured}>
+      <view.View text={text} />
     </div>}
   </>;
 }

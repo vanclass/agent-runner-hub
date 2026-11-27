@@ -9,7 +9,7 @@
   {"category":"pdf","extensions":["pdf"],"mime":"application/pdf"},
   {"category":"archive","extensions":["zip"],"mime":"application/zip"},
   {"category":"text","extensions":["txt","csv","tsv","log"]},
-  {"category":"text","extensions":["md"],"syntax":"markdown"},
+  {"category":"text","extensions":["md"],"syntax":"markdown","structuredMode":"markdown"},
   {"category":"text","extensions":["json"],"syntax":"json","structuredMode":"json"},
   {"category":"text","extensions":["jsonl"],"syntax":"json","structuredMode":"records"},
   {"category":"text","extensions":["c","cpp","h","hpp","cs","rs","java"],"syntax":"source"},

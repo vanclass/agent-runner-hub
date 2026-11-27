@@ -7,6 +7,9 @@ import { testBrowser } from './test-browser.mjs';
 import { animationFrames, animatedFixture } from '../native/webdriver/attachment-preview.mjs';
 const png = [...PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640 * 320 * 4, 180) })];
 const pdf = readFileSync(new URL('../../src-tauri/test-fixtures/preview-sample.pdf', import.meta.url)).toString('base64');
+const markdown = readFileSync(new URL('../../src-tauri/test-fixtures/preview-sample.md', import.meta.url), 'utf8')
+  + '\n\n' + ['| Header '.repeat(9) + '|', '| --- '.repeat(9) + '|', '| Cell '.repeat(9) + '|'].join('\n')
+  + '\n\n```\n' + 'wide line '.repeat(25) + '\n```\n';
 const original = '  첫 번째 줄\n# 원문 <script>window.previewExecuted=true</script>\n{"값": "한글"}\n  ';
 const source = '\tconst start = "Find.Me";\r\n' + '// 공백 유지\r\n'.repeat(64)
   + 'const end = "find.me"; // ' + 'long line '.repeat(30) + '\r\n  ';
@@ -47,7 +50,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
   }
   async function setup(page, entry = false) {
     await ready(page);
-    await page.evaluate(({ png, gif, original, source, pdf, json, records }) => {
+    await page.evaluate(({ png, gif, original, source, pdf, json, records, markdown }) => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'local_file_preview') return invoke(command, args);
@@ -68,12 +71,17 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
           return { kind: 'text', path: args.path, text: json };
         }
         if (args.path.endsWith('/records.jsonl')) return { kind: 'text', path: args.path, text: records };
+        if (args.path.endsWith('/preview-sample.md')) {
+          window.markdownPreviewReads = (window.markdownPreviewReads ?? 0) + 1;
+          return { kind: 'text', path: args.path, text: markdown };
+        }
+        if (args.path.endsWith('/large.md')) return { kind: 'text', path: args.path, text: 'x'.repeat(300_000) + '\nLast line  ' };
         if (/\.(txt|md|json)$/.test(args.path) && !args.path.includes('missing')) return { kind: 'text', path: args.path, text: original };
         if (args.path.endsWith('.ts')) return { kind: 'text', path: args.path, text: source };
         if (args.path.endsWith('/.gitignore') || args.path.endsWith('.log')) return { kind: 'text', path: args.path, text: '  # exact\n/dist/\n' };
         return { kind: 'unavailable', path: args.path, reason: 'unsupported' };
       };
-    }, { png, gif: animatedFixture().bytes, original, source, pdf, json, records });
+    }, { png, gif: animatedFixture().bytes, original, source, pdf, json, records, markdown });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   }
   async function verifyLocalizedArchive(page, expect, info, viewer) {
@@ -493,6 +501,108 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(opener).toBeFocused();
   });
 
+  for (const dark of [false, true]) {
+    test(`Markdown preview renders an inert attachment in ${dark ? 'Korean Black' : 'English Light'}`, async ({ page, context }, info) => {
+      await setup(page, dark);
+      await drop(page, ['/fixture/preview-sample.md']);
+      if (dark) {
+        await chooseAppPreference(page, 'view', 'theme', 'black');
+        await page.keyboard.press('Escape');
+        await chooseAppPreference(page, 'settings', 'language', 'ko');
+        await page.keyboard.press('Escape');
+      }
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await captureClipboardInput(page);
+      const requests = [];
+      await page.route('https://preview.invalid/**', route => {
+        requests.push(route.request().url());
+        return route.abort();
+      });
+      const opener = page.getByRole('button', { name: dark ? '첨부 파일 preview-sample.md 열기' : 'Open attachment preview-sample.md' });
+      await opener.click();
+      const dialog = page.getByRole('dialog', { name: 'preview-sample.md', exact: true });
+      const raw = dialog.getByRole('button', { name: dark ? '원본 보기' : 'Raw View' });
+      const rendered = dialog.getByRole('button', { name: dark ? 'MD 보기' : 'MD View' });
+      const text = dialog.locator('.focused-text');
+      await expect(raw).toHaveAttribute('aria-pressed', 'true');
+      await expect(text).toHaveJSProperty('textContent', markdown);
+      await expect(text.locator('.preview-line').first()).toHaveCSS('counter-increment', 'preview-line 1');
+      await expect(text.locator('.preview-token-tag').first()).toHaveText('# Preview notes');
+      const search = dialog.getByRole('searchbox');
+      const wrap = dialog.locator('.preview-text-controls button[aria-pressed]').last();
+      await search.fill('Ready');
+      await wrap.click();
+      await rendered.click();
+      await expect(rendered).toHaveAttribute('aria-pressed', 'true');
+      await expect(text).toBeHidden();
+      const doc = dialog.getByRole('region', { name: dark ? 'MD 보기' : 'MD View' });
+      await expect(doc.getByRole('heading', { level: 1 })).toHaveText('Preview notes');
+      expect(await doc.evaluate(node => {
+        const size = tag => parseFloat(getComputedStyle(node.querySelector(tag)).fontSize);
+        return size('h1') > size('h2') && size('h2') > size('p');
+      })).toBe(true);
+      await expect(doc.locator('p strong, em, del, p code')).toHaveText(['strong', 'emphasis', 'removed', 'inline_code']);
+      await expect(doc.locator('ol')).toHaveAttribute('start', '3');
+      await expect(doc.locator('ul ul li')).toHaveText('Nested item');
+      const boxes = doc.getByRole('checkbox');
+      await expect(boxes.nth(0)).toBeDisabled();
+      await expect(boxes.nth(0)).toBeChecked();
+      await expect(boxes.nth(1)).toBeDisabled();
+      await expect(boxes.nth(1)).not.toBeChecked();
+      await expect(doc.locator('blockquote')).toHaveText('Quoted text');
+      await expect(doc.getByRole('separator')).toBeVisible();
+      const table = doc.getByRole('table').first();
+      await expect(table.getByRole('columnheader')).toHaveText(['Name', 'Status']);
+      await expect(table.getByRole('cell')).toHaveText(['Widget', 'Ready']);
+      await expect(doc.locator('pre code').nth(0)).toHaveText('const answer = 42; // highlighted');
+      await expect(doc.locator('pre code').nth(1)).toHaveText('let plain = 3 < 4;');
+      await expect(doc.locator('pre .preview-token-keyword')).toHaveText('const');
+      await expect(doc.locator('a, img, script, iframe, object, embed')).toHaveCount(0);
+      await expect(doc).toContainText('<script>window.markdownScriptRan = true</script>');
+      await expect(doc).toContainText('Remote image');
+      await expect(doc).toContainText('Local image');
+      expect(await page.evaluate(() => window.markdownScriptRan)).toBeUndefined();
+      expect(requests).toEqual([]);
+      await expect(doc).toHaveCSS('background-color', dark ? 'rgb(17, 18, 20)' : 'rgb(255, 255, 255)');
+      const end = doc.getByRole('heading', { name: 'End of document' });
+      await end.scrollIntoViewIfNeeded();
+      expect(await doc.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+      await doc.evaluate(node => { node.scrollTop = 0; });
+      await info.attach('markdown-preview', { body: await dialog.screenshot(), contentType: 'image/png' });
+      await page.setViewportSize({ width: 640, height: 760 });
+      for (const scroller of [doc.locator('.preview-markdown-table').last(), doc.locator('pre').last()]) {
+        await scroller.scrollIntoViewIfNeeded();
+        expect(await scroller.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+        expect(await scroller.evaluate(node => {
+          const viewport = node.closest('.preview-markdown').getBoundingClientRect();
+          const box = node.getBoundingClientRect();
+          return box.left >= viewport.left && box.right <= viewport.right;
+        })).toBe(true);
+      }
+      await info.attach('markdown-contained-overflow', { body: await dialog.screenshot(), contentType: 'image/png' });
+      await dialog.getByRole('button', { name: dark ? '텍스트 복사' : 'Copy text' }).click();
+      await expect.poll(() => page.evaluate(() => window.previewClipboardInput)).toBe(markdown);
+      await raw.click();
+      await expect(search).toHaveValue('Ready');
+      await expect(wrap).toHaveAttribute('aria-pressed', 'false');
+      await expect(text).toHaveJSProperty('textContent', markdown);
+      expect(await page.evaluate(() => window.markdownPreviewReads)).toBe(1);
+      await page.keyboard.press('Escape');
+      await expect(opener).toBeFocused();
+    });
+  }
+
+  test('Markdown preview keeps the full source available above the render budget', async ({ page }) => {
+    await setup(page);
+    await drop(page, ['/fixture/large.md']);
+    await page.getByRole('button', { name: 'Open attachment large.md' }).click();
+    const dialog = page.getByRole('dialog', { name: 'large.md', exact: true });
+    await dialog.getByRole('button', { name: 'MD View' }).click();
+    await expect(dialog.getByRole('status')).toContainText('Open Raw View for the complete source.');
+    await dialog.getByRole('button', { name: 'Raw View' }).click();
+    await expect(dialog.locator('.focused-text')).toHaveJSProperty('textContent', 'x'.repeat(300_000) + '\nLast line  ');
+  });
+
   test('preview guide follows Settings and shares truthful catalog domains', async ({ page }, info) => {
     await ready(page);
     const settings = appTrigger(page, 'settings'), help = appTrigger(page, 'help');
@@ -513,7 +623,8 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(dialog).toContainText('ZIP previews list files, folders, and original file sizes');
     await expect(dialog).toContainText('Attachment eligibility is separate');
     await expect(dialog).toContainText('UTF-8');
-    await expect(dialog).toContainText('Switch to JSON View');
+    await expect(dialog).toContainText('Switch to MD View for read-only Markdown');
+    await expect(dialog).toContainText('JSON View');
     await expect(dialog).toContainText('Record View');
     await expect(dialog).toContainText('GIFs animate in thumbnails and in the focused viewer');
     await expect(dialog).toContainText('without scripts');
@@ -531,6 +642,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(localized.getByText('.zip', { exact: true })).toBeVisible();
     await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
     await expect(localized).toContainText('레코드 보기');
+    await expect(localized).toContainText('MD 보기에서 읽기 전용으로 표시');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });
 }

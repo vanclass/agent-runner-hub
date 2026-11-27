@@ -31,13 +31,15 @@ for (const file of imageFiles) {
   await fs.copyFile(path.join(root, 'src-tauri/test-fixtures/preview-images', name), file);
 }
 const original = '첫 줄\n  둘째 줄\t{"value":42}\n';
+const markdown = await fs.readFile(path.join(root, 'src-tauri/test-fixtures/preview-sample.md'), 'utf8');
 const jsonOriginals = new Map([
   ['original.json', '\uFEFF {"value":900719925474099312345,"value":-0}\r\n'],
   ['original.jsonl', '{"first":true}\r\n{"bad":}\r\n[null]\r\n'],
 ]);
 const files = ['original.txt','original.md',...jsonOriginals.keys(),'original.ts','Dockerfile','.gitignore']
   .map(name => path.join(directory, name));
-for (const file of files) await fs.writeFile(file, jsonOriginals.get(path.basename(file)) ?? original, 'utf8');
+const textFixture = name => name === 'original.md' ? markdown : jsonOriginals.get(name) ?? original;
+for (const file of files) await fs.writeFile(file, textFixture(path.basename(file)), 'utf8');
 after(async () => {
   for (const file of [image, brokenPdf, brokenZip, ...imageFiles, ...files]) await fs.unlink(file);
   await fs.rmdir(directory);
@@ -132,7 +134,7 @@ const preview = defineNativeCase({
       await attachments.openPreview(surface, index + 1);
       await hub.wait(async () => (await viewer.state())?.text != null, 'Local text preview did not load');
       const name = path.basename(file);
-      const expected = jsonOriginals.get(name) ?? original;
+      const expected = textFixture(name);
       assert.equal((await viewer.state()).text, expected);
       const modes = '.focused-viewer[open] .preview-text-modes';
       if (jsonOriginals.has(name)) {
@@ -150,10 +152,25 @@ const preview = defineNativeCase({
           : { numbers: [], lines: ['Line 1', 'Line 2', 'Line 3'], errors: 1 });
         await hub.dom.click(modes + ' button:first-child');
         assert.equal((await viewer.state()).text, expected);
+      } else if (name === 'original.md') {
+        await hub.dom.click(modes + ' button:last-child');
+        const rendered = await browser.execute(() => {
+          const doc = document.querySelector('.focused-viewer[open] .preview-markdown');
+          return {
+            heading: doc.querySelector('h1').textContent,
+            cells: [...doc.querySelectorAll('td')].map(cell => cell.textContent),
+            tasks: [...doc.querySelectorAll('input:disabled')].map(input => input.checked),
+            activeResources: doc.querySelectorAll('script, img, a, iframe').length,
+          };
+        });
+        assert.deepEqual(rendered, { heading: 'Preview notes', cells: ['Widget', 'Ready'], tasks: [true, false], activeResources: 0 });
+        await hub.dom.click(modes + ' button:first-child');
+        assert.equal((await viewer.state()).text, expected);
+        assert.equal(await fs.readFile(file, 'utf8'), expected);
       } else {
         assert.equal(await browser.execute(selector => Boolean(document.querySelector(selector)), modes), false);
       }
-      texts.push({ name, original: true, structured: jsonOriginals.has(name) });
+      texts.push({ name, original: true, structured: name === 'original.md' || jsonOriginals.has(name) });
       await viewer.close();
       await hub.wait(async () => !await viewer.state(), 'Local text preview did not close');
     }
