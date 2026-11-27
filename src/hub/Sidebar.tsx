@@ -169,8 +169,9 @@ export function Sidebar({ domains, runners, domainDisplay, canDropRunner, onDrop
           <button type="button" disabled={restarts.pending} onClick={onRestart}>{t('restart.action')}</button>
         </details>
       </div>
-      {(restart.pending > 0 || restart.running > 0 || restart.failed > 0) && <p className="restart-status" role="status">{t('restart.progress', { restarted: restart.restarted,
-        running: restart.running, pending: restart.pending, failed: restart.failed, removed: restart.removed })}</p>}
+      {(restarts.pending || restart.failures.length > 0) && <p className="restart-status" role="status">{t('restart.progress', {
+        restarted: restart.restarted + restart.contextRestored + restart.modeRestored,
+        running: restart.running, pending: restart.pending, failed: restart.failures.length, removed: restart.removed })}</p>}
       {restart.pending > 0 && <p className="restart-status">{t('restart.pending')}</p>}
       {restart.failures.map((failure, index) => <p className="restart-status" role="alert" key={index}>{failure.name}: {tr(failure.detail)}</p>)}
       <div className="runner-domains" onDragEnd={clearDrag} onKeyDown={event => { if (event.key === 'Escape') clearDrag(); }}>

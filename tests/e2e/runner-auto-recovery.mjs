@@ -5,17 +5,17 @@ export function registerAutoRecovery({ test, expect, transport }) {
   const key = 'agent-runner-hub.workspace.v1';
   const reference = n => ({ version: 1, family: 'task-run', repository_namespace: 'project-exact',
     task_number: String(n), task_workload_id: 'exact-work-' + n });
-  async function seed(page, states, options = {}) {
+  async function seed(page, states, options = {}, metadata = []) {
     await transport(page, undefined, { auto: true, work: true, ...options });
-    await page.addInitScript(({ key, states }) => {
+    await page.addInitScript(({ key, states, metadata }) => {
       if (sessionStorage.getItem('seeded')) return;
       sessionStorage.setItem('seeded', 'yes');
       localStorage.setItem('agent-runner-hub.installation', '/fixture/install');
       localStorage.setItem(key, JSON.stringify({ version: 1, tabs: states.map((recovery, i) => ({
         id: '10000000-0000-4000-8000-' + String(i + 1).padStart(12, '0'), name: 'Exact ' + (i + 1),
-        createdOrder: i + 1, installationRoot: '/fixture/install', launchOnOpen: true, recovery,
+        createdOrder: i + 1, installationRoot: '/fixture/install', launchOnOpen: true, recovery, ...metadata[i],
       })) }));
-    }, { key, states });
+    }, { key, states, metadata });
     await page.goto('/');
     await expect(page.locator('.runner-row')).toHaveCount(states.length);
   }
@@ -35,6 +35,48 @@ export function registerAutoRecovery({ test, expect, transport }) {
   const terminal = (page, text) => mountedRunner({ execute: (fn, ...args) =>
     page.evaluate(({ source, args }) => Function('return (' + source + ')')()(...args), { source: String(fn), args }) }, 'buffer', text);
   const restoreRecords = contexts.map(({ runMode, reference }) => ({ runMode, reference, state: 'eligible' }));
+  test('legacy exact references reconcile all four observed modes before recovery admission', async ({ page }) => {
+    await seed(page, restoreRecords.map(({ reference, state }) => ({ reference, state })), { recoveryContexts: contexts });
+    await expect.poll(async () => (await saved(page)).tabs.map(tab => tab.recovery)).toEqual(restoreRecords);
+    expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+      .slice(0, 4).map(session => session.recoveryAtAdmission))).toEqual(restoreRecords.map(record => ({ ...record, state: 'attempting' })));
+    expect((await calls(page)).map(call => call.reference)).toEqual(contexts.map(context => context.reference));
+  });
+  test('legacy exact references stay unresolved for conflicting, unavailable, or ineligible evidence', async ({ page }) => {
+    const unavailable = { ...contexts[1], observation: { authoritative: false, eligibility: 'unknown',
+      ownership: 'unavailable', disposition: 'unverified' } };
+    const blocked = { ...contexts[3], observation: { ownership: 'in_use', disposition: 'in_use' } };
+    const ineligible = { ...contexts[2], disposition: 'completed', ineligible: true };
+    const states = restoreRecords.map(({ reference, state }) => ({ reference, state }));
+    const historical = { target: { binding_state: 'bound', owner: 'Project', project: 'Retained' },
+      runMode: 'direct-run', workflowKind: '' };
+    await seed(page, states, { recoveryContexts: [contexts[0], unavailable, ineligible, blocked] },
+      [{ recoveryHint: historical }]);
+    for (const [index] of states.entries()) {
+      await page.locator('.runner-row').nth(index).locator('.nav-row').click();
+      await expect(page.locator('.runner-output-diagnostic')).toContainText('RECOVERY_ELIGIBILITY_UNVERIFIED');
+    }
+    const { tabs } = await saved(page);
+    expect(tabs.map(tab => tab.recovery)).toEqual(states);
+    expect(tabs.every(tab => tab.lastVerified === undefined)).toBe(true);
+    expect(await calls(page)).toEqual([]);
+  });
+  test('legacy reconciliation requires workspace persistence before recovery admission', async ({ page }) => {
+    await page.addInitScript(key => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (name, value) {
+        if (name === key && JSON.parse(value).tabs.some(tab => tab.recovery?.runMode))
+          throw new Error('Workspace write failed');
+        return set.call(this, name, value);
+      };
+    }, key);
+    const legacy = { reference: contexts[0].reference, state: 'eligible' };
+    await seed(page, [legacy], { recoveryContexts: contexts });
+    await page.locator('.runner-row .nav-row').click();
+    await expect(page.locator('.runner-output-diagnostic')).toContainText('RECOVERY_SAVE_FAILED');
+    expect((await saved(page)).tabs[0].recovery).toEqual(legacy);
+    expect(await calls(page)).toEqual([]);
+  });
   test('connected recovery preserves four exact contexts and replays only in their original tabs', async ({ page }) => {
     await seed(page, restoreRecords, { recoveryContexts: contexts });
     const initial = await saved(page);

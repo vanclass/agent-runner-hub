@@ -245,7 +245,9 @@ async function transport(page, freshTarget, referenceOptions) {
                 reply = { connected_version: 1, reference_status, run_mode,
                   reference: reference_status === 'present' ? connected?.reference : null,
                   lifecycle: reference_status === 'present' && connected ? lifecycle(connected) : null };
-              } else if (exact && request.operation === 'recovery.observe') reply = lifecycle(exact);
+              } else if (exact && request.operation === 'recovery.observe') {
+                reply = { ...lifecycle(exact), ...exact.observation };
+              }
               else if (exact && outcome === 'recovered') {
                 fixture.config.current.run_mode = exact.runMode;
                 session.connectedRecovery = exact;
@@ -261,8 +263,10 @@ async function transport(page, freshTarget, referenceOptions) {
                   for (const command of observation.commands)
                     if (['/target', '/files'].includes(command.text)) command.enabled = false;
                 emit(args.id, `\x1b[32m${exact.runMode} first\x1b[0m\r\n${exact.runMode} second\r\n`);
+                const tabs = JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1'))?.tabs ?? [];
+                session.recoveryAtAdmission = tabs.find(tab => JSON.stringify(tab.recovery?.reference) === JSON.stringify(reference))?.recovery;
                 reply = { reference, run_mode: exact.runMode, recovery_status: outcome, outcome_unknown: false,
-                  historical_replay: { status: exact.history ?? 'displayed', diagnostics: [] } };
+                  ...(exact.history === null ? {} : { historical_replay: { status: exact.history ?? 'displayed', diagnostics: [] } }) };
               } else {
                 state = 'rejected';
                 reply = { reference, recovery_status: outcome, outcome_unknown: true };

@@ -90,7 +90,9 @@
     "pending": "대기 중인 러너는 전체 작업 완료, 안전한 유휴 상태 및 입력·확인 해결을 기다립니다.",
     "unavailable": "실행 중인 프로세스를 확인할 수 없어 재시작하지 않았습니다. 보존된 러너 로그를 확인하세요.",
     "cleanupFailed": "이전 Runner의 정리가 확인되지 않아 재시작을 중단했습니다. 터미널 또는 보관된 로그에서 상세 내용을 확인하세요.",
-    "launchFailed": "새 Runner가 준비되지 않았습니다. 보관된 로그에서 이전 Runner의 출력을 확인하세요."
+    "launchFailed": "새 Runner가 준비되지 않았습니다. 보관된 로그에서 이전 Runner의 출력을 확인하세요.",
+    "restorationFailed": "러너가 실행되었습니다. 컨텍스트 복원에 실패했습니다. {{detail}}",
+    "restorationUncertain": "러너가 실행되었습니다. 컨텍스트 복원을 확인할 수 없습니다. {{detail}}"
   },
   "panel": {
     "runnerManagement": "Runner 관리",

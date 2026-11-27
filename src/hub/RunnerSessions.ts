@@ -62,20 +62,22 @@ export class RunnerSession {
   get terminationSettled() { return this.nativeSettled; }
   get canRetryTermination() { return !!this.pty && !this.nativeSettled; }
   private get exitObserved() { return this.nativeState === 'settled' || this.nativeState === 'failed'; }
+  get recoveryDiagnostic() {
+    const { outcome, code, saved } = this.control.recovery;
+    if (!outcome || !Object.hasOwn(recoveryMessages, outcome)) return;
+    return msg('lifecycle.recovery', {
+      cause: msg(recoveryMessages[outcome as keyof typeof recoveryMessages]), code: code ?? saved?.code,
+    });
+  }
   get diagnostics() {
     const recovery = this.control.recovery;
-    const outcome = recovery.outcome;
-    const failedRecovery = outcome && outcome !== 'waiting' && outcome !== 'recovering' && outcome !== 'recovered';
     const detail = this.view.detail;
     return [
       ['failed', 'exited'].includes(this.view.status) || typeof detail === 'object' && detail.key === 'lifecycle.initialization'
         ? detail : undefined,
       this.view.status === 'running' && !this.view.closing && this.control.snapshot.state === 'disconnected'
         ? msg('lifecycle.connection', { location: this.installationRoot, diagnostic: this.control.snapshot.detail }) : undefined,
-      failedRecovery && this.connected ? msg('lifecycle.recovery', {
-        cause: msg(recoveryMessages[outcome]),
-        code: recovery.code ?? recovery.saved?.code,
-      }) : undefined,
+      this.connected ? this.recoveryDiagnostic : undefined,
       recovery.history === 'incomplete' ? msg('lifecycle.historyIncomplete')
         : recovery.history === 'unverified' ? msg('lifecycle.historyUnverified') : undefined,
       this.terminationIssue,
@@ -116,7 +118,10 @@ export class RunnerSession {
     this.instructionHistory.reset();
     this.update({ closing: true });
   }
-  verifyReusable() { return this.verifyIdle(false); }
+  async verifyReusable() {
+    if (!await this.verifyIdle(false)) return false;
+    return !this.control.tabClosing || await this.control.recovery.verifyReleased() && this.safeIdle();
+  }
   verifyRestart() { return this.verifyIdle(true); }
   private async verifyIdle(preserveDraft: boolean) {
     if (!this.safeIdle(preserveDraft)) return false;
@@ -156,7 +161,9 @@ export class RunnerSession {
         this.captureVerified(); this.observeSubmission(); this.syncTerminalInput(); return this.changed();
       }
     });
-    this.control.recovery.restore(this.tabRecord?.recovery, restored && this.tabRecord?.launchOnOpen === true);
+    const historicalModes = [this.tabRecord?.recoveryHint?.runMode, this.tabRecord?.lastVerified?.runMode]
+      .filter((mode): mode is string => !!mode);
+    this.control.recovery.restore(this.tabRecord?.recovery, restored && this.tabRecord?.launchOnOpen === true, historicalModes);
     if (restored && this.tabRecord?.launchOnOpen && !this.tabRecord.recovery && this.tabRecord.recoveryHint)
       this.control.recovery.legacy();
     this.references = new RunnerReferenceSelection(this.control, () => { if (!this.disposed) this.changed(); });
@@ -174,7 +181,9 @@ export class RunnerSession {
   private update(change: Partial<RunnerView>) { this.view = { ...this.view, ...change }; this.changed(); }
   private captureVerified() {
     const observation = this.control.snapshot.observation;
-    if (!this.tabRecord || !observation || !this.control.observationFresh || this.control.recovery.busy) return;
+    const recovery = this.control.recovery;
+    if (!this.tabRecord || !observation || !this.control.observationFresh || recovery.busy
+      || recovery.saved?.reference && !recovery.saved.runMode) return;
     // Fresh settings do not confirm historical work recovery or retire its retained hint.
     this.tabRecord = { ...this.tabRecord, lastVerified: {
       target: { ...observation.target }, runMode: observation.run_mode,
@@ -802,16 +811,33 @@ export class RunnerSessions {
   view(id: string | null) {
     for (const session of this.sessions.values()) session.control.work.setViewed(session.view.id === id);
   }
-  private waitForReplacement(session: RunnerSession, owns: () => boolean, hidden: boolean) {
-    return new Promise<void>((resolve, reject) => {
+  private waitForReplacement(session: RunnerSession, owns: () => boolean, restore: boolean) {
+    return new Promise<RestartOutcome>((resolve, reject) => {
       const check = () => {
-        if (!owns()) { unsubscribe(); resolve(); return; }
+        if (!owns()) { unsubscribe(); resolve('removed'); return; }
         if (session.view.detail || ['failed', 'exited'].includes(session.view.status)
           || session.control.snapshot.state === 'disconnected') {
           unsubscribe(); reject(new HubError(session.view.detail || session.control.snapshot.detail || msg('restart.launchFailed')));
-        } else if (hidden || !session.tab.recovery?.runMode ? session.restartReady
-          : session.control.observationFresh && session.view.canSubmit && !session.control.recovery.busy) {
-          unsubscribe(); resolve();
+          return;
+        }
+        const { busy, outcome } = session.control.recovery;
+        if (!restore || !outcome) {
+          if (session.restartReady) { unsubscribe(); resolve('restarted'); }
+          return;
+        }
+        if (busy || session.view.status !== 'running' || !session.control.observationFresh) return;
+        if (outcome === 'recovered' || outcome === 'mode-restored') {
+          if (!session.view.canSubmit) return;
+          unsubscribe();
+          resolve(outcome === 'recovered' ? 'context-restored' : outcome);
+        } else {
+          const detail = session.recoveryDiagnostic;
+          if (!detail) return;
+          const uncertain = outcome === 'partial' || outcome === 'unverified';
+          unsubscribe();
+          resolve({ state: uncertain ? 'restoration-uncertain' : 'restoration-failed', detail: msg(
+            uncertain ? 'restart.restorationUncertain' : 'restart.restorationFailed', { detail },
+          ) });
         }
       };
       const unsubscribe = this.subscribe(check);
@@ -841,9 +867,10 @@ export class RunnerSessions {
     this.changed();
     const replacementOwned = () => !this.disposed
       && (hidden ? this.retired.get(id)?.session : this.sessions.get(id)) === replacement;
+    let outcome: RestartOutcome = 'restarted';
     try {
       await replacement.open(root);
-      if (!interrupted) await this.waitForReplacement(replacement, replacementOwned, hidden);
+      if (!interrupted) outcome = await this.waitForReplacement(replacement, replacementOwned, 'recovery' in tab && !!tab.recovery);
     } catch (reason) {
       if (!replacementOwned()) { await session.dispose(); return 'removed'; }
       this.retainRestartFailure(session, root);
@@ -859,8 +886,10 @@ export class RunnerSessions {
     if (hidden) this.retired.get(id)!.state = 'idle';
     await session.dispose();
     if (!replacementOwned()) return 'removed';
-    this.lifecycle({ operation: 'runner-restarted', runner: replacement.view.name });
-    return 'restarted';
+    if (typeof outcome === 'object')
+      this.lifecycle({ operation: 'runner-restart-failed', runner: replacement.view.name, detail: outcome.detail });
+    else this.lifecycle({ operation: 'runner-restarted', runner: replacement.view.name });
+    return outcome;
   }
   close(id: string) {
     const session = this.sessions.get(id);

@@ -90,7 +90,9 @@
     "pending": "Pending Runners wait for whole-work completion, safe idle and resolved input or confirmations.",
     "unavailable": "Restart could not verify a running process. Review the retained Runner logs.",
     "cleanupFailed": "Restart stopped because the previous Runner did not confirm cleanup. Open its terminal or retained log for details.",
-    "launchFailed": "The replacement Runner did not become ready. Open the retained log for the previous Runner's output."
+    "launchFailed": "The replacement Runner did not become ready. Open the retained log for the previous Runner's output.",
+    "restorationFailed": "Runner launched. Context restoration failed. {{detail}}",
+    "restorationUncertain": "Runner launched. Context restoration is unconfirmed. {{detail}}"
   },
   "panel": {
     "runnerManagement": "Runner management",

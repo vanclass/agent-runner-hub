@@ -55,7 +55,7 @@ interface RecoveryTransport {
 }
 export class RunnerRecovery {
   saved?: RecoveryRecord;
-  outcome?: RecoveryOutcome | 'waiting' | 'recovering';
+  outcome?: RecoveryOutcome | 'waiting' | 'recovering' | 'mode-restored';
   private pending: boolean;
   private restoring = false;
   private closed = false;
@@ -66,6 +66,7 @@ export class RunnerRecovery {
   private observedChange?: string;
   private nextObservation = 0;
   private protectedEmptyMode?: string;
+  private historicalModes: readonly string[] = [];
   code?: string;
   history?: 'displayed' | 'incomplete' | 'unverified';
   private waiting?: { id?: number; generation: number; operation: RecoveryRequest['operation'];
@@ -80,10 +81,11 @@ export class RunnerRecovery {
   get connectedReference() {
     return same(this.verifiedReference, this.saved?.reference) ? this.verifiedReference : undefined;
   }
-  restore(saved: RecoveryRecord | undefined, restore: boolean) {
+  restore(saved: RecoveryRecord | undefined, restore: boolean, historicalModes: readonly string[] = []) {
     this.close();
     this.closed = false;
     this.saved = saved && copy(saved);
+    this.historicalModes = historicalModes;
     this.pending = restore && !!saved;
     this.outcome = this.pending ? 'waiting' : undefined;
     this.code = this.history = this.protectedEmptyMode = undefined;
@@ -168,9 +170,18 @@ export class RunnerRecovery {
     });
     return this.capturing = capture;
   }
+  async verifyReleased() {
+    const snapshot = this.snapshot;
+    if (!snapshot || !this.supportsCurrent(snapshot)) return true;
+    const { generation } = snapshot, epoch = this.epoch, change = this.observedChange;
+    const { context } = await this.readConnected(generation);
+    return this.epoch === epoch && this.snapshot?.generation === generation
+      && this.observedChange === change && !!context && !('reference' in context);
+  }
   private async captureConnected() {
     const snapshot = this.snapshot;
     if (this.closed || this.busy || this.waiting || !snapshot || !this.supportsCurrent(snapshot)) return;
+    if (this.saved?.reference && (!this.saved.runMode || this.saved.state === 'attempting' || this.saved.state === 'partial')) return;
     const { generation } = snapshot, epoch = this.epoch;
     this.nextObservation = performance.now() + (this.transport.observeMs ?? this.transport.completionMs);
     const { context, reply } = await this.readConnected(generation);
@@ -188,7 +199,7 @@ export class RunnerRecovery {
       if (!('reference' in context) && context.runMode === this.protectedEmptyMode) return;
       if (this.commit(context)) {
         this.protectedEmptyMode = undefined;
-        if (this.outcome !== 'recovered') this.outcome = undefined;
+        if (this.outcome !== 'recovered' && this.outcome !== 'mode-restored') this.outcome = undefined;
         this.code = undefined;
       }
     }
@@ -205,14 +216,14 @@ export class RunnerRecovery {
   }
   private async restoreConnected(snapshot: FeatureSnapshot, epoch: number) {
     const { generation, recovery: cap } = snapshot;
-    const { runMode, reference, state, code } = this.saved!;
+    const { runMode: savedMode, reference, state, code } = this.saved!;
     if (code === unsupportedMode) { this.outcome = undefined; return; }
-    if (!runMode) { this.legacy(); return; }
-    if (!cap || !this.supportsCurrent(snapshot, runMode)) {
+    if (!savedMode && !reference) { this.legacy(); return; }
+    if (!cap || !this.supportsCurrent(snapshot, savedMode)) {
       this.fail('unverified', 'RECOVERY_UNSUPPORTED');
       return;
     }
-    if (!reference) { await this.restoreMode(runMode, generation, epoch); return; }
+    if (!reference) { await this.restoreMode(savedMode!, generation, epoch); return; }
     if (cap.lifecycle_version !== 1 || !cap.families?.includes(reference.family)
       || !['recovery.observe', 'recovery.recover'].every(op => cap.operations.includes(op))) {
       this.fail('unverified', 'RECOVERY_FAMILY_UNSUPPORTED');
@@ -224,17 +235,21 @@ export class RunnerRecovery {
       && observed.authoritative === true && observed.ownership === 'available';
     const conclusivelyIneligible = observed?.eligibility === 'ineligible'
       && (observed.disposition === 'discarded' || reference.family !== 'direct-run' && observed.disposition === 'completed');
-    if (exact && (conclusivelyIneligible || observed.disposition === 'absent')) {
-      await this.restoreMode(runMode, generation, epoch);
+    if (savedMode && exact && (observed.run_mode == null || observed.run_mode === savedMode)
+      && (conclusivelyIneligible || observed.disposition === 'absent')) {
+      await this.restoreMode(savedMode, generation, epoch);
       return;
     }
-    if (!exact || observed.eligibility !== 'eligible' || observed.run_mode !== runMode
+    const runMode = observed?.run_mode;
+    if (!exact || observed.eligibility !== 'eligible' || !isConnectedMode(runMode) || familyFor(runMode) !== reference.family
+      || !this.supportsCurrent(snapshot, runMode) || (savedMode ? savedMode !== runMode : this.historicalModes.some(mode => mode !== runMode))
       || !(reference.family === 'direct-run' && observed.disposition === 'completed'
         || ['incomplete', 'suspended'].includes(String(observed.disposition)))) {
       this.fail(observed?.disposition === 'identity_conflict' ? 'identity_conflict' : observed?.ownership === 'in_use' ? 'blocked' : 'unverified',
         this.failureCode(observed, 'RECOVERY_ELIGIBILITY_UNVERIFIED'));
       return;
     }
+    if (!savedMode && (!this.commit({ reference, runMode, state }) || !this.valid(epoch, generation))) return;
     if (state === 'attempting' || state === 'partial') {
       this.fail('partial', 'RECOVERY_PRIOR_ATTEMPT_UNCERTAIN');
       return;
@@ -246,7 +261,7 @@ export class RunnerRecovery {
     this.code = code;
   }
   private async adopt(reference: RecoveryReference, runMode: ConnectedRunMode, generation: number, epoch: number) {
-    if (!this.commit({ reference, runMode, state: 'attempting' })) return;
+    if (!this.commit({ reference, runMode, state: 'attempting' }) || !this.valid(epoch, generation)) return;
     const result = await this.request({ operation: 'recovery.recover', api_version: 1, reference }, generation);
     if (!this.valid(epoch, generation)) return;
     const reply = result?.phase === 'completed' && record(result.reply) && same(result.reply.reference, reference)
@@ -257,7 +272,7 @@ export class RunnerRecovery {
     if (outcome !== 'recovered' || result?.state !== 'accepted' || reply?.outcome_unknown !== false || reply.run_mode !== runMode) {
       if (reply?.outcome_unknown === false && outcome !== 'recovered'
         && !this.commit({ reference, runMode, state: 'eligible' })) return;
-      this.fail(recoveryOutcomes.includes(outcome) && outcome !== 'recovered' ? outcome : 'partial',
+      this.fail(reply?.outcome_unknown === false && recoveryOutcomes.includes(outcome) && outcome !== 'recovered' ? outcome : 'partial',
         this.failureCode(reply, result?.code || 'RECOVERY_RECEIPT_UNVERIFIED'));
       return;
     }
@@ -288,7 +303,7 @@ export class RunnerRecovery {
       return;
     }
     if (this.commit(context)) {
-      this.outcome = undefined;
+      this.outcome = 'mode-restored';
       this.protectedEmptyMode = undefined;
     }
   }

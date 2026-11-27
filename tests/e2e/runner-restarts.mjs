@@ -2,8 +2,8 @@ import { drop } from './composer-attachments.mjs';
 import { chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerRestarts({ test, expect, transport, configure, create }) {
   // Production Hub orchestration with a simulated native transport, never native acceptance.
-  async function owner(page, count = 1) {
-    await transport(page, undefined, { auto: true, work: true });
+  async function owner(page, count = 1, options = {}) {
+    await transport(page, undefined, { auto: true, work: true, ...options });
     await page.goto('/');
     await page.evaluate(async count => {
       const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
@@ -18,6 +18,71 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
   }
   const snapshot = page => page.evaluate(() => window.__restartOwner.restarts.snapshot);
   const cleanup = page => page.evaluate(() => window.__restartOwner.dispose());
+  const context = { runMode: 'direct-run', disposition: 'completed', reference: { version: 1, family: 'direct-run',
+    session_id: 'origin', generation_id: 'generation', thread_id: 'thread', resume_id: '', source_exec_run_id: 'exec' } };
+  for (const [scenario, counter, code] of [
+    ['adopted', 'contextRestored'], ['incomplete history', 'contextRestored'], ['unavailable history', 'contextRestored'],
+    ['mode only', 'modeRestored'], ['blocked', 'restorationFailed', 'RECOVERY_ELIGIBILITY_UNVERIFIED'],
+    ['uncertain', 'restorationUncertain', 'RECOVERY_RECEIPT_UNVERIFIED'],
+  ]) {
+    test(`global restart reports ${scenario} recovery separately from replacement launch`, async ({ page }) => {
+      const exact = { ...context, history: scenario === 'incomplete history' ? 'incomplete' : scenario === 'unavailable history' ? null : 'displayed',
+        observation: scenario === 'blocked' ? { ownership: 'in_use', disposition: 'in_use' } : undefined };
+      await owner(page, 1, { recoveryContexts: [exact], recoveryResults: scenario === 'uncertain' ? { 'pty-2': 'partial' } : {} });
+      await page.evaluate(({ exact, scenario }) => {
+        const original = window.__nativeFixture.sessions.get('pty-1');
+        original.feature.config.current.run_mode = exact.runMode;
+        if (scenario !== 'mode only') original.connectedRecovery = exact;
+      }, { exact, scenario });
+      await expect.poll(() => page.evaluate(() => window.__originals[0].tab.recovery?.runMode)).toBe(exact.runMode);
+      await page.evaluate(() => window.__restartOwner.restartAll());
+      await expect.poll(async () => (await snapshot(page))[counter]).toBe(1);
+      const batch = await snapshot(page);
+      expect(batch).toMatchObject({ restarted: 0, pending: 0, running: 0, failed: 0 });
+      expect(batch.failures).toHaveLength(code ? 1 : 0);
+      if (code) expect(batch.failures[0].detail).toMatchObject({
+        key: scenario === 'blocked' ? 'restart.restorationFailed' : 'restart.restorationUncertain',
+        values: { detail: { key: 'lifecycle.recovery', values: { code } } },
+      });
+      const replacement = await page.evaluate(() => {
+        const original = window.__originals[0], next = window.__restartOwner.get(original.view.id);
+        return { replaced: original !== next, status: next.view.status, canSubmit: next.view.canSubmit,
+          history: next.control.recovery.history, code: next.control.recovery.code, retained: window.__restartOwner.failures.length };
+      });
+      expect(replacement).toMatchObject({ replaced: true, status: 'running', canSubmit: true, code, retained: 0 });
+      if (scenario === 'incomplete history' || scenario === 'unavailable history')
+        expect(replacement.history).toBe(scenario === 'incomplete history' ? 'incomplete' : 'unverified');
+      await cleanup(page);
+    });
+  }
+  test('runner removal verifies connected release when prior capture has not finished', async ({ page }) => {
+    await owner(page, 2, { recoveryContexts: [context] });
+    const ids = await page.evaluate(exact => {
+      const [original, neighbor] = window.__originals;
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = async (command, args) => {
+        if (command === 'runner_feature' && args.id === 'pty-1' && args.request.request.operation === 'recovery.current'
+          && !window.__releaseCapture) await new Promise(resolve => { window.__releaseCapture = resolve; });
+        return invoke(command, args);
+      };
+      const fixture = window.__nativeFixture.sessions.get('pty-1');
+      fixture.feature.config.current.run_mode = exact.runMode;
+      fixture.connectedRecovery = exact;
+      void original.control.recovery.refreshConnected();
+      return [original.view.id, neighbor.view.id];
+    }, context);
+    await expect.poll(() => page.evaluate(() => !!window.__releaseCapture)).toBe(true);
+    expect(await page.evaluate(id => [window.__originals[0].tab.recovery?.reference, window.__restartOwner.close(id)], ids[0])).toEqual([undefined, true]);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
+    expect(await page.evaluate(id => {
+      window.__releaseCapture();
+      return window.__restartOwner.get(id) === window.__originals[1];
+    }, ids[1])).toBe(true);
+    await page.evaluate(id => window.__restartOwner.close(id), ids[1]);
+    await expect.poll(() => page.evaluate(() => window.__originals[1].reusableIdle)).toBe(true);
+    expect(await page.evaluate(() => window.__restartOwner.allocate('/fixture/install').session === window.__originals[1])).toBe(true);
+    await cleanup(page);
+  });
   for (const theme of ['light', 'black']) {
     test(`global restart sidebar hides settled statistics ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await configure(page);
@@ -573,7 +638,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature?.requests ?? []).filter(r => r.operation === 'work.submit').length)).toBe(0);
   });
 
-  test('global restart retains restored recovery provenance until Runner confirms historical recovery', async ({ page }) => {
+  test('global restart retains presentation provenance without treating it as recovery identity', async ({ page }) => {
     await owner(page);
     await page.evaluate(async () => {
       const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
@@ -582,15 +647,16 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
       o.setInstallation({ root: '/fixture/install', python: '/fixture/python' });
       const id = o.getSnapshot()[0].id, s = o.get(id);
       await s.control.fresh();
-      window.__restoredTab = { id, context: structuredClone(s.previousContext) };
+      window.__restoredTab = { id, context: structuredClone(s.tab.recoveryHint) };
     });
+    expect(await page.evaluate(() => window.__restoredTab.context)).toMatchObject({ runMode: expect.any(String) });
     await expect.poll(() => page.evaluate(() => window.__restartOwner.get(window.__restoredTab.id).restartReady)).toBe(true);
     await page.evaluate(() => window.__restartOwner.restartAll());
     await expect.poll(async () => (await snapshot(page)).restarted).toBe(2);
     expect(await page.evaluate(() => {
       const s = window.__restartOwner.get(window.__restoredTab.id);
-      return { restored: s.restored, context: s.previousContext };
-    })).toEqual(await page.evaluate(() => ({ restored: true, context: window.__restoredTab.context })));
+      return { recovery: s.tab.recovery, context: s.tab.recoveryHint };
+    })).toEqual(await page.evaluate(() => ({ recovery: undefined, context: window.__restoredTab.context })));
     await cleanup(page);
   });
 

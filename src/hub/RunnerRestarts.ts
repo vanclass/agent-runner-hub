@@ -1,13 +1,17 @@
 import { errorText, type HubText } from './i18n';
 
-export type RestartOutcome = 'pending' | 'restarted' | 'removed';
+type RestorationSuccess = 'context-restored' | 'mode-restored';
+type RestorationProblem = 'restoration-failed' | 'restoration-uncertain';
+export type RestartOutcome = 'pending' | 'restarted' | 'removed' | RestorationSuccess
+  | { state: RestorationProblem; detail: HubText };
 export type RestartTarget = Readonly<{
   name: string;
   ready: () => boolean;
   revalidation?: () => Readonly<{ key: string; observedAt: number }>;
   restart: () => Promise<RestartOutcome>;
 }>;
-type RestartItem = { name: string; target?: RestartTarget; state: RestartOutcome | 'running' | 'failed'; detail?: HubText;
+type RestartItem = { name: string; target?: RestartTarget;
+  state: Exclude<RestartOutcome, object> | RestorationProblem | 'running' | 'failed'; detail?: HubText;
   waiting?: { key: string; retryAfter: number }; wasReady?: boolean };
 
 // One explicit, process-local capture. Session owners alone decide safe release and replacement.
@@ -22,7 +26,9 @@ export class RunnerRestarts {
     const count = (state: RestartItem['state']) => this.items.filter(item => item.state === state).length;
     return { requested: this.requested, total: this.items.length, pending: count('pending'), running: count('running'),
       restarted: count('restarted'), removed: count('removed'), failed: count('failed'),
-      failures: this.items.filter(item => item.state === 'failed').map(item => ({ name: item.name, detail: item.detail! })) };
+      contextRestored: count('context-restored'), modeRestored: count('mode-restored'),
+      restorationFailed: count('restoration-failed'), restorationUncertain: count('restoration-uncertain'),
+      failures: this.items.filter(item => item.detail !== undefined).map(item => ({ name: item.name, detail: item.detail! })) };
   }
   request(targets: readonly RestartTarget[]) {
     if (this.disposed || this.pending) return false;
@@ -58,7 +64,11 @@ export class RunnerRestarts {
   }
   private async run(item: RestartItem, target: RestartTarget) {
     this.changed();
-    try { item.state = await target.restart(); }
+    try {
+      const outcome = await target.restart();
+      if (typeof outcome === 'string') item.state = outcome;
+      else { item.state = outcome.state; item.detail = outcome.detail; }
+    }
     catch (reason) { item.state = 'failed'; item.detail = errorText(reason); }
     if (item.state === 'pending') {
       // Ignore verification's own busy/receipt notifications. Existing authenticated observations
