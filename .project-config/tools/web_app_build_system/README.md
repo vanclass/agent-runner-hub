@@ -42,6 +42,33 @@ including development and optional dependencies. It rechecks installed declarati
 exact lockfile versions and reuses compatible dependencies. Inconsistent package/lock
 declarations must be resolved by the project owner.
 
+## Windows code-signing certificates
+
+Press C in the Build System menu to list CurrentUser Personal (`CurrentUser\My`) code-signing
+certificates, inspect status, select/replace a certificate, or remove the project’s selection.
+Rows show the certificate Subject, thumbprint and expiration; company_name is independent.
+Selection asks for an HTTP(S) RFC 3161 timestamp URL; Back or empty input cancels it.
+For automation use `--certificate list`, `--certificate status`, `--certificate remove`, or
+`--certificate select <40-hex-thumbprint> <RFC3161-url>`. Replacement uses the same select action.
+
+Only public identity and the timestamp endpoint are saved under `local/settings.json` in
+`windowsSigning`. Other local settings survive selection/removal and managed Review/Apply updates.
+No private keys, PFX files, passwords or credentials are imported, exported or saved.
+With no selection, Windows/Tauri publishes explicitly unsigned EXE and NSIS products as before.
+With a selection, the current certificate must be valid and have a private key accessible to
+the build account. Windows SDK SignTool and 7-Zip are required; use `TAURI_WINDOWS_SIGNTOOL_PATH`
+and `WEB_APP_BUILD_7ZIP` for explicit executable paths when needed. The Tool does not install them.
+An endpoint example is `http://timestamp.digicert.com`; availability is controlled by its provider.
+
+Signing uses SHA-256 and RFC 3161 timestamping through invocation-owned Tauri configuration.
+The final standalone EXE, NSIS installer and extracted application payload must all verify before
+publication. Missing/expired certificates, inaccessible keys, missing tools, timestamp warnings,
+signature mismatches and cancellation fail without unsigned fallback; prior results remain intact.
+`products.json` records signer identity, cryptographic PE/CMS and timestamp checks separately from
+Windows trust-policy diagnostics. Public-CA trust and TSA chain trust remain explicitly unverified;
+a self-signed test certificate is never evidence of public trust. Installation, SmartScreen reputation
+and GUI execution remain separate checks. Other platform adapters retain their signing contracts.
+
 ## macOS / Tauri 2
 
 Select Tauri 2 and Build System, then run `./build.command --build macos-tauri --prepare`.
@@ -138,6 +165,10 @@ For Vite, the canonical npm run build script must invoke a finite browser build 
 same command; it preserves existing dist and does not rewrite application/package configuration.
 Custom build-script side effects remain project-owned. HTML, referenced local assets,
 JavaScript, output integrity and stable current-checkout inputs must verify before success.
+Generated JavaScript/CSS source-map files and sourceMappingURL directives (external or
+inline) fail verification before publication. Disable Vite build.sourcemap and any plugin
+map emission, then rebuild. The diagnostic names the generated artifact; earlier verified
+results remain intact. Project source and unrelated data files are outside this check.
 
 Applied AstroTS uses the Foundation's Astro 6 static configuration and canonical
 npm run build (astro check && astro build), without Vite CLI flags. It requires even
@@ -156,7 +187,7 @@ source/version/runtime evidence and complete inventory. Apply the normal resourc
 before rebuilding for release eligibility; older products remain independently usable.
 The separately registered Web App Release Adapter consumes one explicitly selected retained
 result without rebuilding or changing this Tool's ownership. Its Workspace integration guide is
-src/runner/project_management/components/web_app/RELEASE_ADAPTER.md.
+agent_runner/src/runner/project_management/components/web_app/RELEASE_ADAPTER.md.
 Build staging lives in temp/staging/<id>/; failed/cancelled attempts delete only their owned
 staging directory unless it contains recoverable previous-output data. Earlier products and
 local settings survive updates/removal. To delete old products, choose the exact result
@@ -211,5 +242,15 @@ Rust/Cargo generated outputs are ignored. Unsupported custom native staging fail
 Focused tests in test_web_app_build_targets.py exercise test-owned registered adapters;
 test_web_app_build_maintenance.py covers busy deployment, compensation and retry, including
 an opt-in real Windows Web build. These fixtures do not supply native production adapters.
+
+Certificate/state/failure and managed-update tests use `python -B -m unittest
+agent_runner.tests.test_web_app_signing` with the checkout’s `agent_runner/src` and root on PYTHONPATH.
+Set `RUNNER_WEB_APP_SIGNING_NATIVE_TEST=1` to include the disposable self-signed certificate,
+actual SDK signing, RFC 3161 and tamper test. With Windows/Rust/MSVC/NSIS prerequisites and
+`WEB_APP_BUILD_7ZIP` available, run `agent_runner.tests.support.web_app_signing_native` through
+unittest for actual unsigned/signed EXE, NSIS and payload acceptance. The test owns and removes
+its non-exportable test certificate without adding it to trusted roots. The hidden-console
+status/refresh/Back/restoration check is `agent_runner.tests.support.web_app_signing_console`.
+Those observations do not establish issued-certificate public trust or installer execution.
 Windows entry/build/menu validation is covered by focused native tests. Linux/macOS scripts
 are supplied but native execution on those hosts remains unverified when unavailable.

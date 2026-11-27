@@ -15,7 +15,9 @@ export async function settings(local) {
   return value;
 }
 
-export async function executeTarget(root, local, target, signal, stage, { prepare = false, prepareOnly = false } = {}) {
+export async function executeTarget(root, local, target, signal, stage, { prepare = false, prepareOnly = false, resultFile } = {}) {
+  if (resultFile && (path.dirname(path.resolve(resultFile)) !== path.join(path.dirname(local), 'temp', 'invocations')
+      || !/^[a-f0-9]{32}\.json$/.test(path.basename(resultFile)))) throw new Error('Invalid invocation result path.');
   const adapter = adapterFor(target);
   const config = await settings(local);
   return withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal, stage, async () => {
@@ -38,7 +40,16 @@ export async function executeTarget(root, local, target, signal, stage, { prepar
       if (verified.verificationStatus !== 'verified' || !/^[a-f0-9]{64}$/.test(verified.integrity)
           || !/^[a-f0-9]{64}$/.test(verified.inputs)) throw new Error('Adapter did not return verified product evidence.');
       const after = await captureReleaseInputs(root, target);
-      return await publishResult(attempt, target, verified.integrity, verified.inputs, { before, after });
+      const published = await publishResult(attempt, target, verified.integrity, verified.inputs, { before, after });
+      if (resultFile) {
+        await fs.mkdir(path.dirname(resultFile), { recursive: true });
+        if (await fs.realpath(path.dirname(resultFile)) !== path.dirname(resultFile)) throw new Error('Indirect invocation path.');
+        const receipt = JSON.stringify({ schema: 1, invocation: path.basename(resultFile, '.json'),
+          result: path.join(published.location, 'result.json') }) + '\n';
+        await fs.writeFile(resultFile + '.tmp', receipt, { flag: 'wx' });
+        await fs.rename(resultFile + '.tmp', resultFile);
+      }
+      return published;
     } catch (error) {
       await discardResult(attempt);
       throw error;

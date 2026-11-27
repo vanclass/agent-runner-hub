@@ -3,10 +3,19 @@ import { fileURLToPath } from 'node:url';
 import { targetCatalog } from './targets.mjs';
 import { executeTarget } from './execution.mjs';
 import { menu, lineInput } from './menu.mjs';
+import { certificateCli } from './signing/menu.mjs';
 
 const root = await fs.realpath(fileURLToPath(new URL('../../../../', import.meta.url)));
 const local = fileURLToPath(new URL('../local/', import.meta.url));
 const args = process.argv.slice(2);
+const resultFileIndex = args.indexOf('--result-file');
+const resultFile = resultFileIndex === -1 ? undefined : args[resultFileIndex + 1];
+if (resultFileIndex !== -1) {
+  if (args[0] !== '--build' || resultFileIndex !== 2 || args.length !== 4 || !resultFile) {
+    throw new Error('Use --build <target> --result-file <invocation-path>.');
+  }
+  args.splice(resultFileIndex, 2);
+}
 const lines = !process.stdin.isTTY || !process.stdout.isTTY ? lineInput() : null;
 let active;
 const lifetime = new AbortController();
@@ -22,7 +31,7 @@ const stage = (name, hint) => console.log('[Build System] ' + name + '\n  ' + hi
 async function run(target, options, interactive = true) {
   active = new AbortController();
   try {
-    const result = await executeTarget(root, local, target, active.signal, stage, options);
+    const result = await executeTarget(root, local, target, active.signal, stage, { ...options, resultFile });
     if (result.verificationStatus === 'environment-ready') console.log('Environment ready. Choose ' + target.label + ' to build.');
     else console.log('Build succeeded — verified ' + (target.id === 'web' ? 'Web' : target.label)
       + ' product: ' + result.location + '\n  Verification: ' + result.verificationStatus);
@@ -37,7 +46,10 @@ async function run(target, options, interactive = true) {
 try {
   if (!args.length) await menu(root, local, lines, run, lifetime.signal);
   else if (args[0] === '--help') {
-    console.log('Web App Build System\n  --list\n  --build <target> [--prepare]\n  --prepare <target>\nWithout arguments: interactive menu (redirected line input supported).');
+    console.log('Web App Build System\n  --list\n  --build <target> [--prepare]\n  --prepare <target>\n  --certificate list | status | remove\n  --certificate select <thumbprint> <RFC3161-url>\nWithout arguments: interactive menu (redirected line input supported).');
+  } else if (args[0] === '--certificate') {
+    stage('Checking certificate settings', 'Using this project’s selection and CurrentUser Personal store.');
+    console.log(JSON.stringify(await certificateCli(root, local, args, lifetime.signal), null, 2));
   } else {
     const valid = args[0] === '--list' && args.length === 1
       || args[0] === '--prepare' && args.length === 2

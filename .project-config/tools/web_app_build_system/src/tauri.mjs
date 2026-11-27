@@ -10,6 +10,7 @@ import { stageBackend, ownedOverride, prepareCargo } from './native/staging.mjs'
 import { verifyProducts } from './native/products.mjs';
 import { copyNsis } from './native/nsis.mjs';
 import { copyMacProducts, verifyMacProducts } from './native/macos-products.mjs';
+import { resolveSigning, signingOverride, signProducts } from './signing/build.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 
@@ -23,6 +24,8 @@ export const tauriAdapter = {
   prepare: prepareNative,
   async build({ root, output, environment, signal, stage, config: buildConfig }) {
     const macos = environment.platform === 'darwin';
+    if (!macos && buildConfig?.windowsSigning) stage('Resolving Windows signing', 'Checking the selected CurrentUser certificate and signing tools; Ctrl+C cancels.');
+    const signing = macos ? null : await resolveSigning(root, buildConfig?.windowsSigning, signal);
     const triple = environment.targetTriple || targetTriple;
     const config = await configuration(root);
     const before = await nativeInputs(root, config, environment);
@@ -70,14 +73,16 @@ export const tauriAdapter = {
       // Tauri's embedded directory assets instead of a runtime file location.
       const frontendDist = macos ? frontend : path.relative(backend, frontend).split(path.sep).join('/');
       const override = ownedOverride(frontendDist, undefined, macos ? 'darwin' : 'win32');
+      if (!macos) override.bundle.windows = signingOverride(signing);
       const built = await command(process.execPath, [environment.cli, 'build', '--target', triple,
         '--config', JSON.stringify(override), '--bundles', macos ? 'app,dmg' : 'nsis', '--ci',
         ...(macos ? ['--no-sign'] : []), '--', '--locked'], backend, signal,
-        { env, quiet: false });
+        { env: signing ? { ...env, TAURI_WINDOWS_SIGNTOOL_PATH: signing.signtool } : env, quiet: false });
       if (built.code !== 0) throw new Error('Tauri native compilation or packaging failed. Check the native tool output; original native source, lockfiles and earlier products are preserved.');
       const nativeLock = await fs.readFile(path.join(backend, 'Cargo.lock'));
       if (priorLock && !priorLock.equals(nativeLock)) throw new Error('Tauri changed the staged copy of the existing Cargo.lock. Resolve its managed feature/dependency compatibility; the original lockfile is unchanged.');
       const release = path.join(cargoOutput, triple, 'release');
+      let signingEvidence = { status: 'unsigned', publicCaTrust: 'not-applicable' };
       if (macos) await copyMacProducts(release, output);
       else {
         const nsis = path.join(release, 'bundle/nsis');
@@ -86,15 +91,26 @@ export const tauriAdapter = {
         await fs.mkdir(output);
         await fs.copyFile(path.join(release, binaryName + '.exe'), path.join(output, binaryName + '.exe'), fs.constants.COPYFILE_EXCL);
         await fs.copyFile(path.join(nsis, installers[0]), path.join(output, installers[0]), fs.constants.COPYFILE_EXCL);
+        if (signing) {
+          stage('Signing and verifying Windows products', 'Verifying EXE, NSIS installer and embedded application signatures and RFC 3161 timestamps; Ctrl+C cancels.');
+          signingEvidence = await signProducts(output, signing, binaryName + '.exe', installers[0], signal, workspace);
+        }
       }
-      stage('Verifying native products', 'Checking native architecture, bundle identity, integrity and stable checkout inputs. Signing, installation and GUI execution are unverified.');
+      stage('Verifying native products', 'Checking architecture, identity, integrity and stable inputs. Windows signing: '
+        + (macos ? 'not applicable' : signingEvidence.status) + '. Installation and GUI execution are unverified.');
       const identity = { target: macos ? 'macos-tauri' : 'windows-tauri', targetTriple: triple, identifier: nativeConfig.identifier,
         productName: nativeConfig.productName, version: nativeConfig.version, binary: binaryName,
-        nativeLock: hash(nativeLock), versions: environment.versions, signatureStatus: 'not-verified',
+        nativeLock: hash(nativeLock), versions: environment.versions,
+        signatureStatus: macos ? 'not-verified' : signingEvidence.status,
+        ...(!macos ? { signing: signingEvidence } : {}),
         guiVerificationStatus: 'not-verified', installerExecutionStatus: 'not-executed' };
       const integrity = macos ? await verifyMacProducts(output, identity, signal) : await verifyProducts(output, identity);
       const currentEnvironment = await inspectNative(root, signal, { buildSystem: true, expectedPlatform: macos ? 'darwin' : 'win32' });
-      if (!currentEnvironment.ready || await nativeInputs(root, config, currentEnvironment) !== before) {
+      if (!currentEnvironment.ready) {
+        throw new Error('Native prerequisites became unavailable during packaging: ' + currentEnvironment.hints.join('; ')
+          + '. Retry after resolving these prerequisites; earlier results are preserved.');
+      }
+      if (await nativeInputs(root, config, currentEnvironment) !== before) {
         throw new Error('Checkout source or native/frontend dependencies changed during packaging. Retry with stable inputs; earlier results are preserved.');
       }
       return { verificationStatus: 'verified', integrity, inputs: hash(before + '\0' + hash(nativeLock)) };

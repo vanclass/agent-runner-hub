@@ -1,9 +1,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const VITE = 'ViteVanillaTS';
 export const ASTRO = 'AstroTS';
 const incompatible = new Set(['Frameworks', 'Runtimes', 'Styling', 'UIIcons', 'Tools']);
+
+export function generatedMetadataDirectories(choice) {
+  return choice === ASTRO ? ['.astro'] : [];
+}
 
 function choice(component, applied = false) {
   if (!component) return VITE;
@@ -41,4 +46,15 @@ export async function foundation(root, { requireApplied = false } = {}) {
     throw new Error('Foundation conversion is unsupported. Restore the initialized Foundation or create a separate project.');
   }
   return selected;
+}
+
+// BuildWeave queries the native exclusion before fingerprinting the checkout.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const selected = await foundation(process.cwd(), { requireApplied: true });
+    console.log(JSON.stringify(generatedMetadataDirectories(selected)));
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }

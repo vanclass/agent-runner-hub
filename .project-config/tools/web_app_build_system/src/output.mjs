@@ -27,7 +27,21 @@ export async function verifyOutput(output, base = '/', foundation = 'ViteVanilla
       const stat = await fs.lstat(file);
       if (stat.isSymbolicLink()) throw new Error('Build products cannot contain filesystem indirection.');
       if (stat.isDirectory()) await visit(file);
-      else if (stat.isFile() && stat.size && name.endsWith('.js')) javascript++;
+      else if (stat.isFile()) {
+        const artifact = path.relative(output, file);
+        if (/\.(?:[cm]?js|css)\.map$/i.test(name)) {
+          throw new Error('Output verification failed: source-map artifact ' + artifact
+            + '. Disable Vite build.sourcemap and remove generated source maps before retrying.');
+        }
+        if (/\.(?:[cm]?js|css)$/i.test(name)) {
+          const text = await fs.readFile(file, 'utf8');
+          if (/(?:\/\/[#@]|\/\*[#@])\s*sourceMappingURL\s*=/.test(text)) {
+            throw new Error('Output verification failed: sourceMappingURL reference in ' + artifact
+              + '. Disable source-map emission (including inline maps) before retrying.');
+          }
+        }
+        if (stat.size && name.endsWith('.js')) javascript++;
+      }
     }
   }
   await visit(output);

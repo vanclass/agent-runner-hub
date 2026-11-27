@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { targetCatalog } from './targets.mjs';
+import { certificateMenu } from './signing/menu.mjs';
 
 const groups = [['Build Ready', 'ready'], ['Environment Preparation Required', 'preparation-required'],
   ['Runtime Selection Required', 'selection-required'],
@@ -13,7 +14,8 @@ function selectable(targets) {
     target.hostReadiness === state && target.implementationStatus === 'implemented'));
 }
 
-function menuLines(targets, selected) {
+function menuLines(targets, selected, presentation) {
+  if (presentation) return presentation.lines(targets, selected);
   const lines = ['Web App Build System', ''];
   for (const [heading, state] of groups) {
     lines.push(heading);
@@ -30,7 +32,7 @@ function menuLines(targets, selected) {
     lines.push('');
   }
   lines.push('Number / Enter: Build selected target (prepare if required)');
-  lines.push('Up / Down: Select target   P: Prepare Environment for selected target');
+  lines.push('Up / Down: Select target   P: Prepare Environment   C: Windows certificates');
   lines.push('B / Q / Esc: Back / Exit    Ctrl+C: Cancel');
   return lines;
 }
@@ -53,17 +55,17 @@ function clip(text, width) {
   return result;
 }
 
-function viewport(targets, selected, dimensions) {
+function viewport(targets, selected, dimensions, presentation) {
   const width = Math.max(1, dimensions.columns - 1);
   const capacity = Math.max(1, dimensions.rows - 1);
-  const all = menuLines(targets, selected);
+  const all = menuLines(targets, selected, presentation);
   const focus = Math.max(0, all.findIndex(line => line.startsWith('  > ')));
   if (capacity < 4) return [clip(all[focus].trimStart(), width)];
   const body = all.slice(2, -3), room = capacity - 3;
   const start = Math.max(0, Math.min(focus - 2 - Math.floor(room / 2), body.length - room));
-  const footer = width >= 80
-    ? 'Up/Down: Select | Enter/Number: Build | P: Prepare | B/Q/Esc: Back | Ctrl+C: Cancel'
-    : width >= 30 ? 'Up/Down Enter/# P B/Esc Ctrl+C' : 'Up/Down # P B ^C';
+  const footer = presentation?.footer || (width >= 80
+    ? 'Up/Down Select | Enter/# Build | P Prepare | C Certificates | B/Q/Esc Back | Ctrl+C Cancel'
+    : width >= 30 ? 'Up/Down Enter/# P C B/Esc Ctrl+C' : 'Up/Down # P B ^C');
   return [all[0], ...body.slice(start, start + room),
     (start ? 'More above | ' : '') + (start + room < body.length ? 'More below' : ''), footer]
     .map(line => clip(line, width));
@@ -133,7 +135,7 @@ async function positionBand(file, dimensions, count, clear) {
   throw new Error('Windows console positioning did not complete. Restart build.cmd.');
 }
 
-async function choose(targets, selected, lines, signal) {
+export async function choose(targets, selected, lines, signal, presentation) {
   signal.throwIfAborted();
   const entries = selectable(targets);
   const move = direction => {
@@ -144,7 +146,7 @@ async function choose(targets, selected, lines, signal) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     while (true) {
       signal.throwIfAborted();
-      console.log(menuLines(targets, selected).join('\n'));
+      console.log(menuLines(targets, selected, presentation).join('\n'));
       const choice = (await lines.next())?.trim().toLowerCase() ?? 'q';
       if (choice === 'up' || choice === 'down') { move(choice === 'up' ? -1 : 1); continue; }
       return { choice, selected };
@@ -197,7 +199,7 @@ async function choose(targets, selected, lines, signal) {
   }
 
   function render() {
-    const rows = viewport(targets, selected, dimensions);
+    const rows = viewport(targets, selected, dimensions, presentation);
     renderRows(rows);
   }
   return new Promise((resolve, reject) => {
@@ -250,7 +252,7 @@ async function choose(targets, selected, lines, signal) {
             dimensions = await terminalSize(viewportFile, observation.signal);
             const changed = renderedSize !== geometry(dimensions);
             if (!force && !changed) return;
-            const rows = viewport(targets, selected, dimensions);
+            const rows = viewport(targets, selected, dimensions, presentation);
             dimensions = await positionBand(viewportFile, dimensions, rows.length, changed);
             if (finished) return;
             if (!dimensions.positioned) { dirty = true; continue; }
@@ -280,6 +282,7 @@ async function choose(targets, selected, lines, signal) {
       if ((key.ctrl && key.name === 'c') || ['escape', 'q', 'b'].includes(key.name)) finish('q');
       else if (key.name === '0' && !digits) finish('q');
       else if (key.name === 'p') finish('p');
+      else if (key.name === 'c') finish('c');
       else if (key.name === 'return') finish(digits || '');
       else if (/^[0-9]$/.test(text || '')) {
         digits += text;
@@ -321,6 +324,11 @@ export async function menu(root, local, lines, run, signal) {
     const { choice } = answer;
     selected = answer.selected;
     if (['q', 'b', 'back', 'exit', '0', 'escape', 'cancel', '\x1b', '\x03'].includes(choice)) return;
+    if (choice === 'c') {
+      try { await certificateMenu(root, local, lines, signal, choose); }
+      catch (error) { signal.throwIfAborted(); console.error('Certificate action failed: ' + error.message); }
+      continue;
+    }
     const target = entries.find(item => ['', 'p'].includes(choice) ? item.id === selected
       : item.selectionShortcut === choice || item.id === choice);
     if (!target) {

@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { withBuildOwnership, buildEnvironment, buildWriter } from './ownership.mjs';
-import { foundation, ASTRO, VITE } from './foundation.mjs';
+import { foundation, generatedMetadataDirectories, ASTRO, VITE } from './foundation.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 
@@ -201,10 +201,11 @@ export async function configuration(root, choice) {
 
 export async function inputs(root, output, excludeTestResults, choice = VITE) {
   const excludedOutput = path.relative(root, output).split(path.sep).join('/');
+  const metadata = generatedMetadataDirectories(choice);
   const source = await treeHash(root, key => {
     const first = key.split('/')[0];
     // Keep explicitly configured application/public/env inputs even in the usual test output directory.
-    return ['.git', 'node_modules'].includes(first) || (choice === ASTRO && first === '.astro')
+    return ['.git', 'node_modules', ...metadata].includes(first)
       || (first === 'test-results' && excludeTestResults)
       || key === excludedOutput || key.startsWith(excludedOutput + '/')
       || key === '.project-config/managed/web-app-launch/cache' || key.startsWith('.project-config/managed/web-app-launch/cache/')
@@ -218,7 +219,7 @@ export async function inputs(root, output, excludeTestResults, choice = VITE) {
       || ['build.cmd', 'build.sh', 'build.command'].includes(key);
   });
   const dependencies = await treeHash(path.join(root, 'node_modules'), key =>
-    ['.vite', '.vite-temp', '.cache', '.vite-web-app-testing', ...(choice === ASTRO ? ['.astro'] : [])].includes(key.split('/')[0]));
+    ['.vite', '.vite-temp', '.cache', '.vite-web-app-testing', ...metadata].includes(key.split('/')[0]));
   const git = spawnSync('git', ['-C', root, 'rev-parse', '--verify', 'HEAD'],
                        { encoding: 'utf8', windowsHide: true });
   return digest(JSON.stringify({
