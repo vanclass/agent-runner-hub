@@ -1,23 +1,42 @@
+import { UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
+import { mountedRunner } from './mounted-runner.mjs';
+
+export class RunnerTerminal {
+  constructor(browser) {
+    this.browser = browser;
+  }
+
+  buffer() {
+    return terminalBuffer(this.browser);
+  }
+
+  async find(text, { viewport = false } = {}) {
+    const buffer = await this.buffer();
+    return (viewport ? buffer.visible : buffer.full).indexOf(text);
+  }
+
+  async scroll(position) {
+    if (position !== 'top' && position !== 'bottom' && !Number.isInteger(position))
+      throw new TypeError('Use top, bottom, or a signed line count');
+    const state = await mountedRunner(this.browser, 'scroll', position);
+    if (!state) throw new UnverifiedObservation('Mounted session-owned xterm unavailable');
+    return state;
+  }
+
+  canonicalRecords(connection) {
+    return canonicalRecords(this.browser, connection);
+  }
+}
+
 // Read the actual session-owned xterm; DOM rows contain only the current viewport.
-export async function terminalBuffer(browser) {
-  return browser.execute(() => {
-    const host = document.querySelector('.terminal-host');
-    let fiber = host?.[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
-    for (; fiber; fiber = fiber.return) {
-      const session = fiber.memoizedProps?.session;
-      if (session?.terminal?.element?.parentElement !== host) continue;
-      const terminal = session.terminal, buffer = terminal.buffer.active;
-      const lines = Array.from({ length: buffer.length }, (_, i) => buffer.getLine(i)?.translateToString(true) ?? '');
-      return { full: lines.join('\n'), visible: lines.slice(buffer.viewportY, buffer.viewportY + terminal.rows).join('\n'),
-        rows: terminal.rows, cols: terminal.cols, length: buffer.length, baseY: buffer.baseY, viewportY: buffer.viewportY,
-        identity: { tab: session.view.id, session: session.control.sessionId } };
-    }
-    throw new Error('Visible session-owned xterm unavailable');
-  });
+async function terminalBuffer(browser) {
+  const buffer = await mountedRunner(browser, 'buffer');
+  if (!buffer) throw new UnverifiedObservation('Mounted session-owned xterm unavailable');
+  return buffer;
 }
 
 // Diagnostic-only subscription: production Hub consumes PTY, never these records.
-export async function canonicalRecords(browser, connection) {
+async function canonicalRecords(browser, connection) {
   return browser.execute(async ({ session, generation }) => {
     const request = request => window.__TAURI_INTERNALS__.invoke('runner_presentation', { id: session, generation, request });
     const sub = await request({ operation: 'presentation.subscribe', api_version: 1, types: ['log', 'activity'] });

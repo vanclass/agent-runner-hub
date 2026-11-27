@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase, BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
 import { startupMs, subagentCompletionMs } from '../../../tools/native-probe/limits.mjs';
-import { readyInstalledHub, stopWatching, correlated, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
+import { readyInstalledHub, stopWatching, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
+import { executionReleased, observeSession, workSubmissions, workObservations } from './runner-observations.mjs';
 import { HubActions } from './hub-actions.mjs';
-import { terminalBuffer, canonicalRecords } from './terminal-buffer.mjs';
 
 async function geometry(browser) {
   return browser.execute(() => {
@@ -20,6 +20,7 @@ async function geometry(browser) {
 
 // One explicit harmless Provider instruction; inherit the verified startup account/model.
 async function semanticWork(browser, hub, connection, workRoot, route, presentation) {
+  const { terminal } = hub;
   const single = route === 'single-entry';
   const canonicalConfig = await visibleConfiguration(browser, connection);
   if (single) await hub.selectSingleEntry();
@@ -39,29 +40,28 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
       ...Array.from({ length: 24 }, (_, i) => `읽기 전용 확인 ${i + 1}: Korean/English multiline presentation check only.`)].join('\n');
   const compact = presentation ? await geometry(browser) : undefined;
   const retainedLine = presentation && !single
-    ? (await terminalBuffer(browser)).full.split('\n').find(line => line.trim()) : undefined;
+    ? (await terminal.buffer()).full.split('\n').find(line => line.trim()) : undefined;
   await hub.draft(route, instruction);
   assert.equal((await hub.instructionState(route)).value, instruction);
   const editing = presentation ? await geometry(browser) : undefined;
-  const previousRequests = await browser.execute(async () => {
-    return (await Promise.all(Object.keys(window.__wg3Observation.snapshots).map(async id =>
-      window.__TAURI_INTERNALS__.invoke('runner_observe', { id })))).flatMap(s => s.features?.results ?? [])
-      .filter(r => r.feature === 'work' && r.operation === 'work.submit').map(r => r.id);
+  const observedSessions = await browser.execute(() => {
+    return Object.keys(window.__wg3Observation.snapshots);
   });
+  const priorSnapshots = await Promise.all(observedSessions.map(id => observeSession(browser, id)));
+  const priorBySession = new Map(observedSessions.map((id, index) =>
+    [id, new Set(workSubmissions(priorSnapshots[index]).map(result => result.id))]));
   await hub.submit(route);
   const entered = presentation ? await geometry(browser) : undefined;
   connection = await visibleConnection(browser);
   let submitted, completed, instructionPublication;
   await browser.waitUntil(async () => {
-    const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
-    submitted ??= snapshot.features.results.find(r => r.feature === 'work' && r.operation === 'work.submit'
-      && !previousRequests.includes(r.id));
+    const snapshot = await hub.observations.snapshot(connection);
+    submitted ??= workSubmissions(snapshot).find(r => !priorBySession.get(connection.session)?.has(r.id));
     if (submitted?.state === 'rejected') throw new BlockedPrerequisite('Read-only work rejected: ' + submitted.code);
     if (submitted?.state === 'outcome-unknown') throw new UnverifiedObservation('Work effect unknown; do not replay');
-    const observations = snapshot.features.results.filter(r => r.feature === 'work').flatMap(r => [r.reply?.work, ...(r.reply?.works ?? [])]).filter(Boolean);
-    completed = submitted && observations.find(work => work.submission_request_id === submitted.id && work.terminal);
+    completed = submitted && workObservations(snapshot).find(work => work.submission_request_id === submitted.id && work.terminal);
     if (presentation && !instructionPublication) {
-      const buffer = await terminalBuffer(browser);
+      const buffer = await terminal.buffer();
       if (buffer.full.replace(/\s/g, '').includes(instruction.replace(/\s/g, '')))
         instructionPublication = { buffer, workTerminal: !!completed };
     }
@@ -80,18 +80,14 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
     outcome: completed.outcome, identity, draftCleared: true };
   if (!presentation) {
     await hub.wait(async () => {
-      const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke(
-        'runner_observe', { id }), connection.session), connection);
-      const execution = snapshot.observation?.execution;
-      return execution?.lifecycle_state === 'INTERACTIVE_READY'
-        && execution.owned_execution_alive === false && execution.workflow_kind === '';
+      return executionReleased(await hub.observations.snapshot(connection));
     }, 'Completed work did not release its owned execution');
     if (single) await hub.selectSingleEntry();
     assert.equal((await hub.instructionState(route)).value, '', 'Canonical start clears the originating draft');
     return { ...result, executionReleased: true };
   }
   const reply = single ? 'HUB_SINGLE_ENTRY_ACCEPTANCE' : 'HUB_LONG_COMPOSER_ACCEPTANCE';
-  await browser.waitUntil(async () => (await terminalBuffer(browser)).full.includes(reply), { timeout: startupMs });
+  await hub.wait(async () => await terminal.find(reply) >= 0, 'Provider reply missing from terminal buffer');
   const confirmed = await geometry(browser);
   assert.equal(confirmed.draftLength, 0, 'Canonical start clears the unchanged draft');
   if (!single) {
@@ -102,7 +98,7 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
   let originalInstructionBufferCount;
   if (single) {
     const normalize = text => text.replace(/\s/g, '');
-    originalInstructionBufferCount = normalize((await terminalBuffer(browser)).full).split(normalize(instruction)).length - 1;
+    originalInstructionBufferCount = normalize((await terminal.buffer()).full).split(normalize(instruction)).length - 1;
     if (originalInstructionBufferCount !== 1) throw new UnverifiedObservation(
       'Original instruction exact buffer count ' + originalInstructionBufferCount + '; no synthetic echo: '
       + JSON.stringify({ requestId: submitted.id, started: completed.started_event_id, outcome: completed.outcome,
@@ -111,7 +107,7 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
   }
   let released;
   await browser.waitUntil(async () => {
-    const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
+    const snapshot = await hub.observations.snapshot(connection);
     const observation = snapshot.observation;
     const marker = await browser.execute(tab => {
       const row = [...document.querySelectorAll('.runner-row')].find(r => r.dataset.runnerId === tab);
@@ -119,14 +115,12 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
       return dot && { activity: dot.className, label: dot.getAttribute('aria-label'), color: getComputedStyle(dot).color };
     }, connection.tab);
     released = { observation, marker, age: snapshot.observationAgeMs };
-    return snapshot.state === 'ready' && observation?.execution.lifecycle_state === 'INTERACTIVE_READY'
-      && observation.execution.owned_execution_alive === false && observation.execution.workflow_kind === ''
-      && marker?.activity === 'status-dot idle';
+    return executionReleased(snapshot) && marker?.activity === 'status-dot idle';
   }, { timeout: startupMs, timeoutMsg: 'Completed work did not produce verified released Idle sidebar authority' });
   assert.equal(released.marker.color, 'rgb(34, 197, 94)');
   assert.equal(released.marker.label, 'Verified idle');
-  const buffer = await terminalBuffer(browser), output = buffer.full;
-  const canonical = await canonicalRecords(browser, connection);
+  const buffer = await terminal.buffer(), output = buffer.full;
+  const canonical = await terminal.canonicalRecords(connection);
   const scrollback = { rows: buffer.length, startupRetained: output.includes(retainedLine) };
   if (!single) assert.ok(scrollback?.startupRetained, 'Original startup scrollback retained');
   const normalize = text => text.replace(/\s/g, '');

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { PNG } from 'pngjs';
-import { ownedConnection, correlated } from './runner-flow.mjs';
+import { visibleConnection } from './runner-flow.mjs';
 import { Dom } from '../../../tools/native-probe/dom.mjs';
 import { GeneratedImages } from './generated-images.mjs';
+import { RunnerTabs } from './runner-tabs.mjs';
+import { observeConnection } from './runner-observations.mjs';
 
 const digest = bytes => createHash('sha256').update(Buffer.from(bytes)).digest('hex');
 export function animatedFixture() {
@@ -91,24 +93,9 @@ export async function generatedSource(browser, { interact, observeAnimation = fa
     await images.openPreview();
     await browser.waitUntil(async () => !!(await rendered())?.naturalWidth);
   };
-  let initialId;
-  await browser.waitUntil(async () => {
-    const ids = await browser.execute(() => Object.keys(window.__wg3Observation.snapshots));
-    if (ids.length === 1) initialId = ids[0];
-    return initialId !== undefined;
-  });
-  // WebDriver serializes an explicit undefined argument as null; bind the exact ID.
-  const existing = await ownedConnection(browser, undefined, initialId);
-  const before = await browser.execute(() => Object.keys(window.__wg3Observation.snapshots));
-  await browser.execute(() => document.querySelector('.add-runner').click());
-  let created;
-  await browser.waitUntil(async () => {
-    created = await browser.execute(before => Object.keys(window.__wg3Observation.snapshots)
-      .filter(id => !before.includes(id)), before);
-    return created.length === 1 && browser.execute(() => !!document.querySelector('.generated-images'));
-  });
-  assert.equal(created.length, 1, 'Bind only the session created by this New Runner action');
-  const connection = await ownedConnection(browser, existing.snapshot.features.runnerRoot, created[0]);
+  const tab = await new RunnerTabs(new Dom(browser)).add();
+  const connection = await visibleConnection(browser);
+  assert.equal(connection.tab, tab, 'Bind only the session selected by this New Runner action');
   let inventory;
   try {
     inventory = await images.list(connection.session);
@@ -122,8 +109,7 @@ export async function generatedSource(browser, { interact, observeAnimation = fa
   assert.deepEqual(verified.image, image);
   assert.equal(verified.bytes.length, image.byteLength);
   assert.equal(digest(verified.bytes), image.sha256);
-  const current = await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session);
-  correlated(current, connection);
+  await observeConnection(browser, connection);
   // Promotion mounts the consumer before its first asynchronous discovery settles.
   await browser.waitUntil(async () => (await images.state())?.items.some(item => item.id === image.imageId));
   await images.select(image.imageId);
@@ -193,7 +179,7 @@ export async function generatedSource(browser, { interact, observeAnimation = fa
   await interact.escape();
   await browser.waitUntil(async () => !await viewer.state());
   assert.equal(await browser.execute(() => !!document.querySelector('textarea[data-instruction]')), true);
-  correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
+  await observeConnection(browser, connection);
   result.properties.R05.escape = 'supported'; result.properties.R06 = 'supported';
   result.gestures = { zoomed, panned, reduced, reset };
   return result;

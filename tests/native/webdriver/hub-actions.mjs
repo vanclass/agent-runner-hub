@@ -3,6 +3,11 @@ import { Dom } from '../../../tools/native-probe/dom.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { ComposerAttachments, instructionSelector } from './composer-attachments.mjs';
 import { GeneratedImages } from './generated-images.mjs';
+import { ApplicationSettings } from './application-settings.mjs';
+import { HubLogs } from './hub-logs.mjs';
+import { RunnerObservations } from './runner-observations.mjs';
+import { RunnerTabs } from './runner-tabs.mjs';
+import { RunnerTerminal } from './terminal-buffer.mjs';
 
 const configuration = {
   account: ['.account-settings select', JSON.parse, JSON.stringify],
@@ -20,6 +25,11 @@ export class HubActions {
     this.dom = new Dom(browser);
     this.attachments = new ComposerAttachments(this.dom);
     this.images = new GeneratedImages(this.dom);
+    this.tabs = new RunnerTabs(this.dom);
+    this.settings = new ApplicationSettings(this.dom);
+    this.logs = new HubLogs(this.dom, this.settings);
+    this.observations = new RunnerObservations(browser);
+    this.terminal = new RunnerTerminal(browser);
   }
 
   wait(predicate, timeoutMsg, timeout = startupMs) {
@@ -55,28 +65,19 @@ export class HubActions {
   }
 
   selectSingleEntry() {
-    return this.dom.click('.sidebar .single-entry');
+    return this.tabs.selectSingleEntry();
   }
 
   activeRunner() {
-    return this.browser.execute(() => document.querySelector('.runner-row.active')?.dataset.runnerId ?? null);
+    return this.tabs.active();
   }
 
-  async addRunner() {
-    const prior = await this.activeRunner();
-    await this.dom.click('.add-runner');
-    let id;
-    await this.wait(async () => {
-      id = await this.activeRunner();
-      return id && id !== prior;
-    }, 'Added Runner tab did not become active');
-    return id;
+  addRunner() {
+    return this.tabs.add();
   }
 
-  async selectRunner(id) {
-    const escaped = await this.browser.execute(value => CSS.escape(value), id);
-    await this.dom.click('.runner-row[data-runner-id=' + escaped + '] .nav-row');
-    await this.wait(async () => await this.activeRunner() === id, 'Runner tab did not become active');
+  selectRunner(id) {
+    return this.tabs.select(id);
   }
 
   async field(name) {

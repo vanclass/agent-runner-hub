@@ -24,7 +24,7 @@ The session-owned terminal preserves scrollback, resizing, selection, colors and
 
 
 
-Focused browser evidence: `pty-viewport.mjs`, `log-viewport.mjs` and `composer-submission.mjs`. Native `presentation_tests.rs` retains protocol transport coverage. Installed-Runner cases `semantic-presentation`, `semantic-work` and `single-entry-work` use `terminal-presentation.mjs`, `semantic-work.mjs` and diagnostic-only `terminal-buffer.mjs` to compare actual full xterm scrollback, viewport and canonical records on the exact native session/generation. Synthetic responses prove only fixture behavior; actual instruction visibility and native geometry require separately recorded host observations.
+Focused browser evidence lives in `pty-viewport.mjs`, `log-viewport.mjs` and `composer-submission.mjs`. Native `presentation_tests.rs` covers protocol transport. The installed-Runner `terminal-commands` case checks scrollback and canonical records in a hidden Hub on the exact session and generation. `semantic-presentation` adds displayed terminal and composer layout. The separate Work and Work presentation selections are documented in the [native probe guide](../../tools/native-probe/README.md#actual-hub-cases-and-explicit-selection).
 
 ## Hub keyboard navigation
 

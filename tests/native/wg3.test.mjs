@@ -4,12 +4,29 @@ import { spawnSync } from 'node:child_process';
 import { outcome, BlockedPrerequisite, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
 import { readyInstalledHub, ownedConnection, finalReceipt, inspection, inspectRequest,
   watchObservations, stopWatching, visibleConnection } from './webdriver/runner-flow.mjs';
+import { RunnerObservations, workObservations, workSubmissions } from './webdriver/runner-observations.mjs';
 
 const connection = { session: 'owned-session', generation: 7,
   snapshot: { state: 'ready', features: { generation: 7, results: [], runnerRoot: 'C:/isolated' } } };
 const admission = { state: 'submitted', generation: 7, id: 42 };
 const completed = { id: 42, feature: 'session_config', operation: 'session_config.inspect', phase: 'completed', state: 'accepted' };
 const snapshot = results => ({ state: 'ready', features: { generation: 7, results } });
+
+test('Work outcomes stay separate from submission receipts and connection state', async () => {
+  const request = { id: 42, feature: 'work', operation: 'work.submit', state: 'accepted' };
+  const outcomes = ['succeeded', 'failed', 'interrupted', 'unknown'].map((outcome, index) => ({
+    submission_request_id: 42 + index, outcome, terminal: outcome !== 'unknown'
+  }));
+  const sample = snapshot([request, { feature: 'work', operation: 'work.list', reply: { works: outcomes } }]);
+  const observations = new RunnerObservations({ async execute(_fn, id) {
+    assert.equal(id, connection.session);
+    return sample;
+  } });
+  const actual = await observations.snapshot(connection);
+  assert.deepEqual(workSubmissions(actual), [request]);
+  assert.deepEqual(workObservations(actual), outcomes);
+  await assert.rejects(observations.snapshot({ ...connection, generation: 8 }), UnverifiedObservation);
+});
 
 test('visible tab selects its bound PTY even when a spare is observed first', async () => {
   const previous = { window: globalThis.window, document: globalThis.document };

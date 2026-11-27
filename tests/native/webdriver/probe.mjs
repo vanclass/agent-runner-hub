@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
+import { Dom } from '../../../tools/native-probe/dom.mjs';
+import { ApplicationSettings } from './application-settings.mjs';
 
 // Only DOM operations in the owned real renderer; no fixture page or Runner connection.
 export async function readyHub(browser) {
@@ -20,14 +22,13 @@ export async function observeHub(browser) {
   assert.equal(initial.setupOpen, true);
   assert.equal(initial.savedInstallation, null, 'Fresh profile must not contain a Runner installation');
   assert.equal(initial.theme, 'light');
-  // Deliberate scripted DOM click avoids the provider's additional el.focus().
-  await browser.execute(() => document.querySelectorAll('.app-settings .theme-picker button')[1].click());
-  await browser.waitUntil(async () => browser.execute(() => document.querySelector('.hub')?.getAttribute('data-theme') === 'black'),
+  const settings = new ApplicationSettings(new Dom(browser));
+  await settings.setTheme('black');
+  await browser.waitUntil(async () => (await settings.appearance()).theme === 'black',
     { timeout: browser.options.waitforTimeout, timeoutMsg: 'Hub theme did not change through its actual React handler' });
-  const changed = await browser.execute(() => ({ theme: document.querySelector('.hub').getAttribute('data-theme'),
-    pressed: document.querySelectorAll('.app-settings .theme-picker button')[1].getAttribute('aria-pressed'),
-    persistedTheme: JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).theme }));
-  assert.deepEqual(changed, { theme: 'black', pressed: 'true', persistedTheme: 'black' });
+  const { theme, themePressed } = await settings.appearance();
+  const changed = { theme, themePressed, persistedTheme: (await settings.saved())?.theme };
+  assert.deepEqual(changed, { theme: 'black', themePressed: 'black', persistedTheme: 'black' });
   const activity = await browser.execute(() => {
     const line = document.querySelector('.hub-activity'), previous = line.previousElementSibling;
     return { text: line.textContent, height: line.getBoundingClientRect().height,

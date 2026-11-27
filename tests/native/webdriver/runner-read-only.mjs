@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
-import { readyInstalledHub, ownedConnection, inspection, receiptEvidence, stopWatching, correlated } from './runner-flow.mjs';
+import { readyInstalledHub, ownedConnection, inspection, receiptEvidence, stopWatching } from './runner-flow.mjs';
 import { HubActions } from './hub-actions.mjs';
 
 export function runnerReadOnly(runnerRoot) {
@@ -31,19 +31,10 @@ export function runnerReadOnly(runnerRoot) {
           assert.equal(ui.model.reasoning_effort, after.result.reply.current.model.reasoning_effort);
           assert.equal(ui.model.service_tier, after.result.reply.current.service_tier);
         }
-        const observed = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke(
-          'runner_observe', { id }), connection.session), connection);
+        const observed = await hub.observations.snapshot(connection);
         assert.deepEqual(observed.observation.selection, after.result.reply.effective);
         await browser.execute(id => window.__TAURI_INTERNALS__.invoke('pty_close', { id }), connection.session);
-        await browser.waitUntil(() => browser.execute(async id => {
-          try {
-            await window.__TAURI_INTERNALS__.invoke('runner_observe', { id });
-            return false;
-          } catch (error) {
-            if (String(error) === 'Unknown or exited PTY') return true;
-            throw error;
-          }
-        }, connection.session), { timeout: startupMs, timeoutMsg: 'Closed Runner PTY was not removed' });
+        await hub.wait(() => hub.observations.exited(connection.session), 'Closed Runner PTY was not removed', startupMs);
         return { method: 'actual Hub / authenticated native Runner; read-only',
           identity: { session: connection.session, generation: connection.generation },
           inspection: receiptEvidence(after), uiBound: { account: !!ui.account, model: !!ui.model },

@@ -3,8 +3,8 @@ import { PNG } from 'pngjs';
 import { defineNativeCase, BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
 import { subagentCompletionMs } from '../../../tools/native-probe/limits.mjs';
 import { HubActions } from './hub-actions.mjs';
-import { correlated, readyInstalledHub, stopWatching, visibleConfiguration, visibleConnection } from './runner-flow.mjs';
-import { terminalBuffer } from './terminal-buffer.mjs';
+import { readyInstalledHub, stopWatching, visibleConfiguration, visibleConnection } from './runner-flow.mjs';
+import { workObservations, workSubmissions } from './runner-observations.mjs';
 
 export function attachmentWorkCase(runnerRoot, workRoot) {
   return defineNativeCase({
@@ -32,8 +32,7 @@ export function attachmentWorkCase(runnerRoot, workRoot) {
           const state = await hub.attachments.inventory(surface);
           return state?.items.length === 1 && state.items[0].thumbnail?.width === 32 && !state.items[0].status;
         }, 'Clipboard image did not stage in the selected Runner');
-        const observe = async () => correlated(await browser.execute(
-          id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
+        const observe = () => hub.observations.snapshot(connection);
         const before = await observe();
         const priorWork = new Set(before.features.results.map(result => result.id));
         const priorReferences = new Set(before.references.results.map(result => result.id));
@@ -49,14 +48,12 @@ export function attachmentWorkCase(runnerRoot, workRoot) {
           inventory ??= registration && references.find(result => result.operation === 'references.list'
             && result.id > registration.id && result.inventory?.total_count === 1
             && result.inventory.references[0]?.reference_id === registration.reference.reference_id);
-          const attempts = snapshot.features.results.filter(result => !priorWork.has(result.id)
-            && result.feature === 'work' && result.operation === 'work.submit');
+          const attempts = workSubmissions(snapshot).filter(result => !priorWork.has(result.id));
           assert.ok(new Set(attempts.map(result => result.id)).size <= 1, 'Only one Work submission');
           submitted = attempts.at(-1) ?? submitted;
           if (submitted?.state === 'rejected') throw new BlockedPrerequisite('Work rejected: ' + submitted.code);
           if (submitted?.state === 'outcome-unknown') throw new UnverifiedObservation('Original Work outcome unknown');
-          work = submitted && snapshot.features.results.filter(result => result.feature === 'work')
-            .flatMap(result => [result.reply?.work, ...(result.reply?.works ?? [])])
+          work = submitted && workObservations(snapshot)
             .find(item => item?.submission_request_id === submitted.id && item.terminal);
           return !!work;
         }, 'Original attachment Work did not reach an authoritative terminal observation', subagentCompletionMs);
@@ -65,7 +62,7 @@ export function attachmentWorkCase(runnerRoot, workRoot) {
         assert.equal(work.outcome, 'succeeded');
         await hub.wait(async () => (await hub.instructionState(surface)).value === ''
           && (await hub.attachments.inventory(surface)).items.length === 0, 'Confirmed delivery did not retire the draft and card');
-        await hub.wait(async () => /^\s*blue[.!]?\s*$/im.test((await terminalBuffer(browser)).full),
+        await hub.wait(async () => /^\s*blue[.!]?\s*$/im.test((await hub.terminal.buffer()).full),
           'Provider reply did not identify the submitted image color');
         return { tab: connection.tab, session: connection.session, generation: connection.generation,
           registrationId: registration.id, referenceId: registration.reference.reference_id,

@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { readyInstalledHub, stopWatching } from './runner-flow.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
+import { HubActions } from './hub-actions.mjs';
 
-const read = browser => browser.execute(() => window.__TAURI_INTERNALS__.invoke('hub_log',
-  { request: { retentionDays: 7, event: null } }));
 const geometry = browser => browser.execute(() => {
   const node = document.querySelector('.hub-log-records');
   const row = node?.querySelector('.hub-log-row:last-child');
@@ -15,14 +14,16 @@ const geometry = browser => browser.execute(() => {
     latestVisible: latest.top >= view.top && latest.bottom <= view.top + node.clientHeight + 2,
     singleEntry: !!document.querySelector('.single-entry.active') };
 });
-export function hubLogCase(runnerRoot) {
+export function hubLogCase(runnerRoot, displayed = false) {
   return defineNativeCase({
-    id: 'hub-log', presentation: 'nonactivating',
+    id: displayed ? 'hub-log-presentation' : 'hub-log',
+    presentation: displayed ? 'nonactivating' : 'background',
     async ready(browser) {
       await browser.waitUntil(async () => browser.execute(() => document.readyState === 'complete'
         && !!document.querySelector('.app-settings[open], .shell-body')), { timeout: browser.options.waitforTimeout });
     },
     async run(browser) {
+      const { tabs, logs, settings } = new HubActions(browser);
       await browser.execute(() => {
         window.__hubPendingSeen = false;
         new MutationObserver(mutations => {
@@ -42,33 +43,34 @@ export function hubLogCase(runnerRoot) {
           if (result.issue) throw new Error(result.issue);
         }
       });
-      await browser.execute(() => document.querySelector('.add-runner').click());
-      await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.runner-row.active')),
-        { timeout: browser.options.waitforTimeout });
+      await tabs.add();
       assert.equal(await browser.execute(() => !!document.querySelector('.hub-log')), false);
       let disk;
       await browser.waitUntil(async () => {
-        disk = await read(browser);
-        return !disk.issue && disk.records.some(r => r.component === 'system' && r.operation === 'connection' && r.runner);
+        disk = await logs.history();
+        return !disk.issue && disk.records.some(r => r.component === 'system' && r.operation === 'connection'
+          && r.runner && r.runner !== 'Overflow fixture');
       }, { timeout: browser.options.waitforTimeout });
-      await browser.execute(() => document.querySelector('.single-entry').click());
+      await tabs.selectSingleEntry();
       await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),
         { timeout: browser.options.waitforTimeout });
-      disk = await read(browser);
+      disk = await logs.history();
       const latest = Math.max(...disk.records.map(r => r.sequence));
+      await browser.waitUntil(async () => (await logs.rows()).at(-1)?.sequence >= latest,
+        { timeout: browser.options.waitforTimeout, timeoutMsg: 'Native history did not reach the log viewport' });
+      // Establish the following-reader state before observing an independent live append.
+      await logs.scrollToBottom();
       let before;
       await browser.waitUntil(async () => {
         before = await geometry(browser);
-        return before?.singleEntry && before.latestSequence === latest
+        return before?.singleEntry && before.latestSequence >= latest
           && before.scrollHeight > before.clientHeight && before.bottomDistance <= 2 && before.latestVisible;
-      }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'Expected overflowing bottom-following log before restart' });
+      }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'Expected overflowing bottom-following log before restart' })
+        .catch(error => { throw new Error(error.message + ': ' + JSON.stringify({ latest, before })); });
       assert.ok(before.scrollTop > 0);
-      await browser.execute(() => {
-        document.querySelector('.runner-management').open = true;
-        document.querySelector('.runner-management button').click();
-      });
+      await tabs.restartAll();
       await browser.waitUntil(async () => {
-        disk = await read(browser);
+        disk = await logs.history();
         return disk.records.some(r => r.sequence > latest && r.operation === 'runner-restarted');
       }, { timeout: startupMs, timeoutMsg: 'No confirmed restart event while Single Entry remained open' }).catch(async error => {
         throw new Error(JSON.stringify({ message: error.message, before, after: await geometry(browser),
@@ -119,51 +121,45 @@ export function hubLogCase(runnerRoot) {
       assert.ok(expandedGeometry.headerAbsent);
       assert.equal(expandedGeometry.topGap, 0);
       assert.deepEqual(expandedGeometry.sequences, disk.records.map(row => row.sequence));
-      await browser.execute(() => { const n = document.querySelector('.hub-log-records'); n.scrollTop = n.scrollHeight; });
-      await browser.execute(() => document.querySelector('.app-settings-trigger').click());
-      await browser.execute(() => {
-        const input = document.querySelector('.app-settings input[type="number"]');
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '7');
-        input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-      });
-      await browser.waitUntil(async () => browser.execute(() => JSON.parse(localStorage.getItem(
-        'agent-runner-hub.preferences.v1'))?.hubLogRetentionDays === 7), { timeout: browser.options.waitforTimeout });
-      await browser.execute(() => document.querySelector('.settings-close').click());
-      const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
+      await logs.scrollToBottom();
+      await settings.open();
+      await settings.edit('retentionDays', 7);
+      await browser.waitUntil(async () => (await settings.saved())?.hubLogRetentionDays === 7);
+      await settings.close();
+      const lines = (await logs.rows()).map(row => row.text);
       assert.equal(await browser.execute(() => window.__hubPendingSeen), false, 'Startup and spare events must not insert temporary pending messages');
       assert.equal(await browser.execute(() => !!document.querySelector('.hub-log-records .hub-log-pending, .hub-log-records [role="alert"]')), false);
-      disk = await read(browser); assert.equal(disk.issue, null);
+      disk = await logs.history(); assert.equal(disk.issue, null);
       assert.ok(lines.length > 0); assert.ok(disk.records.length >= lines.length);
       await stopWatching(browser);
       return { method: 'Candidate native Hub; actual Runner tab and app-local disk; no instruction submission', disk, lines, liveAppend, pagination, expandedGeometry };
     },
     async afterRestart(browser, before) {
+      const { tabs, logs, settings } = new HubActions(browser);
       await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.app-settings[open]')),
         { timeout: browser.options.waitforTimeout });
-      await browser.execute(() => document.querySelector('.single-entry').click());
+      await tabs.selectSingleEntry();
       await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),
         { timeout: browser.options.waitforTimeout });
       let disk;
       await browser.waitUntil(async () => {
-        disk = await read(browser);
+        disk = await logs.history();
         return disk.records.length > before.disk.records.length;
       }, { timeout: browser.options.waitforTimeout, timeoutMsg: 'Fresh startup events append after old history' });
       assert.equal(disk.issue, null);
       for (const old of before.disk.records) assert.deepEqual(disk.records.find(r => r.sequence === old.sequence), old);
       while (await browser.execute(() => document.querySelectorAll('.hub-log-row').length) < disk.records.length) {
-        const count = await browser.execute(() => {
-          const node = document.querySelector('.hub-log-records'); node.scrollTop = 0; return node.children.length;
-        });
-        await browser.waitUntil(async () => browser.execute(count =>
-          document.querySelectorAll('.hub-log-row').length > count, count), { timeout: browser.options.waitforTimeout });
+        const count = (await logs.rows()).length;
+        await logs.scroll({ top: 0 });
+        await browser.waitUntil(async () => (await logs.rows()).length > count);
       }
-      const lines = await browser.execute(() => [...document.querySelectorAll('.hub-log-row')].map(n => n.textContent));
+      const lines = (await logs.rows()).map(row => row.text);
       for (const old of before.lines) assert.ok(lines.includes(old), 'Restored formatter must be byte-identical');
       assert.equal(new Set(disk.records.map(r => r.sequence)).size, disk.records.length);
       assert.ok(disk.records.length > before.disk.records.length, 'Fresh startup events append after old history');
-      const days = await browser.execute(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).hubLogRetentionDays);
+      const days = (await settings.saved()).hubLogRetentionDays;
       assert.equal(days, 7);
-      await browser.execute(() => { const n = document.querySelector('.hub-log-records'); n.scrollTop = n.scrollHeight; });
+      await logs.scrollToBottom();
       return { recordsBefore: before.disk.records.length, recordsAfter: disk.records.length,
         formatAndOrderRetained: true, retentionDays: days, duplicateSequences: false };
     },

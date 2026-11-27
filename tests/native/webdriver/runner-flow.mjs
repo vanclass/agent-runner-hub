@@ -4,6 +4,8 @@ import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { readyHub } from './probe.mjs';
 import { isInspection, sameInstallation } from './config-contract.mjs';
 import { HubActions } from './hub-actions.mjs';
+import { mountedRunner } from './mounted-runner.mjs';
+import { correlated, observeConnection } from './runner-observations.mjs';
 
 // Observe existing application IPC without replacing responses, credentials or transport.
 // Retain only observation IDs/snapshots, never PTY bytes or authentication material.
@@ -63,18 +65,7 @@ export async function readyInstalledHub(browser, runnerRoot, platform = process.
 export async function visibleConnection(browser, runnerRoot) {
   let identity;
   await browser.waitUntil(async () => {
-    identity = await browser.execute(() => {
-      const host = document.querySelector('.terminal-host');
-      const tab = document.querySelector('.runner-row.active')?.dataset.runnerId;
-      let fiber = host?.[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
-      for (; fiber; fiber = fiber.return) {
-        const session = fiber.memoizedProps?.session;
-        if (session?.view?.id === tab && session.terminal?.element?.parentElement === host) {
-          return { tab, session: session.control.sessionId };
-        }
-      }
-      return null;
-    });
+    identity = await mountedRunner(browser, 'identity');
     return !!identity?.session;
   }, { timeout: startupMs, timeoutMsg: 'Visible tab to PTY binding unavailable' }).catch(error => {
     throw new UnverifiedObservation(error.message);
@@ -95,8 +86,8 @@ export async function ownedConnection(browser, runnerRoot, sessionId = null) {
     return connection && connection.snapshot.state !== 'connecting';
   }, { timeout: startupMs, timeoutMsg: 'Owned Hub Runner observation did not settle' }).catch(async error => {
     const diagnostic = await browser.execute(() => ({
-      launchFailure: window.__wg3Observation.launchFailure,
-      sessions: Object.entries(window.__wg3Observation.snapshots).map(([id, state]) =>
+      launchFailure: window.__wg3Observation?.launchFailure,
+      sessions: Object.entries(window.__wg3Observation?.snapshots ?? {}).map(([id, state]) =>
         ({ id, state: state?.state, generation: state?.features?.generation })),
       status: [...document.querySelectorAll('[role="status"], [role="alert"]')].map(node => node.textContent)
     }));
@@ -119,27 +110,13 @@ export async function ownedConnection(browser, runnerRoot, sessionId = null) {
 export async function visibleConfiguration(browser, connection) {
   let actual;
   await browser.waitUntil(async () => {
-    actual = await browser.execute(id => {
-      const host = document.querySelector('.terminal-host');
-      let fiber = host?.[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
-      for (; fiber; fiber = fiber.return) {
-        const s = fiber.memoizedProps?.session;
-        if (s?.control?.sessionId === id && s.terminal.element?.parentElement === host)
-          return s.control.config.actual;
-      }
-      return null;
-    }, connection.session);
+    actual = await mountedRunner(browser, 'configuration', connection.session);
     return !!actual;
   }, { timeout: startupMs, timeoutMsg: 'Visible session canonical configuration unavailable' });
   assert.ok(isInspection(actual));
   return actual;
 }
 
-export function correlated(snapshot, connection) {
-  if (snapshot.state !== 'ready' || snapshot.features?.generation !== connection.generation)
-    throw new UnverifiedObservation('Owned Runner session/generation changed; no replay.');
-  return snapshot;
-}
 export function finalReceipt(snapshot, connection, admission) {
   correlated(snapshot, connection);
   if (admission.state !== 'submitted') {
@@ -161,7 +138,7 @@ export async function inspectRequest(browser, connection, request) {
   finalReceipt(connection.snapshot, connection, admission);
   let result;
   await browser.waitUntil(async () => {
-    const snapshot = await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session);
+    const snapshot = await observeConnection(browser, connection);
     result = finalReceipt(snapshot, connection, admission);
     return !!result;
   }, { timeout: startupMs, timeoutMsg: 'Read-only authoritative receipt unverified; do not resubmit' }).catch(error => {

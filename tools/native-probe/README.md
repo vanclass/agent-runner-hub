@@ -39,22 +39,23 @@ for the existing owner rather than attempting global process cleanup.
 
 [Native Tauri automation](../../docs/implementation_specs/native_automation.md)
 owns the provider choice, test boundary, Windows observation/focus limitations,
-macOS adapter and integration boundary. The original entry composes the renderer probe and an
-independent language-preference case under node:test. It does not start Runner
-sessions or exercise physical desktop input. The same entry selects the macOS
-adapter on that host; Xcode Command Line Tools including swiftc and lsof are required.
+macOS adapter and integration boundary. The npm entry defaults to the renderer
+and language presentation smoke cases. Use explicit case selection for background
+work. The same entry selects the macOS adapter on that host. It requires Xcode
+Command Line Tools including swiftc and lsof.
 Native macOS compilation, launch, focus behavior and cleanup are unverified here.
 
 ## Choose the evidence method
 
-Choose from the acceptance property before execution. A failed check does not
-authorize escalation to a displayed window or foreground control.
+Apply the background-first Test Selection policy when choosing a Hub case.
+Start with the least disruptive method that can establish the required property.
+Treat a failed hidden check as a failure of that check and diagnose it in place.
 
 | Property | Least disruptive supported path | Evidence boundary |
 | --- | --- | --- |
 | React state, simulated transport, response/error handling | Headless Playwright | Synthetic Runner packets; no native authentication or OS input |
-| Actual installation UI/resolver, native configuration and submission | Background native cases | Real Tauri assets/IPC with the installed Runner and its ordinary authentication |
-| Displayed renderer/theme/language | WG2 nonactivating cases | Owned rear window and screenshot; no trusted keyboard/mouse claim |
+| Actual Runner tabs, preferences, restart and restoration, terminal buffer, logs, configuration and submission | Background native cases | Real Tauri assets and IPC with isolated app data and the installed Runner |
+| Displayed renderer/theme/language, terminal layout, image/GIF frames and log styling | Explicit nonactivating presentation cases | Owned rear window and renderer capture |
 | Native correlation, handle isolation, cleanup/error contracts | Focused Rust/Node fixtures | Synthetic protocol children are not installed Runner acceptance |
 | Focus-dependent terminal input, clipboard or OS dialogs | Existing authorized Computer Use | Requires its own target identity, readiness, input and settlement evidence |
 
@@ -69,7 +70,17 @@ node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/nati
 
 ## Actual Hub cases and explicit selection
 
-`semantic-presentation` (retained case ID) compares original xterm scrollback and visible rows with diagnostic canonical records for `/help`, then checks retention after a read-only invalid `/files` argument rejection. The fresh owned Hub uses the existing verified installation and displays its original terminal. This case does not submit Provider work; browser fixtures do not establish installed-Runner delivery.
+`background-workspace` exercises Runner tab identity, rename, reorder, navigation,
+global restart, removal confirmation and settlement, and application and tab
+preference restoration. `terminal-commands` compares original xterm scrollback
+with diagnostic canonical records for `/help` and checks retention after a read-only
+invalid `/files` argument rejection. `hub-log` checks native history, live append,
+pagination and restoration. These cases use the installed Runner without Provider
+work. `language-preference` runs hidden without a Runner installation.
+
+Select `semantic-presentation` for displayed terminal and composer layout,
+`hub-log-presentation` for displayed log styling, or `language-presentation`
+for a displayed localized setup view.
 
 The explicitly selected background cases `semantic-work` and `single-entry-work` submit
 one harmless Pure Direct instruction each through the Runner and Single Entry
@@ -84,16 +95,17 @@ Presentation cases click the ordinary Add Runner action before waiting for a con
 Work cases submit their declared instruction directly after native/configuration readiness; they do not require an unrelated `/help` command to produce PTY text. The separate command case retains that observation and its own failure boundary.
 
 ```text
-node tools/native-probe/hub.mjs --help
-node tools/native-probe/hub.mjs --case installation-entry
-node tools/native-probe/hub.mjs --case dom-interactions
-node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
-node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "<absolute Runner Workspace root>"
-node tools/native-probe/hub.mjs --case semantic-work --case single-entry-work --runner-root "<absolute Runner Workspace root>"
+npm run test:native:probe -- --help
+npm run test:native:probe -- --case installation-entry --case dom-interactions --case language-preference
+npm run test:native:probe -- --case background-workspace --case terminal-commands --case hub-log --runner-root "<absolute Runner Workspace root>"
+npm run test:native:probe -- --case configuration-selection --case runner-read-only --runner-root "<absolute Runner Workspace root>"
+npm run test:native:probe -- --case semantic-work --case single-entry-work --runner-root "<absolute Runner Workspace root>"
 ```
 
 Repeat `--case` to compose only the required cases in one build; each still gets a
-fresh owned process/profile. With no case selector, the three WG3 cases run.
+fresh owned process/profile. The direct `node tools/native-probe/hub.mjs` form
+shares the same selector and defaults to the installation, configuration, and
+read-only cases.
 `--target-dir <absolute Cargo cache>` works with either native entry.
 Installation-entry checks mandatory setup, native rejection of a relative path,
 unchanged saved installation and retry availability. Configuration-selection uses
@@ -334,6 +346,62 @@ from `tests/native/webdriver/runner-flow.mjs` as your readiness callback.
 It verifies the installation and starts observing Hub-owned connections.
 Use that module's `visibleConnection` for the active Runner tab and `inspection`
 for its authenticated native configuration.
+
+### Compose Runner, terminal, and settings checks
+
+```js
+const { tabs, observations, terminal, logs, settings } = hub;
+const tab = await tabs.add('runner');
+const connection = await visibleConnection(browser, runnerRoot);
+await tabs.rename(tab, 'Acceptance');
+await hub.wait(async () => (await observations.active())?.activity === 'idle', 'Runner did not become idle');
+await hub.draft('runner', '/help');
+await hub.submit('runner');
+await hub.wait(async () => await terminal.find('/troubleshoot') >= 0, 'Help output missing');
+const { full, visible, identity } = await terminal.buffer();
+await terminal.scroll('top');
+await tabs.selectSingleEntry();
+const { records, issue } = await logs.history();
+await settings.open();
+await settings.edit('retentionDays', 7);
+await settings.close();
+```
+
+Use `tabs.inventory()` to find rendered domains and tab IDs. Use `tabs.reorder(id, domain, beforeId)` for a drop and `tabs.navigate(id, 'ArrowDown')` for sidebar focus navigation. `requestRemoval(id)` follows the removal preference. Inspect `removalPrompt()` before confirming or cancelling, and verify settlement for the exact connection when termination is expected. Idle reuse can preserve the PTY after the tab is removed.
+
+Use `tabs.restartAll()` to request global restart and `tabs.restartStatus()` to
+observe pending work and failures. Wait for settlement and rebind each tab before
+using its replacement connection. Tab UUIDs are durable across an isolated Hub
+restart. PTY IDs and generations belong to one Hub process.
+
+`logs.history()` returns the native ordered records and any storage issue under
+the configured retention policy. `logs.rows()` reads formatted rows from Single
+Entry. `logs.scroll({ top: 0 })` and `logs.scrollToBottom()` exercise the existing
+viewport behavior, including pagination through the ordinary scroll handler.
+
+`observations.active()` reads the mounted session's process status, freshness,
+Runner activity, authoritative execution and attention sample, and presented
+Work. Read Work's own state, outcome, request ID and terminal flag for completion,
+failure, interruption or uncertainty. Use `observations.snapshot(connection)`
+for a native sample fenced to the original generation, and `workSubmissions`
+and `workObservations` from `runner-observations.mjs` for receipt correlation.
+Submit through the existing composer using `draft` and `submit`, including
+supported slash commands. Terminal input remains read-only. The Hub exposes no
+generic Work interrupt or cancel action.
+
+`terminal.find` matches text in scrollback or, with `{ viewport: true }`, current
+xterm rows. `terminal.scroll` accepts top, bottom, or a signed line count.
+WebView Ctrl+F, native match highlighting, physical scroll, and physical key
+delivery require separate evidence if those properties are needed.
+
+`settings.field` and `settings.edit` take `language`, `confirmRemoval`,
+`allocationPolicy`, `domainDisplay`, or `retentionDays`. Use `setTheme` for
+appearance and `openShortcuts`, `captureShortcut`, and `saveShortcuts` for
+chords. Edit tab-specific requests through the existing configuration panel
+helpers after selecting a tab. Read `settings.savedTab(id)` for saved requests
+and `visibleConfiguration` for current authenticated settings. To check
+restoration, declare `afterRestart(browser, before)` on the case and reread both
+the controls and saved state through the new process.
 
 Export a `defineNativeCase` value from an application-owned module, then pass it
 to `nativeSuite([myCase], { root, target })` from a node:test entry. The existing

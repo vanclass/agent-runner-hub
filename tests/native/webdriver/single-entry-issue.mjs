@@ -4,16 +4,15 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
-import { readyInstalledHub, ownedConnection, visibleConnection, correlated } from './runner-flow.mjs';
+import { readyInstalledHub, ownedConnection, visibleConnection } from './runner-flow.mjs';
 import { HubActions } from './hub-actions.mjs';
+import { observeConnection } from './runner-observations.mjs';
 
 const input = 'textarea[data-instruction]';
 const png = [...PNG.sync.write({width: 1, height: 1, data: Buffer.from([31,87,201,255])})];
 const wait = (browser, action, label, timeout = 60000) =>
   browser.waitUntil(action, { timeout, interval: 200, timeoutMsg: label });
-const snapshot = (browser, connection) => browser.execute(id =>
-  window.__TAURI_INTERNALS__.invoke('runner_observe', {id}), connection.session)
-  .then(value => correlated(value, connection));
+const snapshot = observeConnection;
 
 const readInputs = `
 import hashlib, json, sys
@@ -201,7 +200,7 @@ export function singleEntryIssueCase(runnerRoot, project, brief) {
       console.log('Authenticated binding:', JSON.stringify({ session: connection.session, generation: connection.generation,
         activity: observed.observation.issue_run_execution, registrations }));
       if (final.phase !== 'delivered') throw new UnverifiedObservation('The original submission did not report a verified start');
-      await browser.execute(() => document.querySelector('.single-entry').click());
+      await hub.tabs.selectSingleEntry();
       const origin = await browser.execute(input => ({ draft: document.querySelector(input)?.value,
         cards: document.querySelectorAll('.attachment-chip').length }), input);
       assert.deepEqual(origin, { draft: '', cards: 0 });

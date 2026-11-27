@@ -3,7 +3,8 @@
 ## Test build and driver boundary
 
 The project-owned standalone entry is `npm run test:native:probe`, implemented by
-[`tools/native-probe/run.mjs`](../../tools/native-probe/run.mjs). It supplements the
+[`tools/native-probe/hub.mjs`](../../tools/native-probe/hub.mjs) through the npm
+smoke wrapper. It supplements the
 managed headless Playwright entry and existing Rust acceptance paths; it does not
 replace their fixtures, schedule suites or authorize desktop input.
 
@@ -266,6 +267,16 @@ selection and authenticated read-only comparison live independently in
 [`configuration.mjs`](../../tests/native/webdriver/configuration.mjs) and
 [`runner-read-only.mjs`](../../tests/native/webdriver/runner-read-only.mjs).
 These use background presentation; adding feature cases introduces no executor branches.
+
+[`HubActions`](../../tests/native/webdriver/hub-actions.mjs) composes the probe
+interfaces for tab management, mounted Runner and native Work observations,
+xterm output and scrolling, application preferences and log history. The
+helpers use ordinary Hub handlers and existing native contracts. Tab identity,
+process-local PTY identity, configuration requests, and actual execution
+observations retain their respective owners. The isolated `afterRestart`
+callback reopens the same case profile after the first native owner settles.
+See the [case selection and API examples](../../tools/native-probe/README.md#choose-the-evidence-method)
+for background, displayed and physical-input evidence boundaries.
 
 The Runner cases reuse the normal installed Runner runtime, explicitly selected with
 `--runner-root` for the fresh Hub profile when needed. The actual installation UI/native

@@ -49,6 +49,11 @@ export async function executeCase(spec, environment, resources) {
     evidence.observations = await testCase.run(browser, focusRequired
       ? Object.freeze({ pid: owner.pid, hwnd: evidence.stages.initial.hwnd }) : undefined);
     if (testCase.afterRestart) {
+      if (testCase.presentation === 'background') {
+        evidence.stages.beforeRestart = await owner.request('snapshot');
+        noActivation(evidence.stages.beforeRestart);
+        assert.equal(evidence.stages.beforeRestart.visible, false, 'Background Hub became visible before restart');
+      }
       await browser.deleteSession(); browser = undefined;
       evidence.firstTeardown = await owner.stop();
       noActivation(evidence.firstTeardown);
@@ -63,6 +68,7 @@ export async function executeCase(spec, environment, resources) {
         return state.hwnd ? state : null;
       }, resources.signal);
       noActivation(evidence.stages.initial);
+      if (testCase.presentation === 'background') assert.equal(evidence.stages.initial.visible, false);
       await until(async () => (await owner.request('listener')).listeners.length, resources.signal);
       browser = await resources.connect();
       noActivation(await owner.request('snapshot'));

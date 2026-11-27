@@ -111,8 +111,7 @@ export function configurationSelection(runnerRoot, directRoot) {
           await hub.edit('target', target);
           assert.deepEqual((await hub.field('target')).value, target);
         }
-        const saved = await browser.execute(() =>
-          JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry);
+        const saved = (await hub.settings.saved()).singleEntry;
         assert.deepEqual((await hub.field('account')).value, account);
         assert.deepEqual(saved.accountIdentity, account);
         assert.equal((await hub.field('mode')).value, mode);

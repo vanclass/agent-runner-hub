@@ -61,15 +61,16 @@ export function activityCase(runnerRoot, windowWidth) {
         method: 'actual installed Runner capability discovery and existing Hub selection UI; no additional inspection, work or configuration apply' };
     },
     async observe(browser) {
+      const { tabs } = new HubActions(browser);
       const rows = [];
       rows.push(await geometry(browser));
-      await new HubActions(browser).addRunner();
+      await tabs.add();
       await browser.waitUntil(async () => browser.execute(() =>
         !!document.querySelector('.runner-row.active') &&
         document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
       { timeout: startupMs, timeoutMsg: 'Runner-tab active target guidance was not observed' });
       rows.push(await geometry(browser));
-      await browser.execute(() => document.querySelector('.single-entry').click());
+      await tabs.selectSingleEntry();
       await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.runner-row.active')),
         { timeout: startupMs });
       rows.push(await geometry(browser));

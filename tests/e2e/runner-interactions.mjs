@@ -1,10 +1,9 @@
 // Structured selection/confirmation presentation is deferred; canonical attention still blocks input.
 export function registerRunnerInteractions({ test, expect, transport, configure, create }) {
   for (const state of ['active', 'pending-command', 'disconnected']) {
-    test('three regions preserve canonical foreground guards: ' + state, async ({ page }) => {
+    test('Runner workspace preserves canonical foreground guards: ' + state, async ({ page }) => {
       await transport(page, undefined, { work: true, auto: true }); await configure(page); await create(page);
       await expect(page.getByRole('textbox', { name: 'Runner instructions', exact: true })).toBeEnabled();
-      await expect(page.locator('.workspace > *')).toHaveCount(3);
       await expect(page.locator('.runner-interaction, .runner-work-status, .runner-instructions, .terminal-tools')).toHaveCount(0);
       await page.evaluate(state => {
         const s = window.__nativeFixture.sessions.get('pty-1');
@@ -13,9 +12,8 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
         if (state === 'disconnected') s.control.state = 'disconnected';
       }, state);
       if (state !== 'disconnected') await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
-      await expect(page.locator('.workspace > *')).toHaveCount(3);
       expect(await page.locator('.workspace > *').evaluateAll(nodes => nodes.map(n => n.className)))
-        .toEqual(['output', 'workspace-context', 'composer-area runner-composer']);
+        .toEqual(['output', 'workspace-context', 'composer-area runner-composer', 'hub-activity']);
       await expect(page.locator('.runner-interaction, .runner-work-status, .runner-instructions, .terminal-tools')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests)

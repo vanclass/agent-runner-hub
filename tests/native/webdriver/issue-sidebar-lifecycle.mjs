@@ -7,8 +7,9 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { BlockedPrerequisite, UnverifiedObservation, defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { pollMs, startupMs, commandMs } from '../../../tools/native-probe/limits.mjs';
-import { correlated, readyInstalledHub, stopWatching, visibleConnection } from './runner-flow.mjs';
-import { terminalBuffer } from './terminal-buffer.mjs';
+import { readyInstalledHub, stopWatching, visibleConnection } from './runner-flow.mjs';
+import { observeConnection } from './runner-observations.mjs';
+import { HubActions } from './hub-actions.mjs';
 
 const producerRevision = 'd1aaa67e689d7e5f2fa3139420595b5ca8d4e1e7';
 const exactReply = 'Continue the same fixture Discussion.';
@@ -105,17 +106,13 @@ function matchesMarker(marker, [state, label, color, shape]) {
     marker.label === label && marker.color === color && marker.shape === shape;
 }
 
-function snapshot(browser, connection) {
-  return browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session);
-}
-
 function feature(browser, connection, request) {
   return browser.execute(({ id, request }) => window.__TAURI_INTERNALS__.invoke('runner_feature',
     { id, request: { feature: 'work', request } }), { id: connection.session, request });
 }
 
 async function sample(browser, connection) {
-  const current = correlated(await snapshot(browser, connection), connection);
+  const current = await observeConnection(browser, connection);
   const { issue_run_user_action: action, issue_run_execution: execution, attention } = current.observation ?? {};
   return { action, execution, attention, serial: current.observationSerial, age: current.observationAgeMs,
     marker: await markerSample(browser, connection.tab) };
@@ -156,7 +153,7 @@ async function workResult(browser, connection, request) {
   assert.equal(admission.generation, connection.generation);
   let receipt;
   await browser.waitUntil(async () => {
-    const current = correlated(await snapshot(browser, connection), connection);
+    const current = await observeConnection(browser, connection);
     receipt = current.features.results.find(r => r.id === admission.id && r.feature === 'work' &&
       r.operation === request.operation && r.phase === 'completed');
     return !!receipt;
@@ -184,11 +181,12 @@ export function issueSidebarLifecycle(source) {
     async run(browser) {
       let root, ready;
       try {
-        await browser.execute(() => document.querySelector('.add-runner').click());
+        const { tabs, terminal } = new HubActions(browser);
+        await tabs.add();
         const connection = await visibleConnection(browser, installation);
         let session;
         await browser.waitUntil(async () => {
-          const buffer = await terminalBuffer(browser);
+          const buffer = await terminal.buffer();
           if (buffer.identity.tab !== connection.tab || buffer.identity.session !== connection.session) return false;
           session = /Hub fixture ([a-f0-9]{32})/.exec(buffer.full)?.[1];
           return !!session;

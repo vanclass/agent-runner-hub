@@ -65,8 +65,20 @@ test('restart keeps profile resources until both independently owned processes s
   } }, {}, f.resources);
   assert.equal(result.outcome, 'passed');
   assert.deepEqual(result.restartObservations, { restored: true });
+  assert.equal(result.stages.beforeRestart.visible, false);
   assert.equal(f.calls.filter(call => call === 'stop').length, 2);
   assert.equal(f.calls.filter(call => call === 'release').length, 1);
+});
+
+test('a background restart cannot mask a visible original window', async () => {
+  const f = fixture();
+  const result = await executeCase({ ...spec('visible-before-restart', f.calls),
+    async run() { await f.owner.request('show'); },
+    async afterRestart() { assert.fail('Visibility failure must stop before restart'); }
+  }, {}, f.resources);
+  assert.equal(result.outcome, 'failed');
+  assert.match(result.failure.message, /visible before restart/);
+  assert.equal(f.calls.filter(call => call === 'start').length, 1);
 });
 
 test('background mode never shows a native window', async () => {
