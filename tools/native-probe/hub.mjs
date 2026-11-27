@@ -48,7 +48,7 @@ export async function runProbe(args, { smoke = false } = {}) {
   cases.push(attachmentWorkCase(runnerRoot, root));
   cases.push(backgroundWorkspace(runnerRoot));
   cases.push(providerSwitchCase(runnerRoot));
-  cases.push(providerSwitchCase(runnerRoot, true));
+  cases.push(providerSwitchCase(runnerRoot, root));
   if (help) {
     console.log('npm run test:native:probe -- [--case <id>] [--runner-root <absolute existing Runner installation>] [--target-dir <absolute Cargo cache>]');
     console.log('Repeat --case to select cases. Without selectors the npm entry runs the displayed smoke cases; the direct hub.mjs entry runs the installation/configuration/read-only cases.');

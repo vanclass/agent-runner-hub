@@ -83,6 +83,8 @@ test('queued transport is not authoritative response; unrelated receipts cannot 
     assert.equal(finalReceipt(snapshot([{ ...completed, ...change }]), connection, admission), undefined);
   }
   assert.equal(finalReceipt(snapshot([completed]), connection, admission), completed);
+  const plan = { ...completed, operation: 'session_config.plan' };
+  assert.equal(finalReceipt(snapshot([completed, plan]), connection, admission, plan.operation), plan);
 });
 
 test('stale generations and uncertain effects remain unverified, never accepted', () => {

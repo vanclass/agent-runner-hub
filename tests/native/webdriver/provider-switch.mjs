@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rmdir } from 'node:fs/promises';
+import path from 'node:path';
 import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
 import { HubActions } from './hub-actions.mjs';
-import { readyInstalledHub, visibleConnection, ownedConnection, inspectRequest, inspection, stopWatching } from './runner-flow.mjs';
+import { readyInstalledHub, visibleConnection, ownedConnection, inspectRequest, inspection, planRequest, stopWatching } from './runner-flow.mjs';
 import { executionReleased, workSubmissions, workObservations } from './runner-observations.mjs';
 
 async function interaction(hub, connection, fields) {
@@ -105,7 +107,7 @@ async function readChoices(hub, connection, provider, startup) {
     configuration: features.sessionConfig?.operations };
 }
 
-async function submitProbe(hub, connection, provider, surface) {
+async function submitProbe(hub, connection, provider, surface, root) {
   const selected = await inspectRequest(hub.browser, connection, {
     operation: 'session_config.inspect', api_version: 1, execution_context: 'test', agent_id: provider,
   });
@@ -114,14 +116,25 @@ async function submitProbe(hub, connection, provider, surface) {
   await hub.selectProviderAccount(provider, account);
   await hub.edit('mode', 'pure-direct-run');
   const current = await inspection(hub.browser, connection);
-  const root = current.result.reply.current.root;
-  if (!root) throw new BlockedPrerequisite('Configure a Pure Direct working root in the installed Runner');
   await hub.edit('directRoot', root);
   const model = await hub.field('model');
-  const choices = model.options.filter(o => !o.disabled && o.value);
+  const choices = model.options.filter(o => !o.disabled && o.value?.agent_id === provider);
   const option = choices.find(o => o.value.model === current.result.reply.current.model.id) ?? choices[0];
   assert.ok(option, 'Verified test-account model required');
   await hub.edit('model', option.value);
+  const { result: plan } = await planRequest(hub.browser, connection, {
+    run_mode: 'pure-direct-run', root, account,
+    model: { id: option.value.model, reasoning_effort: option.value.reasoning_effort },
+    service_tier: option.value.service_tier,
+  });
+  const impact = plan.reply?.impact?.direct_root_preference;
+  if (plan.state !== 'accepted' || plan.reply?.plan_status !== 'ready' || impact !== 'unchanged') {
+    throw new BlockedPrerequisite(`${surface}: work preflight blocked ` + JSON.stringify({
+      provider, session: connection.session, generation: connection.generation,
+      request: plan.id, state: plan.state, code: plan.code, status: plan.reply?.plan_status,
+      errors: plan.reply?.errors, confirmations: plan.reply?.required_confirmations, directRootPreference: impact,
+    }));
+  }
   const before = new Set(workSubmissions(await hub.observations.snapshot(connection)).map(r => r.id));
   await hub.draft(surface, 'Reply with the Provider name and then the word VERIFIED. Use no tools and modify nothing.');
   await hub.submit(surface);
@@ -154,15 +167,27 @@ async function submitProbe(hub, connection, provider, surface) {
   assert.equal(selection.agent_id, provider);
   assert.equal(selection.account, account.profile_name);
   assert.equal(selection.model, option.value.model);
-  return { provider, account, model: selection.model, request: result.submission_request_id, started: result.started_event_id };
+  return { provider, account, model: selection.model, request: result.submission_request_id,
+    started: result.started_event_id, outcome: result.outcome, released: true };
 }
 
-export function providerSwitchCase(runnerRoot, workOnly = false) {
+export function providerSwitchCase(runnerRoot, worktree) {
+  const workOnly = worktree !== undefined;
   return defineNativeCase({
     id: workOnly ? 'provider-work' : 'provider-switch', presentation: 'background',
     ready: browser => readyInstalledHub(browser, runnerRoot),
     async run(browser) {
       const hub = new HubActions(browser);
+      let workRoot;
+      const blocked = [];
+      async function checkWork(connection, provider, surface) {
+        try {
+          return await submitProbe(hub, connection, provider, surface, workRoot);
+        } catch (error) {
+          if (!(error instanceof BlockedPrerequisite)) throw error;
+          blocked.push(error.message);
+        }
+      }
       try {
         const retained = await hub.addRunner();
         const retainedConnection = await visibleConnection(browser, runnerRoot);
@@ -190,8 +215,9 @@ export function providerSwitchCase(runnerRoot, workOnly = false) {
         assert.deepEqual((await hub.observations.snapshot(retainedConnection)).observation.selection, retainedBefore);
         let work;
         if (workOnly) {
+          workRoot = await mkdtemp(path.join(worktree, 'temp', 'native-probe', 'provider-work-'));
           await hub.selectRunner(tab);
-          work = await submitProbe(hub, connection, other, 'runner');
+          work = await checkWork(connection, other, 'runner');
         }
         await hub.selectSingleEntry();
         const ids = await browser.execute(() => Object.keys(window.__wg3Observation.snapshots));
@@ -201,7 +227,7 @@ export function providerSwitchCase(runnerRoot, workOnly = false) {
         const spareProvider = spare.snapshot.observation.selection.agent_id;
         let singleEntry;
         if (workOnly) {
-          singleEntry = await submitProbe(hub, spare, spareProvider, 'single-entry');
+          singleEntry = await checkWork(spare, spareProvider, 'single-entry');
         } else {
           const [label] = await hub.providerLabels();
           assert.ok(label?.endsWith(labels[spareProvider]));
@@ -215,11 +241,18 @@ export function providerSwitchCase(runnerRoot, workOnly = false) {
           assert.equal(receipt.state, 'accepted');
           singleEntry = { provider: spareProvider, commandRequest: receipt.id };
         }
-        const promoted = await visibleConnection(browser, runnerRoot);
-        assert.equal(promoted.session, spare.session);
-        assert.equal(promoted.generation, spare.generation);
+        if (singleEntry) {
+          const promoted = await visibleConnection(browser, runnerRoot);
+          assert.equal(promoted.session, spare.session);
+          assert.equal(promoted.generation, spare.generation);
+        }
+        if (blocked.length) throw new BlockedPrerequisite(blocked.join('\n'));
+        if (workRoot) await rmdir(workRoot);
         return { tab, session: connection.session, generation: connection.generation, observations,
           retainedUnchanged: true, work, singleEntry };
+      } catch (error) {
+        if (workRoot && error instanceof BlockedPrerequisite) await rmdir(workRoot);
+        throw error;
       } finally { await stopWatching(browser); }
     },
   });

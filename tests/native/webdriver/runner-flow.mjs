@@ -117,7 +117,7 @@ export async function visibleConfiguration(browser, connection) {
   return actual;
 }
 
-export function finalReceipt(snapshot, connection, admission) {
+export function finalReceipt(snapshot, connection, admission, operation = 'session_config.inspect') {
   correlated(snapshot, connection);
   if (admission.state !== 'submitted') {
     if (admission.state === 'not-sent') throw new Error('Read-only request not sent: ' + admission.detail);
@@ -125,21 +125,28 @@ export function finalReceipt(snapshot, connection, admission) {
   }
   if (admission.generation !== connection.generation) throw new UnverifiedObservation('Stale submission generation');
   const result = snapshot.features.results.find(r => r.id === admission.id && r.feature === 'session_config'
-    && r.operation === 'session_config.inspect' && r.phase === 'completed');
+    && r.operation === operation && r.phase === 'completed');
   if (result?.state === 'outcome-unknown') throw new UnverifiedObservation('Authoritative response unknown; do not replay.');
   return result;
 }
 export async function inspectRequest(browser, connection, request) {
-  // Only the existing read-only operation is allowed at this acceptance boundary.
   assert.equal(request.operation, 'session_config.inspect');
+  return readConfigRequest(browser, connection, request);
+}
+
+export function planRequest(browser, connection, desired) {
+  return readConfigRequest(browser, connection, { operation: 'session_config.plan', api_version: 1, desired });
+}
+
+async function readConfigRequest(browser, connection, request) {
   const admission = await browser.execute((id, request) => window.__TAURI_INTERNALS__.invoke(
     'runner_feature', { id, request: { feature: 'session_config', request } }), connection.session, request);
   // Classify provably unsent/uncertain transport before waiting for any response.
-  finalReceipt(connection.snapshot, connection, admission);
+  finalReceipt(connection.snapshot, connection, admission, request.operation);
   let result;
   await browser.waitUntil(async () => {
     const snapshot = await observeConnection(browser, connection);
-    result = finalReceipt(snapshot, connection, admission);
+    result = finalReceipt(snapshot, connection, admission, request.operation);
     return !!result;
   }, { timeout: startupMs, timeoutMsg: 'Read-only authoritative receipt unverified; do not resubmit' }).catch(error => {
     if (error instanceof assert.AssertionError || error instanceof UnverifiedObservation) throw error;
