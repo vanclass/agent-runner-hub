@@ -139,6 +139,37 @@ export function registerAutoRecovery({ test, expect, transport }) {
     await page.reload();
     await expect(page.locator('.runner-row')).toHaveCount(0);
   });
+  for (const state of ['eligible', 'attempting', 'partial']) {
+    test(`connected recovery reconciles a verified binding after unresolved ${state} restoration`, async ({ page }) => {
+      const original = contexts[2];
+      const legacy = state === 'eligible';
+      const verified = state === 'partial' ? { ...original, reference: reference(2) } : original;
+      const unresolved = { reference: original.reference, state, ...(!legacy && { runMode: original.runMode }) };
+      await seed(page, [unresolved], { recoveryContexts: [original, verified] },
+        legacy ? [{ lastVerified: { runMode: 'direct-run', workflowKind: '',
+          target: { binding_state: 'bound', owner: 'Project', project: 'Retained' } } }] : []);
+      const reports = status => page.evaluate(status =>
+        window.__nativeFixture.sessions.get('pty-1')?.feature.features.results.filter(result =>
+          result.operation === 'recovery.current' && result.reply.reference_status === status).length ?? 0, status);
+      for (const status of ['absent', 'unverified', 'identity_conflict']) {
+        await page.evaluate(status => { window.__nativeFixture.sessions.get('pty-1').currentStatus = status; }, status);
+        await expect.poll(() => reports(status), { timeout: 8_000 }).toBeGreaterThan(0);
+        expect((await saved(page)).tabs[0].recovery).toEqual(unresolved);
+      }
+      expect(await calls(page)).toEqual([]);
+      await page.evaluate(verified => {
+        const session = window.__nativeFixture.sessions.get('pty-1');
+        session.currentStatus = undefined;
+        session.connectedRecovery = verified;
+      }, verified);
+      const restored = { reference: verified.reference, runMode: verified.runMode, state: 'eligible' };
+      await expect.poll(async () => (await saved(page)).tabs[0].recovery, { timeout: 8_000 }).toEqual(restored);
+      await page.reload();
+      await expect.poll(async () => (await calls(page)).map(call => call.reference)).toEqual([verified.reference]);
+      await expect.poll(async () => (await saved(page)).tabs[0].recovery).toEqual(restored);
+      expect(await page.evaluate(() => window.__nativeFixture.deliveredSets)).toEqual([]);
+    });
+  }
   for (const theme of ['light', 'black']) for (const height of [650, 900]) {
     test('automatic recovery releases terminal height ' + theme + '/' + height, async ({ page }, info) => {
       await page.setViewportSize({ width: 1280, height });

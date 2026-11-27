@@ -181,12 +181,15 @@ export class RunnerRecovery {
   private async captureConnected() {
     const snapshot = this.snapshot;
     if (this.closed || this.busy || this.waiting || !snapshot || !this.supportsCurrent(snapshot)) return;
-    if (this.saved?.reference && (!this.saved.runMode || this.saved.state === 'attempting' || this.saved.state === 'partial')) return;
     const { generation } = snapshot, epoch = this.epoch;
     this.nextObservation = performance.now() + (this.transport.observeMs ?? this.transport.completionMs);
     const { context, reply } = await this.readConnected(generation);
     if (!this.valid(epoch, generation)) return;
+    const unresolvedReference = this.saved?.reference && (this.protectedEmptyMode !== undefined
+      || !this.saved.runMode || this.saved.state === 'attempting' || this.saved.state === 'partial');
     this.verifiedReference = context && 'reference' in context ? context.reference : undefined;
+    // An unresolved restoration target requires a verified connected reference to replace it.
+    if (unresolvedReference && (!context || !('reference' in context))) return;
     if (!context) {
       if (!this.saved || this.protectedEmptyMode !== undefined) return;
       if (reply?.reference_status === 'unsupported' && reply.run_mode === 'subagent-run') {
