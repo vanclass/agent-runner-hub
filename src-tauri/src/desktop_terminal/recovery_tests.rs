@@ -65,6 +65,8 @@ fn capable() -> Protocol {
     let mut p = ready();
     p.snapshot.features.recovery = Some(recovery::Capability { version: 1,
         lifecycle_version: None,
+        connected_version: None, eligibility_version: None, connected_run_modes: None,
+        families: vec!["direct-run".into(), "task-run".into(), "issue-run".into()],
         operations: vec!["recovery.reference".into(), "recovery.recover".into()] });
     p
 }
@@ -82,6 +84,30 @@ fn lifecycle_capability_is_additive_to_legacy_recovery() {
     value["lifecycle_version"] = json!(2);
     let legacy = recovery::Capability::read(&value).unwrap();
     assert_eq!(legacy.operations, vec!["recovery.reference", "recovery.recover"]);
+}
+#[test]
+fn connected_capability_and_completed_direct_evidence_are_additive() {
+    let cap = json!({"version":1,"operations":["recovery.reference","recovery.recover","recovery.current"],
+        "reference_version":1,"automatic_retry":false,"instruction_replay":false,
+        "families":["subagent-run","direct-run","future"],
+        "connected_version":1,"eligibility_version":1,"connected_run_modes":["direct-run","pure-direct-run"],
+        "outcomes":["recovered","absent","blocked","identity_conflict","interaction_required","unverified","partial"]});
+    let request = recovery::Request::Current { api_version: 1 };
+    assert!(recovery::Capability::read(&cap).unwrap().supports(&request));
+    let mut evidence = lifecycle(reference());
+    evidence["eligibility"] = json!("eligible");
+    evidence["run_mode"] = json!("pure-direct-run");
+    evidence["evidence"]["run_mode"] = json!("pure-direct-run");
+    evidence["evidence"]["connected_direct"] = json!(true);
+    let mut reply = packet(1, "accepted", "completed");
+    reply["connected_version"] = json!(1);
+    reply["run_mode"] = json!("pure-direct-run");
+    reply["reference_status"] = json!("present");
+    reply["reference"] = evidence["reference"].clone();
+    reply["lifecycle"] = evidence;
+    assert!(request.response(&reply).is_ok());
+    reply["run_mode"] = json!("direct-run");
+    assert!(request.response(&reply).is_err());
 }
 fn request() -> features::Request {
     features::Request::Recovery(recovery::Request::Recover { api_version: 1, reference: reference() })
@@ -152,7 +178,8 @@ fn recovery_rejects_crossed_or_uncertain_success_and_does_not_promote_eof() {
     let mut result = packet(p.next, "accepted", "completed");
     result["reference"] = serde_json::to_value(reference()).unwrap();
     result["recovery_status"] = json!("recovered"); result["outcome_unknown"] = json!(true);
-    assert!(p.response(result).is_err());
+    p.response(result).unwrap();
+    assert_eq!(p.snapshot.features.results.last().unwrap().state, "outcome-unknown");
     let mut p = capable(); p.feature_request(request(), "private").unwrap();
     p.written_bytes = p.queued_bytes;
     p.disconnect("EOF");

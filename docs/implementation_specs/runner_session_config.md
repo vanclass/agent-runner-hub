@@ -46,6 +46,8 @@ Native and frontend admission require options_revision capability support and a 
 
 ## Draft, plan and apply
 
+During startup and global restart, the recovery coordinator can ask the session configuration service to restore a committed Base Run Mode alone. The service uses its existing inspection, plan, apply and verification sequence. Recovery then confirms the committed mode with `recovery.current`. Tab configuration initialization and work delivery wait for the restoration decision.
+
 Actual configured settings, effective execution settings, next execution settings, the user's draft and saved Hub defaults remain separate. IDs come from candidate records, including the full agent_id/profile_name account pair. Unlisted values remain visible and are never replaced automatically. Model/reasoning/tier combinations must match the destination catalog; Root is explicit input and Runner performs its actual filesystem/policy checks.
 
 Direct/Pure Direct Root supports typing, paste and the shared [native directory picker](runner_terminals.md#single-entry-assignment). Hub controls change only requested local selections; initialization and editing never plan, apply or submit work. A missing stored Direct Root requires explicit input before configuration planning/submission. Draft replacement, tab unmount, competing operations and native session end invalidate an outstanding picker result. Both submission entry points use `runnerSubmission.ts` to verify requested selections against fresh destination options, plan and apply necessary changes, then verify before work admission. The right panel has no manual Plan or Apply action.

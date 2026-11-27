@@ -115,6 +115,7 @@ export class RunnerControl {
     this.recovery = new RunnerRecovery(undefined, false, {
       completionMs: controlTiming.completionMs,
       observeMs: controlTiming.refreshMs,
+      restoreMode: mode => this.config.restoreMode(mode),
       submit: request => invoke<FeatureAdmission>('runner_feature', { id: this.id, request: { feature: 'recovery', request } }),
     }, changed);
     this.brief = new RunnerBrief({
@@ -134,7 +135,8 @@ export class RunnerControl {
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
       available: () => !this.stopped && !this.tabClosing && !this.brief.busy && !this.brief.blocked
-        && this.snapshot.state === 'ready' && !this.otherControlBusy,
+        && this.snapshot.state === 'ready' && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
+        && (!this.recovery.busy || this.config.modeRestorationActive),
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'session_config', request } }),
     }, changed);
     this.work = new RunnerWork({
@@ -182,12 +184,17 @@ export class RunnerControl {
       this.typedRun.observe();
       this.brief.observe(snapshot);
       this.config.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.selection.agent_id);
-      this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
+      const observation = snapshot.observation;
+      const recoveryChange = JSON.stringify([observation?.run_mode, observation?.execution, observation?.target,
+        snapshot.results.at(-1)?.id, this.config.latestApplication?.receipt.id,
+        this.work.current?.work?.event_id]);
       this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
         !this.assignmentLocked && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
           && !snapshot.observation?.attention.foreground_interaction_active
           && !this.config.busy && !this.work.busy && !this.brief.busy,
-        this.work.attempts.filter(attempt => this.work.hasConfirmedStart(attempt)));
+        observation?.run_mode, recoveryChange,
+        observation?.attention.foreground_interaction_active || observation?.attention.account_setup_required);
+      this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
       this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
@@ -303,6 +310,8 @@ export class RunnerControl {
     const id = this.id;
     if (this.tabClosing && request.operation !== 'references.list')
       throw new HubError(msg('tabs.closing'));
+    if (this.recovery.busy && request.operation !== 'references.list')
+      throw new HubError(msg('runtime.control.finishPending'));
     if (owningSession && owningSession !== id)
       return { state: 'failure', detail: msg('runtime.control.ownerChanged') };
     if (this.stopped || !id || this.snapshot.state !== 'ready' || !this.snapshot.references?.capability)
@@ -337,7 +346,6 @@ export class RunnerControl {
     if (this.id) this.config.observe(this.id, 'disconnected', this.snapshot.features);
     this.config.close();
     if (this.id) this.work.observe(this.id, 'disconnected', this.snapshot.features);
-    this.recovery.retireCompleted(this.work.attempts.filter(attempt => this.work.hasConfirmedStart(attempt)));
     this.recovery.close();
     this.work.close();
     this.changed();

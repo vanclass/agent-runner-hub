@@ -151,9 +151,12 @@ async function transport(page, freshTarget, referenceOptions) {
             sessions.get(id).control.features = fixture.features;
             if (referenceOptions.brief !== undefined && referenceOptions.brief !== 'unsupported')
               fixture.features.brief = { version: 1, operations: ['brief.stage'] };
-            if (referenceOptions.recovery) fixture.features.recovery = { version: 1, operations: ['recovery.reference', 'recovery.recover'] };
-            if (referenceOptions.lifecycle) Object.assign(fixture.features.recovery,
-              { lifecycle_version: 1, operations: ['recovery.reference', 'recovery.recover', 'recovery.observe'] });
+            if (referenceOptions.recoveryContexts) fixture.features.recovery = {
+              version: 1, lifecycle_version: 1, connected_version: 1, eligibility_version: 1,
+              families: ['direct-run', 'task-run', 'issue-run', 'subagent-run'],
+              connected_run_modes: ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'],
+              operations: ['recovery.reference', 'recovery.observe', 'recovery.recover', 'recovery.current'],
+            };
             if (referenceOptions.brief !== undefined) {
               const { RunFixture } = await import('/tests/fixtures/run.ts');
               sessions.get(id).run = new RunFixture(fixture.features, referenceOptions.runResult);
@@ -228,28 +231,47 @@ async function transport(page, freshTarget, referenceOptions) {
             const request = args.request.request, id = 9000 + (sessions.get(args.id).recoveries ??= []).length;
             sessions.get(args.id).recoveries.push(structuredClone(request));
             const outcome = referenceOptions.recoveryResults?.[args.id] ?? 'recovered';
-            const reference = request.reference ?? { version: 1, family: 'task-run',
-              repository_namespace: 'project-exact', task_number: args.id.slice(4), task_workload_id: 'work-' + args.id };
-            if (request.operation === 'recovery.observe') {
-              const disposition = sessions.get(args.id).lifecycle ?? referenceOptions.lifecycle;
-              const terminal = ['completed', 'discarded'].includes(disposition);
-              const authoritative = ['completed', 'discarded', 'suspended', 'incomplete', 'in_use'].includes(disposition);
-              const issue = reference.family === 'issue-run';
-              const evidence = { owner: issue ? 'issue_lifecycle' : 'task_workload', revision: 1,
-                state: disposition === 'discarded' ? 'aborted' : disposition === 'completed' ? issue ? 'finalized' : 'completed' : 'running',
-                phase: 'fixture', digests: { '0': 'a'.repeat(64), ...(!issue ? { '1': 'b'.repeat(64) } : {}) },
-                ...(issue ? { ownership_revision: 1 } : {}) };
+            const reference = request.reference;
+            if (referenceOptions.recoveryContexts) {
+              const session = sessions.get(args.id), run_mode = fixture.config.current.run_mode;
+              const exact = referenceOptions.recoveryContexts.find(c => JSON.stringify(c.reference) === JSON.stringify(request.reference));
+              const lifecycle = c => ({ reference: c.reference, run_mode: c.runMode, lifecycle_version: 1,
+                authoritative: true, ownership: 'available', disposition: c.disposition,
+                eligibility: c.ineligible ? 'ineligible' : 'eligible' });
+              let reply, state = 'accepted';
+              if (request.operation === 'recovery.current') {
+                const connected = session.connectedRecovery;
+                const reference_status = session.currentStatus ?? (connected ? 'present' : 'absent');
+                reply = { connected_version: 1, reference_status, run_mode,
+                  reference: reference_status === 'present' ? connected?.reference : null,
+                  lifecycle: reference_status === 'present' && connected ? lifecycle(connected) : null };
+              } else if (exact && request.operation === 'recovery.observe') reply = lifecycle(exact);
+              else if (exact && outcome === 'recovered') {
+                fixture.config.current.run_mode = exact.runMode;
+                session.connectedRecovery = exact;
+                const observation = session.control.observation;
+                if (exact.runMode === 'task-run') {
+                  observation.execution.lifecycle_state = 'TASK_SUSPENDED';
+                  observation.attention.suspension_status = 'active';
+                  observation.attention.awaiting_user_command_reason = 'task_suspended';
+                } else if (exact.runMode === 'issue-run') {
+                  observation.issue_run_execution = { status: 'idle', issue_run_id: exact.reference.issue_run_id };
+                }
+                if (exact.runMode === 'task-run' || exact.runMode === 'issue-run')
+                  for (const command of observation.commands)
+                    if (['/target', '/files'].includes(command.text)) command.enabled = false;
+                emit(args.id, `\x1b[32m${exact.runMode} first\x1b[0m\r\n${exact.runMode} second\r\n`);
+                reply = { reference, run_mode: exact.runMode, recovery_status: outcome, outcome_unknown: false,
+                  historical_replay: { status: exact.history ?? 'displayed', diagnostics: [] } };
+              } else {
+                state = 'rejected';
+                reply = { reference, recovery_status: outcome, outcome_unknown: true };
+              }
               fixture.features.results.push({ id, feature: 'recovery', operation: request.operation, admission: 'queued',
-                state: 'accepted', phase: 'completed', reply: { reference, lifecycle_version: 1, disposition,
-                  terminal, authoritative, ownership: disposition === 'in_use' ? 'in_use' : authoritative ? 'available' : 'unavailable',
-                  evidence: authoritative ? evidence : null, code: '' } });
+                state, phase: 'completed', reply });
               return { state: 'submitted', id, generation: fixture.features.generation };
             }
-            fixture.features.results.push({ id, feature: 'recovery', operation: request.operation, admission: 'queued',
-              state: outcome === 'recovered' ? 'accepted' : 'rejected', phase: 'completed',
-              reply: request.operation === 'recovery.reference' ? { reference, observation_id: request.observation_id }
-                : { reference, recovery_status: outcome, outcome_unknown: ['partial', 'unverified'].includes(outcome), code: '' } });
-            return { state: 'submitted', id, generation: fixture.features.generation };
+            return { state: 'not-sent', detail: 'Recovery is unavailable in this fixture' };
           }
           if (args.request.feature === 'run') return sessions.get(args.id).run.submit(args.request.request);
           if (args.request.feature === 'brief') {
@@ -271,6 +293,9 @@ async function transport(page, freshTarget, referenceOptions) {
         if (command === 'runner_reference') {
           const session = sessions.get(args.id), requestId = ++referenceSequence;
           referenceRequests.push({ ...args, requestId });
+          if (referenceOptions.recoveryContexts && args.request.operation === 'references.list'
+            && !session.control.observation.commands.find(command => command.text === '/files')?.enabled)
+            return { state: 'failure', detail: 'Reference inventory is unavailable in a retained workload' };
           if (args.request.operation === 'references.register' && referenceOptions.admissionFailure) return { state: 'failure', detail: 'Reference request was not submitted: fixture queue unavailable' };
           if (args.request.operation === 'references.register' && referenceOptions.unknownAdmission) return { state: 'outcome-unknown', detail: 'Fixture admission receipt lost; do not repeat' };
           const result = { id: requestId, operation: args.request.operation, offset: args.request.offset ?? 0, state: 'queued' };

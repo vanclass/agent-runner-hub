@@ -1,5 +1,11 @@
 import { copy, record, same, type FeatureAdmission, type FeatureResult, type FeatureSnapshot } from './runnerConfigContract';
-import type { WorkAttempt } from './runnerWork';
+
+const connectedModes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'] as const;
+export type ConnectedRunMode = typeof connectedModes[number];
+const isConnectedMode = (value: unknown): value is ConnectedRunMode =>
+  connectedModes.some(mode => mode === value);
+const familyFor = (mode: ConnectedRunMode) => mode === 'pure-direct-run' ? 'direct-run' : mode;
+const unsupportedMode = 'RECOVERY_MODE_UNSUPPORTED';
 
 export type RecoveryReference = { version: 1; family: 'direct-run'; session_id: string; generation_id: string;
   thread_id: string; resume_id: string; source_exec_run_id: string }
@@ -7,8 +13,13 @@ export type RecoveryReference = { version: 1; family: 'direct-run'; session_id: 
   | { version: 1; family: 'issue-run'; issue_run_id: string; created_by_runner_session_id: string; creation_provenance_digest: string };
 export const recoveryOutcomes = ['recovered', 'absent', 'blocked', 'identity_conflict', 'interaction_required', 'unverified', 'partial'] as const;
 export type RecoveryOutcome = typeof recoveryOutcomes[number];
-export type RecoveryRecord = { reference?: RecoveryReference; state: 'eligible' | 'attempting' | RecoveryOutcome; code?: string };
+export type RecoveryRecord = { reference?: RecoveryReference; runMode?: ConnectedRunMode;
+  state: 'eligible' | 'attempting' | RecoveryOutcome; code?: string };
+export type RecoveryCapability = { version: 1; operations: string[]; lifecycle_version?: number | null;
+  connected_version?: number | null; eligibility_version?: number | null;
+  connected_run_modes?: string[] | null; families?: string[] };
 export type RecoveryRequest = { operation: 'recovery.reference'; api_version: 1; observation_id: string }
+  | { operation: 'recovery.current'; api_version: 1 }
   | { operation: 'recovery.recover' | 'recovery.observe'; api_version: 1; reference: RecoveryReference };
 const fields = {
   'direct-run': ['session_id', 'generation_id', 'thread_id', 'resume_id', 'source_exec_run_id'],
@@ -28,178 +39,280 @@ export function isRecoveryReference(v: unknown): v is RecoveryReference {
 export function recoveryRecord(v: unknown): RecoveryRecord | undefined {
   if (!record(v) || !['eligible', 'attempting', ...recoveryOutcomes].includes(String(v.state))
     || v.reference !== undefined && !isRecoveryReference(v.reference)
-    || ['eligible', 'attempting'].includes(String(v.state)) && !v.reference
+    || v.runMode !== undefined && (!isConnectedMode(v.runMode) || v.reference && familyFor(v.runMode) !== (v.reference as RecoveryReference).family)
+    || ['eligible', 'attempting'].includes(String(v.state)) && !v.reference && !v.runMode
     || v.code !== undefined && (typeof v.code !== 'string' || !/^[A-Z0-9_]{0,100}$/.test(v.code))) return;
   return { state: v.state as RecoveryRecord['state'],
     ...(v.reference ? { reference: copy(v.reference as RecoveryReference) } : {}),
+    ...(isConnectedMode(v.runMode) ? { runMode: v.runMode } : {}),
     ...(v.code ? { code: v.code as string } : {}) };
 }
 interface RecoveryTransport {
   submit(request: RecoveryRequest): Promise<FeatureAdmission>;
   completionMs: number;
   observeMs?: number;
+  restoreMode?(mode: ConnectedRunMode): Promise<boolean>;
 }
 export class RunnerRecovery {
   saved?: RecoveryRecord;
   outcome?: RecoveryOutcome | 'waiting' | 'recovering';
   private pending: boolean;
-  private capturing?: WorkAttempt;
-  private latest?: WorkAttempt;
-  private referenced?: WorkAttempt;
+  private restoring = false;
   private closed = false;
   private epoch = 0;
-  private generation?: number;
+  private snapshot?: FeatureSnapshot;
+  private capturing?: Promise<void>;
+  private verifiedReference?: RecoveryReference;
+  private observedChange?: string;
   private nextObservation = 0;
-  private lifecycle = false;
-  private waiting?: { id?: number; generation: number; operation: RecoveryRequest['operation']; blocking: boolean;
+  private protectedEmptyMode?: string;
+  code?: string;
+  history?: 'displayed' | 'incomplete' | 'unverified';
+  private waiting?: { id?: number; generation: number; operation: RecoveryRequest['operation'];
     finish: (r?: FeatureResult) => void; timer: ReturnType<typeof setTimeout> };
+
   constructor(saved: RecoveryRecord | undefined, restore: boolean, private transport: RecoveryTransport,
     private changed: () => boolean | void) {
-    this.saved = saved && copy(saved);
-    if (this.saved?.state === 'attempting') this.saved.state = 'partial';
-    this.pending = restore && this.saved?.state === 'eligible';
-    if (restore) this.outcome = this.pending ? 'waiting' : this.saved?.state === 'eligible' ? undefined : this.saved?.state;
+    this.pending = false;
+    this.restore(saved, restore);
   }
-  get busy() { return !!this.waiting?.blocking || this.pending; }
+  get busy() { return this.pending || this.restoring; }
+  get connectedReference() {
+    return same(this.verifiedReference, this.saved?.reference) ? this.verifiedReference : undefined;
+  }
   restore(saved: RecoveryRecord | undefined, restore: boolean) {
-    this.epoch++; this.waiting?.finish(); this.nextObservation = 0; this.lifecycle = false;
+    this.close();
     this.closed = false;
-    this.latest = this.capturing = this.referenced = undefined;
     this.saved = saved && copy(saved);
-    if (this.saved?.state === 'attempting') this.saved.state = 'partial';
-    this.pending = restore && this.saved?.state === 'eligible';
-    this.outcome = restore ? this.pending ? 'waiting' : this.saved?.state === 'eligible' ? undefined : this.saved?.state : undefined;
+    this.pending = restore && !!saved;
+    this.outcome = this.pending ? 'waiting' : undefined;
+    this.code = this.history = this.protectedEmptyMode = undefined;
+    this.nextObservation = 0;
+    this.observedChange = undefined;
   }
-  private set(saved: RecoveryRecord | undefined) { this.saved = saved; return this.changed(); }
-  observe(snapshot: FeatureSnapshot | undefined, ready: boolean, available: boolean, attempts: readonly WorkAttempt[]) {
-    this.generation = snapshot?.generation;
-    this.lifecycle ||= !!snapshot && this.supportsLifecycle(snapshot);
-    const wait = this.waiting;
-    if (wait && snapshot) {
-      const result = snapshot.results.find(r => r.id === wait.id && r.feature === 'recovery' && r.operation === wait.operation);
-      if (snapshot.generation !== wait.generation) { wait.finish(); return; }
-      else if (result && ['accepted', 'rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(result.state)) { wait.finish(result); return; }
-    }
-    if (this.closed || !ready || !snapshot || this.waiting) return;
+  legacy() { this.outcome = 'unverified'; this.code = 'RECOVERY_MODE_UNVERIFIED'; }
+  observe(snapshot: FeatureSnapshot | undefined, ready: boolean, available: boolean, liveMode?: string,
+    change?: string, interactionRequired = false) {
+    this.snapshot = snapshot;
+    if (this.observedChange !== change) { this.observedChange = change; this.nextObservation = 0; }
+    this.settleRequest();
+    if (this.closed || !ready || !snapshot || this.waiting || this.restoring) return;
     if (this.pending) {
+      if (interactionRequired) {
+        this.pending = false;
+        this.protectedEmptyMode = liveMode ?? '';
+        this.fail('interaction_required', 'RECOVERY_STARTUP_INTERACTION_REQUIRED');
+        return;
+      }
       if (!available) return;
       this.pending = false;
-      if (!snapshot.recovery) { this.outcome = 'unverified'; this.set({ ...this.saved, state: 'unverified', code: 'RECOVERY_UNSUPPORTED' }); return; }
+      this.restoring = true;
       this.outcome = 'recovering';
-      const reference = this.saved!.reference!;
+      this.protectedEmptyMode = liveMode ?? '';
       const epoch = this.epoch;
-      const generation = snapshot.generation;
-      const recover = async () => {
-        if (this.supportsLifecycle(snapshot)) {
-          const terminal = await this.observeReference(reference, generation, true);
-          if (terminal || !this.current(reference, generation, epoch)) return;
-        }
-        if (this.set({ reference, state: 'attempting' }) === false) {
-          this.outcome = 'unverified'; this.set({ reference, state: 'unverified', code: 'RECOVERY_SAVE_FAILED' }); return;
-        }
-        const result = await this.request({ operation: 'recovery.recover', api_version: 1, reference }, generation);
-        if (!this.current(reference, generation, epoch)) return;
-        const reply = result?.reply;
-        const valid = result?.phase === 'completed' && record(reply) && same(reply.reference, reference)
-          && recoveryOutcomes.includes(reply.recovery_status as RecoveryOutcome);
-        const outcome = valid ? reply.recovery_status as RecoveryOutcome : 'partial';
-        this.outcome = outcome === 'recovered' && (result?.state !== 'accepted' || !record(reply)
-          || reply.outcome_unknown !== false) ? 'partial' : outcome;
-        this.set({ reference, state: this.outcome === 'recovered' ? 'eligible' : this.outcome,
-          ...(valid && typeof reply.code === 'string' && /^[A-Z0-9_]{0,100}$/.test(reply.code) ? { code: reply.code } : {}) });
-      };
-      void recover();
+      void this.restoreConnected(snapshot, epoch).catch(() => {
+        if (this.epoch === epoch) this.fail('unverified', 'RECOVERY_RECEIPT_UNVERIFIED');
+      }).finally(() => {
+        if (this.epoch !== epoch) return;
+        if (this.outcome === 'recovering') this.fail('unverified', 'RECOVERY_OWNER_CHANGED');
+        this.restoring = false;
+        this.changed();
+      });
       return;
     }
-    this.retireCompleted(attempts);
-    if (this.saved) {
-      if (available && this.saved.reference && this.supportsLifecycle(snapshot) && performance.now() >= this.nextObservation)
-        void this.observeReference(this.saved.reference, snapshot.generation);
-      return;
+    if (available && this.supportsCurrent(snapshot) && performance.now() >= this.nextObservation)
+      void this.refreshConnected();
+  }
+  private supportsCurrent(snapshot: FeatureSnapshot, mode?: ConnectedRunMode) {
+    const cap = snapshot.recovery;
+    return !!cap && cap.connected_version === 1 && cap.eligibility_version === 1
+      && cap.operations.includes('recovery.current') && !!cap.connected_run_modes?.length
+      && (!mode || cap.connected_run_modes.includes(mode));
+  }
+  private settleRequest() {
+    const snapshot = this.snapshot, wait = this.waiting;
+    if (!wait || !snapshot) return;
+    if (snapshot.generation !== wait.generation) { wait.finish(); return; }
+    const result = snapshot.results.find(r => r.id === wait.id && r.feature === 'recovery' && r.operation === wait.operation);
+    if (result && ['accepted', 'rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(result.state)) wait.finish(result);
+  }
+  private async readConnected(generation: number) {
+    const result = await this.request({ operation: 'recovery.current', api_version: 1 }, generation);
+    const reply = this.accepted(result);
+    if (reply?.connected_version !== 1 || !isConnectedMode(reply.run_mode)) return { reply };
+    const runMode = reply.run_mode;
+    if (reply.reference_status === 'absent' && !reply.code && reply.reference == null && reply.lifecycle == null)
+      return { reply, context: { runMode, state: 'eligible' } satisfies RecoveryRecord };
+    if (reply.reference_status === 'present' && isRecoveryReference(reply.reference)
+      && reply.reference.family === familyFor(runMode) && record(reply.lifecycle)
+      && reply.lifecycle.lifecycle_version === 1 && reply.lifecycle.authoritative === true
+      && reply.lifecycle.run_mode === runMode && same(reply.lifecycle.reference, reply.reference)
+      && ['eligible', 'ineligible'].includes(String(reply.lifecycle.eligibility))) {
+      return { reply, context: { runMode, reference: reply.reference, state: 'eligible' } satisfies RecoveryRecord };
     }
-    const latest = attempts.reduce<WorkAttempt | undefined>((a, b) =>
-      (b.work?.started_event_id ?? 0) > (a?.work?.started_event_id ?? 0) ? b : a, undefined);
-    if (this.latest && !attempts.includes(this.latest)) {
-      return;
-    }
-    if (!latest?.work) return;
-    if (latest !== this.latest) {
-      this.latest = latest; this.capturing = undefined; this.outcome = undefined; this.set(undefined);
-    }
-    if (latest.work.terminal && !['incomplete', 'unknown'].includes(latest.work.outcome)) {
-      this.outcome = undefined;
-      if (this.saved) this.set(undefined);
-      return;
-    }
-    if (this.capturing === latest || !available) return;
-    this.capturing = latest;
-    this.set({ state: 'unverified', code: 'RECOVERY_REFERENCE_PENDING' });
-    if (!snapshot.recovery) { this.outcome = 'unverified'; this.set({ state: 'unverified', code: 'RECOVERY_UNSUPPORTED' }); return; }
-    const observation_id = latest.work.observation_id;
-    const epoch = this.epoch;
-    const generation = snapshot.generation;
-    void this.request({ operation: 'recovery.reference', api_version: 1, observation_id }, generation).then(result => {
-      if (this.closed || this.latest !== latest || this.epoch !== epoch || this.generation !== generation) return;
-      const reply = result?.reply;
-      if (result?.state === 'accepted' && result.phase === 'completed' && record(reply)
-        && reply.observation_id === observation_id && isRecoveryReference(reply.reference)) {
-        this.referenced = latest;
-        this.set({ reference: reply.reference, state: 'eligible' });
-      } else { this.outcome = 'unverified'; this.set({ state: 'unverified', code: 'RECOVERY_REFERENCE_UNVERIFIED' }); }
+    return { reply };
+  }
+  private accepted(result?: FeatureResult) {
+    return result?.state === 'accepted' && result.phase === 'completed' && record(result.reply) ? result.reply : undefined;
+  }
+  private failureCode(reply: Record<string, unknown> | undefined, fallback: string) {
+    return typeof reply?.code === 'string' && /^[A-Z0-9_]{1,100}$/.test(reply.code) ? reply.code : fallback;
+  }
+  private valid(epoch: number, generation: number) {
+    return !this.closed && this.epoch === epoch && this.snapshot?.generation === generation;
+  }
+  refreshConnected(): Promise<void> {
+    if (this.capturing) return this.capturing;
+    const capture = this.captureConnected().finally(() => {
+      if (this.capturing === capture) this.capturing = undefined;
     });
+    return this.capturing = capture;
   }
-  legacy() { if (!this.saved) this.outcome = 'unverified'; }
-  private supportsLifecycle(snapshot: FeatureSnapshot) {
-    return snapshot.recovery?.lifecycle_version === 1 && snapshot.recovery.operations.includes('recovery.observe');
-  }
-  private current(reference: RecoveryReference, generation: number, epoch: number) {
-    return !this.closed && this.epoch === epoch && this.generation === generation && same(this.saved?.reference, reference);
-  }
-  private async observeReference(reference: RecoveryReference, generation: number, blocking = false) {
-    const epoch = this.epoch;
-    const result = await this.request({ operation: 'recovery.observe', api_version: 1, reference }, generation, blocking);
-    if (!this.current(reference, generation, epoch)) return false;
+  private async captureConnected() {
+    const snapshot = this.snapshot;
+    if (this.closed || this.busy || this.waiting || !snapshot || !this.supportsCurrent(snapshot)) return;
+    const { generation } = snapshot, epoch = this.epoch;
     this.nextObservation = performance.now() + (this.transport.observeMs ?? this.transport.completionMs);
-    const reply = result?.reply;
-    if (result?.state !== 'accepted' || result.phase !== 'completed' || !record(reply)
-      || !isRecoveryReference(reply.reference) || !same(reply.reference, reference) || reply.lifecycle_version !== 1
-      || reply.authoritative !== true || reply.terminal !== true || reply.ownership !== 'available'
-      || !['completed', 'discarded'].includes(String(reply.disposition))) return false;
-    const retained = this.saved;
-    if (this.set(undefined) === false) { this.saved = retained; this.outcome = 'unverified'; }
-    else { this.referenced = undefined; this.outcome = undefined; }
-    return true;
+    const { context, reply } = await this.readConnected(generation);
+    if (!this.valid(epoch, generation)) return;
+    this.verifiedReference = context && 'reference' in context ? context.reference : undefined;
+    if (!context) {
+      if (!this.saved || this.protectedEmptyMode !== undefined) return;
+      if (reply?.reference_status === 'unsupported' && reply.run_mode === 'subagent-run') {
+        this.commit({ ...this.saved, state: 'unverified', code: unsupportedMode });
+        return;
+      }
+      this.fail(reply?.reference_status === 'identity_conflict' ? 'identity_conflict' : 'unverified',
+        this.failureCode(reply, 'RECOVERY_CURRENT_UNVERIFIED'));
+    } else {
+      if (!('reference' in context) && context.runMode === this.protectedEmptyMode) return;
+      if (this.commit(context)) {
+        this.protectedEmptyMode = undefined;
+        if (this.outcome !== 'recovered') this.outcome = undefined;
+        this.code = undefined;
+      }
+    }
+    this.changed();
   }
-  retireCompleted(attempts: readonly WorkAttempt[]) {
-    if (this.lifecycle) return;
-    const work = this.referenced?.work;
-    if (!this.saved?.reference || !this.referenced || !attempts.includes(this.referenced)
-      || !work?.terminal || ['incomplete', 'unknown'].includes(work.outcome)) return;
-    const retained = this.saved;
-    if (this.set(undefined) === false) this.saved = retained;
-    else { this.referenced = undefined; this.outcome = undefined; }
+  private commit(saved: RecoveryRecord) {
+    if (same(this.saved, saved)) return true;
+    const prior = this.saved;
+    this.saved = saved;
+    if (this.changed() !== false) return true;
+    this.saved = prior;
+    this.fail('unverified', 'RECOVERY_SAVE_FAILED');
+    return false;
   }
-  discard() { this.close(); this.saved = undefined; this.outcome = undefined; }
+  private async restoreConnected(snapshot: FeatureSnapshot, epoch: number) {
+    const { generation, recovery: cap } = snapshot;
+    const { runMode, reference, state, code } = this.saved!;
+    if (code === unsupportedMode) { this.outcome = undefined; return; }
+    if (!runMode) { this.legacy(); return; }
+    if (!cap || !this.supportsCurrent(snapshot, runMode)) {
+      this.fail('unverified', 'RECOVERY_UNSUPPORTED');
+      return;
+    }
+    if (!reference) { await this.restoreMode(runMode, generation, epoch); return; }
+    if (cap.lifecycle_version !== 1 || !cap.families?.includes(reference.family)
+      || !['recovery.observe', 'recovery.recover'].every(op => cap.operations.includes(op))) {
+      this.fail('unverified', 'RECOVERY_FAMILY_UNSUPPORTED');
+      return;
+    }
+    const observed = this.accepted(await this.request({ operation: 'recovery.observe', api_version: 1, reference }, generation));
+    if (!this.valid(epoch, generation)) return;
+    const exact = observed?.lifecycle_version === 1 && same(observed.reference, reference)
+      && observed.authoritative === true && observed.ownership === 'available';
+    const conclusivelyIneligible = observed?.eligibility === 'ineligible'
+      && (observed.disposition === 'discarded' || reference.family !== 'direct-run' && observed.disposition === 'completed');
+    if (exact && (conclusivelyIneligible || observed.disposition === 'absent')) {
+      await this.restoreMode(runMode, generation, epoch);
+      return;
+    }
+    if (!exact || observed.eligibility !== 'eligible' || observed.run_mode !== runMode
+      || !(reference.family === 'direct-run' && observed.disposition === 'completed'
+        || ['incomplete', 'suspended'].includes(String(observed.disposition)))) {
+      this.fail(observed?.disposition === 'identity_conflict' ? 'identity_conflict' : observed?.ownership === 'in_use' ? 'blocked' : 'unverified',
+        this.failureCode(observed, 'RECOVERY_ELIGIBILITY_UNVERIFIED'));
+      return;
+    }
+    if (state === 'attempting' || state === 'partial') {
+      this.fail('partial', 'RECOVERY_PRIOR_ATTEMPT_UNCERTAIN');
+      return;
+    }
+    await this.adopt(reference, runMode, generation, epoch);
+  }
+  private fail(outcome: RecoveryOutcome, code: string) {
+    this.outcome = outcome;
+    this.code = code;
+  }
+  private async adopt(reference: RecoveryReference, runMode: ConnectedRunMode, generation: number, epoch: number) {
+    if (!this.commit({ reference, runMode, state: 'attempting' })) return;
+    const result = await this.request({ operation: 'recovery.recover', api_version: 1, reference }, generation);
+    if (!this.valid(epoch, generation)) return;
+    const reply = result?.phase === 'completed' && record(result.reply) && same(result.reply.reference, reference)
+      ? result.reply : undefined;
+    const replay = record(reply?.historical_replay) ? reply.historical_replay.status : undefined;
+    if (replay === 'displayed' || replay === 'incomplete') this.history = replay;
+    const outcome = reply?.recovery_status as RecoveryOutcome;
+    if (outcome !== 'recovered' || result?.state !== 'accepted' || reply?.outcome_unknown !== false || reply.run_mode !== runMode) {
+      if (reply?.outcome_unknown === false && outcome !== 'recovered'
+        && !this.commit({ reference, runMode, state: 'eligible' })) return;
+      this.fail(recoveryOutcomes.includes(outcome) && outcome !== 'recovered' ? outcome : 'partial',
+        this.failureCode(reply, result?.code || 'RECOVERY_RECEIPT_UNVERIFIED'));
+      return;
+    }
+    this.history ??= 'unverified';
+    const { context } = await this.readConnected(generation);
+    if (!this.valid(epoch, generation)) return;
+    if (context?.runMode !== runMode || !('reference' in context)) {
+      this.fail('partial', 'RECOVERY_CONNECTED_CONTEXT_UNVERIFIED');
+      return;
+    }
+    if (this.commit(context)) {
+      this.outcome = 'recovered';
+      this.verifiedReference = context.reference;
+      this.protectedEmptyMode = undefined;
+    }
+  }
+  discard() { this.close(); this.saved = undefined; this.outcome = this.code = this.history = undefined; }
+  private async restoreMode(runMode: ConnectedRunMode, generation: number, epoch: number) {
+    if (!await this.transport.restoreMode?.(runMode)) {
+      if (this.valid(epoch, generation)) this.fail('unverified', 'RECOVERY_MODE_RESTORE_FAILED');
+      return;
+    }
+    if (!this.valid(epoch, generation)) return;
+    const { context } = await this.readConnected(generation);
+    if (!this.valid(epoch, generation)) return;
+    if (context?.runMode !== runMode || 'reference' in context) {
+      this.fail('unverified', 'RECOVERY_MODE_UNVERIFIED');
+      return;
+    }
+    if (this.commit(context)) {
+      this.outcome = undefined;
+      this.protectedEmptyMode = undefined;
+    }
+  }
   close() {
+    if (this.busy) this.fail(this.restoring ? 'partial' : 'unverified', 'RECOVERY_CONNECTION_ENDED');
     this.epoch++;
     this.closed = true;
-    if (this.saved?.state === 'attempting') {
-      this.saved = { ...this.saved, state: 'partial' }; this.outcome = 'partial';
-    } else if (this.pending) this.outcome = 'unverified';
-    this.pending = false; this.waiting?.finish();
+    this.verifiedReference = undefined;
+    this.capturing = undefined;
+    this.pending = this.restoring = false;
+    this.waiting?.finish();
   }
-  private request(request: RecoveryRequest, generation: number, blocking = true): Promise<FeatureResult | undefined> {
+  private request(request: RecoveryRequest, generation: number): Promise<FeatureResult | undefined> {
     return new Promise(resolve => {
       const finish = (result?: FeatureResult) => {
         if (this.waiting?.finish !== finish) return;
         clearTimeout(this.waiting.timer); this.waiting = undefined; resolve(result);
       };
-      this.waiting = { generation, operation: request.operation, blocking, finish,
+      this.waiting = { generation, operation: request.operation, finish,
         timer: setTimeout(() => finish(), this.transport.completionMs) };
       void this.transport.submit(request).then(admission => {
         if (this.waiting?.finish !== finish) return;
         if (admission.state !== 'submitted' || admission.generation !== generation) finish();
-        else this.waiting.id = admission.id;
+        else { this.waiting.id = admission.id; this.settleRequest(); }
       }, () => finish());
     });
   }

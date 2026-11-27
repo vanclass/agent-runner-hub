@@ -82,9 +82,7 @@ impl Features {
         self.work = work::Capability::read(&packet["work"]);
     }
     pub fn supports(&self, request: &Request) -> bool { match request {
-        Request::Recovery(r) => self.recovery.as_ref().is_some_and(|cap|
-            cap.operations.iter().any(|op| op == r.operation())
-                && (!matches!(r, recovery::Request::Observe { .. }) || cap.lifecycle_version == Some(1))),
+        Request::Recovery(r) => self.recovery.as_ref().is_some_and(|cap| cap.supports(r)),
         Request::Interaction(r) => self.interaction.is_some() && match r {
             interaction::Request::Observe { .. } => true,
             _ => self.results.iter().rev().find(|result| result.feature == "interaction")
@@ -117,7 +115,17 @@ impl Features {
             result.admission = "queued".into();
         } else if finished { result.admission = "rejected".into(); }
         result.code = super::result_code(packet);
-        if finished { result.reply = Some(request.response(packet, id)?); }
+        if finished {
+            match request.response(packet, id) {
+                Ok(reply) => result.reply = Some(reply),
+                Err(_) if matches!(request, Request::Recovery(_)) => {
+                    result.state = if matches!(request, Request::Recovery(recovery::Request::Recover { .. }))
+                        { "outcome-unknown" } else { "failure" }.into();
+                    if result.code.is_none() { result.code = Some("RECOVERY_RECEIPT_UNVERIFIED".into()); }
+                }
+                Err(error) => return Err(error),
+            }
+        }
         Ok(())
     }
     pub fn disconnect(&mut self, pending: impl Iterator<Item = (u64, bool)>) {

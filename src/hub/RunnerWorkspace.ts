@@ -37,6 +37,7 @@ function record(value: unknown): RunnerTabRecord | undefined {
   const recoveryHint = value.recoveryHint === undefined ? undefined : context(value.recoveryHint);
   if (value.recoveryHint !== undefined && !recoveryHint) return;
   // Explicit projection: process/control identities, drafts and instructions never cross this boundary.
+  // Recovery validates the committed mode and reference as one record, independently of presentation metadata.
   return { id: value.id, name: value.name, createdOrder: value.createdOrder as number,
     installationRoot: value.installationRoot, launchOnOpen: value.launchOnOpen,
     ...(lastVerified ? { lastVerified } : {}), ...(recoveryHint ? { recoveryHint } : {}),
@@ -79,8 +80,7 @@ export class RunnerWorkspace {
           this.issue = msg('runtime.workspace.skipped', { previous: this.issue, index: index + 1 });
           return;
         }
-        // Freeze the prior process's context before any replacement observations can arrive.
-        // Current producers can write only lastVerified; an existing hint always wins.
+        // Keep legacy presentation metadata separate from authenticated restoration context.
         const recoveryHint = tab.recoveryHint ?? tab.lastVerified;
         ids.add(tab.id.toLowerCase()); orders.add(tab.createdOrder);
         tabs.push({ ...tab, ...(recoveryHint ? { recoveryHint } : {}) });

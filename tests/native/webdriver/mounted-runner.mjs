@@ -28,9 +28,11 @@ export function mountedRunner(browser, operation, argument) {
         case 'buffer': {
           const buffer = terminal.buffer.active;
           const lines = Array.from({ length: buffer.length }, (_, i) => buffer.getLine(i)?.translateToString(true) ?? '');
+          const match = typeof argument === 'string' ? lines.findIndex(line => line.includes(argument)) : -1;
+          const foreground = match < 0 ? undefined : buffer.getLine(match)?.getCell(lines[match].indexOf(argument))?.getFgColor();
           return { full: lines.join('\n'), visible: lines.slice(buffer.viewportY, buffer.viewportY + terminal.rows).join('\n'),
             rows: terminal.rows, cols: terminal.cols, length: buffer.length, baseY: buffer.baseY, viewportY: buffer.viewportY,
-            identity };
+            identity, ...(foreground === undefined ? {} : { foreground }) };
         }
       }
     }

@@ -1,4 +1,5 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
+import type { ConnectedRunMode } from './RunnerRecovery';
 import { copy, same, record, isInspection, isTestSelection, isSessionProvider, sameInstallation, isPlan, isApply, validatePage, uniqueOptions, validDesired,
   type ConfigAccount, type ConfigCapability, type ConfigCatalog, type ConfigDesired, type ConfigIdentity,
   type ConfigInspect, type ConfigPlan, type ConfigApply, type ConfigSettings, type ConfigRequest, type FeatureSnapshot,
@@ -47,12 +48,14 @@ export class RunnerConfigService {
   private draftVersion = 0;
   private planned?: { identity: ConfigIdentity; draftVersion: number };
   private closed = false;
+  private restoringMode = false;
   private snapshot?: FeatureSnapshot;
   private receipts = new Map<number, FeatureResult>();
   private waiting?: { id?: number; identity: ConfigIdentity; request: ConfigRequest;
     finish: (result: FeatureResult) => void; timer: ReturnType<typeof setTimeout> };
   constructor(private readonly transport: ConfigTransport, private readonly changed: () => void) {}
   get busy() { return !['idle', 'closed'].includes(this.activity); }
+  get modeRestorationActive() { return this.restoringMode; }
   get latestApplication() { return this.applications.at(-1); }
   get uncertain() { return this.applications.some(a => a.verification === 'unknown' || a.result?.outcome_unknown); }
   supports(action: 'inspect' | 'plan' | 'apply') {
@@ -305,6 +308,25 @@ export class RunnerConfigService {
     this.planned = undefined;
     this.catalog = undefined;
     this.changed();
+  }
+  async restoreMode(mode: ConnectedRunMode) {
+    if (this.busy || this.closed || this.uncertain || this.restoringMode) return false;
+    this.restoringMode = true;
+    try {
+      await this.inspect();
+      if (!this.catalog || !this.actual || this.closed) return false;
+      if (this.actual.current.run_mode === mode) return true;
+      this.setDraft({ run_mode: mode });
+      await this.createPlan();
+      if (!this.canApply) return false;
+      await this.apply();
+      const receipt = this.latestApplication;
+      return receipt?.verification === 'verified' && receipt.result?.apply_status === 'applied'
+        && receipt.inspection?.current.run_mode === mode;
+    } finally {
+      this.resetDraft();
+      this.restoringMode = false;
+    }
   }
   async createPlan() {
     this.previousProgress = null;

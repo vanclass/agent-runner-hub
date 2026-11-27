@@ -127,6 +127,8 @@
     "launchUnknown": "네이티브 호스트가 프로세스 생성 여부를 확인하지 못했습니다. Hub 로그를 확인하고 Hub를 다시 시작해 네이티브 정리를 실행하세요.",
     "connection": "{{location}}에서 Runner 제어 연결에 실패했습니다.\n탭을 다시 열기 전에 Runner 출력과 설치 호환성을 확인하세요.\n{{diagnostic}}",
     "recovery": "Runner 작업 복구를 확인하지 못했습니다.\n{{cause}}\n재개를 시도하기 전에 Runner에서 원래 작업을 확인하세요. {{code}}",
+    "historyIncomplete": "Runner가 터미널 기록의 일부만 복원했습니다. 이 탭에서 복원된 출력을 확인하세요.",
+    "historyUnverified": "Runner가 터미널 기록 재생을 확인하지 못했습니다. 누락된 기록은 원래 Runner 출력에서 확인하세요.",
     "recoveryOutcome": {
       "absent": "참조한 작업을 찾을 수 없습니다.",
       "blocked": "Runner가 복구를 차단했습니다.",

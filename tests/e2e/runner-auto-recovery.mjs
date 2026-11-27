@@ -1,10 +1,12 @@
 import { chooseAppPreference } from './application-menu.mjs';
-export function registerAutoRecovery({ test, expect, transport, configure, create }) {
+import { mountedRunner } from '../native/webdriver/mounted-runner.mjs';
+
+export function registerAutoRecovery({ test, expect, transport }) {
   const key = 'agent-runner-hub.workspace.v1';
   const reference = n => ({ version: 1, family: 'task-run', repository_namespace: 'project-exact',
     task_number: String(n), task_workload_id: 'exact-work-' + n });
   async function seed(page, states, options = {}) {
-    await transport(page, undefined, { auto: true, work: true, recovery: true, ...options });
+    await transport(page, undefined, { auto: true, work: true, ...options });
     await page.addInitScript(({ key, states }) => {
       if (sessionStorage.getItem('seeded')) return;
       sessionStorage.setItem('seeded', 'yes');
@@ -20,229 +22,80 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
   const saved = page => page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
   const calls = page => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
     .flatMap(s => s.recoveries ?? []).filter(r => r.operation === 'recovery.recover'));
-  for (const disposition of ['completed', 'discarded']) test('lifecycle skips settled reference before restore: ' + disposition, async ({ page }) => {
-    await seed(page, [{ reference: reference(1), state: 'eligible' }], { lifecycle: disposition });
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery).toBeUndefined();
-    expect(await calls(page)).toEqual([]);
-    const id = (await saved(page)).tabs[0].id;
-    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
-    await page.waitForTimeout(1200);
-    expect((await saved(page)).tabs[0].id).toBe(id);
-    expect(await calls(page)).toEqual([]);
-  });
-  for (const family of ['task-run', 'issue-run']) test('lifecycle retires recovered ' + family + ' without local WorkEvidence completion', async ({ page }) => {
-    const exact = family === 'task-run' ? reference(1) : { version: 1, family, issue_run_id: 'issue-1',
-      created_by_runner_session_id: 'origin', creation_provenance_digest: 'a'.repeat(64) };
-    await seed(page, [{ reference: exact, state: 'eligible' }], { lifecycle: 'incomplete' });
-    await expect.poll(() => calls(page)).toHaveLength(1);
-    expect((await calls(page))[0].reference).toEqual(exact);
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery.state).toBe('eligible');
-    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').lifecycle = 'completed'; });
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery).toBeUndefined();
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.observations.size)).toBe(0);
-    const id = (await saved(page)).tabs[0].id;
-    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
-    await page.waitForTimeout(1200);
-    expect((await saved(page)).tabs[0].id).toBe(id);
-    expect(await calls(page)).toHaveLength(1);
-  });
-  for (const count of [1, 3]) test('automatic recovery after unexpected renderer loss with ' + count + ' tabs', async ({ page }) => {
-    const references = Array.from({ length: count }, (_, i) => reference(i + 1));
-    await seed(page, references.map(reference => ({ reference, state: 'eligible' })));
-    await expect.poll(() => calls(page)).toHaveLength(count);
-    await expect.poll(async () => (await saved(page)).tabs.map(t => t.recovery.state)).toEqual(references.map(() => 'eligible'));
-    const ids = (await saved(page)).tabs.map(t => t.id);
-    const cdp = await page.context().newCDPSession(page);
-    const crashed = page.waitForEvent('crash');
-    void cdp.send('Page.crash').catch(() => {});
-    await crashed;
-    const next = await page.context().newPage();
-    await transport(next, undefined, { auto: true, work: true, recovery: true });
-    await next.goto('/');
-    await expect.poll(() => calls(next)).toHaveLength(count);
-    expect((await calls(next)).map(r => r.reference)).toEqual(references);
-    expect((await saved(next)).tabs.map(t => t.id)).toEqual(ids);
-    await next.waitForTimeout(1100);
-    expect(await calls(next)).toHaveLength(count);
-    await next.close();
-  });
-  test('automatic recovery keeps exact multi-tab references independent and never replays', async ({ page }) => {
-    await seed(page, [1, 2, 3].map(n => ({ reference: reference(n), state: 'eligible' })),
-      { recoveryResults: { 'pty-2': 'blocked', 'pty-3': 'partial' } });
-    await expect.poll(() => calls(page)).toHaveLength(3);
-    await expect.poll(async () => (await saved(page)).tabs.map(t => t.recovery.state)).toEqual(['eligible', 'blocked', 'partial']);
-    expect((await calls(page)).map(r => r.reference)).toEqual([1, 2, 3].map(reference));
-    await page.waitForTimeout(1600);
-    expect(await calls(page)).toHaveLength(3);
-    expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]);
-    await page.locator('.runner-row').nth(2).locator('.nav-row').click();
-    await expect(page.locator('.runner-output-diagnostic')).toContainText('incomplete or uncertain');
-    await expect(page.locator('.runner-recovery')).toHaveCount(0);
-  });
-  for (const outcome of ['absent', 'identity_conflict', 'interaction_required', 'unverified', 'partial']) {
-    test('automatic recovery classifies ' + outcome + ' without fallback', async ({ page }) => {
-      await seed(page, [{ reference: reference(1), state: 'eligible' }], { recoveryResults: { 'pty-1': outcome } });
-      await expect.poll(async () => (await saved(page)).tabs[0].recovery.state).toBe(outcome);
-      await page.waitForTimeout(1100);
-      expect(await calls(page)).toHaveLength(1);
-      expect(await page.evaluate(() => window.__nativeFixture.commands)).toEqual([]);
-    });
-  }
-  test('automatic recovery retains uncertain, malformed and legacy tabs without selecting history', async ({ page }) => {
-    await seed(page, [{ reference: reference(1), state: 'attempting' },
-      { reference: { ...reference(2), key: 'secret' }, state: 'eligible' }, undefined]);
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery.state).toBe('partial');
-    expect((await saved(page)).tabs[1].recovery.state).toBe('unverified');
-    await page.waitForTimeout(1200);
-    expect(await calls(page)).toEqual([]);
-    expect(JSON.stringify(await saved(page))).not.toContain('secret');
-    for (const row of await page.locator('.runner-row .nav-row').all()) await row.click();
-    await expect(page.locator('.runner-recovery')).toHaveCount(0);
-  });
-  test('automatic recovery retains its reference across unrelated replacement-session completion', async ({ page }) => {
-    await transport(page, undefined, { auto: true, work: true, recovery: true });
-    await configure(page); await create(page);
-    await page.evaluate(async () => {
-      const { terminalWork } = await import('/tests/fixtures/work.ts');
-      window.__nativeFixture.sessions.get('pty-1').feature.observations.set('terminal:1', terminalWork(1, 1));
-    });
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery?.state).toBe('eligible');
-    const before = (await saved(page)).tabs[0];
-    expect(before.recovery.reference.task_workload_id).toBe('work-pty-1');
-    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1));
-    await expect.poll(() => calls(page)).toHaveLength(1);
-    expect((await calls(page))[0].reference).toEqual(before.recovery.reference);
-    expect((await saved(page)).tabs[0].id).toBe(before.id);
-    const owner = await page.evaluate(() => [...window.__nativeFixture.sessions.entries()]
-      .find(([, s]) => s.recoveries?.some(r => r.operation === 'recovery.recover'))[0]);
-    await page.evaluate(async owner => {
-      const { terminalWork } = await import('/tests/fixtures/work.ts');
-      window.__nativeFixture.sessions.get(owner).feature.observations.set('terminal:1',
-        terminalWork(1, 1, { state: 'succeeded', terminal: true, outcome: 'succeeded' }));
-    }, owner);
-    await page.waitForTimeout(2200);
-    expect((await saved(page)).tabs[0].recovery).toEqual(before.recovery);
-    await page.evaluate(owner => window.__nativeFixture.exit(owner, 1), owner);
-    await expect.poll(() => calls(page)).toHaveLength(2);
-    expect((await calls(page))[1].reference).toEqual(before.recovery.reference);
-    expect((await saved(page)).tabs[0].id).toBe(before.id);
-  });
-  test('automatic recovery never substitutes new active work or retires unbound exit evidence', async ({ page }) => {
-    await seed(page, [{ reference: reference(1), state: 'eligible' }]);
-    await expect.poll(() => calls(page)).toHaveLength(1);
-    await page.evaluate(async () => {
-      const { terminalWork } = await import('/tests/fixtures/work.ts');
-      window.__nativeFixture.sessions.get('pty-1').feature.observations.set('terminal:1', terminalWork(1, 1));
-    });
-    await page.waitForTimeout(2200);
-    expect((await saved(page)).tabs[0].recovery.reference).toEqual(reference(1));
-    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').recoveries)).toHaveLength(1);
-    await page.evaluate(() => {
-      const session = window.__nativeFixture.sessions.get('pty-1');
-      Object.assign(session.feature.observations.get('terminal:1'), {
-        event_id: 2, terminal: true, state: 'succeeded', outcome: 'succeeded' });
-      window.__nativeFixture.exit('pty-1', 1, structuredClone(session.control));
-    });
-    await expect.poll(() => calls(page)).toHaveLength(2);
-    expect((await calls(page))[1].reference).toEqual(reference(1));
-  });
-  test('automatic recovery retires only bound settled work after successful persistence', async ({ page }) => {
-    await page.goto('/');
-    const result = await page.evaluate(async reference => {
-      const { RunnerRecovery } = await import('/src/hub/RunnerRecovery.ts');
-      const { terminalWork } = await import('/tests/fixtures/work.ts');
-      const attempt = { identity: { session: 'owned', generation: 1 }, uncertain: false, notSent: false,
-        work: terminalWork(1, 1) };
-      let committed, fail = false;
-      const requests = [];
-      const recovery = new RunnerRecovery(undefined, false, { completionMs: 1000, submit: async request => {
-        requests.push(request); return { state: 'submitted', id: 1, generation: 1 };
-      } }, () => { if (fail) return false; committed = structuredClone(recovery.saved); return true; });
-      const snapshot = { generation: 1, results: [], recovery: { version: 1, operations: ['recovery.reference', 'recovery.recover'] } };
-      recovery.observe(snapshot, true, true, [attempt]);
-      await new Promise(resolve => setTimeout(resolve, 0));
-      snapshot.results.push({ id: 1, feature: 'recovery', operation: 'recovery.reference', state: 'accepted',
-        phase: 'completed', reply: { observation_id: 'terminal:1', reference } });
-      recovery.observe(snapshot, true, true, [attempt]);
-      await new Promise(resolve => setTimeout(resolve, 0));
-      const captured = structuredClone(recovery.saved);
-      const retained = [];
-      for (const [state, terminal, outcome] of [['suspended', false, 'interrupted'], ['incomplete', true, 'incomplete'],
-        ['unknown', true, 'unknown']]) {
-        Object.assign(attempt.work, { state, terminal, outcome });
-        const unrelated = { ...attempt, work: terminalWork(2, 9, { state: 'succeeded', terminal: true, outcome: 'succeeded' }) };
-        recovery.observe(snapshot, true, true, [attempt, unrelated]);
-        recovery.retireCompleted([unrelated]);
-        retained.push(structuredClone(recovery.saved));
+  const direct = n => ({ version: 1, family: 'direct-run', session_id: 'origin-' + n, generation_id: 'generation-1',
+    thread_id: 'thread-' + n, resume_id: '', source_exec_run_id: 'exec-1' });
+  const issue = { version: 1, family: 'issue-run', issue_run_id: 'issue-1',
+    created_by_runner_session_id: 'origin', creation_provenance_digest: 'a'.repeat(64) };
+  const contexts = [
+    { runMode: 'pure-direct-run', reference: direct(1), disposition: 'completed' },
+    { runMode: 'direct-run', reference: direct(2), disposition: 'completed', history: 'incomplete' },
+    { runMode: 'task-run', reference: reference(1), disposition: 'suspended' },
+    { runMode: 'issue-run', reference: issue, disposition: 'incomplete' },
+  ];
+  const terminal = (page, text) => mountedRunner({ execute: (fn, ...args) =>
+    page.evaluate(({ source, args }) => Function('return (' + source + ')')()(...args), { source: String(fn), args }) }, 'buffer', text);
+  const restoreRecords = contexts.map(({ runMode, reference }) => ({ runMode, reference, state: 'eligible' }));
+  test('connected recovery preserves four exact contexts and replays only in their original tabs', async ({ page }) => {
+    await seed(page, restoreRecords, { recoveryContexts: contexts });
+    const initial = await saved(page);
+    async function verify(launches) {
+      await expect.poll(() => calls(page)).toHaveLength(launches * 4);
+      await expect.poll(async () => (await saved(page)).tabs.map(tab => tab.recovery)).toEqual(restoreRecords);
+      for (const [index, context] of contexts.entries()) {
+        await page.locator('.runner-row').nth(index).locator('.nav-row').click();
+        const first = context.runMode + ' first', second = context.runMode + ' second';
+        await expect.poll(async () => (await terminal(page))?.full).toContain(second);
+        const { full, identity, foreground } = await terminal(page, first);
+        expect(identity.tab).toBe(initial.tabs[index].id);
+        expect(foreground).toBe(2);
+        expect(full.split(first)).toHaveLength(2);
+        expect(full.indexOf(first)).toBeLessThan(full.indexOf(second));
+        expect(full.split(second)).toHaveLength(2);
+        if (context.history === 'incomplete')
+          await expect(page.locator('.runner-output-diagnostic')).toContainText('only part of the terminal history');
       }
-      Object.assign(attempt.work, { state: 'succeeded', terminal: true, outcome: 'succeeded' });
-      recovery.observe(snapshot, false, true, [attempt]);
-      retained.push(structuredClone(recovery.saved));
-      fail = true;
-      recovery.observe(snapshot, true, true, [attempt]);
-      const failed = { live: structuredClone(recovery.saved), committed };
-      fail = false;
-      recovery.observe(snapshot, true, true, [attempt]);
-      recovery.close();
-      return { captured, retained, failed, retired: !recovery.saved && !committed, requests };
-    }, reference(1));
-    const captured = { reference: reference(1), state: 'eligible' };
-    expect(result.captured).toEqual(captured);
-    expect(result.retained).toEqual(Array(4).fill(captured));
-    expect(result.failed).toEqual({ live: captured, committed: captured });
-    expect(result.retired).toBe(true);
-    expect(result.requests).toEqual([{ operation: 'recovery.reference', api_version: 1, observation_id: 'terminal:1' }]);
-  });
-  test('intentional Hub teardown suppresses recovery but keeps tab identity', async ({ page }) => {
-    await seed(page, [{ reference: reference(1), state: 'eligible' }]);
-    await expect.poll(() => calls(page)).toHaveLength(1);
-    const id = (await saved(page)).tabs[0].id;
+      expect(await page.evaluate(() => window.__nativeFixture.deliveredSets)).toEqual([]);
+    }
+    await verify(1);
+    await page.locator('.runner-management summary').click();
+    await page.getByRole('button', { name: 'Restart all Runners', exact: true }).click();
+    await verify(2);
     await page.reload();
-    await expect(page.locator('.runner-row')).toHaveCount(1);
-    await page.waitForTimeout(1200);
-    expect(await calls(page)).toEqual([]);
-    expect((await saved(page)).tabs[0].id).toBe(id);
+    await verify(1);
   });
-  test('automatic recovery retires completion delivered only in the native exit snapshot', async ({ page }) => {
-    await transport(page, undefined, { auto: true, work: true, recovery: true });
-    await configure(page); await create(page);
-    await page.evaluate(async () => {
-      const { terminalWork } = await import('/tests/fixtures/work.ts');
-      window.__nativeFixture.sessions.get('pty-1').feature.observations.set('terminal:1', terminalWork(1, 1));
-    });
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery?.state).toBe('eligible');
-    const before = await page.evaluate(() => {
-      const f = window.__nativeFixture.sessions.get('pty-1').feature, invoke = window.__TAURI_INTERNALS__.invoke;
-      window.__TAURI_INTERNALS__.invoke = async (command, args) => {
-        const value = await invoke(command, args);
-        if (command === 'runner_observe' && args.id === 'pty-1')
-          value.features.results = value.features.results.filter(r => r.feature !== 'work');
-        return value;
-      };
-      Object.assign(f.observations.get('terminal:1'), { event_id: 2, terminal: true, state: 'succeeded', outcome: 'succeeded' });
-      return f.requests.length;
-    });
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.length)).toBeGreaterThan(before);
-    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 1, structuredClone(window.__nativeFixture.sessions.get('pty-1').control)));
-    await expect.poll(async () => (await saved(page)).tabs[0].recovery).toBeUndefined();
-    expect((await saved(page)).tabs[0].launchOnOpen).toBe(false);
+  test('connected recovery restores mode only for ineligible and absent retained work', async ({ page }) => {
+    const closed = { ...contexts[1], disposition: 'discarded', ineligible: true };
+    const finished = { ...contexts[2], disposition: 'completed', ineligible: true };
+    await seed(page, [restoreRecords[1], restoreRecords[2], { runMode: 'pure-direct-run', state: 'eligible' }],
+      { recoveryContexts: [closed, finished] });
+    await expect.poll(async () => (await saved(page)).tabs.map(tab => tab.recovery)).toEqual(
+      ['direct-run', 'task-run', 'pure-direct-run'].map(runMode => ({ runMode, state: 'eligible' })));
+    await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
+      .slice(0, 3).map(session => session.feature.config.current.run_mode))).toEqual(['direct-run', 'task-run', 'pure-direct-run']);
     expect(await calls(page)).toEqual([]);
   });
-  test('automatic recovery excludes normal Runner exit and explicit tab removal', async ({ page }) => {
-    await seed(page, [1, 2].map(n => ({ reference: reference(n), state: 'eligible' })));
-    await expect.poll(() => calls(page)).toHaveLength(2);
-    await expect.poll(async () => (await saved(page)).tabs.map(tab => tab.recovery?.state)).toEqual(['eligible', 'eligible']);
-    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
-    await expect.poll(async () => (await saved(page)).tabs[0].launchOnOpen).toBe(false);
-    expect((await saved(page)).tabs[0].recovery).toBeUndefined();
-    await page.locator('.runner-row').first().locator('.nav-row').click();
-    await expect(page.locator('.runner-output-status')).toContainText('Runner exited normally (code 0)');
-    await page.locator('.runner-row').nth(1).locator('.nav-row').click({ button: 'middle' });
+  test('connected recovery leaves an unavailable installation and its exact reference in place', async ({ page }) => {
+    await seed(page, [restoreRecords[0]], { recoveryContexts: contexts,
+      failedLocations: { '/fixture/install': { code: 'missing-installation', detail: 'Fixture installation unavailable' } } });
+    await page.locator('.runner-row .nav-row').click();
+    await expect(page.locator('.runner-output-diagnostic')).toContainText('missing-installation');
+    expect((await saved(page)).tabs[0]).toMatchObject({
+      installationRoot: '/fixture/install', launchOnOpen: true, recovery: restoreRecords[0],
+    });
+    expect(await calls(page)).toEqual([]);
+  });
+  test('connected recovery keeps work after uncertain receipt and drops explicitly removed tabs', async ({ page }) => {
+    await seed(page, [restoreRecords[2]], { recoveryContexts: contexts, recoveryResults: { 'pty-1': 'partial' } });
+    await expect.poll(() => calls(page)).toHaveLength(1);
+    await expect.poll(async () => (await saved(page)).tabs[0].recovery.state).toBe('attempting');
+    await page.reload();
+    await page.locator('.runner-row .nav-row').click();
+    await expect(page.locator('.runner-output-diagnostic')).toContainText('RECOVERY_PRIOR_ATTEMPT_UNCERTAIN');
+    expect(await calls(page)).toEqual([]);
+    await page.locator('.runner-row .nav-row').click({ button: 'middle' });
     await page.getByRole('dialog').getByRole('button', { name: 'Terminate and close tab', exact: true }).click();
-    await expect(page.locator('.runner-row')).toHaveCount(1);
-    expect((await saved(page)).tabs).toHaveLength(1);
-    await page.waitForTimeout(1100);
-    expect(await calls(page)).toHaveLength(2);
+    await page.reload();
+    await expect(page.locator('.runner-row')).toHaveCount(0);
   });
   for (const theme of ['light', 'black']) for (const height of [650, 900]) {
     test('automatic recovery releases terminal height ' + theme + '/' + height, async ({ page }, info) => {

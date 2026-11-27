@@ -4,6 +4,37 @@ use control::{features, recovery};
 use std::time::Instant;
 
 #[test]
+#[ignore = "Requires HUB_RUNNER_ACCEPTANCE_ROOT; reads the fresh owned session only"]
+fn installed_connected_recovery_observation() {
+    let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();
+    let mut harness = Harness::new();
+    let id = harness.open_runner(&root);
+    let session = harness.sessions.owned(&id, "test-window").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(45);
+    let request = features::Request::Recovery(recovery::Request::Current { api_version: 1 });
+    while !session.control_snapshot().unwrap().features.supports(&request) {
+        assert!(Instant::now() < deadline, "Installed connected recovery capability unavailable");
+        harness.pump_for(Duration::from_millis(30));
+    }
+    let features::Admission::Submitted { id: request_id, generation } = session.control_feature(request).unwrap()
+        else { panic!("Authenticated recovery.current not admitted") };
+    loop {
+        let snapshot = session.control_snapshot().unwrap();
+        assert_eq!(snapshot.features.generation, generation);
+        if let Some(result) = snapshot.features.results.iter().find(|r| r.id == request_id && r.phase.as_deref() == Some("completed")) {
+            let Some(features::Response::Recovery(reply)) = &result.reply else { panic!("{result:?}") };
+            assert_eq!(result.state, "accepted");
+            assert_eq!(reply.connected_version, Some(1));
+            assert_eq!(reply.reference_status.as_deref(), Some("absent"));
+            assert_eq!(reply.run_mode.as_deref(), snapshot.observation.as_ref().map(|view| view.run_mode.as_str()));
+            break;
+        }
+        assert!(Instant::now() < deadline); harness.pump_for(Duration::from_millis(30));
+    }
+    session.close().unwrap(); harness.exited(&id);
+}
+
+#[test]
 #[ignore = "Requires HUB_RUNNER_ACCEPTANCE_ROOT and an explicitly supplied exact HUB_RECOVERY_OBSERVE_REFERENCE"]
 fn installed_exact_lifecycle_observation_without_work_dispatch() {
     let root = std::env::var("HUB_RUNNER_ACCEPTANCE_ROOT").unwrap();

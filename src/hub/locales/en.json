@@ -127,6 +127,8 @@
     "launchUnknown": "The native host did not confirm process creation. Check the Hub log and restart the Hub to run native cleanup.",
     "connection": "Runner control connection failed at {{location}}.\nCheck the Runner output and installation compatibility before reopening the tab.\n{{diagnostic}}",
     "recovery": "Runner work recovery could not be verified.\n{{cause}}\nCheck the original work in Runner before attempting to resume it. {{code}}",
+    "historyIncomplete": "Runner restored only part of the terminal history. Review the available output in this tab.",
+    "historyUnverified": "Runner did not confirm terminal history playback. Check the original Runner output for missing history.",
     "recoveryOutcome": {
       "absent": "The referenced work was not found.",
       "blocked": "Runner blocked recovery.",
