@@ -87,8 +87,8 @@ export class RunnerWorkspace {
       });
       if (value.presentation !== undefined) {
         const projected = presentation(value.presentation, tabs);
-        if (!projected) throw new HubError(msg('runtime.workspace.unsupported'));
-        this.presentation = projected;
+        if (projected) this.presentation = projected;
+        else this.issue = msg('lifecycle.navigationInvalid', { previous: this.issue });
       }
       return tabs.sort((a, b) => a.createdOrder - b.createdOrder);
     } catch (reason) {
@@ -106,7 +106,11 @@ export class RunnerWorkspace {
       return false;
     }
     const metadata = presentation(navigation, tabs);
-    if (!metadata) return false;
+    if (!metadata) {
+      this.saveFailed = true;
+      this.issue = msg('lifecycle.navigationSaveFailed');
+      return false;
+    }
     const raw = JSON.stringify({ version: 1, tabs: projected, presentation: metadata });
     if (raw === this.committed) return true;
     try {

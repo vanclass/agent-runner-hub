@@ -27,7 +27,11 @@ export function DesktopTerminal({ request, onExit }: {
     terminal.loadAddon(find);
     terminal.open(container.current);
     fit.fit();
-    const failed = (reason: unknown) => { if (!disposed) setStatus(String(reason)); };
+    const failed = (reason: unknown) => {
+      if (disposed) return;
+      setStatus(reason && typeof reason === 'object' && 'detail' in reason && typeof reason.detail === 'string'
+        ? reason.detail : String(reason));
+    };
     const write = (bytes: Uint8Array) => {
       if (pty) void pty.write(bytes).catch(failed); else pendingInput.push(bytes);
     };

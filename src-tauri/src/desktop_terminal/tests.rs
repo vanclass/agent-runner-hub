@@ -193,8 +193,9 @@ impl Harness {
                 self.output.entry(id.clone()).or_default().extend(bytes);
                 self.sessions.owned(&id, "test-window").unwrap().acknowledge(sequence).unwrap();
             }
-            PtyEvent::Exit { id, code, error, .. } => {
+            PtyEvent::Exit { id, code, error, settled, termination_error, .. } => {
                 assert!(error.is_none(), "PTY stream/wait failure: {error:?}");
+                assert!(settled, "PTY process settlement failed: {termination_error:?}");
                 self.exited.insert(id, code);
             }
         }
@@ -268,7 +269,21 @@ fn destroyed_window_cancels_pending_creation_and_rejects_late_requests() {
     harness.sessions.close_window("test-window");
     assert!(harness.sessions.start(id.clone(), session, OpenRequest {
         cols: 80, rows: 24, ..Default::default()
-    }, harness.sink.clone()).unwrap_err().contains("cancelled"));
+    }, harness.sink.clone()).unwrap_err().detail.contains("cancelled"));
     assert!(harness.sessions.owned(&id, "test-window").is_err());
     assert!(harness.sessions.reserve("test-window".into()).is_err());
+}
+
+#[test]
+fn missing_runner_path_releases_reservation_without_an_exit_event() {
+    let harness = Harness::new();
+    let (id, session) = harness.sessions.reserve("test-window".into()).unwrap();
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("absent-codex_workspace");
+    let failure = harness.sessions.start(id.clone(), session, OpenRequest {
+        runner_location: Some(path.to_string_lossy().into_owned()),
+        cols: 80, rows: 24, ..Default::default()
+    }, harness.sink.clone()).unwrap_err();
+    assert_eq!(failure.code, "missing-installation");
+    assert!(harness.sessions.owned(&id, "test-window").is_err());
+    assert!(harness.events.try_recv().is_err());
 }

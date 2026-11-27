@@ -27,7 +27,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const { t, tr } = useHubTranslation();
   const [sessions] = useState(() => new RunnerSessions(preferences.value.singleEntry,
     singleEntry => preferences.update({ singleEntry }), preferences.value.runnerSelections,
-    (id, value) => preferences.saveRunner(id, value)));
+    (id, value) => preferences.saveRunner(id, value), id => preferences.forgetRunner(id)));
   const liveRunners = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot);
   const [hubLog] = useState(() => new HubLog(preferences.logRetentionDays));
   const [retentionDays, setRetentionDays] = useState(preferences.logRetentionDays);
@@ -101,7 +101,6 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   function closeRunner(id: string) {
     const index = runners.findIndex(runner => runner.id === id);
     if (!sessions.close(id)) return;
-    preferences.forgetRunner(id);
     const remaining = runners.filter(runner => runner.id !== id);
     const next = remaining[index] ?? remaining.at(-1);
     setSelectedId(current => current === id ? next?.id ?? null : current);
@@ -130,6 +129,10 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
       <Workspace key={selectedId ?? 'single-entry'} runner={selected}
         fileDropActive={fileDrop.active} fileDropUnavailable={fileDrop.unavailable}
         session={sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined)}
+        failureActions={selectedId && sessions.getFailure(selectedId) ? {
+          retry: () => sessions.retryFailure(selectedId),
+          dismiss: () => sessions.dismissFailure(selectedId),
+        } : undefined}
         theme={theme} installation={installation} hubLog={hubLog} selections={sessions.getSelections(selectedId ?? undefined)}
         entry={sessions.entry} onSelectRunner={setSelectedId} />
       <TaskPanel entry={sessions.entry} selections={sessions.getSelections(selectedId ?? undefined)}

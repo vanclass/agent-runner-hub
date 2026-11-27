@@ -29,7 +29,9 @@ pub struct OpenRequest {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PtyEvent {
     Output { id: String, sequence: u64, bytes: Vec<u8> },
-    Exit { id: String, code: Option<u32>, error: Option<String>,
+    Exit { id: String, code: Option<u32>, error: Option<String>, settled: bool,
+        #[serde(rename = "terminationError", skip_serializing_if = "Option::is_none")]
+        termination_error: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")] control: Option<control::Snapshot> },
 }
 
@@ -45,6 +47,7 @@ pub struct Session {
     #[cfg(windows)] control: Mutex<Option<Arc<control::Client>>>,
     #[cfg(windows)] clipboard: Mutex<clipboard::ClipboardFiles>,
     closing: AtomicBool,
+    exit_finished: AtomicBool,
     startup_ready: Mutex<bool>,
     started: Condvar,
     acknowledged: Mutex<u64>,
@@ -165,8 +168,15 @@ impl Session {
 
     pub fn close(&self) -> Result<(), String> {
         self.closing.store(true, Ordering::Release);
-        self.drained.notify_all();
-        self.started.notify_all();
+        // Synchronize with both predicate-to-wait transitions before waking them.
+        {
+            let _acknowledged = self.acknowledged.lock().map_err(|e| e.to_string())?;
+            self.drained.notify_all();
+        }
+        {
+            let _ready = self.startup_ready.lock().map_err(|e| e.to_string())?;
+            self.started.notify_all();
+        }
         #[cfg(windows)]
         if let Some(control) = self.control.lock().unwrap().as_ref() { control.close(); }
         #[cfg(windows)]
@@ -177,7 +187,6 @@ impl Session {
             if result.is_err() {
                 if let Some(killer) = self.killer.lock().map_err(|e| e.to_string())?.as_mut() { let _ = killer.kill(); }
             }
-            if result.is_ok() { self.clipboard.lock().unwrap().release_after_termination()?; }
             return result;
         }
         self.killer.lock().map_err(|e| e.to_string())?.as_mut().map_or(Ok(()), ProcessKiller::kill)
@@ -199,10 +208,20 @@ impl Sessions {
         let sessions = {
             let mut closed = self.closed_owners.lock().unwrap();
             closed.insert(owner.into());
-            self.sessions.lock().unwrap().values().filter(|s| s.owner == owner).cloned().collect::<Vec<_>>()
+            self.sessions.lock().unwrap().iter().filter(|(_, s)| s.owner == owner)
+                .map(|(id, s)| (id.clone(), s.clone())).collect::<Vec<_>>()
         };
-        for session in sessions {
-            if let Err(error) = session.close() { eprintln!("PTY termination: {error}"); }
+        for (id, session) in sessions {
+            match self.close(&id, &session) {
+                Err(error) => eprintln!("PTY termination: {error}"),
+                #[cfg(windows)]
+                Ok(false) if session.job.lock().unwrap().is_some() => {
+                    if let Err(error) = session.clipboard.lock().unwrap().release_after_termination() {
+                        eprintln!("PTY clipboard cleanup: {error}");
+                    }
+                }
+                Ok(_) => {}
+            }
         }
     }
 
@@ -211,7 +230,7 @@ impl Sessions {
         if closed.contains(&owner) { return Err("PTY window has closed".into()); }
         let id = self.next.fetch_add(1, Ordering::Relaxed).to_string();
         let session = Arc::new(Session { owner, master: Mutex::new(None), writer: Mutex::new(None),
-            killer: Mutex::new(None), closing: AtomicBool::new(false),
+            killer: Mutex::new(None), closing: AtomicBool::new(false), exit_finished: AtomicBool::new(false),
             #[cfg(windows)] job: Mutex::new(None),
             #[cfg(windows)] control: Mutex::new(None),
             #[cfg(windows)] clipboard: Mutex::new(clipboard::ClipboardFiles::default()),
@@ -221,14 +240,28 @@ impl Sessions {
         Ok((id, session))
     }
 
-    pub fn start(&self, id: String, session: Arc<Session>, request: OpenRequest, sink: Sink) -> Result<String, String> {
+    pub fn close(&self, id: &str, session: &Session) -> Result<bool, String> {
+        session.close()?;
+        #[cfg(windows)]
+        if session.exit_finished.load(Ordering::Acquire) && session.job.lock().unwrap().is_some() {
+            match session.clipboard.lock().unwrap().release_after_termination() {
+                Ok(()) => { self.sessions.lock().unwrap().remove(id); }
+                Err(error) => eprintln!("PTY clipboard cleanup: {error}"),
+            }
+            return Ok(true);
+        }
+        let _ = id;
+        Ok(false)
+    }
+
+    pub fn start(&self, id: String, session: Arc<Session>, request: OpenRequest, sink: Sink) -> Result<String, runner::LaunchFailure> {
         let result = self.start_inner(id.clone(), session, request, sink);
         if result.is_err() { self.sessions.lock().unwrap().remove(&id); }
         result
     }
 
-    fn start_inner(&self, id: String, session: Arc<Session>, request: OpenRequest, sink: Sink) -> Result<String, String> {
-        if session.closing.load(Ordering::Acquire) { return Err("PTY creation cancelled".into()); }
+    fn start_inner(&self, id: String, session: Arc<Session>, request: OpenRequest, sink: Sink) -> Result<String, runner::LaunchFailure> {
+        if session.closing.load(Ordering::Acquire) { return Err("PTY creation cancelled".to_string().into()); }
         let contained = request.runner_location.is_some();
         let request = match request.runner_location.as_deref() {
             Some(location) => runner::prepare(location, request.cols, request.rows)?,
@@ -277,8 +310,12 @@ impl Sessions {
                 if answer {
                     // ConPTY startup must complete even if the renderer has already gone away.
                     if let Some(writer) = output_session.writer.lock().unwrap().as_mut() {
-                        writer.write_all(b"\x1b[1;1R").map_err(|e| e.to_string())?;
+                        if let Err(error) = writer.write_all(b"\x1b[1;1R") {
+                            // Release the writer lock before requesting termination.
+                            delivery_error = Some(error.to_string());
+                        }
                     }
+                    if delivery_error.is_some() { let _ = output_session.close(); break; }
                     *output_session.startup_ready.lock().unwrap() = true;
                     output_session.started.notify_all();
                 }
@@ -306,40 +343,26 @@ impl Sessions {
                 session.master.lock().unwrap().take();
                 session.writer.lock().unwrap().take();
                 let _ = output.join();
-                return Err(error);
+                return Err(error.into());
             }
         };
+        let mut startup_error = None;
         #[cfg(windows)]
         if let Some(launch) = control_launch {
             if let Some(pid) = child.process_id() {
-                let control = launch.bind(pid);
-                if session.closing.load(Ordering::Acquire) { control.close(); }
-                *session.control.lock().unwrap() = Some(control);
+                *session.control.lock().unwrap() = Some(launch.bind(pid));
             } else {
-                let _ = session.close();
-                let _ = process::terminate_child(child.as_mut());
-                let _ = child.wait();
-                session.master.lock().unwrap().take();
-                session.writer.lock().unwrap().take();
-                let _ = output.join();
-                return Err("Runner process identity is unavailable".into());
+                startup_error = Some("Runner process identity is unavailable".to_string());
             }
         }
-        let captured = ProcessKiller::capture(child.as_ref());
-        if let Err(error) = captured {
-            let termination = process::terminate_child(child.as_mut());
-            let _ = session.close();
-            let _ = child.wait();
-            session.master.lock().unwrap().take();
-            session.writer.lock().unwrap().take();
-            let _ = output.join();
-            return Err(format!("{error}; termination: {termination:?}"));
+        match ProcessKiller::capture(child.as_ref()) {
+            Ok(killer) => *session.killer.lock().unwrap() = Some(killer),
+            Err(error) => { startup_error.get_or_insert(error); }
         }
-        {
-            let mut killer = session.killer.lock().unwrap();
-            *killer = Some(captured.unwrap());
-            if session.closing.load(Ordering::Acquire) {
-                if let Err(error) = killer.as_mut().unwrap().kill() { eprintln!("PTY cancellation: {error}"); }
+        if startup_error.is_some() || session.closing.load(Ordering::Acquire) {
+            if let Err(error) = session.close() { eprintln!("PTY cancellation: {error}"); }
+            if session.killer.lock().unwrap().is_none() {
+                if let Err(error) = process::terminate_child(child.as_mut()) { eprintln!("PTY cancellation: {error}"); }
             }
         }
         let registry = self.sessions.clone();
@@ -350,21 +373,30 @@ impl Sessions {
             if let Some(control) = session.control.lock().unwrap().as_ref() { control.close(); }
             // A root exit does not release descendants. Settle its job before publishing Exit.
             #[cfg(windows)]
-            let containment = session.job.lock().unwrap().as_ref().map_or(Ok(()), |job| {
-                job.terminate()?;
-                session.clipboard.lock().unwrap().release_after_termination()
-            });
+            let containment = session.job.lock().unwrap().as_ref().map(|job| job.terminate());
+            #[cfg(not(windows))]
+            let containment: Option<Result<(), String>> = None;
+            let settled = containment.as_ref().map_or(status.is_ok(), Result::is_ok);
+            let termination_error = containment.and_then(Result::err);
+            #[cfg(windows)]
+            let cleanup = if settled { session.clipboard.lock().unwrap().release_after_termination().err() } else { None };
+            #[cfg(not(windows))]
+            let cleanup = None;
             // Close ConPTY away from its reader while that reader can still drain output.
             session.master.lock().unwrap().take();
             session.writer.lock().unwrap().take();
-            session.killer.lock().unwrap().take();
+            *session.startup_ready.lock().unwrap() = true;
+            session.started.notify_all();
+            if settled { session.killer.lock().unwrap().take(); }
             let read_result = output.join().unwrap_or_else(|_| Err("PTY reader panicked".into()));
-            let error = status.as_ref().err().map(ToString::to_string).or_else(|| read_result.err());
-            #[cfg(windows)] let error = error.or_else(|| containment.err());
+            let retain = !settled || cleanup.is_some();
+            let error = startup_error.or_else(|| status.as_ref().err().map(ToString::to_string))
+                .or_else(|| read_result.err()).or(cleanup);
             let code = status.ok().map(|s| s.exit_code());
             let control = session.control_snapshot().ok();
-            let _ = sink(PtyEvent::Exit { id: exit_id.clone(), code, error, control });
-            registry.lock().unwrap().remove(&exit_id);
+            session.exit_finished.store(true, Ordering::Release);
+            let _ = sink(PtyEvent::Exit { id: exit_id.clone(), code, error, settled, termination_error, control });
+            if !retain { registry.lock().unwrap().remove(&exit_id); }
         });
         Ok(id)
     }

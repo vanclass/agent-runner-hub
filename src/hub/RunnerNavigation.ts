@@ -25,6 +25,11 @@ export class RunnerNavigation {
   constructor(private readonly changed: () => void) {}
   get snapshot(): NavigationPresentation { return structuredClone(this.value); }
   restore(value: NavigationPresentation) { this.value = structuredClone(value); }
+  forget(id: string, work: RunnerWork) {
+    delete this.value.affinities[id];
+    this.value.order = this.value.order.filter(candidate => candidate !== id);
+    this.latest.get(work)?.delete(id);
+  }
   observe(id: string | undefined, work: RunnerWork, context?: string) {
     for (const attempt of work.attempts) {
       if (!work.hasConfirmedStart(attempt)) continue;

@@ -38,7 +38,46 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
   const reasons = ['execution', 'retained-task', 'suspension', 'foreground', 'native-unknown', 'stale',
     'reservation', 'draft', 'staged-attachment', 'restart-confirmation', 'termination-confirmation', 'account-setup', 'pending-prompt',
     'config-pending', 'config-draft', 'config-unknown', 'work-active', 'work-uncertain',
-    'reference-unknown', 'reference-unverified', 'reference-inventory', 'input-unknown', 'native-exit-error'];
+    'reference-unknown', 'reference-unverified', 'reference-inventory', 'input-unknown'];
+  for (const language of ['en', 'ko']) test(`restored obsolete installation shows actionable output and removes durably ${language}`, async ({ page }) => {
+    const root = '/obsolete/codex_workspace', id = '87dc5d28-6454-43c1-91e1-de2c1eff7d59';
+    await transport(page, undefined, { auto: true, work: true,
+      failedLocations: { [root]: { code: 'missing-installation', detail: 'fixture OS error 3' } } });
+    await page.addInitScript(({ root, id, language }) => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', 'yes');
+      localStorage.setItem('agent-runner-hub.installation', '/fixture/install');
+      localStorage.setItem('agent-runner-hub.preferences.v1', JSON.stringify({ version: 1, language, theme: 'light',
+        singleEntry: {}, runnerSelections: { [id]: { runMode: 'task-run' } }, confirmRunnerRemoval: false }));
+      localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1, presentation: { invalid: true }, tabs: [
+        { id, name: 'Former install', createdOrder: 1, installationRoot: root, launchOnOpen: true,
+          recovery: { state: 'eligible', reference: { version: 1, family: 'task-run', repository_namespace: 'fixture',
+            task_number: '1', task_workload_id: 'a'.repeat(32) } } },
+        { id: '44e47046-f5ac-4ed5-b535-a7180aeeb58e', name: 'Neighbor', createdOrder: 2, installationRoot: '/fixture/install', launchOnOpen: true },
+      ] }));
+    }, { root, id, language });
+    await page.goto('/');
+    const failed = page.locator('.runner-row').filter({ hasText: 'Former install' });
+    await failed.locator('.nav-row').click();
+    const diagnostic = page.locator('.runner-output-diagnostic');
+    await expect(diagnostic).toContainText(root);
+    await expect(diagnostic).toContainText('missing-installation');
+    await expect(diagnostic).toContainText('fixture OS error 3');
+    await expect(diagnostic).toContainText(language === 'ko' ? '저장된 설치 경로가 없습니다' : 'The saved installation path is missing');
+    const saved = await page.evaluate(() => {
+      window.dispatchEvent(new Event('beforeunload'));
+      return JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0];
+    });
+    expect(saved.installationRoot).toBe(root);
+    expect(saved.recovery.reference.task_workload_id).toBe('a'.repeat(32));
+    await failed.hover(); await failed.locator('.remove-action').click();
+    await expect(failed).toHaveCount(0);
+    await expect(page.locator('.termination-failures')).toHaveCount(0);
+    expect(await page.evaluate(id => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).runnerSelections[id], id)).toBeUndefined();
+    await page.reload();
+    await expect(page.locator('.runner-row')).toHaveCount(1);
+    await expect(page.locator('.runner-row')).toContainText('Neighbor');
+  });
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`runner removal settings and hover focus ${language} ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
@@ -161,14 +200,10 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
           window.__nativeFixture.failWrite(); session.setDraft('/status');
           try { await session.submit(); } catch {}
         }
-        if (reason === 'native-exit-error') native.channel.onmessage({ type: 'exit', id: session.control.sessionId, code: 1, error: 'fixture ownership cleanup failed' });
         const id = session.view.id;
         if (!owner.close(id) || owner.get(id) || owner.close(id)) throw new Error('visible retirement failed');
       }, reason);
-      if (reason === 'native-exit-error') {
-        await expect.poll(() => page.evaluate(() => window.__owner.failures.length)).toBe(1);
-        expect(await page.evaluate(() => window.__owner.failures[0].detail)).toBe('fixture ownership cleanup failed');
-      } else await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
+      await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
       expect(await page.evaluate(() => window.__owner.getSnapshot().length)).toBe(0);
       await page.evaluate(() => window.__owner.dispose());
     });
@@ -229,6 +264,86 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
     });
     expect(result).toEqual({ phase: 'delivered', same: true, newId: true, count: 1 });
   });
+  test('settled exit with an output failure removes without requesting termination', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+    await own(page).locator('.nav-row').click();
+    await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0, undefined, { error: 'fixture PTY read failed' }));
+    await expect(page.locator('.runner-output-diagnostic')).toContainText('fixture PTY read failed');
+    await confirm(page);
+    await expect(own(page)).toHaveCount(0);
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+    await expect(page.locator('.termination-failures')).toHaveCount(0);
+  });
+  test('removal joins a delayed PTY open without starting its control or touching a neighbor', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
+    const result = await page.evaluate(async () => {
+      const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
+      const owner = new RunnerSessions();
+      const native = window.__TAURI_INTERNALS__, fixture = window.__nativeFixture, invoke = native.invoke;
+      let release;
+      const held = new Promise(resolve => { release = resolve; });
+      native.invoke = async (command, args) => {
+        const result = await invoke(command, args);
+        if (command === 'pty_open' && args.request.runnerLocation === '/fixture/other') await held;
+        return result;
+      };
+      const pending = owner.create('/fixture/other');
+      const neighbor = owner.create('/fixture/install');
+      owner.close(pending.session.view.id);
+      await neighbor.launched;
+      release();
+      await pending.launched;
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const result = { closed: [...fixture.closed], removedControl: pending.session.control.sessionId,
+        visible: owner.getSnapshot().map(view => view.id), neighbor: neighbor.session.view.id, failures: owner.failures.length };
+      await owner.dispose();
+      return result;
+    });
+    expect(result).toEqual({ closed: ['pty-1'], visible: [result.neighbor], neighbor: result.neighbor, failures: 0 });
+  });
+  test('lost launch reply stays unconfirmed without a PTY handle', async ({ page }) => {
+    await transport(page, undefined, { failedLocations: { '/fixture/other': {
+      code: 'ownership-unknown', detail: 'fixture launch response lost',
+    } } });
+    await page.goto('/');
+    await page.evaluate(async () => {
+      const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
+      const owner = window.__unknownLaunch = new RunnerSessions();
+      const { session, launched } = owner.create('/fixture/other');
+      await launched;
+      owner.close(session.view.id);
+    });
+    await expect.poll(() => page.evaluate(() => window.__unknownLaunch.failures.length)).toBe(1);
+    const diagnostic = await page.evaluate(() => {
+      const owner = window.__unknownLaunch, id = owner.failures[0].id;
+      const session = owner.getFailure(id);
+      const result = { settled: session.terminationSettled, retryable: session.canRetryTermination, detail: session.diagnostics };
+      owner.dismissFailure(id);
+      return result;
+    });
+    expect(diagnostic).toMatchObject({ settled: false, retryable: false });
+    expect(JSON.stringify(diagnostic.detail)).toContain('fixture launch response lost');
+    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+  });
+  test('unsettled native exit can reconcile through an authoritative retry result', async ({ page }) => {
+    await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
+    await own(page).locator('.nav-row').click();
+    await page.evaluate(() => {
+      window.__nativeFixture.exit('pty-1', 1, undefined, { settled: false, terminationError: 'fixture job still owned' });
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      let calls = 0;
+      native.invoke = async (command, args) => {
+        if (command !== 'pty_close' || args.id !== 'pty-1') return invoke(command, args);
+        if (++calls === 1) throw { code: 'termination-failed', detail: 'fixture termination denied' };
+        return true;
+      };
+    });
+    await confirm(page);
+    await page.locator('.termination-failures button').click();
+    await expect(page.locator('.runner-output-diagnostic').last()).toContainText('fixture termination denied');
+    await page.getByRole('button', { name: 'Retry termination' }).click();
+    await expect(page.locator('.termination-failures')).toHaveCount(0);
+  });
   for (const mode of ['failed', 'unconfirmed']) {
     test(`runner removal ${mode} termination reopens original full log without launching`, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page); await create(page);
@@ -238,7 +353,7 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
         window.__nativeFixture.emit('pty-1', '\r\nORIGINAL_SCROLLBACK\r\n' + Array.from({ length: 300 }, (_, i) => 'row ' + i).join('\r\n'));
         const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
         native.invoke = (command, args) => command === 'pty_close' && args.id === 'pty-1'
-          ? mode === 'failed' ? Promise.reject(new Error('fixture exact termination failed')) : Promise.resolve()
+          ? mode === 'failed' ? Promise.reject({ code: 'termination-failed', detail: 'fixture exact termination failed' }) : Promise.resolve()
           : invoke(command, args);
       }, mode);
       await confirm(page);
@@ -247,9 +362,19 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
       const before = await page.evaluate(() => window.__nativeFixture.count());
       await page.locator('.termination-failures button').click();
       await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
-      await expect(page.locator('.runner-error, .output-label')).toHaveCount(0);
+      await expect(page.locator('.runner-output-diagnostic')).toContainText(mode === 'failed' ? 'termination-failed fixture exact termination failed' : 'unconfirmed');
+      await page.locator('.terminal-host').evaluate(host => {
+        let fiber = host[Object.keys(host).find(key => key.startsWith('__reactFiber$'))];
+        for (; fiber; fiber = fiber.return) {
+          const terminal = fiber.memoizedProps?.session?.terminal;
+          if (terminal?.element?.parentElement === host) { terminal.scrollToTop(); return; }
+        }
+        throw new Error('Mounted retained terminal was not found');
+      });
       await expect(page.locator('.xterm-rows')).toContainText('ORIGINAL_SCROLLBACK');
       expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(before);
+      await page.getByRole('button', { name: 'Dismiss retained log' }).click();
+      await expect(page.locator('.termination-failures')).toHaveCount(0);
       await page.locator('.runner-row .nav-row').click();
       await expect(page.locator('.terminal-host .xterm-screen')).toBeVisible();
       await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));

@@ -172,6 +172,10 @@ export class RunnerControl {
     try {
       const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
       if (this.stopped) return;
+      if (snapshot.state === 'disconnected') {
+        this.stop(snapshot.detail, snapshot);
+        return;
+      }
       this.snapshot = snapshot;
       this.receivedAt = performance.now();
       this.observeCommand();
@@ -188,7 +192,6 @@ export class RunnerControl {
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
       this.changed();
-      if (snapshot.state === 'disconnected') return;
       const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing
         || this.brief.busy || this.typedRun.pending;
       this.timer = setTimeout(() => void this.refresh(), foreground ? controlTiming.settleMs : controlTiming.pollMs);

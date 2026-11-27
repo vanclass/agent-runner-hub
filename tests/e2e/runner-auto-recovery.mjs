@@ -75,7 +75,7 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
     expect(await calls(page)).toHaveLength(3);
     expect(await page.evaluate(() => [window.__nativeFixture.commands, window.__nativeFixture.writes])).toEqual([[], []]);
     await page.locator('.runner-row').nth(2).locator('.nav-row').click();
-    await expect(page.locator('.quiet-status')).toContainText('uncertain');
+    await expect(page.locator('.runner-output-diagnostic')).toContainText('incomplete or uncertain');
     await expect(page.locator('.runner-recovery')).toHaveCount(0);
   });
   for (const outcome of ['absent', 'identity_conflict', 'interaction_required', 'unverified', 'partial']) {
@@ -230,11 +230,12 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
   test('automatic recovery excludes normal Runner exit and explicit tab removal', async ({ page }) => {
     await seed(page, [1, 2].map(n => ({ reference: reference(n), state: 'eligible' })));
     await expect.poll(() => calls(page)).toHaveLength(2);
+    await expect.poll(async () => (await saved(page)).tabs.map(tab => tab.recovery?.state)).toEqual(['eligible', 'eligible']);
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
     await expect.poll(async () => (await saved(page)).tabs[0].launchOnOpen).toBe(false);
     expect((await saved(page)).tabs[0].recovery).toBeUndefined();
     await page.locator('.runner-row').first().locator('.nav-row').click();
-    await expect(page.locator('.quiet-status')).toContainText('Process exited (0)');
+    await expect(page.locator('.runner-output-status')).toContainText('Runner exited normally (code 0)');
     await page.locator('.runner-row').nth(1).locator('.nav-row').click({ button: 'middle' });
     await page.getByRole('dialog').getByRole('button', { name: 'Terminate and close tab', exact: true }).click();
     await expect(page.locator('.runner-row')).toHaveCount(1);
@@ -248,7 +249,7 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
       await seed(page, [{ reference: reference(1), state: 'eligible' }]);
       await page.locator('.runner-row .nav-row').click();
       if (theme === 'black') {
-        await page.locator('.app-settings-trigger').click();
+        await page.getByRole('button', { name: 'App settings', exact: true }).click();
         await page.getByRole('button', { name: 'Black', exact: true }).click();
         await page.keyboard.press('Escape');
       }

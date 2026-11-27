@@ -1,7 +1,7 @@
 import { useHubTranslation, t } from './i18n';
 import type { RunnerView } from './model';
 import type { RunnerSession } from './RunnerSessions';
-import { RunnerTerminal } from './RunnerTerminal';
+import { RunnerTerminal, type FailureActions } from './RunnerTerminal';
 import { HubLogView } from './HubLogView';
 import type { HubLog } from './HubLog';
 import { RunnerComposer } from './RunnerComposer';
@@ -13,13 +13,14 @@ import { HubActivity } from './HubActivity';
 import type { HubSelections } from './HubSelections';
 
 export function Workspace({ runner, session, theme, installation, entry, onSelectRunner, hubLog, selections,
-  fileDropActive = false, fileDropUnavailable = false }: {
+  fileDropActive = false, fileDropUnavailable = false, failureActions }: {
   runner?: RunnerView; session?: RunnerSession; theme: 'light' | 'black';
   installation: RunnerInstallation | null;
   entry: SingleEntry; onSelectRunner: (id: string) => void;
   hubLog: HubLog;
   selections?: HubSelections;
   fileDropActive?: boolean; fileDropUnavailable?: boolean;
+  failureActions?: FailureActions;
 }) {
   useHubTranslation();
   const singleEntry = !runner;
@@ -30,7 +31,7 @@ export function Workspace({ runner, session, theme, installation, entry, onSelec
     {fileDropUnavailable && <p className="attachment-drop-hint" role="alert">{t('attachments.fallback')}</p>}
     <section className="output" aria-label={t('workspace.outputLabel')}>
       {singleEntry && <HubLogView log={hubLog} />}
-      {session ? <RunnerTerminal session={session} theme={theme} /> : !singleEntry && <div className="empty-workspace">
+      {session ? <RunnerTerminal session={session} theme={theme} failureActions={failureActions} /> : !singleEntry && <div className="empty-workspace">
         <div className="workspace-symbol" aria-hidden="true">›_</div>
         <h2>{t('workspace.connection')}</h2>
         <p>{t('workspace.noStream')}</p>

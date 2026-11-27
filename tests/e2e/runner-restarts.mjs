@@ -197,10 +197,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
           const o = window.__restartOwner;
           return o.failures.some(f => o.getFailure(f.id) === window.__originals[0]);
         })).toBe(true);
-        if (path === 'speculative') {
-          const detail = await page.evaluate(() => window.__restartOwner.dispose().then(() => '', reason => reason.message));
-          expect(detail).toContain('cleanup');
-        } else await cleanup(page);
+        await cleanup(page);
       });
     }
   }
@@ -282,6 +279,39 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     });
   }
 
+  test('revoked spare restart leaves failed cleanup with the installation change and can reconcile', async ({ page }) => {
+    await owner(page, 0);
+    await page.evaluate(() => window.__restartOwner.setInstallation({ root: '/fixture/install', python: '/fixture/python' }));
+    await expect.poll(() => page.evaluate(() => window.__restartOwner.spareSnapshot.state)).toBe('ready');
+    await page.evaluate(() => {
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = (command, args) => {
+        if (command !== 'pty_close' || args.id !== 'pty-1') return invoke(command, args);
+        window.__closeAttempts = (window.__closeAttempts ?? 0) + 1;
+        if (window.__closeAttempts > 1) return Promise.reject(new Error('stale extra close'));
+        return new Promise((_, reject) => { window.__failClose = () => reject(new Error('native cleanup unavailable')); });
+      };
+      window.__restoreInvoke = () => { native.invoke = invoke; };
+      window.__restartOwner.restartAll();
+    });
+    await expect.poll(() => page.evaluate(() => window.__closeAttempts)).toBe(1);
+    await page.evaluate(() => {
+      window.__restartOwner.setInstallation({ root: '/fixture/other', python: '/fixture/python' });
+      window.__failClose();
+    });
+    await expect.poll(async () => (await snapshot(page)).removed).toBe(1);
+    expect(await page.evaluate(() => window.__closeAttempts)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__restartOwner.failures.length)).toBe(1);
+    await page.evaluate(() => {
+      const o = window.__restartOwner;
+      window.__restoreInvoke();
+      o.retryFailure(o.failures[0].id);
+    });
+    await expect.poll(() => page.evaluate(() => window.__restartOwner.failures.length)).toBe(0);
+    await page.evaluate(() => window.__restartOwner.setInstallation({ root: '/fixture/other', python: '/fixture/python' }));
+    await expect.poll(() => page.evaluate(() => window.__restartOwner.spareSnapshot.state)).toBe('ready');
+    await cleanup(page);
+  });
   test('global restart captures visible hidden and speculative owners once and preserves identity and settings', async ({ page }) => {
     await owner(page, 3);
     await page.evaluate(async () => {
@@ -352,13 +382,12 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
       expect(await page.evaluate(() => window.__restartEvents)).toEqual(['spare-prepared', 'spare-failed']);
       expect(await page.evaluate(() => window.__restartOwner.failures.length)).toBe(failure === 'cleanup' ? 1 : 2);
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual(failure === 'cleanup' ? [] : ['pty-1']);
-      const shutdown = await page.evaluate(async () => {
+      const closed = await page.evaluate(async () => {
         window.__restoreInvoke();
-        try { await window.__restartOwner.dispose(); return ''; }
-        catch (reason) { return reason.message; }
+        await window.__restartOwner.dispose();
+        return window.__nativeFixture.closed;
       });
-      // Retained, unconfirmed cleanup must remain a reported shutdown failure too.
-      expect(shutdown).toContain('cleanup');
+      expect(closed).toEqual(failure === 'post-open' ? ['pty-1', 'pty-2'] : ['pty-1']);
     });
   }
 
@@ -476,11 +505,12 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     await expect.poll(async () => (await snapshot(page)).failed).toBe(1);
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
     const retained = await page.evaluate(() => {
-      const o = window.__restartOwner, failure = o.failures[0], s = o.getFailure(failure.id);
-      return { same: s === window.__originals[0], detail: s.view.detail,
+      const o = window.__restartOwner, s = o.get(window.__originals[0].view.id);
+      return { same: s === window.__originals[0], failures: o.failures.length, detail: JSON.stringify(s.diagnostics),
         log: Array.from({ length: s.terminal.buffer.active.length }, (_, i) => s.terminal.buffer.active.getLine(i).translateToString()).join('\n') };
     });
     expect(retained.same).toBe(true); expect(retained.detail).toContain('cleanup failed');
+    expect(retained.failures).toBe(0);
     expect(retained.log).toContain('ORIGINAL_FAILURE_LOG');
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0));
     await cleanup(page);
@@ -517,7 +547,7 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     await page.clock.runFor(11000);
     await expect.poll(async () => (await snapshot(page)).failed).toBe(1);
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(1);
-    expect(await page.evaluate(() => window.__restartOwner.getFailure(window.__restartOwner.failures[0].id) === window.__originals[0])).toBe(true);
+    expect(await page.evaluate(() => window.__restartOwner.get(window.__originals[0].view.id) === window.__originals[0])).toBe(true);
     await page.evaluate(() => window.__nativeFixture.exit('pty-1', 0)); await cleanup(page);
   });
 

@@ -132,7 +132,7 @@ for (const origin of ['api', 'terminal']) {
   });
 }
 
-test('navigation storage validates optional v1 metadata and retains malformed or failed writes', async ({ page }) => {
+test('navigation storage restores valid tabs when optional metadata is malformed and retains failed writes', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { RunnerWorkspace, runnerWorkspaceKey: key } = await import('/src/hub/RunnerWorkspace.ts');
@@ -147,8 +147,10 @@ test('navigation storage validates optional v1 metadata and retains malformed or
     const refused = workspace.save(loaded, metadata);
     const noLeak = localStorage.getItem(key) === old;
     const invalid = JSON.stringify({ version: 1, tabs: [tab], presentation: { executedModes: [42], affinities: {}, order: [] } });
-    localStorage.setItem(key, invalid); const malformed = new RunnerWorkspace(); malformed.load();
-    const protectedWrite = malformed.save([]), retained = localStorage.getItem(key) === invalid;
+    localStorage.setItem(key, invalid); const malformed = new RunnerWorkspace();
+    const salvaged = malformed.load(), warning = malformed.issue;
+    const retained = localStorage.getItem(key) === invalid;
+    const repaired = malformed.save(salvaged), restoredTabs = JSON.parse(localStorage.getItem(key)).tabs;
     localStorage.setItem(key, old); const failing = new RunnerWorkspace(); failing.load();
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function(name, value) { if (name === key) throw new DOMException('quota fixture', 'QuotaExceededError'); return original.call(this, name, value); };
@@ -158,11 +160,13 @@ test('navigation storage validates optional v1 metadata and retains malformed or
     localStorage.setItem(pref, JSON.stringify({ version: 1, language: 'en', theme: 'light', singleEntry: {} }));
     const preferences = new HubPreferences(), absent = preferences.value.domainDisplay;
     preferences.update({ domainDisplay: 'run-mode' }); const restored = new HubPreferences().value.domainDisplay;
-    return { initial, refused, noLeak, protectedWrite, retained, write, afterFailure, old, retry, absent, restored };
+    return { initial, refused, noLeak, salvaged, warning, retained, repaired, restoredTabs, write, afterFailure, old, retry, absent, restored };
   });
   expect(result.initial).toEqual({ executedModes: [], order: [], affinities: {} });
   expect(result.refused).toBe(false); expect(result.noLeak).toBe(true);
-  expect(result.protectedWrite).toBe(false); expect(result.retained).toBe(true);
+  expect(result.warning).toMatchObject({ key: 'lifecycle.navigationInvalid' });
+  expect(result.salvaged).toHaveLength(1); expect(result.retained).toBe(true);
+  expect(result.repaired).toBe(true); expect(result.restoredTabs).toEqual(result.salvaged);
   expect(result.write).toBe(false); expect(result.afterFailure).toBe(result.old); expect(result.retry).toBe(true);
   expect(result.absent).toBeUndefined(); expect(result.restored).toBe('run-mode');
 });

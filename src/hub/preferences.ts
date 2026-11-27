@@ -128,6 +128,7 @@ export class HubPreferences {
     this.update({ runnerSelections: { ...this.value.runnerSelections, [id]: value } });
   }
   forgetRunner(id: string) {
+    if (!Object.hasOwn(this.value.runnerSelections ?? {}, id)) return;
     const runnerSelections = { ...this.value.runnerSelections };
     delete runnerSelections[id];
     this.update({ runnerSelections });

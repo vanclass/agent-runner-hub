@@ -176,8 +176,29 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
     await expect(page.getByRole('alert').filter({ hasText: 'fixture quota failure' }).first()).toBeVisible();
     await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕');
     await page.evaluate(() => window.__restoreStorage());
+    await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('unsent draft');
     await middle(own);
     await expect(own).toHaveCount(0);
-    expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.closed)).toEqual(['pty-1']);
+  });
+  test('runner tabs report preference cleanup failure and retry stale settings at startup', async ({ page }) => {
+    await ready(page); await create(page);
+    const id = await page.evaluate(() => {
+      const id = JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs[0].id;
+      const saved = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === 'agent-runner-hub.preferences.v1' && !JSON.parse(value).runnerSelections[id])
+          throw new Error('fixture preference storage denied');
+        return saved.call(this, key, value);
+      };
+      return id;
+    });
+    await middle(row(page, 'Runner 1'));
+    await expect(page.getByRole('alert').filter({ hasText: 'fixture preference storage denied' })).toBeVisible();
+    await expect(row(page, 'Runner 1')).toHaveCount(0);
+    await page.reload();
+    await expect(row(page, 'Runner 1')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(id =>
+      Object.hasOwn(JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).runnerSelections, id), id)).toBe(false);
   });
 }

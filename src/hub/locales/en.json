@@ -71,8 +71,8 @@
     "progress": "Restarted {{restarted}} · restarting {{running}} · pending {{pending}} · failed {{failed}} · removed {{removed}}",
     "pending": "Pending Runners wait for whole-work completion, safe idle and resolved input or confirmations.",
     "unavailable": "Restart could not verify a running process. Review the retained Runner logs.",
-    "cleanupFailed": "Restart stopped: the old process has not confirmed cleanup. Its logs remain available under termination failures.",
-    "launchFailed": "The old process settled, but replacement launch failed. Original logs remain under termination failures; no work was replayed."
+    "cleanupFailed": "Restart stopped because the previous Runner did not confirm cleanup. Open its terminal or retained log for details.",
+    "launchFailed": "The replacement Runner did not become ready. Open the retained log for the previous Runner's output."
   },
   "panel": {
     "runnerManagement": "Runner management",
@@ -96,17 +96,50 @@
     "picking": "Choosing folder…",
     "failed": "Could not choose a folder: {{reason}}"
   },
+  "lifecycle": {
+    "verifyInstallation": "Could not verify the Runner installation at {{location}}.\n{{cause}}\n{{code}} {{diagnostic}}",
+    "chooseInstallation": "Choose the root of an installed Runner Workspace.",
+    "initialization": "Runner terminal setup failed at {{location}}.\nReview the native error and remove or restart the Runner.\n{{diagnostic}}",
+    "normalExit": "Runner exited normally (code 0).",
+    "launch": "Runner launch failed at {{location}}.\n{{cause}}\n{{code}} {{diagnostic}}",
+    "missingInstallation": "The saved installation path is missing. Restore the installation at this path or remove the tab.",
+    "installationUnavailable": "The installation is unavailable. Check that the drive or share is accessible.",
+    "permission": "Access was denied. Check permissions for the installation and its managed Python.",
+    "invalidInstallation": "The path does not contain a valid Runner installation. Restore the Runner Workspace at this path.",
+    "managedPython": "The managed Python runtime is unavailable. Run the native bootstrap for this installation.",
+    "processLaunch": "The Runner process could not be created. Check the native error and the installation before trying again.",
+    "launchUnknown": "The native host did not confirm process creation. Check the Hub log and restart the Hub to run native cleanup.",
+    "connection": "Runner control connection failed at {{location}}.\nCheck the Runner output and installation compatibility before reopening the tab.\n{{diagnostic}}",
+    "recovery": "Runner work recovery could not be verified.\n{{cause}}\nCheck the original work in Runner before attempting to resume it. {{code}}",
+    "recoveryOutcome": {
+      "absent": "The referenced work was not found.",
+      "blocked": "Runner blocked recovery.",
+      "identity_conflict": "The retained and current work identities conflict.",
+      "interaction_required": "Runner requires your input to continue.",
+      "unverified": "Runner could not verify the reference or recovery capability.",
+      "partial": "The recovery attempt has an incomplete or uncertain result."
+    },
+    "exit": "Runner exited with code {{code}}. Review the terminal output before launching another Runner.\n{{diagnostic}}",
+    "exitUnknown": "unknown",
+    "terminationFailed": "Runner termination failed. Retry termination from the retained log.\n{{code}} {{diagnostic}}",
+    "terminationUnknown": "Runner termination is unconfirmed. Retry termination if available. Closing the Hub runs native cleanup.",
+    "terminationUnknownDetail": "Runner termination is unconfirmed. Retry termination if available.\n{{code}} {{diagnostic}}",
+    "retryTermination": "Retry termination",
+    "dismissLog": "Dismiss retained log",
+    "dismissHelp": "The Hub still owns native cleanup for any unresolved process.",
+    "navigationInvalid": "{{previous}} Saved Runner navigation was invalid. Valid tabs were restored.",
+    "navigationSaveFailed": "Could not save Runner navigation. The saved layout was kept."
+  },
   "tabs": {
     "close": "Remove Runner tab",
     "removeNamed": "Remove {{name}} tab",
     "confirmPreference": "Confirm before removing Runner tab",
-    "failures": "Termination failures",
+    "failures": "Runner cleanup and retained logs",
     "confirmTitle": "Close {{name}}?",
     "consequence": "This stops this Runner and its owned processes, including active, suspended or uncertain work. Unsaved input in this tab will be discarded. Other Runner tabs stay open.",
     "confirmClose": "Terminate and close tab",
     "cancel": "Keep tab open",
     "closing": "Closing Runner tab…",
-    "unconfirmed": "Runner termination is unconfirmed. Open its retained log to inspect the error details.",
     "unread": "Unread completion",
     "states": {
       "idle": "Verified idle",
@@ -170,7 +203,7 @@
     "inputUnavailable": "Terminal input or session configuration is not ready.",
     "changed": "The session ownership changed.",
     "closed": "The Runner workspace is closed.",
-    "cleanupFailed": "Spare cleanup could not be confirmed: {{reason}}. Close and reopen Hub before preparing another spare."
+    "cleanupFailed": "Spare cleanup could not be confirmed. Retry from the retained log or restart the Hub. {{reason}}"
   },
   "runtime": {
     "withDiagnostic": "{{message}} {{diagnostic}}",

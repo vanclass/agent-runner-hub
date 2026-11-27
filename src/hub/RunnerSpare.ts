@@ -12,7 +12,7 @@ type SpareSnapshot = Readonly<{
 export type SpareEvent = { operation: 'spare-prepared' | 'spare-failed'; detail?: HubText };
 type Slot = { session: RunnerSession; generation: number; launched: boolean; prepared?: boolean; restarting?: boolean;
   settleRestart?: () => void;
-  retained?: boolean; timer?: ReturnType<typeof setTimeout> };
+  timer?: ReturnType<typeof setTimeout> };
 
 // Owns only speculative session lifetime. RunnerSession and the native registry still own all PTY resources.
 export class RunnerSpare {
@@ -20,7 +20,7 @@ export class RunnerSpare {
   private generation = 0;
   private slot?: Slot;
   private work: Promise<void> = Promise.resolve();
-  private cleanupFailure?: HubText;
+  private cleanupFailure?: { session: RunnerSession; detail: HubText };
 
   constructor(private readonly create: (root: string, changed: () => void) => RunnerSession,
     private readonly changed: () => void,
@@ -55,7 +55,9 @@ export class RunnerSpare {
     // Join the previous launch and its exact cleanup before admitting a new hidden process.
     this.work = Promise.all([this.work, cleanup]).then(async () => {
       if (!this.active(generation)) return;
-      if (this.cleanupFailure) throw new HubError(this.cleanupFailure);
+      if (this.cleanupFailure && !this.cleanupFailure.session.terminationSettled)
+        throw new HubError(this.cleanupFailure.detail);
+      this.cleanupFailure = undefined;
       const verified = installation;
       if (!this.active(generation) || !verified) return;
       this.current = { ...this.current, installation: verified };
@@ -125,28 +127,30 @@ export class RunnerSpare {
     this.slot = undefined;
     slot?.settleRestart?.();
     clearTimeout(slot?.timer);
-    const cleanup = slot?.retained ? (async () => {
-      if (!slot.session.terminationSettled && !await slot.session.closeTab())
-        throw new HubError(msg('restart.cleanupFailed'));
-    })() : slot?.session.dispose() ?? Promise.resolve();
-    return cleanup.catch(reason => {
-      this.cleanupFailure = errorText(reason);
-      throw reason;
-    });
+    if (!slot) return Promise.resolve();
+    const { session } = slot;
+    const root = this.current.installation?.root ?? '';
+    return (async () => {
+      if (await session.closeTab()) await session.dispose();
+      else {
+        const detail = session.diagnostics.at(-1) || msg('restart.cleanupFailed');
+        this.cleanupFailure = { session, detail };
+        this.retainFailure(session, root);
+      }
+    })();
   }
   private fail(reason: HubText) {
     this.event({ operation: 'spare-failed', detail: reason });
     const generation = ++this.generation;
     const cleanup = this.retire();
     this.current = { ...this.current, state: 'unavailable', detail: this.cleanupFailure
-      ? msg('spare.cleanupFailed', { reason: this.cleanupFailure }) : msg('spare.unavailable', { reason }) };
+      ? msg('spare.cleanupFailed', { reason: this.cleanupFailure.detail }) : msg('spare.unavailable', { reason }) };
     this.changed();
-    this.work = Promise.all([this.work, cleanup]).then(() => {}, cleanupError => {
-      if (this.active(generation)) {
-        this.current = { ...this.current, detail: msg('spare.cleanupFailed', { reason: errorText(cleanupError) }) };
+    this.work = Promise.all([this.work, cleanup]).then(() => {
+      if (this.active(generation) && this.cleanupFailure) {
+        this.current = { ...this.current, detail: msg('spare.cleanupFailed', { reason: this.cleanupFailure.detail }) };
         this.changed();
       }
-      throw cleanupError;
     });
     // Keep cleanup failure observable without an unhandled rejection or an automatic retry.
     void this.work.catch(() => {});
@@ -193,19 +197,23 @@ export class RunnerSpare {
       const replacement = this.slot as Slot | undefined;
       if (!replacement) throw new HubError(msg('restart.launchFailed'));
       await this.waitForReplacement(replacement);
-      if (!this.owns(replacement)) { await slot.session.dispose(); return 'removed' as const; }
+      await slot.session.dispose();
+      if (!this.owns(replacement)) return 'removed' as const;
       replacement.restarting = false;
       this.observe(replacement);
-      await slot.session.dispose();
       return 'restarted' as const;
     } catch (reason) {
+      if (!this.active(slot.generation)) {
+        if (slot.session.terminationSettled) await slot.session.dispose();
+        return 'removed' as const;
+      }
       this.event({ operation: 'spare-failed', detail: errorText(reason) });
       const failed = this.slot;
       if (failed && this.owns(failed)) {
         clearTimeout(failed.timer);
-        failed.retained = true;
-        failed.restarting = true;
+        this.slot = undefined;
         this.current = { ...this.current, state: 'unavailable', detail: errorText(reason) };
+        if (!failed.session.terminationSettled) this.cleanupFailure = { session: failed.session, detail: errorText(reason) };
         if (failed !== slot) this.retainFailure(failed.session, root);
       }
       this.retainFailure(slot.session, root);
@@ -233,9 +241,11 @@ export class RunnerSpare {
     if (this.current.state === 'disposed') return this.work;
     ++this.generation;
     this.current = { state: 'disposed', detail: msg('spare.closed'), installation: null };
-    this.work = Promise.all([this.work, this.retire()]).then(() => {
-      if (this.cleanupFailure) throw new HubError(this.cleanupFailure);
-    });
+    const slot = this.slot;
+    this.slot = undefined;
+    slot?.settleRestart?.();
+    clearTimeout(slot?.timer);
+    this.work = Promise.all([this.work, slot?.session.dispose()]).then(() => {});
     return this.work;
   }
 }

@@ -86,22 +86,27 @@ async fn runner_image_read<R: Runtime>(window: Window<R>, state: State<'_, Arc<S
 }
 
 #[tauri::command]
-async fn runner_resolve<R: Runtime>(window: Window<R>, location: String) -> Result<runner::Installation, String> {
-    if window.label() != "main" { return Err("Runner configuration is available only to the main window".into()); }
-    tauri::async_runtime::spawn_blocking(move || runner::resolve(&location)).await.map_err(|e| e.to_string())?
+async fn runner_resolve<R: Runtime>(window: Window<R>, location: String) -> Result<runner::Installation, runner::LaunchFailure> {
+    if window.label() != "main" {
+        return Err(runner::LaunchFailure::new("permission", "Runner configuration is available only to the main window"));
+    }
+    tauri::async_runtime::spawn_blocking(move || runner::resolve(&location)).await
+        .map_err(|e| runner::LaunchFailure::new("installation-unavailable", e.to_string()))?
 }
 
 #[tauri::command]
 async fn pty_open<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, request: OpenRequest,
-    on_event: Channel<PtyEvent>) -> Result<String, String> {
-    if window.label() != "main" { return Err("Desktop Terminal is available only to the main window".into()); }
+    on_event: Channel<PtyEvent>) -> Result<String, runner::LaunchFailure> {
+    if window.label() != "main" {
+        return Err(runner::LaunchFailure::new("permission", "Desktop Terminal is available only to the main window"));
+    }
     // PTY creation can block; keep it off the WebView/main event loop.
     let sessions = state.inner().clone();
     // Register ownership before dispatch so window destruction also cancels pending creation.
     let (id, session) = sessions.reserve(window.label().into())?;
     tauri::async_runtime::spawn_blocking(move || sessions.start(id, session, request,
         Arc::new(move |event| on_event.send(event).map_err(|e| e.to_string()))))
-        .await.map_err(|e| e.to_string())?
+        .await.map_err(|e| runner::LaunchFailure::new("ownership-unknown", e.to_string()))?
 }
 
 #[tauri::command]
@@ -122,7 +127,11 @@ fn pty_ack<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: S
 }
 
 #[tauri::command]
-async fn pty_close<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String) -> Result<(), String> {
-    let session = state.owned(&id, window.label())?;
-    tauri::async_runtime::spawn_blocking(move || session.close()).await.map_err(|e| e.to_string())?
+async fn pty_close<R: Runtime>(window: Window<R>, state: State<'_, Arc<Sessions>>, id: String) -> Result<bool, serde_json::Value> {
+    let sessions = state.inner().clone();
+    let uncertain = |detail: String| serde_json::json!({ "code": "termination-unconfirmed", "detail": detail });
+    let session = sessions.owned(&id, window.label()).map_err(uncertain)?;
+    tauri::async_runtime::spawn_blocking(move || sessions.close(&id, &session)).await
+        .map_err(|e| uncertain(e.to_string()))?
+        .map_err(|detail| serde_json::json!({ "code": "termination-failed", "detail": detail }))
 }

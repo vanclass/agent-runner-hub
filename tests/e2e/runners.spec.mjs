@@ -107,7 +107,8 @@ async function transport(page, freshTarget, referenceOptions) {
       const session = sessions.get(id);
       session.channel.onmessage({ type: 'output', id, sequence: ++session.sequence, bytes: [...new TextEncoder().encode(text)] });
     };
-    const exit = (id, code = 0, control) => sessions.get(id).channel.onmessage({ type: 'exit', id, code, error: null, control });
+    const exit = (id, code = 0, control, result = {}) =>
+      sessions.get(id).channel.onmessage({ type: 'exit', id, code, error: null, settled: true, control, ...result });
     const nativeEvent = (event, payload, label = 'main') => {
       for (const [id, subscription] of listeners) {
         const receiver = subscription.target;
@@ -133,7 +134,9 @@ async function transport(page, freshTarget, referenceOptions) {
         }
         if (command === 'pty_open') {
           count++;
-          if (failNext) { failNext = false; throw new Error('fixture process launch failed'); }
+          const failure = referenceOptions?.failedLocations?.[args.request.runnerLocation];
+          if (failure) throw failure;
+          if (failNext) { failNext = false; throw { code: 'process-launch', detail: 'fixture process launch failed' }; }
           if (!['/fixture/install', '/fixture/other'].includes(args.request.runnerLocation)) throw new Error('Wrong configured installation');
           const id = `pty-${count}`;
           sessions.set(id, { channel: args.onEvent, sequence: 0, control: { state: 'ready', observation: canonical(id), results: [],

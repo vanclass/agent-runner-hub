@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { HubActions } from './hub-actions.mjs';
 import { readyInstalledHub, visibleConnection } from './runner-flow.mjs';
@@ -14,9 +16,30 @@ export function backgroundWorkspace(runnerRoot) {
         && !!document.querySelector('.app-settings[open], .shell-body')));
     },
     async run(browser) {
+      const obsolete = randomUUID();
+      const missing = runnerRoot && path.join(runnerRoot, `hub-missing-${obsolete}`, 'codex_workspace');
+      if (missing) await browser.execute((id, installationRoot) => {
+        localStorage.setItem('agent-runner-hub.workspace.v1', JSON.stringify({ version: 1, tabs: [
+          { id, name: 'Unavailable installation', installationRoot, createdOrder: 1, launchOnOpen: true },
+        ] }));
+        localStorage.setItem('agent-runner-hub.preferences.v1', JSON.stringify({
+          version: 1, language: 'en', theme: 'light', singleEntry: {}, confirmRunnerRemoval: true,
+          runnerSelections: { [id]: { runMode: 'task-run' } },
+        }));
+      }, obsolete, missing);
+      if (missing) await browser.refresh();
       await readyInstalledHub(browser, runnerRoot);
       const hub = new HubActions(browser);
       const { tabs, settings, terminal, observations, logs } = hub;
+      await tabs.select(obsolete);
+      const diagnostic = await browser.waitUntil(async () => {
+        const text = await browser.execute(() => document.querySelector('.runner-output-diagnostic')?.textContent);
+        return text?.includes('missing-installation') && text.includes(missing);
+      }, { timeoutMsg: 'Restored unavailable Runner did not expose its native launch diagnostic' });
+      await tabs.requestRemoval(obsolete);
+      await tabs.confirmRemoval();
+      await hub.wait(async () => !ordered(await tabs.inventory()).includes(obsolete), 'Failed launch tab survived removal');
+      assert.equal(await browser.execute(() => !!document.querySelector('.termination-failures')), false);
       await settings.open();
       await settings.edit('language', 'ko');
       await settings.setTheme('black');
@@ -79,7 +102,7 @@ export function backgroundWorkspace(runnerRoot) {
         replaced.push(identity(replacement));
       }
       assert.deepEqual(ordered(await tabs.inventory()), [second, first]);
-      return { first, second, replaced, scroll };
+      return { first, second, replaced, scroll, obsolete, missing, diagnostic };
     },
     async afterRestart(browser, before) {
       const hub = new HubActions(browser);
@@ -90,6 +113,7 @@ export function backgroundWorkspace(runnerRoot) {
       assert.equal(restored.domains[0].tabs[1].name, 'Background acceptance');
       assert.ok(restored.singleEntry);
       const preferences = await settings.saved();
+      assert.equal(await settings.savedTab(before.obsolete), null);
       assert.equal(preferences.language, 'ko');
       assert.equal(preferences.theme, 'black');
       assert.equal(preferences.confirmRunnerRemoval, true);

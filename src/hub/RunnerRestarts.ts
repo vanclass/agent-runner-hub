@@ -7,7 +7,7 @@ export type RestartTarget = Readonly<{
   revalidation?: () => Readonly<{ key: string; observedAt: number }>;
   restart: () => Promise<RestartOutcome>;
 }>;
-type RestartItem = { target: RestartTarget; state: RestartOutcome | 'running' | 'failed'; detail?: HubText;
+type RestartItem = { name: string; target?: RestartTarget; state: RestartOutcome | 'running' | 'failed'; detail?: HubText;
   waiting?: { key: string; retryAfter: number }; wasReady?: boolean };
 
 // One explicit, process-local capture. Session owners alone decide safe release and replacement.
@@ -22,12 +22,12 @@ export class RunnerRestarts {
     const count = (state: RestartItem['state']) => this.items.filter(item => item.state === state).length;
     return { requested: this.requested, total: this.items.length, pending: count('pending'), running: count('running'),
       restarted: count('restarted'), removed: count('removed'), failed: count('failed'),
-      failures: this.items.filter(item => item.state === 'failed').map(item => ({ name: item.target.name, detail: item.detail! })) };
+      failures: this.items.filter(item => item.state === 'failed').map(item => ({ name: item.name, detail: item.detail! })) };
   }
   request(targets: readonly RestartTarget[]) {
     if (this.disposed || this.pending) return false;
     this.requested = true;
-    this.items = targets.map(target => ({ target, state: 'pending' }));
+    this.items = targets.map(target => ({ target, name: target.name, state: 'pending' }));
     this.changed();
     this.observe();
     return true;
@@ -43,8 +43,9 @@ export class RunnerRestarts {
     let capacity = 2 - this.items.filter(item => item.state === 'running').length;
     for (const item of this.items) {
       if (!capacity) break;
-      if (item.state !== 'pending') continue;
-      const ready = item.target.ready(), observation = item.target.revalidation?.();
+      const target = item.target;
+      if (item.state !== 'pending' || !target) continue;
+      const ready = target.ready(), observation = target.revalidation?.();
       const becameReady = !observation && item.wasReady === false && ready;
       item.wasReady = ready;
       if (!ready || item.waiting && !becameReady && observation?.key === item.waiting.key
@@ -52,20 +53,20 @@ export class RunnerRestarts {
       if (item.waiting && !becameReady && !observation) continue;
       --capacity;
       item.state = 'running';
-      void this.run(item);
+      void this.run(item, target);
     }
   }
-  private async run(item: RestartItem) {
+  private async run(item: RestartItem, target: RestartTarget) {
     this.changed();
-    try { item.state = await item.target.restart(); }
+    try { item.state = await target.restart(); }
     catch (reason) { item.state = 'failed'; item.detail = errorText(reason); }
     if (item.state === 'pending') {
       // Ignore verification's own busy/receipt notifications. Existing authenticated observations
       // can retry an unchanged transient failure at most once per five seconds, without a new timer.
-      item.waiting = { key: item.target.revalidation?.().key ?? '', retryAfter: performance.now() + 5000 };
-      item.wasReady = item.target.ready();
-    }
+      item.waiting = { key: target.revalidation?.().key ?? '', retryAfter: performance.now() + 5000 };
+      item.wasReady = target.ready();
+    } else item.target = undefined;
     if (!this.disposed) this.changed();
   }
-  dispose() { this.disposed = true; }
+  dispose() { this.disposed = true; this.items.forEach(item => { item.target = undefined; }); }
 }
