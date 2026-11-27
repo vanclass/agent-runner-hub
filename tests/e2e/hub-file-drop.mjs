@@ -1,3 +1,4 @@
+import { appItem, openAppEntry, chooseAppPreference } from './application-menu.mjs';
 import { readFileSync } from 'node:fs';
 export function registerHubFileDrop({ test, expect, transport, configure, create }) {
   async function ready(page) {
@@ -53,14 +54,17 @@ export function registerHubFileDrop({ test, expect, transport, configure, create
     })).toEqual(['absolute', '0px', '0px', '0px', '0px', 'none']);
     await page.getByRole('button', { name: 'Help', exact: true }).click();
     await expect(page.locator('.attachment-drop-active')).toHaveCount(0);
-    await page.locator('.preview-help button').click();
+    await event(page, 'drop');
+    await expect(page.locator('.attachment-chip')).toHaveCount(5);
+    await appItem(page, 'preview').click();
+    await page.locator('.preview-help .settings-close').click();
     await expect(page.locator('.attachment-drop-hint')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Help', exact: true }).click();
-    await page.locator('.preview-help button').click();
+    await openAppEntry(page, 'help', 'preview');
+    await page.locator('.preview-help .settings-close').click();
     await expect(page.locator('.attachment-drop-hint')).toHaveCount(0);
     await event(page, 'enter');
     await expect(page.locator('.attachment-drop-hint')).toBeVisible();
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
+    await openAppEntry(page, 'runner', 'installation');
     await expect(page.locator('.attachment-drop-active')).toHaveCount(0);
     await expect(page.locator('.attachment-drop-hint')).toHaveCount(0);
     await event(page, 'drop');
@@ -89,9 +93,8 @@ export function registerHubFileDrop({ test, expect, transport, configure, create
     await ready(page);
     const catalog = JSON.parse(readFileSync(new URL(`../../src/hub/locales/${language}.json`, import.meta.url), 'utf8'));
     if (language === 'ko') {
-      await page.getByRole('button', { name: 'App settings', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
-      await page.locator('.settings-close').click();
+      await chooseAppPreference(page, 'settings', 'language', language);
+      await page.keyboard.press('Escape');
     }
     await page.evaluate(() => window.__nativeFixture.emit('pty-1', Array.from({ length: 120 }, (_, i) => `fixed row ${i}\r\n`).join('')));
     await expect(page.locator('.xterm-rows')).toContainText('fixed row 119');

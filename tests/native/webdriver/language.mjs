@@ -9,7 +9,7 @@ export const languageCase = (displayed = false) => defineNativeCase({
   presentation: displayed ? 'nonactivating' : 'background',
   async ready(browser) {
     await browser.waitUntil(async () => browser.execute(() =>
-      document.readyState === 'complete' && !!document.querySelector('.app-settings[open] .language-picker select')),
+      document.readyState === 'complete' && !!document.querySelector('.installation-setup[open] .language-picker select')),
     { timeout: browser.options.waitforTimeout, timeoutMsg: 'Language selection is not ready' });
   },
   async run(browser) {

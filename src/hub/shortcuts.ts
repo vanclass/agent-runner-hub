@@ -72,7 +72,8 @@ export function useHubShortcuts(shortcuts: ShortcutMap, runnerIds: readonly stri
         if (event.type === 'keyup') held.delete(identity);
         return;
       }
-      if (event.type !== 'keydown' || composing || event.isComposing || document.querySelector('dialog[open]')) return;
+      if (event.type !== 'keydown' || composing || event.isComposing
+        || document.querySelector('dialog[open], .application-menu-panel')) return;
       const state = current.current, chord = captureShortcut(event);
       const navigation = ['Ctrl+Shift+Home', 'Ctrl+Shift+End', 'Ctrl+Shift+PageUp', 'Ctrl+Shift+PageDown'].includes(chord ?? '');
       if (navigation) {

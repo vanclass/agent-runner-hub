@@ -1,3 +1,4 @@
+import { appItem, chooseAppPreference } from './application-menu.mjs';
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test.use({ navigationTimeout: 60_000 });
@@ -64,8 +65,7 @@ test('Runner order, truncation, selection and inline rename preserve navigation 
   await expect(longRow.locator('.runner-name')).toHaveText('Saved on blur');
   await expect(page.locator('.workspace-header')).toHaveCount(0);
   await longRow.locator('.nav-row').click();
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Black', exact: true }).click();
+  await chooseAppPreference(page, 'view', 'theme', 'black');
   await page.keyboard.press('Escape');
   await expect(longRow.locator('.nav-row')).toHaveAttribute('aria-current', 'page');
   await testInfo.attach('selected-black', { body: await page.screenshot(), contentType: 'image/png' });
@@ -83,6 +83,8 @@ test('keyboard navigation and scrolling keep Single Entry accessible', async ({ 
   await expect(first).toHaveAttribute('aria-current', 'page');
   const entryTop = (await entry.boundingBox()).y;
   await page.keyboard.press('End');
+  await expect(page.getByRole('button', { name: 'Failed Runner' })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
   await expect(page.locator('.add-runner')).toBeFocused();
   await expect(entry).toBeInViewport();
   expect((await entry.boundingBox()).y).toBe(entryTop);
@@ -97,18 +99,17 @@ for (const theme of ['Light', 'Black']) {
     await page.setViewportSize({ width: 1000, height: 700 });
     await page.goto('/tests/fixtures/hub.html');
     await page.locator('[data-runner-id="third"] .nav-row').click();
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('button', { name: theme, exact: true }).click();
-    const surfaces = ['.toolbar', '.sidebar', '.workspace', '.composer', 'select', '.theme-picker', '.runner-row.active'];
+    await chooseAppPreference(page, 'view', 'theme', theme.toLowerCase());
+    const surfaces = ['.toolbar', '.sidebar', '.workspace', '.composer', '.application-menu-panel', '.runner-row.active'];
     const colors = await page.evaluate(selectors => selectors.map(selector =>
       getComputedStyle(document.querySelector(selector)).backgroundColor), surfaces);
     const expected = theme === 'Light'
-      ? ['rgb(245, 245, 244)', 'rgb(241, 242, 243)', 'rgba(0, 0, 0, 0)', 'rgb(250, 250, 250)', 'rgb(250, 250, 250)', 'rgb(241, 242, 243)', 'rgb(220, 233, 251)']
-      : ['rgb(25, 26, 29)', 'rgb(23, 24, 27)', 'rgba(0, 0, 0, 0)', 'rgb(21, 22, 25)', 'rgb(21, 22, 25)', 'rgb(23, 24, 27)', 'rgb(38, 60, 89)'];
+      ? ['rgb(245, 245, 244)', 'rgb(241, 242, 243)', 'rgba(0, 0, 0, 0)', 'rgb(250, 250, 250)', 'rgb(255, 255, 255)', 'rgb(220, 233, 251)']
+      : ['rgb(25, 26, 29)', 'rgb(23, 24, 27)', 'rgba(0, 0, 0, 0)', 'rgb(21, 22, 25)', 'rgb(17, 18, 20)', 'rgb(38, 60, 89)'];
     expect(colors).toEqual(expected);
     await expect(page.locator('.hub')).toHaveCSS('background-color', theme === 'Light' ? 'rgb(255, 255, 255)' : 'rgb(17, 18, 20)');
     const active = page.locator('.runner-row.active .nav-row');
-    await expect(page.getByRole('button', { name: theme, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(appItem(page, 'theme').locator('.menu-value')).toHaveText(theme);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Tab');
     await active.focus();

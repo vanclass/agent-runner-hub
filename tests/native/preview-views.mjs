@@ -10,8 +10,10 @@ import { defineNativeCase, UnverifiedObservation } from '../../tools/native-prob
 import { readyInstalledHub } from './webdriver/runner-flow.mjs';
 import { generatedSource, animatedFixture, injectGeneratedImage } from './webdriver/attachment-preview.mjs';
 import { HubActions } from './webdriver/hub-actions.mjs';
+import { readFileSync } from 'node:fs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runnerRoot = process.env.HUB_RUNNER_ACCEPTANCE_ROOT;
+const formats = JSON.parse(readFileSync(new URL('../../src-tauri/src/preview_formats.json', import.meta.url), 'utf8'));
 const directory = path.join(root, 'temp/preview-originals', randomUUID());
 await fs.mkdir(directory, { recursive: true });
 const image = path.join(directory, 'selected-image.png');
@@ -45,11 +47,20 @@ const preview = defineNativeCase({
       await viewer.close();
       await hub.wait(async () => !await viewer.state(), 'Local text preview did not close');
     }
-    await browser.execute(() => [...document.querySelectorAll('.hub-preferences button')].find(e => e.textContent === 'Help').click());
-    const help = await browser.execute(() => ({ text: document.querySelector('.preview-help[open]').textContent,
-      positions: [...document.querySelectorAll('.hub-preferences > button')].map(e=>e.getBoundingClientRect().x) }));
-    assert.match(help.text, /\.png/); assert.match(help.text, /\.txt, \.md, \.json/); assert.ok(help.positions[1]>help.positions[0]);
-    await browser.execute(() => document.querySelector('.preview-help[open]').close());
+    await hub.settings.openMenu('help');
+    await hub.dom.click('[data-menu-item="preview"]');
+    const help = await browser.execute(() => {
+      const guide = document.querySelector('.preview-help[open]');
+      const bounds = guide.getBoundingClientRect();
+      return { text: guide.textContent,
+        tags: [...guide.querySelectorAll('.preview-format-tags')].map(list => [...list.children].map(tag => tag.textContent)),
+        contained: bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight };
+    });
+    assert.deepEqual(help.tags, [formats.image, formats.text].map(list => list.map(extension => '.' + extension)));
+    assert.match(help.text, /Attachment eligibility is separate/);
+    assert.ok(help.contained);
+    await hub.dom.click('.preview-help .settings-close');
+    assert.ok(await browser.execute(() => document.activeElement?.matches('[data-menu-trigger="help"], [data-menu-trigger="compact"]')));
     await attachments.openPreview(surface, 0);
     await hub.wait(async () => (await viewer.state())?.image?.naturalWidth === 640, 'Local image preview did not load');
     await viewer.zoom(-300);

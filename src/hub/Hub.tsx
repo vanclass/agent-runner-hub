@@ -9,9 +9,8 @@ import { createHubLogCapture } from './HubLogCapture';
 import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
-import { AppSettings } from './AppSettings';
-import { PreviewHelp } from './PreviewHelp';
-import { ShortcutSettings } from './ShortcutSettings';
+import { ApplicationMenu, type ApplicationPreferences } from './ApplicationMenu';
+import { InstallationDialog } from './InstallationDialog';
 import { defaultShortcuts, useHubShortcuts } from './shortcuts';
 import type { RunnerView } from './model';
 import type { DomainDisplay, RunMode } from './RunnerNavigation';
@@ -40,8 +39,6 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const spare = sessions.spareSnapshot;
   const installation = spare.installation;
   const [setupRequired, setSetupRequired] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState(preferences.value.shortcuts ?? defaultShortcuts);
   const [launching, setLaunching] = useState(false);
   const launchPending = useRef(false);
@@ -72,14 +69,14 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const [confirmRemoval, setConfirmRemoval] = useState(preferences.value.confirmRunnerRemoval);
   const selected = allRunners.find(runner => runner.id === selectedId) ?? sessions.failures.find(runner => runner.id === selectedId);
   const dropHost = useRef<HTMLDivElement>(null);
+  const workspace = useRef<HTMLDivElement>(null);
   const dropSession = sessions.get(selectedId ?? undefined) ?? sessions.getFailure(selectedId ?? undefined);
-  const dropBlocked = setupRequired || settingsOpen || shortcutsOpen;
   const fileDrop = useHubFileDrop(dropHost, selectedId === null ? {
     key: 'single-entry', selection: sessions.entry.attachments,
-    disabled: () => dropBlocked || entryAttachmentsDisabled(sessions.entry),
+    disabled: () => setupRequired || entryAttachmentsDisabled(sessions.entry),
   } : dropSession ? {
     key: selectedId, selection: dropSession.references,
-    disabled: () => dropBlocked || runnerAttachmentsDisabled(dropSession),
+    disabled: () => setupRequired || runnerAttachmentsDisabled(dropSession),
   } : undefined);
   useEffect(() => { if (selectedId && !selected) setSelectedId(null); }, [selectedId, selected]);
   function rename(id: string, name: string) {
@@ -105,20 +102,39 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     const next = remaining[index] ?? remaining.at(-1);
     setSelectedId(current => current === id ? next?.id ?? null : current);
   }
+  const appPreferences: ApplicationPreferences = {
+    installation, theme, confirmRemoval, domainDisplay, retentionDays, shortcuts,
+    allocationPolicy: sessions.entry.allocationPolicy, reuseEditable: sessions.entry.editable,
+    onAllocationPolicy: value => sessions.entry.setDefault('allocationPolicy', value),
+    onShortcutsSave: value => {
+      preferences.update({ shortcuts: value });
+      setShortcuts(preferences.value.shortcuts ?? defaultShortcuts);
+      return preferences.issue;
+    },
+    onRetentionDays: value => {
+      preferences.update({ hubLogRetentionDays: value });
+      setRetentionDays(preferences.logRetentionDays);
+      if (!preferences.issue) void hubLog.retention(preferences.logRetentionDays);
+    },
+    onDomainDisplay: value => { preferences.update({ domainDisplay: value }); setDomainDisplay(value); },
+    onConfirmRemoval: value => { preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value); },
+    onLanguage: language => { preferences.update({ language }); initializeHubLanguage(language); },
+    onTheme: value => { preferences.update({ theme: value }); setTheme(value); },
+    onVerified: value => {
+      sessions.setInstallation(value);
+      if (setupRequired) { setSetupRequired(false); setSelectedId(null); }
+    },
+  };
   return <div ref={dropHost} className="hub" data-theme={theme}>
     <header className="toolbar">
       <div className="brand"><span className="brand-mark" aria-hidden="true">A</span><strong>AgentRunnerHub</strong></div>
+      {!setupRequired && <ApplicationMenu {...appPreferences} workspace={workspace} />}
       <span className="toolbar-location">{t('hub.workspace')} <span aria-hidden="true">/</span> {selected ? 'Runner' : t('common.singleEntry')}</span>
-      <div className="hub-preferences">
-        <button type="button" className="app-settings-trigger" aria-haspopup="dialog"
-          onClick={() => setSettingsOpen(true)}>{t('setup.settings')}</button>
-        <PreviewHelp />
-      </div>
     </header>
     {preferences.issue && <p role="alert" className="runner-error preferences-error">{tr(preferences.issue)}</p>}
     {sessions.workspace.issue && <p role="alert" className="runner-error">{tr(sessions.workspace.issue)}</p>}
     {launchError && <p role="alert" className="runner-error">{tr(launchError)}</p>}
-    <div className="shell-body">
+    <div ref={workspace} className="shell-body">
       <Sidebar domains={domains} runners={allRunners} domainDisplay={domainDisplay}
         selectedId={selectedId} onSelect={setSelectedId} onRename={rename}
         canDropRunner={(id, source, destination) => sessions.canDropRunner(id, source, destination)}
@@ -139,30 +155,7 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
         control={sessions.get(selectedId ?? undefined)?.control}
         scope={selectedId ?? 'single-entry'} />
     </div>
-    {shortcutsOpen && <ShortcutSettings value={shortcuts} onClose={() => { setShortcutsOpen(false); setSettingsOpen(true); }} onSave={value => {
-      preferences.update({ shortcuts: value }); setShortcuts(preferences.value.shortcuts ?? defaultShortcuts);
-      return preferences.issue;
-    }} />}
-    {(setupRequired || settingsOpen) && <AppSettings required={setupRequired} installation={installation} theme={theme}
-      retentionDays={retentionDays} onRetentionDays={value => {
-        preferences.update({ hubLogRetentionDays: value });
-        setRetentionDays(preferences.logRetentionDays);
-        if (!preferences.issue) void hubLog.retention(preferences.logRetentionDays);
-      }}
-      domainDisplay={domainDisplay} onDomainDisplay={value => {
-        preferences.update({ domainDisplay: value }); setDomainDisplay(value);
-      }}
-      allocationPolicy={sessions.entry.allocationPolicy} reuseEditable={sessions.entry.editable}
-      onAllocationPolicy={value => sessions.entry.setDefault('allocationPolicy', value)}
-      onShortcuts={() => { setSettingsOpen(false); setShortcutsOpen(true); }}
-      confirmRemoval={confirmRemoval} onConfirmRemoval={value => {
-        preferences.update({ confirmRunnerRemoval: value }); setConfirmRemoval(value);
-      }}
-      onLanguage={language => { preferences.update({ language }); initializeHubLanguage(language); }}
-      onTheme={value => { preferences.update({ theme: value }); setTheme(value); }}
-      onVerified={value => {
-        sessions.setInstallation(value);
-        if (setupRequired) { setSetupRequired(false); setSelectedId(null); }
-      }} onClose={() => setSettingsOpen(false)} />}
+    {setupRequired && <InstallationDialog installation={installation} onVerified={appPreferences.onVerified}
+      onClose={() => {}} setup={appPreferences} />}
   </div>;
 }

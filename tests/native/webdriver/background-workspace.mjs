@@ -13,7 +13,7 @@ export function backgroundWorkspace(runnerRoot) {
     id: 'background-workspace', presentation: 'background',
     async ready(browser) {
       await browser.waitUntil(() => browser.execute(() => document.readyState === 'complete'
-        && !!document.querySelector('.app-settings[open], .shell-body')));
+        && !!document.querySelector('.installation-setup[open], .shell-body')));
     },
     async run(browser) {
       const obsolete = randomUUID();
@@ -40,7 +40,6 @@ export function backgroundWorkspace(runnerRoot) {
       await tabs.confirmRemoval();
       await hub.wait(async () => !ordered(await tabs.inventory()).includes(obsolete), 'Failed launch tab survived removal');
       assert.equal(await browser.execute(() => !!document.querySelector('.termination-failures')), false);
-      await settings.open();
       await settings.edit('language', 'ko');
       await settings.setTheme('black');
       await settings.edit('confirmRemoval', false);
@@ -55,7 +54,6 @@ export function backgroundWorkspace(runnerRoot) {
       await settings.captureShortcut('entry', 'F9', { code: 'F9' });
       assert.equal(await settings.shortcutIssue(), null);
       await settings.saveShortcuts();
-      await settings.close();
       const first = await tabs.add('runner');
       const firstConnection = await visibleConnection(browser, runnerRoot);
       const second = await tabs.add('runner');
@@ -121,11 +119,9 @@ export function backgroundWorkspace(runnerRoot) {
       assert.equal(preferences.hubLogRetentionDays, 7);
       assert.equal(preferences.singleEntry.allocationPolicy, 'reuse-idle');
       assert.equal(preferences.shortcuts.entry, 'F9');
-      await settings.open();
       assert.equal((await settings.field('language')).value, 'ko');
       assert.equal((await settings.appearance()).theme, 'black');
       assert.equal((await settings.field('retentionDays')).value, '7');
-      await settings.close();
       await tabs.select(first);
       const connection = await visibleConnection(browser, runnerRoot);
       assert.equal(connection.tab, first);

@@ -79,7 +79,7 @@ export function registerLogViewport({ test, expect, transport, configure, create
       await page.goto('/');
       await page.locator('.runner-location input').fill('/fixture/install');
       await page.locator('.runner-location button').last().click();
-      await expect(page.locator('.app-settings')).toHaveCount(0);
+      await expect(page.locator('.installation-setup')).toHaveCount(0);
       await expect(page.locator('.workspace-header, .workspace-symbol, .spare-status, .sidebar-empty')).toHaveCount(0);
       await expect(page.locator('.sidebar .add-runner')).toBeVisible();
       await expect(page.locator('.composer textarea')).toBeEnabled();

@@ -1,3 +1,4 @@
+import { appItem, openAppMenu, chooseAppPreference } from './application-menu.mjs';
 import { registerInstructionPresentation } from './instruction-presentation.mjs';
 import { drop } from './composer-attachments.mjs';
 
@@ -180,8 +181,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect(page.getByRole('combobox', { name: 'Requested Account', exact: true })).toBeEnabled();
     await home(page);
 
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Runner allocation policy' }).selectOption('reuse-idle');
+    await chooseAppPreference(page, 'runner', 'allocation', 'reuse-idle');
     await page.keyboard.press('Escape');
     await page.locator('textarea[data-instruction]').fill('reuse once');
     await assign(page);
@@ -189,8 +189,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(1);
     await home(page);
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Runner allocation policy' }).selectOption('always-new');
+    await chooseAppPreference(page, 'runner', 'allocation', 'always-new');
     await page.keyboard.press('Escape');
     await page.locator('textarea[data-instruction]').fill('always new');
     await assign(page);
@@ -303,8 +302,12 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
         Object.assign(fixture.features.results.find(r => r.operation === 'session_config.apply'), { state: 'pending-interaction', phase: 'awaiting_interaction' }); });
       await page.waitForFunction(() => JSON.parse(window.__nativeFixture.observed.get('pty-1')).features.results
         .some(r => r.operation === 'session_config.apply' && r.state === 'pending-interaction'));
-      await page.locator('.app-settings-trigger').click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await openAppMenu(page, 'runner');
+      const allocation = appItem(page, 'allocation');
+      await expect(allocation).toHaveAttribute('aria-disabled', 'true');
+      await allocation.press('Enter');
+      await expect(page.getByRole('menuitemradio')).toHaveCount(0);
+      await chooseAppPreference(page, 'settings', 'language', language);
       await page.keyboard.press('Escape');
       await page.locator('.xterm-helper-textarea').press('Escape');
       expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
@@ -340,8 +343,7 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       expect(result.safe.accountIdentity).toEqual(result.current.account); expect(result.safe).not.toHaveProperty('account');
       const apply = result.requests.find(r => r.operation === 'session_config.apply');
       expect(apply.desired.account).toEqual(result.current.account);
-      await page.getByRole('button', { name: 'App settings', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await chooseAppPreference(page, 'settings', 'language', language);
       await page.keyboard.press('Escape');
       await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
       await home(page);

@@ -1,3 +1,4 @@
+import { chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerStatus({ test, expect, transport, configure, create }) {
   test('IssueRun live Interpreter and committed Discussion use the same sidebar row', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true });
@@ -359,8 +360,7 @@ export function registerRunnerStatus({ test, expect, transport, configure, creat
   for (const theme of ['light', 'black']) test(`runner circular status fixed coordinates ${theme}`, async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true });
     await configure(page); await create(page); await create(page);
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('button', { name: theme === 'light' ? 'Light' : 'Black', exact: true }).click();
+    await chooseAppPreference(page, 'view', 'theme', theme);
     await page.keyboard.press('Escape');
     const rows = page.locator('.runner-row');
     const coordinates = () => rows.evaluateAll(rows => rows.map(row => {

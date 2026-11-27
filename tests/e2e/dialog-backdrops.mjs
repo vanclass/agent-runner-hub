@@ -1,3 +1,4 @@
+import { appTrigger, openAppEntry } from './application-menu.mjs';
 export async function imageBackdrop(page, expect, opener) {
   const dialog = page.locator('.focused-viewer[open]');
   const viewport = dialog.locator('.focused-image-viewport');
@@ -37,34 +38,35 @@ export async function imageBackdrop(page, expect, opener) {
 export function registerOrdinaryBackdrops({ test, expect, ready }) {
   test('dialog backdrop preserves an outside gesture across caller rerender', async ({ page }) => {
     await ready(page);
-    const opener = page.getByRole('button', { name: 'App settings', exact: true });
-    await opener.click();
-    const dialog = page.locator('.app-settings[open]'), frame = await dialog.boundingBox();
+    const opener = appTrigger(page, 'runner');
+    await openAppEntry(page, 'runner', 'installation');
+    const dialog = page.locator('.installation-dialog[open]'), frame = await dialog.boundingBox();
     await page.mouse.move(frame.x / 2, frame.y + frame.height / 2);
     await page.mouse.down();
-    await dialog.getByRole('button', { name: 'Black', exact: true }).evaluate(button => button.click());
-    await expect(page.locator('.hub')).toHaveAttribute('data-theme', 'black');
+    await dialog.getByRole('textbox').evaluate(input => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '/rerender');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(dialog.getByRole('textbox')).toHaveValue('/rerender');
     await page.mouse.up();
     await expect(dialog).toHaveCount(0);
     await expect(opener).toBeFocused();
   });
-  test('dialog backdrop ordinary settings and Help preserve interior and close paths', async ({ page }) => {
+  test('dialog backdrop installation and guide preserve interior and close paths', async ({ page }) => {
     await ready(page);
-    for (const [trigger, selector] of [['App settings', '.app-settings[open]'], ['Help', '.preview-help[open]']]) {
-      const opener = page.getByRole('button', { name: trigger, exact: true });
+    for (const [group, item, selector] of [['runner', 'installation', '.installation-dialog[open]'], ['help', 'preview', '.preview-help[open]']]) {
+      const opener = appTrigger(page, group);
       for (const close of ['backdrop', 'Escape', 'button']) {
-        await opener.click(); const dialog = page.locator(selector);
+        await openAppEntry(page, group, item); const dialog = page.locator(selector);
         const r = await dialog.boundingBox();
         await page.mouse.click(r.x + 3, r.y + 3); await expect(dialog).toBeVisible();
         if (close === 'backdrop') await page.mouse.click(r.x / 2, r.y);
         else if (close === 'Escape') await page.keyboard.press('Escape');
-        else if (trigger === 'App settings') await dialog.locator('.settings-close').click();
         else await dialog.getByRole('button', { name: 'Close', exact: true }).click();
         await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
       }
     }
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.locator('.shortcut-settings-trigger').click();
+    await openAppEntry(page, 'settings', 'shortcuts');
     const shortcuts = page.locator('.shortcut-settings[open]');
     await shortcuts.getByRole('button', { name: 'Assign instruction', exact: true }).click();
     await page.mouse.click(5, 5); await expect(shortcuts).toBeVisible();

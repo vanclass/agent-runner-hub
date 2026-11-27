@@ -1,25 +1,22 @@
-import { useEffect, useRef } from 'react';
 import { t } from './i18n';
 import { previewExtensions } from './localPreviews';
-import { useDialogBackdropDismiss } from './useDialogBackdropDismiss';
-import './focusedViewer.css';
+import { HubDialog } from './HubDialog';
 
-export function PreviewHelp() {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useDialogBackdropDismiss(dialog, () => dialog.current?.close());
-  useEffect(() => () => dialog.current?.close(), []);
-  return <>
-    <button type="button" className="app-settings-trigger" aria-haspopup="dialog"
-      onClick={() => dialog.current?.showModal()}>{t('preview.help')}</button>
-    <dialog ref={dialog} className="focused-viewer preview-help" aria-label={t('preview.help')}>
-      <h2>{t('preview.help')}</h2>
-      <dl>
-        <dt>{t('preview.images')}</dt><dd>{previewExtensions.image.map(ext => `.${ext}`).join(', ')}</dd>
-        <dt>{t('preview.text')}</dt><dd>{previewExtensions.text.map(ext => `.${ext}`).join(', ')}</dd>
-        <dt>{t('preview.other')}</dt><dd>{t('preview.otherLimits')}</dd>
-      </dl>
-      <p>{t('preview.limits')}</p>
-      <button type="button" onClick={() => dialog.current?.close()}>{t('preview.close')}</button>
-    </dialog>
-  </>;
+export function PreviewHelp({ onClose }: { onClose: () => void }) {
+  return <HubDialog className="preview-help" title={t('preview.help')} description={t('preview.eligibility')} onClose={onClose}>
+    <div className="preview-guide-formats">
+      <PreviewFormats label={t('preview.images')} extensions={previewExtensions.image} />
+      <PreviewFormats label={t('preview.text')} extensions={previewExtensions.text} />
+    </div>
+    <section><h2>{t('preview.other')}</h2><p>{t('preview.otherLimits')}</p></section>
+    <section><h2>{t('preview.limitations')}</h2><p>{t('preview.limits')}</p></section>
+  </HubDialog>;
+}
+
+function PreviewFormats({ label, extensions }: { label: string; extensions: readonly string[] }) {
+  return <section><h2>{label}</h2>
+    <ul className="preview-format-tags">
+      {extensions.map(extension => <li key={extension}>.{extension}</li>)}
+    </ul>
+  </section>;
 }

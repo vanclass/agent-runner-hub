@@ -1,3 +1,4 @@
+import { chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerTabs({ test, expect, transport, configure, create }) {
   const row = (page, name) => page.locator('.runner-row').filter({ has: page.getByText(name, { exact: true }) });
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
@@ -22,8 +23,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
   ]) {
     test(`runner tabs background ${outcome} unread and continued discovery without replay ${language}`, async ({ page }, info) => {
       await ready(page); await assign(page); await create(page);
-      await page.getByRole('button', { name: 'App settings', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await chooseAppPreference(page, 'settings', 'language', language);
       await page.keyboard.press('Escape');
       await page.evaluate(outcome => { window.__nativeFixture.sessions.get('pty-1').feature.mode = outcome; }, outcome);
       const own = row(page, 'Runner 1'), neighbor = row(page, 'Runner 2');
@@ -41,8 +41,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await page.waitForTimeout(1700);
       expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.requests.filter(r => r.operation === 'work.submit').length)).toBe(before);
       await info.attach(`tab-${outcome}-${language}`, { body: await page.screenshot({ path: info.outputPath('tab-status.png') }), contentType: 'image/png' });
-      await page.getByRole('button', { name: language === 'en' ? 'App settings' : '앱 설정', exact: true }).click();
-      await page.getByRole('combobox', { name: language === 'en' ? 'Language' : '언어', exact: true }).selectOption(language === 'en' ? 'ko' : 'en');
+      await chooseAppPreference(page, 'settings', 'language', language === 'en' ? 'ko' : 'en');
       await page.keyboard.press('Escape');
       await expect(own.locator('.unread-completion')).toBeVisible();
       await neighbor.locator('.nav-row').dblclick();
@@ -117,8 +116,7 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await expect(page.locator('.workspace-header')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
       await own.locator('.nav-row').click();
-      await page.getByRole('button', { name: 'App settings', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await chooseAppPreference(page, 'settings', 'language', language);
       await page.keyboard.press('Escape');
       await own.locator('.remove-action').click();
       const dialog = page.getByRole('dialog');

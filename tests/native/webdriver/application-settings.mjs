@@ -1,10 +1,12 @@
-const dialog = '.app-settings[open]:not(.shortcut-settings)';
-const controls = {
-  language: '.language-picker select',
-  confirmRemoval: '.removal-preference input',
-  allocationPolicy: '.domain-preference[title] select',
-  domainDisplay: '.domain-preference:not([title]) select',
-  retentionDays: 'input[type="number"]'
+const setup = '.installation-setup[open]';
+const shield = '.application-menu-shield';
+const item = id => `[data-menu-item="${id}"]`;
+const entries = {
+  language: ['settings', 'language'],
+  confirmRemoval: ['runner', 'removal'],
+  allocationPolicy: ['runner', 'allocation'],
+  domainDisplay: ['view', 'domain'],
+  retentionDays: ['settings', 'retention'],
 };
 const shortcutControls = {
   assign: '.shortcut-row:nth-of-type(1) button',
@@ -18,40 +20,68 @@ export class ApplicationSettings {
     this.browser = dom.browser;
   }
 
-  async open() {
-    if (!await this.dom.state(dialog)) await this.dom.click('.app-settings-trigger');
+  async openMenu(group) {
+    const compact = '[data-menu-trigger="compact"]';
+    if ((await this.dom.state(compact))?.rect.width) {
+      await this.dom.click(compact);
+      await this.dom.click(item(group));
+    } else await this.dom.click(`[data-menu-trigger="${group}"]`);
   }
 
-  close() {
-    return this.dom.click(dialog + ' .settings-close');
-  }
-
-  field(name) {
-    return this.dom.state(dialog + ' ' + controls[name]);
+  async field(name) {
+    if (await this.dom.state(setup)) return this.dom.state(setup + ' .language-picker select');
+    const [group, id] = entries[name];
+    await this.openMenu(group);
+    if (name !== 'confirmRemoval') await this.dom.click(item(id));
+    const state = await this.browser.execute((id, name) => {
+      if (name === 'confirmRemoval') {
+        return { checked: document.querySelector(`[data-menu-item="${id}"]`)?.getAttribute('aria-checked') === 'true' };
+      }
+      return { value: name === 'retentionDays' ? document.querySelector('#retention-days')?.value
+        : document.querySelector('[role="menuitemradio"][aria-checked="true"]')?.dataset.menuItem };
+    }, id, name);
+    await this.dom.click(shield);
+    return state;
   }
 
   async edit(name, value) {
-    const selector = dialog + ' ' + controls[name];
-    if (name === 'confirmRemoval') {
-      const state = await this.dom.state(selector);
-      if (!state) throw new Error('Removal preference unavailable');
-      if (state.checked !== value) await this.dom.click(selector);
+    if (await this.dom.state(setup)) {
+      await this.dom.changeValue(setup + ' .language-picker select', String(value));
       return;
     }
-    await this.dom.changeValue(selector, String(value));
-    if (name === 'retentionDays') await this.dom.dispatch(selector, 'focusout');
+    const [group, id] = entries[name];
+    await this.openMenu(group);
+    if (name === 'confirmRemoval') {
+      const checked = await this.browser.execute(() => document.querySelector('[data-menu-item="removal"]')
+        ?.getAttribute('aria-checked') === 'true');
+      if (checked !== value) await this.dom.click(item(id));
+    } else {
+      await this.dom.click(item(id));
+      if (name === 'retentionDays') {
+        await this.dom.changeValue('#retention-days', String(value));
+        await this.dom.click('.retention-actions button[type="submit"]');
+      } else await this.dom.click(item(value));
+    }
+    await this.dom.click(shield);
   }
 
-  setTheme(theme) {
+  async setTheme(theme) {
     if (!['light', 'black'].includes(theme)) throw new TypeError('Unknown Hub theme');
-    return this.dom.click(dialog + ' .theme-picker button:has(.theme-dot.' + theme + ')');
+    if (await this.dom.state(setup)) {
+      await this.dom.click(setup + ' .theme-picker button:has(.theme-dot.' + theme + ')');
+      return;
+    }
+    await this.openMenu('view');
+    await this.dom.click(item('theme'));
+    await this.dom.click(item(theme));
+    await this.dom.click(shield);
   }
 
   appearance() {
     return this.browser.execute(() => ({
       theme: document.querySelector('.hub')?.dataset.theme ?? null,
       language: document.documentElement.lang,
-      languageLabel: document.querySelector('.app-settings .language-picker span')?.textContent ?? null,
+      languageLabel: document.querySelector('.installation-setup .language-picker span')?.textContent ?? null,
       themePressed: document.querySelector('.theme-picker button[aria-pressed="true"] .theme-dot')?.classList[1] ?? null
     }));
   }
@@ -64,8 +94,9 @@ export class ApplicationSettings {
     return (await this.saved())?.runnerSelections?.[id] ?? null;
   }
 
-  openShortcuts() {
-    return this.dom.click(dialog + ' .shortcut-settings-trigger');
+  async openShortcuts() {
+    await this.openMenu('settings');
+    await this.dom.click(item('shortcuts'));
   }
 
   async captureShortcut(action, key, modifiers = {}) {

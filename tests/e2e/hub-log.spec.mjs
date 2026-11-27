@@ -1,3 +1,4 @@
+import { openAppEntry } from './application-menu.mjs';
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test('Hub log restores before queued live events, serializes writes and exposes unconfirmed saves', async ({ page }) => {
@@ -132,13 +133,13 @@ test('retention defaults migrate without rewriting, validate days and persist in
 test('Single Entry log view shows storage failure and settings retain a valid value after reload', async ({ page }) => {
   await page.goto('/tests/fixtures/hub.html');
   await expect(page.locator('.hub-log [role="alert"]')).toContainText('HUB_LOG_UNAVAILABLE');
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
+  await openAppEntry(page, 'settings', 'retention');
   const days = page.getByRole('spinbutton', { name: 'Hub log retention (days)' });
-  await expect(days).toHaveValue('30'); await days.fill('7'); await days.press('Tab');
+  await expect(days).toHaveValue('30'); await days.fill('7'); await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await page.keyboard.press('Escape');
   await page.locator('[data-runner-id="first"] .nav-row').click();
   await expect(page.locator('.hub-log')).toHaveCount(0);
   await page.locator('.single-entry').click(); await expect(page.locator('.hub-log')).toBeVisible();
-  await page.reload(); await page.getByRole('button', { name: 'App settings', exact: true }).click();
+  await page.reload(); await openAppEntry(page, 'settings', 'retention');
   await expect(page.getByRole('spinbutton', { name: 'Hub log retention (days)' })).toHaveValue('7');
 });

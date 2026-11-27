@@ -1,6 +1,7 @@
+import { openAppEntry } from './application-menu.mjs';
 export function registerInstallationSetup({ test, expect, transport, configure, create }) {
   const dialog = page => page.getByRole('dialog');
-  const settings = page => page.getByRole('button', { name: 'App settings', exact: true }).click();
+  const settings = page => openAppEntry(page, 'runner', 'installation');
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`installation setup: mandatory accessible layout ${language} ${theme}`, async ({ page }, info) => {
       await transport(page);

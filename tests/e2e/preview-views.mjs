@@ -1,3 +1,4 @@
+import { appTrigger, openAppEntry } from './application-menu.mjs';
 import { PNG } from 'pngjs';
 import { imageBackdrop, registerOrdinaryBackdrops } from './dialog-backdrops.mjs';
 import { HubActions } from '../native/webdriver/hub-actions.mjs';
@@ -84,19 +85,22 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
       }
     });
   }
-  test('preview Help follows App Settings and shares truthful catalog domains', async ({ page }, info) => {
+  test('preview guide follows Settings and shares truthful catalog domains', async ({ page }, info) => {
     await ready(page);
-    const settings = page.locator('.hub-preferences > button').first(), help = page.getByRole('button', { name: 'Help', exact: true });
+    const settings = appTrigger(page, 'settings'), help = appTrigger(page, 'help');
     const left = await settings.boundingBox(), right = await help.boundingBox();
     expect(right.x).toBeGreaterThanOrEqual(left.x + left.width);
     expect(Math.abs(right.y-left.y)).toBeLessThan(4);
-    await help.click();
-    const dialog = page.getByRole('dialog', { name: 'Help', exact: true }); await expect(dialog).toBeVisible();
-    await expect(dialog.locator('dt')).toHaveText(['Images','Text','Mixed / other']);
+    await openAppEntry(page, 'help', 'preview');
+    const dialog = page.getByRole('dialog', { name: 'File Preview Guide', exact: true }); await expect(dialog).toBeVisible();
+    await expect(dialog.locator('h2')).toHaveText(['Supported images', 'Supported text', 'Unsupported previews', 'Preview limitations']);
     const formats = await page.evaluate(async () => (await import('/src/hub/localPreviews.ts')).previewExtensions);
-    await expect(dialog.locator('dd').nth(0)).toHaveText(formats.image.map(x=>'.'+x).join(', '));
-    await expect(dialog.locator('dd').nth(1)).toHaveText(formats.text.map(x=>'.'+x).join(', '));
-    await expect(dialog.locator('dd').nth(2)).toContainText('no local content preview');
+    await expect(dialog.locator('.preview-format-tags').nth(0).locator('li')).toHaveText(formats.image.map(extension => '.' + extension));
+    await expect(dialog.locator('.preview-format-tags').nth(1).locator('li')).toHaveText(formats.text.map(extension => '.' + extension));
+    await expect(dialog).toContainText('no local content preview');
+    await expect(dialog).toContainText('Attachment eligibility is separate');
+    await expect(dialog).toContainText('UTF-8');
+    await expect(dialog).toContainText('never execute');
     await info.attach('catalog-help', { body: await page.screenshot(), contentType: 'image/png' });
     await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await expect(help).toBeFocused();
   });

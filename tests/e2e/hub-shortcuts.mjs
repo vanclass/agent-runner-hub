@@ -1,3 +1,4 @@
+import { appTrigger, openAppEntry } from './application-menu.mjs';
 export function registerHubShortcuts({ test, expect, transport, configure, create, foreground }) {
   const home = page => page.keyboard.press('Control+Shift+Home');
   const rows = page => page.locator('.runner-row .nav-row');
@@ -9,7 +10,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true }).fill('C:/explicit-root');
   }
   async function remap(page) {
-    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+    await openAppEntry(page, 'settings', 'shortcuts');
     for (const [action, chord] of [['Assign instruction', 'Alt+Enter'], ['Go to Single Entry', 'Alt+Home'], ['Go to Runner by position', 'Alt+2']]) {
       await page.getByRole('dialog').getByRole('button', { name: action, exact: true }).click();
       await page.keyboard.press(chord);
@@ -114,7 +115,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
       node.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
     });
     await expect(rows(page).nth(0)).toHaveAttribute('aria-current', 'page');
-    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+    await openAppEntry(page, 'settings', 'shortcuts');
     const dialog = page.getByRole('dialog');
     for (const chord of ['Control+Shift+End', 'Control+Shift+PageUp', 'Control+Shift+PageDown', 'Control+Home', 'Control+End', 'Control+PageUp', 'Control+PageDown']) {
       await dialog.getByRole('button', { name: 'Go to Single Entry', exact: true }).click();
@@ -133,7 +134,7 @@ export function registerHubShortcuts({ test, expect, transport, configure, creat
     await page.keyboard.press('Control+v');
     await expect(dialog.getByRole('alert')).toContainText('reserved');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
-    await expect(page.locator('.shortcut-settings-trigger')).toBeFocused();
+    await expect(appTrigger(page, 'settings')).toBeFocused();
     await page.keyboard.press('Escape');
     await terminal.focus(); await page.keyboard.press('Control+Shift+Home');
     await expect(page.locator('.composer textarea')).toBeFocused();

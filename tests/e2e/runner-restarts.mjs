@@ -1,3 +1,5 @@
+import { drop } from './composer-attachments.mjs';
+import { chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerRestarts({ test, expect, transport, configure, create }) {
   // Production Hub orchestration with a simulated native transport, never native acceptance.
   async function owner(page, count = 1) {
@@ -597,10 +599,10 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
       await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
       const id = await page.locator('.runner-row').getAttribute('data-runner-id');
       await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('retained per-tab draft');
-      await page.getByRole('button', { name: 'Attach file', exact: true }).click();
-      await page.locator('.app-settings-trigger').click();
-      await page.getByRole('button', { name: theme, exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await drop(page, ['/fixture/image.png']);
+      await expect(page.locator('.attachment-open > span')).toHaveText('image.png');
+      await chooseAppPreference(page, 'view', 'theme', theme.toLowerCase());
+      await chooseAppPreference(page, 'settings', 'language', language);
       await page.keyboard.press('Escape');
       const label = language === 'ko' ? '전체 러너 재시작' : 'Restart all Runners';
       await expect(page.locator('.task-panel').getByRole('button', { name: label, exact: true })).toHaveCount(0);

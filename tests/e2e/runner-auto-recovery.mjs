@@ -1,3 +1,4 @@
+import { chooseAppPreference } from './application-menu.mjs';
 export function registerAutoRecovery({ test, expect, transport, configure, create }) {
   const key = 'agent-runner-hub.workspace.v1';
   const reference = n => ({ version: 1, family: 'task-run', repository_namespace: 'project-exact',
@@ -249,8 +250,7 @@ export function registerAutoRecovery({ test, expect, transport, configure, creat
       await seed(page, [{ reference: reference(1), state: 'eligible' }]);
       await page.locator('.runner-row .nav-row').click();
       if (theme === 'black') {
-        await page.getByRole('button', { name: 'App settings', exact: true }).click();
-        await page.getByRole('button', { name: 'Black', exact: true }).click();
+        await chooseAppPreference(page, 'view', 'theme', 'black');
         await page.keyboard.press('Escape');
       }
       await expect(page.locator('.runner-recovery')).toHaveCount(0);

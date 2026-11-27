@@ -68,7 +68,7 @@ export function bootstrap({ invocation, fixture, budgetMs }) {
   const inspect = async () => {
     try {
       await ready;
-      if (!document.querySelector('#app .app-settings[open]') && !document.querySelector('#app dialog[open]')) {
+      if (!document.querySelector('#app .installation-setup[open]') && !document.querySelector('#app dialog[open]')) {
         if (performance.now() - started >= budgetMs) throw new Error('Renderer readiness timeout');
         setTimeout(inspect, 200); return;
       }

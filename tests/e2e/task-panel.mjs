@@ -1,3 +1,4 @@
+import { appItem, openAppMenu, chooseAppPreference } from './application-menu.mjs';
 import { drop } from './composer-attachments.mjs';
 export function registerTaskPanel({ test, expect, transport, configure, create, generatedFixture }) {
   test('task panel preserves a restored unavailable mode visibly after catalog inspection', async ({ page }) => {
@@ -17,7 +18,7 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     await expect(retained).toContainText('restored-unavailable-mode');
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry.runMode)).toBe('restored-unavailable-mode');
   });
-  test('task panel conditional root retains draft across modes and reload with App Settings reuse', async ({ page }) => {
+  test('task panel conditional root retains draft across modes and reload with Runner-menu reuse', async ({ page }) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);
     const root = page.getByRole('textbox', { name: 'Requested Direct / Pure Direct Root', exact: true });
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
@@ -38,8 +39,8 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
     await expect(root).toHaveValue('C:/retained-root');
 
     await expect(page.locator('.task-panel').getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toHaveCount(0);
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Runner allocation policy' })).toBeVisible();
+    await openAppMenu(page, 'runner');
+    await expect(appItem(page, 'allocation')).toBeVisible();
     await page.keyboard.press('Escape');
     await page.reload();
     await expect(root).toHaveValue('C:/retained-root');
@@ -64,9 +65,8 @@ export function registerTaskPanel({ test, expect, transport, configure, create, 
       await create(page);
       expect((await page.locator('.task-panel').boundingBox()).x).toBe(right.x);
       await expect(page.getByRole('checkbox', { name: 'Reuse an eligible idle Runner' })).toHaveCount(0);
-      await page.getByRole('button', { name: 'App settings', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
-      await page.getByRole('button', { name: language === 'en' ? (theme === 'light' ? 'Light' : 'Black') : (theme === 'light' ? '라이트' : '블랙'), exact: true }).click();
+      await chooseAppPreference(page, 'settings', 'language', language);
+      await chooseAppPreference(page, 'view', 'theme', theme);
       await page.keyboard.press('Escape');
       const panel = page.locator('.task-panel'), mode = panel.locator('.execution-settings select').first();
       await panel.locator('.account-settings select').focus();

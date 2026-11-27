@@ -20,7 +20,7 @@ export function hubLogCase(runnerRoot, displayed = false) {
     presentation: displayed ? 'nonactivating' : 'background',
     async ready(browser) {
       await browser.waitUntil(async () => browser.execute(() => document.readyState === 'complete'
-        && !!document.querySelector('.app-settings[open], .shell-body')), { timeout: browser.options.waitforTimeout });
+        && !!document.querySelector('.installation-setup[open], .shell-body')), { timeout: browser.options.waitforTimeout });
     },
     async run(browser) {
       const { tabs, logs, settings } = new HubActions(browser);
@@ -122,10 +122,8 @@ export function hubLogCase(runnerRoot, displayed = false) {
       assert.equal(expandedGeometry.topGap, 0);
       assert.deepEqual(expandedGeometry.sequences, disk.records.map(row => row.sequence));
       await logs.scrollToBottom();
-      await settings.open();
       await settings.edit('retentionDays', 7);
       await browser.waitUntil(async () => (await settings.saved())?.hubLogRetentionDays === 7);
-      await settings.close();
       const lines = (await logs.rows()).map(row => row.text);
       assert.equal(await browser.execute(() => window.__hubPendingSeen), false, 'Startup and spare events must not insert temporary pending messages');
       assert.equal(await browser.execute(() => !!document.querySelector('.hub-log-records .hub-log-pending, .hub-log-records [role="alert"]')), false);
@@ -136,7 +134,7 @@ export function hubLogCase(runnerRoot, displayed = false) {
     },
     async afterRestart(browser, before) {
       const { tabs, logs, settings } = new HubActions(browser);
-      await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.app-settings[open]')),
+      await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.installation-setup[open]')),
         { timeout: browser.options.waitforTimeout });
       await tabs.selectSingleEntry();
       await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.hub-log-row').length > 0),

@@ -1,3 +1,4 @@
+import { appTrigger } from './application-menu.mjs';
 import { PNG } from 'pngjs';
 import { registerAttachmentOutcomes } from './attachment-outcomes.mjs';
 import { registerLocalPreviews } from './local-previews.mjs';
@@ -147,7 +148,7 @@ export function registerComposerAttachments({ test, expect, transport, configure
       await expect(input).toHaveValue('');
       await info.attach(label, { body: await page.screenshot(), contentType: 'image/png' });
     }
-    const settings = page.getByRole('button', { name: 'App settings', exact: true });
+    const settings = appTrigger(page, 'settings');
     await settings.focus(); await expect(settings).toHaveCSS('outline-style', 'solid');
   });
   test('composer attachments stage repeated drop/paste edits without reference mutations', async ({ page }, info) => {

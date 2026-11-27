@@ -13,6 +13,7 @@ export function entryAttachmentsDisabled(entry: SingleEntry) {
 }
 
 type Destination = { key: string; selection: RunnerReferenceSelection; disabled: () => boolean };
+const blockingSurface = '[role="dialog"], .application-menu-panel';
 
 export function useHubFileDrop(host: RefObject<HTMLDivElement>, destination: Destination | undefined) {
   const current = useRef(destination);
@@ -27,7 +28,7 @@ export function useHubFileDrop(host: RefObject<HTMLDivElement>, destination: Des
     const observer = new MutationObserver(records => {
       if (records.some(record => record.type === 'attributes'
         || Array.from(record.addedNodes).some(node => node instanceof Element
-          && (node.matches('[role="dialog"], dialog') || node.querySelector('[role="dialog"], dialog'))))) {
+          && (node.matches(blockingSurface) || node.querySelector(blockingSurface))))) {
         setHovered(undefined);
       }
     });
@@ -41,7 +42,7 @@ export function useHubFileDrop(host: RefObject<HTMLDivElement>, destination: Des
     const targetAt = (position?: { x: number; y: number }) => {
       const target = current.current, rect = host.current?.getBoundingClientRect();
       if (!target || target.disabled() || !target.selection.available || !rect || !position
-        || host.current?.querySelector('[role="dialog"], dialog[open]')) return;
+        || host.current?.querySelector(blockingSurface + ', dialog[open]')) return;
       const x = position.x / window.devicePixelRatio, y = position.y / window.devicePixelRatio;
       if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) return target;
     };

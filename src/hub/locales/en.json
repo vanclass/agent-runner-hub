@@ -5,13 +5,31 @@
     "unavailable": "This file cannot be previewed. It remains attached.",
     "escape": "Press Escape to return.",
     "open": "Open attachment {{name}}",
+    "help": "File Preview Guide",
+    "images": "Supported images",
+    "text": "Supported text",
+    "other": "Unsupported previews",
+    "otherLimits": "Folders, PDFs, Office documents, archives, and other unlisted formats have no local content preview.",
+    "eligibility": "Attachment eligibility is separate from preview support. Eligible items can stay attached even when a preview is unavailable.",
+    "limitations": "Preview limitations",
+    "limits": "Previews show the complete image or original UTF-8 text within size limits. Unreadable, invalid, or oversized files show an unavailable message. Previews never execute file contents."
+  },
+  "menu": {
+    "label": "Application menus",
+    "compact": "Menu",
+    "runner": "Runner",
+    "view": "View",
+    "settings": "Settings",
     "help": "Help",
-    "images": "Images",
-    "text": "Text",
-    "other": "Mixed / other",
-    "otherLimits": "Folders, PDF, Office documents, archives and other formats have no local content preview. Registration support is separate.",
-    "limits": "Previews show complete bounded PNG images or original UTF-8 text. Unreadable, invalid or oversized files show an unavailable message; file contents are never executed.",
-    "close": "Close"
+    "back": "Back",
+    "close": "Close",
+    "on": "On",
+    "off": "Off",
+    "english": "English",
+    "korean": "Korean",
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "invalidRetention": "Enter a whole number from 1 to 4,294,967,295."
   },
   "activity": {
     "label": "Hub",
@@ -86,8 +104,6 @@
     "title": "Connect your AgentRunner",
     "description": "Choose your installation to get started. We’ll verify Runner and its managed Python before opening your workspace.",
     "start": "Verify and Start",
-    "settings": "App settings",
-    "close": "Close settings",
     "changeHelp": "Verify a location for new Runners. Open tabs keep their own installation and work context."
   },
   "directory": {

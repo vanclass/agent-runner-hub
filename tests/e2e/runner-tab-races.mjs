@@ -1,3 +1,4 @@
+import { openAppMenu, chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerTabRaces({ test, expect, transport, configure, create }) {
     for (const dispose of [false, true]) test(`Unsupported presentation allows ${dispose ? 'dispose' : 'close'} without semantic requests`, async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true }); await page.goto('/');
@@ -81,12 +82,13 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
   for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     test(`runner removal settings and hover focus ${language} ${theme}`, async ({ page }, info) => {
       await transport(page, undefined, { auto: true, work: true }); await configure(page); await create(page);
-      await page.locator('.app-settings-trigger').click();
-      const preference = page.getByRole('checkbox', { name: 'Confirm before removing Runner tab', exact: true });
+      await openAppMenu(page, 'runner');
+      const preference = page.getByRole('menuitemcheckbox', { name: 'Confirm before removing Runner tab', exact: true });
       await expect(preference).toBeChecked();
-      await preference.uncheck();
-      await page.getByRole('button', { name: theme === 'light' ? 'Light' : 'Black', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+      await preference.click();
+      await expect(preference).not.toBeChecked();
+      await chooseAppPreference(page, 'view', 'theme', theme);
+      await chooseAppPreference(page, 'settings', 'language', language);
       await page.keyboard.press('Escape');
       await own(page).hover();
       const rename = own(page).locator('.rename-action'), trash = own(page).locator('.remove-action');
@@ -103,9 +105,9 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
       await own(page).locator('.remove-action').click();
       await expect(own(page)).toHaveCount(0);
       await expect(page.getByRole('dialog')).toHaveCount(0);
-      await page.locator('.app-settings-trigger').click();
+      await openAppMenu(page, 'runner');
       const label = language === 'en' ? 'Confirm before removing Runner tab' : '러너 탭 제거 전 확인';
-      await page.getByRole('checkbox', { name: label, exact: true }).check();
+      await page.getByRole('menuitemcheckbox', { name: label, exact: true }).click();
       await page.keyboard.press('Escape');
       await page.locator('.add-runner').click();
       await expect(page.locator('.runner-row')).toHaveCount(1);

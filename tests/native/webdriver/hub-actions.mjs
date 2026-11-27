@@ -47,7 +47,7 @@ export class HubActions {
   installationState() {
     return this.browser.execute(() => ({
       saved: localStorage.getItem('agent-runner-hub.installation'),
-      open: !!document.querySelector('.app-settings[open]'),
+      open: !!document.querySelector('.installation-setup[open]'),
       pending: document.querySelector('.runner-location')?.getAttribute('aria-busy') === 'true',
       verified: !!document.querySelector('.installation-success'),
       rejection: document.querySelector('.runner-location [role="alert"]')?.textContent ?? null

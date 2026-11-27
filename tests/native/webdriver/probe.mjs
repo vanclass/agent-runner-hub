@@ -6,14 +6,14 @@ import { ApplicationSettings } from './application-settings.mjs';
 // Only DOM operations in the owned real renderer; no fixture page or Runner connection.
 export async function readyHub(browser) {
   await browser.waitUntil(async () => browser.execute(() =>
-    document.readyState === 'complete' && !!document.querySelector('.app-settings[open] .theme-picker button')),
+    document.readyState === 'complete' && !!document.querySelector('.installation-setup[open] .theme-picker button')),
   { timeout: browser.options.waitforTimeout, timeoutMsg: 'Real Hub installation surface did not become ready' });
 }
 export async function observeHub(browser) {
   await readyHub(browser);
   const initial = await browser.execute(() => ({ title: document.title, url: location.href,
     userAgent: navigator.userAgent, tauri: !!window.__TAURI_INTERNALS__,
-    setupOpen: !!document.querySelector('.app-settings[open]'),
+    setupOpen: !!document.querySelector('.installation-setup[open]'),
     theme: document.querySelector('.hub')?.getAttribute('data-theme'),
     savedInstallation: localStorage.getItem('agent-runner-hub.installation') }));
   assert.equal(initial.title, 'AgentRunnerHub');
@@ -47,7 +47,7 @@ export const rendererProbe = defineNativeCase({
   id: 'renderer-probe', presentation: 'nonactivating', ready: readyHub, run: observeHub,
   async observe(browser) {
     const state = await browser.execute(() => ({ visibility: document.visibilityState,
-      setupOpen: !!document.querySelector('.app-settings[open]'),
+      setupOpen: !!document.querySelector('.installation-setup[open]'),
       theme: document.querySelector('.hub')?.getAttribute('data-theme') }));
     assert.equal(state.setupOpen, true);
     assert.equal(state.theme, 'black');

@@ -14,12 +14,11 @@ export function ShortcutSettings({ value, onSave, onClose }: {
   const labels = { assign: t('shortcuts.assign'), entry: t('shortcuts.entry'), runner: t('shortcuts.runner') };
   useEffect(() => {
     const element = dialog.current!;
-    const previous = document.activeElement as HTMLElement | null;
     element.showModal();
     element.querySelector<HTMLButtonElement>('button')?.focus();
-    return () => { element.close(); previous?.focus(); };
+    return () => { element.close(); };
   }, []);
-  return <dialog ref={dialog} className="app-settings shortcut-settings" aria-labelledby="shortcuts-title"
+  return <dialog ref={dialog} className="hub-dialog shortcut-settings" aria-labelledby="shortcuts-title"
     aria-describedby="shortcuts-help" onCancel={event => {
       event.preventDefault();
       if (capturing) setCapturing(undefined); else onClose();
@@ -39,7 +38,7 @@ export function ShortcutSettings({ value, onSave, onClose }: {
       setDraft(current => ({ ...current, [capturing]: chord }));
       setCapturing(undefined); setIssue('');
     }}>
-    <button type="button" className="settings-close" aria-label={t('setup.close')} onClick={onClose}>×</button>
+    <button type="button" className="settings-close" aria-label={t('menu.close')} onClick={onClose}>×</button>
     <h1 id="shortcuts-title">{t('shortcuts.title')}</h1>
     <p id="shortcuts-help">{t('shortcuts.help')}</p>
     {(['assign', 'entry', 'runner'] as const).map(action => <div className="shortcut-row" key={action}>

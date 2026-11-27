@@ -1,3 +1,4 @@
+import { appItem, openAppMenu, chooseAppPreference } from './application-menu.mjs';
 export function registerHubSelectionUI({ test, expect, transport, configure, create }) {
   const key = 'agent-runner-hub.preferences.v1';
   const requested = (page, field) => page.getByRole('combobox', { name: `Requested ${field}`, exact: true });
@@ -148,16 +149,15 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()]
       .some(s => s.feature?.config.requests.length > 0))).toBe(true);
 
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Runner allocation policy', exact: true }).selectOption('reuse-idle');
+    await chooseAppPreference(page, 'runner', 'allocation', 'reuse-idle');
     await page.keyboard.press('Escape');
     await page.evaluate(() => {
       window.__releaseInspection();
       for (const s of window.__nativeFixture.sessions.values()) { s.feature.config.hold = false; s.feature.config.complete(); }
     });
     await expect(requested(page, 'Model')).toHaveValue(/m0/);
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: 'Runner allocation policy', exact: true })).toHaveValue('reuse-idle');
+    await openAppMenu(page, 'runner');
+    await expect(appItem(page, 'allocation').locator('.menu-value')).toHaveText('Reuse any idle Runner');
     await page.keyboard.press('Escape');
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry.allocationPolicy, key)).toBe('reuse-idle');
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>

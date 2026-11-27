@@ -1,3 +1,4 @@
+import { openAppEntry, chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerAddDirectory({ test, expect, transport, configure, create }) {
   const add = page => page.locator('.add-runner');
   const root = page => page.locator('.task-panel .directory-field');
@@ -85,9 +86,8 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
       await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('direct-run'));
       await picker(page);
-      await page.getByRole('button', { name: 'App settings', exact: true }).click();
-      await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
-      await page.getByRole('button', { name: language === 'en' ? (theme === 'light' ? 'Light' : 'Black') : (theme === 'light' ? '라이트' : '블랙'), exact: true }).click();
+      await chooseAppPreference(page, 'settings', 'language', language);
+      await chooseAppPreference(page, 'view', 'theme', theme);
       await expect(add(page)).toHaveAccessibleName(language === 'en' ? 'New Runner' : '새 Runner');
       const shape = await add(page).evaluate(button => {
         const box = button.getBoundingClientRect();
@@ -97,6 +97,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
       expect(shape.height).toBe(48); expect(shape.size).toBe(32);
       expect(shape.width).toBeCloseTo((await page.locator('.runner-domain').boundingBox()).width, 0);
       expect(shape.background).toBe(theme === 'light' ? 'rgb(214, 239, 223)' : 'rgb(25, 59, 41)');
+      await openAppEntry(page, 'runner', 'installation');
       const fields = page.locator('dialog .directory-field');
       await expect(fields).toHaveCount(1);
       await fields.first().locator('button').click();
@@ -124,7 +125,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
   }
   test('add directory: installation typing cancellation errors and delayed unmounted picker preserve paths', async ({ page }) => {
     await ready(page); await picker(page);
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
+    await openAppEntry(page, 'runner', 'installation');
     const field = page.locator('.runner-location .directory-field'), input = field.locator('input');
     await input.fill('/manual paste');
     await page.evaluate(() => { window.__directoryPicker.mode = 'cancel'; }); await field.locator('button').click();
@@ -138,7 +139,7 @@ export function registerRunnerAddDirectory({ test, expect, transport, configure,
     await expect(add(page)).toBeEnabled();
     await delayed(page, field); await page.keyboard.press('Escape');
     await page.evaluate(() => window.__directoryPicker.finish('/wrong tab'));
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
+    await openAppEntry(page, 'runner', 'installation');
     await expect(page.locator('.runner-location input')).toHaveValue('/fixture/install');
     expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('/wrong tab');
   });

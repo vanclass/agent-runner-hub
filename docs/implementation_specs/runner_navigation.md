@@ -6,7 +6,7 @@
 
 `RunnerWorkspace.ts` validates and serializes the optional presentation subrecord in its existing v1 envelope. It retains mode names, UUID display order and mode affinities for retained tabs, including well-formed unsupported mode names. Unknown names survive save without granting executable support. Known domains still restore, and a tab with unsupported affinity uses the Task Run presentation fallback. Creation order remains the stable naming/restoration identity. Missing or malformed navigation metadata loads empty while valid tab records restore. Malformed navigation produces a warning and a subsequent successful save writes valid metadata. Atomic save failure preserves the committed record and its warning and retry behavior. No work identity, generation, terminal data, credentials, draft or completion outcome is persisted.
 
-App Settings stores the independent unified/by-mode choice through `HubPreferences.update`; absent v1 choices use unified display. Preference failure and concurrent-write protection remain under [Hub preferences](hub_preferences.md#independent-preference-storage).
+View → Domain display saves the independent unified/by-mode choice through `HubPreferences.update`; absent v1 choices use unified display. Preference failure and concurrent-write protection remain under [Hub preferences](hub_preferences.md#independent-preference-storage).
 
 ## Execution history and domain affinity
 

@@ -1,3 +1,4 @@
+import { appItem, chooseAppPreference } from './application-menu.mjs';
 export function registerRunnerNavigation({ test, expect, transport, configure, create }) {
   const modes = ['pure-direct-run', 'direct-run', 'task-run', 'issue-run'];
   const domain = (page, mode) => page.locator(`[data-domain="${mode}"]`);
@@ -8,8 +9,7 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     return (await output.innerText()).match(/pty-\d+/)[0];
   }
   async function display(page, value) {
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('combobox', { name: 'Domain display', exact: true }).selectOption(value);
+    await chooseAppPreference(page, 'view', 'domain', value);
     await page.keyboard.press('Escape');
   }
   async function publish(page, pty, mode, started = true, outcome = 'succeeded') {
@@ -394,10 +394,9 @@ export function registerRunnerNavigation({ test, expect, transport, configure, c
     await expect.poll(() => ids(task)).toEqual([original[1], original[0], original[2]]);
     await info.attach('navigation-restored', { body: await page.screenshot(), contentType: 'image/png' });
     for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
-      await page.locator('.app-settings-trigger').first().click();
-      await page.locator('.language-picker select').selectOption(language);
-      await page.locator('.theme-picker button').nth(theme === 'light' ? 0 : 1).click();
-      await expect(page.locator('.domain-preference select').first()).toHaveValue('run-mode');
+      await chooseAppPreference(page, 'settings', 'language', language);
+      await chooseAppPreference(page, 'view', 'theme', theme);
+      await expect(appItem(page, 'domain').locator('.menu-value')).toHaveText(language === 'ko' ? '실행 모드별' : 'By execution mode');
       await page.keyboard.press('Escape');
       await expect(page.locator('.runner-domain')).toHaveCount(4);
       await expect(page.locator('.hub')).toHaveAttribute('data-theme', theme);

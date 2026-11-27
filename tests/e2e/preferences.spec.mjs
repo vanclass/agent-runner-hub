@@ -1,3 +1,4 @@
+import { appTrigger, appItem, openAppMenu, openAppEntry, chooseAppPreference } from './application-menu.mjs';
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 
 test.use({ locale: 'ko-KR', navigationTimeout: 60_000 });
@@ -31,8 +32,7 @@ test('a missing runtime Korean key falls back to English without breaking other 
     const { i18n } = await import('/src/hub/i18n.ts');
     delete i18n.getResourceBundle('ko', 'translation').workspace.previewDisconnected;
   });
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await chooseAppPreference(page, 'settings', 'language', 'ko');
   await page.keyboard.press('Escape');
   await expect(page.locator('.empty-note')).toHaveText('No connected process for this preview row.');
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toBeVisible();
@@ -77,20 +77,18 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await page.goto('/tests/fixtures/hub.html');
     await page.locator('[data-runner-id="second"] .nav-row').click();
     const title = await page.locator('[data-runner-id="second"] .runner-name').textContent();
-    await page.getByRole('button', { name: language === 'en' ? 'App settings' : '앱 설정', exact: true }).click();
-    const languagePicker = page.locator('.language-picker select');
-    await languagePicker.selectOption(language === 'en' ? 'ko' : 'en');
+    await chooseAppPreference(page, 'settings', 'language', language === 'en' ? 'ko' : 'en');
     await expect(page.locator('[data-runner-id="second"] .nav-row')).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('[data-runner-id="second"] .runner-name')).toHaveText(title);
     await expect(page.locator('.workspace-header')).toHaveCount(0);
-    await languagePicker.selectOption(language);
+    await chooseAppPreference(page, 'settings', 'language', language);
     await page.keyboard.press('Escape');
     const name = language === 'en' ? 'Runner instructions' : 'Runner 지시문';
     await expect(page.getByRole('textbox', { name, exact: true })).toBeDisabled();
     for (const width of [1400, 1000, 760, 626]) {
       await page.setViewportSize({ width, height: width === 626 ? 450 : 700 });
       await expect(page.getByRole('textbox', { name, exact: true })).toBeInViewport();
-      await expect(page.locator('.hub-preferences > .app-settings-trigger').first()).toBeInViewport();
+      await expect(appTrigger(page, 'settings')).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect((await page.locator('.output').boundingBox()).height).toBeGreaterThan(90);
       await testInfo.attach(language + '-' + theme + '-' + width, { body: await page.screenshot(), contentType: 'image/png' });
@@ -98,32 +96,80 @@ for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     const composer = page.getByRole('textbox', { name: language === 'en' ? 'Single Entry instructions' : 'Single Entry 지시문', exact: true });
     await composer.fill('keep this draft /status 안녕');
-    await page.locator('.hub-preferences > .app-settings-trigger').first().click();
-    await languagePicker.selectOption(language === 'en' ? 'ko' : 'en');
+    await chooseAppPreference(page, 'settings', 'language', language === 'en' ? 'ko' : 'en');
     await expect(composer).toHaveCount(0);
     await expect(page.locator('.composer textarea')).toHaveValue('keep this draft /status 안녕');
     await expect(page.locator('.hub')).toHaveAttribute('data-theme', theme);
-    await languagePicker.focus();
-    await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => document.activeElement?.closest('.app-appearance') !== null)).toBe(true);
+    await expect(appItem(page, 'language')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(appTrigger(page, 'settings')).toBeFocused();
   });
 }
 for (const language of ['en', 'ko']) for (const theme of ['light', 'black']) {
+  test(`application menu keyboard and preview presentation ${language}/${theme}`, async ({ page }, info) => {
+    await seed(page, JSON.stringify({ ...defaults, language, theme }));
+    await page.goto('/tests/fixtures/hub.html');
+    const nav = page.locator('.application-menu');
+    const names = language === 'en' ? ['Runner', 'View', 'Settings', 'Help'] : ['러너', '보기', '설정', '도움말'];
+    await expect(nav.locator('.application-menu-trigger:visible')).toHaveText(names);
+    await appTrigger(page, 'runner').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(appTrigger(page, 'view')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(appItem(page, 'theme')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(appItem(page, theme)).toBeFocused();
+    await expect(appItem(page, theme)).toBeChecked();
+    await page.keyboard.press('Enter');
+    await expect(appItem(page, 'theme')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(appTrigger(page, 'view')).toBeFocused();
+    await openAppEntry(page, 'help', 'preview');
+    const guide = page.locator('.preview-help[open]');
+    expect((await guide.boundingBox()).width).toBe(500);
+    await info.attach('normal-guide', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Escape');
+    await expect(appTrigger(page, 'help')).toBeFocused();
+    await page.setViewportSize({ width: 360, height: 540 });
+    await expect(nav.locator('.application-menu-trigger:visible')).toHaveCount(1);
+    await openAppMenu(page, 'runner');
+    const panel = nav.getByRole('menu');
+    const box = await panel.boundingBox();
+    expect(box.x).toBeGreaterThan(0);
+    expect(box.x + box.width).toBeLessThan(360);
+    await expect(appItem(page, 'installation').locator('.menu-value')).not.toBeEmpty();
+    await info.attach('compact-runner-menu', { body: await page.screenshot(), contentType: 'image/png' });
+    const composer = await page.locator('.composer textarea').boundingBox();
+    expect(composer.y + composer.height).toBeGreaterThan(box.y + box.height);
+    await page.mouse.click(composer.x + 5, composer.y + composer.height - 5);
+    await expect(panel).toHaveCount(0);
+    await expect(appTrigger(page, 'compact')).toBeFocused();
+    await expect(page.locator('.single-entry')).toHaveAttribute('aria-current', 'page');
+    await openAppEntry(page, 'help', 'preview');
+    await expect(guide.getByRole('heading').first()).toHaveText(language === 'en' ? 'File Preview Guide' : '파일 미리 보기 안내');
+    const narrow = await guide.boundingBox();
+    expect(narrow.x).toBeGreaterThan(0);
+    expect(narrow.x + narrow.width).toBeLessThan(360);
+    await info.attach('compact-guide', { body: await page.screenshot(), contentType: 'image/png' });
+    await guide.locator('.settings-close').click();
+    await expect(appTrigger(page, 'compact')).toBeFocused();
+  });
+
   test('shortcuts settings preserve preferences and accessible capture in ' + language + '/' + theme, async ({ page }, info) => {
     await seed(page, JSON.stringify({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' } }));
     await page.goto('/tests/fixtures/hub.html');
-    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+    await openAppEntry(page, 'settings', 'shortcuts');
     const dialog = page.getByRole('dialog'), buttons = dialog.locator('.shortcut-row button');
     await buttons.nth(0).click(); await page.keyboard.press('Alt+Enter');
     await buttons.nth(1).click(); await page.keyboard.press('Alt+Home');
     await buttons.nth(2).click(); await page.keyboard.press('Alt+2');
     await info.attach('shortcuts-' + language + '-' + theme, { body: await page.screenshot(), contentType: 'image/png' });
     await dialog.locator('.composer-actions button').last().click();
-    await expect(page.locator('.shortcut-settings-trigger')).toBeFocused();
+    await expect(appTrigger(page, 'settings')).toBeFocused();
     const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
     expect(saved).toEqual({ ...defaults, language, theme, singleEntry: { runMode: 'task-run' },
       shortcuts: { assign: 'Alt+Enter', entry: 'Alt+Home', runner: 'Alt+Digit' } });
-    await page.reload(); await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+    await page.reload(); await openAppEntry(page, 'settings', 'shortcuts');
     await expect(buttons.nth(0)).toHaveText('Alt+Enter'); await expect(buttons.nth(1)).toHaveText('Alt+Home');
     await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
     await dialog.locator('.composer-actions button').first().click();
@@ -146,7 +192,7 @@ for (const failure of ['write', 'concurrent', 'read']) {
         return original.call(this, name, ...args);
       };
     }, { key, raw, failure });
-    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+    await openAppEntry(page, 'settings', 'shortcuts');
     await page.locator('.shortcut-row button').first().click(); await page.keyboard.press('Alt+Enter');
     await page.getByRole('button', { name: 'Apply and save' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -159,14 +205,14 @@ for (const entry of ['Home', 'Ctrl+Home']) test('retired shortcut ' + entry + ' 
     shortcuts: { assign: 'Alt+Enter', entry, runner: 'Alt+Digit' } });
   await seed(page, raw);
   await page.goto('/tests/fixtures/hub.html');
-  await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+  await openAppEntry(page, 'settings', 'shortcuts');
   const buttons = page.locator('.shortcut-row button');
   await expect(buttons.nth(0)).toHaveText('Alt+Enter');
   await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
   await expect(buttons.nth(2)).toContainText('Alt+1, 2, 3');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   await page.reload();
-  await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+  await openAppEntry(page, 'settings', 'shortcuts');
   await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
   await page.getByRole('button', { name: 'Apply and save' }).click();
@@ -185,12 +231,39 @@ for (const shortcuts of [null, 'Home', {}, { assign: 'Home', entry: 'Home', runn
     await expect(page.locator('.hub')).toHaveAttribute('data-theme', 'black');
     await expect(page.locator('.preferences-error')).toHaveCount(0);
     expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(raw);
-    await page.locator('.hub-preferences > .app-settings-trigger').first().click(); await page.locator('.shortcut-settings-trigger').click();
+    await openAppEntry(page, 'settings', 'shortcuts');
     const buttons = page.locator('.shortcut-row button');
     await expect(buttons.nth(0)).toHaveText(shortcuts?.assign === 'Alt+Enter' ? 'Alt+Enter' : 'Enter');
     await expect(buttons.nth(1)).toHaveText('Ctrl+Shift+Home');
   });
 }
+
+test('retention popover validates, cancels and applies through existing preferences', async ({ page }) => {
+  await seed(page, JSON.stringify({ ...defaults, hubLogRetentionDays: 14 }));
+  await page.goto('/tests/fixtures/hub.html');
+  await openAppEntry(page, 'settings', 'retention');
+  const editor = page.getByRole('dialog', { name: 'Hub log retention (days)' });
+  const days = editor.getByRole('spinbutton');
+  await expect(days).toBeFocused();
+  await expect(days).toHaveValue('14');
+  for (const value of ['', '0', '1.5', '4294967296']) {
+    await days.fill(value);
+    await days.press('Enter');
+    await expect(editor.getByRole('alert')).toBeVisible();
+  }
+  await days.fill('8');
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await expect(appItem(page, 'retention')).toBeFocused();
+  await expect(appItem(page, 'retention').locator('.menu-value')).toHaveText('14');
+  await appItem(page, 'retention').click();
+  await expect(days).toHaveValue('14');
+  await days.fill('7');
+  await days.press('Enter');
+  await expect(appItem(page, 'retention').locator('.menu-value')).toHaveText('7');
+  await page.reload();
+  await openAppEntry(page, 'settings', 'retention');
+  await expect(days).toHaveValue('7');
+});
 
 test('current lastVerified-only workspace load freezes context without writing bytes', async ({ page }) => {
   await page.goto('/');

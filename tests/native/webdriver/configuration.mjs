@@ -39,7 +39,7 @@ export function configurationPresentation(runnerRoot) {
         const line = document.querySelector('.hub-activity');
         return { height: line.getBoundingClientRect().height, wrap: getComputedStyle(line).whiteSpace,
           belowComposer: Math.abs(line.getBoundingClientRect().top - line.previousElementSibling.getBoundingClientRect().bottom) < 1,
-          settingsOpen: !!document.querySelector('.app-settings[open]'),
+          settingsOpen: !!document.querySelector('.installation-setup[open]'),
           detailedPanels: document.querySelectorAll('.config-evidence, .config-plan, .config-receipt').length };
       });
       assert.deepEqual(activity, { height: 22, wrap: 'nowrap', belowComposer: true, settingsOpen: false, detailedPanels: 0 });

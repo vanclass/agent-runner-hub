@@ -1,3 +1,4 @@
+import { openAppEntry, chooseAppPreference } from './application-menu.mjs';
 import { test, expect } from '../../.project-config/managed/web-app-testing/fixture.mjs';
 import { PNG } from 'pngjs';
 import { imageGestures } from './preview-views.mjs';
@@ -693,15 +694,13 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   await expect(page.locator('.attachment-chip')).toContainText('Staged');
   await expect(page.locator('.generated-images summary')).toHaveCount(0);
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await chooseAppPreference(page, 'settings', 'language', 'ko');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('combobox', { name: '요청 프로젝트 / 대상', exact: true })).toHaveValue(target);
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toHaveValue('draft /status 그대로');
   await expect(page.locator('.attachment-chip')).toContainText('임시');
   await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '앱 설정', exact: true }).click();
-  await page.getByRole('button', { name: '블랙', exact: true }).click();
+  await chooseAppPreference(page, 'view', 'theme', 'black');
   await page.keyboard.press('Escape');
   await expect(page.locator('.xterm-scrollable-element')).toHaveCSS('background-color', 'rgb(17, 18, 20)');
   await expect(page.locator('.xterm-rows')).toContainText('pty-1: 안녕 🌍');
@@ -760,8 +759,7 @@ test('Single Entry toggles Fast without a default-tier button and preserves reta
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'Fast', exact: true })).toBeDisabled();
   await expect(page.getByRole('status').filter({ hasText: 'Saved value retained: fast' })).toBeVisible();
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await chooseAppPreference(page, 'settings', 'language', 'ko');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: '기본 서비스 등급 사용', exact: true })).toHaveCount(0);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry);
@@ -774,12 +772,11 @@ test('Single Entry toggles Fast without a default-tier button and preserves reta
 test('Runner observations do not become Hub defaults and raw native errors retain their diagnostic language', async ({ page }) => {
   await transport(page); await configure(page); await create(page);
   expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.preferences.v1'))).toBeNull();
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
+  await chooseAppPreference(page, 'settings', 'language', 'ko');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry)).toEqual({});
-  await page.getByRole('button', { name: '앱 설정', exact: true }).click();
+  await openAppEntry(page, 'runner', 'installation');
   await page.getByRole('textbox', { name: 'AgentRunner 위치', exact: true }).fill('/missing');
   await page.getByRole('button', { name: '설치 검증', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Runner managed Python is missing. Run native bootstrap.');
@@ -1345,8 +1342,7 @@ async function entry(page, text = '/status') {
     s.next_model = s.model; s.next_reasoning_effort = s.reasoning_effort; s.next_service_tier = s.service_tier;
   } });
   await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Runner allocation policy' }).selectOption('reuse-idle');
+  await chooseAppPreference(page, 'runner', 'allocation', 'reuse-idle');
   await page.keyboard.press('Escape');
   await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill(text);
 }
@@ -1430,8 +1426,7 @@ test('Runner panels expose selection fields without command shortcuts in both la
   await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true }).getByRole('option', { name: 'm0', exact: true })).toBeAttached();
   await create(page); await create(page);
   for (const language of ['en', 'ko']) {
-    await page.locator('.app-settings-trigger').click();
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption(language);
+    await chooseAppPreference(page, 'settings', 'language', language);
     await page.keyboard.press('Escape');
     for (const row of [0, 1]) {
       await page.locator('.runner-row').nth(row).locator('.nav-row').click();
@@ -1495,8 +1490,7 @@ test('two terminal sessions survive keyed views and keep independent output, inp
   await page.locator('.xterm-helper-textarea').press('Shift+Enter');
   const physical = records(await page.evaluate(() => window.__nativeFixture.writes), 'pty-1');
   expect(physical).toEqual([]);
-  await page.getByRole('button', { name: 'App settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Black', exact: true }).click();
+  await chooseAppPreference(page, 'view', 'theme', 'black');
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.resizes.length)).toBeGreaterThan(1);

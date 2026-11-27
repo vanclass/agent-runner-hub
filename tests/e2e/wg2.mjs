@@ -1,3 +1,4 @@
+import { appItem, openAppMenu, openAppEntry, chooseAppPreference } from './application-menu.mjs';
 export function registerWG2({ test, expect, transport, configure }) {
   for (const display of ['unified', 'run-mode']) for (const scenario of ['always-new', 'reuse-idle', 'reuse-same-mode', 'missing', 'busy']) {
     test(`WG2 allocation ${scenario} with ${display} display`, async ({ page }) => {
@@ -36,11 +37,12 @@ export function registerWG2({ test, expect, transport, configure }) {
     await expect(account).toBeEnabled();
     await expect(account.getByRole('option', { name: 'Select an account', exact: true })).toBeAttached();
     await account.selectOption('');
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await page.getByRole('button', { name: theme, exact: true }).click();
-    const policy = page.getByRole('combobox', { name: 'Runner allocation policy', exact: true });
-    await expect(policy.locator('option')).toHaveText(['Always create a new Runner', 'Reuse idle Runner in the same Run Mode', 'Reuse any idle Runner']);
-    await policy.selectOption('reuse-same-mode');
+    await chooseAppPreference(page, 'view', 'theme', theme.toLowerCase());
+    await openAppEntry(page, 'runner', 'allocation');
+    const policy = appItem(page, 'allocation');
+    await expect(page.getByRole('menuitemradio').locator('span:not([aria-hidden])')).toHaveText(
+      ['Always create a new Runner', 'Reuse idle Runner in the same Run Mode', 'Reuse any idle Runner']);
+    await appItem(page, 'reuse-same-mode').click();
     await info.attach(`${theme}-allocation`, { body: await page.screenshot(), contentType: 'image/png' });
     await page.keyboard.press('Escape'); await page.reload();
     await expect(account.getByRole('option', { name: 'codex / first', exact: true })).toBeAttached();
@@ -52,10 +54,12 @@ export function registerWG2({ test, expect, transport, configure }) {
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Release unsent assignment', exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests).filter(r => r.operation === 'work.submit').length)).toBe(0);
-    await page.getByRole('button', { name: 'App settings', exact: true }).click();
-    await expect(policy).toHaveValue('reuse-same-mode'); await expect(policy).toBeEnabled();
-    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ko');
-    await expect(page.getByRole('combobox', { name: '러너 배정 방식', exact: true }).locator('option')).toHaveText(['항상 새 러너 생성', '동일 실행 모드에서 유휴 러너 재사용', '실행 모드 무관하게 유휴 러너 재사용']);
+    await openAppMenu(page, 'runner');
+    await expect(policy).toContainText('Reuse idle Runner in the same Run Mode'); await expect(policy).toBeEnabled();
+    await chooseAppPreference(page, 'settings', 'language', 'ko');
+    await openAppEntry(page, 'runner', 'allocation');
+    await expect(page.getByRole('menuitemradio').locator('span:not([aria-hidden])')).toHaveText(
+      ['항상 새 러너 생성', '동일 실행 모드에서 유휴 러너 재사용', '실행 모드 무관하게 유휴 러너 재사용']);
     await info.attach(`${theme}-korean-locked`, { body: await page.screenshot(), contentType: 'image/png' });
   });
 }

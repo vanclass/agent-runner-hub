@@ -270,8 +270,10 @@ These use background presentation; adding feature cases introduces no executor b
 
 [`HubActions`](../../tests/native/webdriver/hub-actions.mjs) composes the probe
 interfaces for tab management, mounted Runner and native Work observations,
-xterm output and scrolling, application preferences and log history. The
-helpers use ordinary Hub handlers and existing native contracts. Tab identity,
+xterm output and scrolling, application preferences through the header menus, and log history.
+The [menu-presentation case](../../tests/native/webdriver/menu-presentation.mjs) observes the Runner menu
+and captures the File Preview Guide in a nonactivating Windows WebView.
+The helpers use ordinary Hub handlers and existing native contracts. Tab identity,
 process-local PTY identity, configuration requests, and actual execution
 observations retain their respective owners. The isolated `afterRestart`
 callback reopens the same case profile after the first native owner settles.
