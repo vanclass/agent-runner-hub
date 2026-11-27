@@ -1,6 +1,16 @@
 {
   "preview": {
     "focus": "이미지 미리 보기",
+    "find": "파일에서 찾기",
+    "match": "{{total}}개 중 {{current}}번째",
+    "noMatches": "검색 결과 없음",
+    "previousMatch": "이전 결과",
+    "nextMatch": "다음 결과",
+    "wrap": "자동 줄바꿈",
+    "copy": "텍스트 복사",
+    "copied": "원본 텍스트를 복사했습니다",
+    "copyFailed": "텍스트를 복사하지 못했습니다",
+    "originalText": "원본 파일 내용",
     "loading": "원본 파일을 읽는 중…",
     "unavailable": "이 파일은 미리 볼 수 없습니다. 첨부는 유지됩니다.",
     "escape": "Escape 키를 눌러 돌아갑니다.",

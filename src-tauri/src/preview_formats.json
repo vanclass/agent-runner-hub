@@ -1,1 +1,16 @@
-{"image":["png"],"text":["txt","md","json"],"other":[]}
+[
+  {"category":"image","extensions":["png"]},
+  {"category":"text","extensions":["txt","csv","tsv","log"]},
+  {"category":"text","extensions":["md"],"syntax":"markdown"},
+  {"category":"text","extensions":["json","jsonl"],"syntax":"json"},
+  {"category":"text","extensions":["c","cpp","h","hpp","cs","rs","java"],"syntax":"source"},
+  {"category":"text","extensions":["js","jsx","ts","tsx"],"syntax":"javascript"},
+  {"category":"text","extensions":["py"],"syntax":"python"},
+  {"category":"text","extensions":["sql"],"syntax":"sql"},
+  {"category":"text","extensions":["xml","html"],"syntax":"markup"},
+  {"category":"text","extensions":["yaml","yml","toml","ini","cfg"],"syntax":"config"},
+  {"category":"text","extensions":["sh","bat","cmd","ps1"],"syntax":"script"},
+  {"category":"text","extensions":["css","scss"],"syntax":"style"},
+  {"category":"text","extensions":["diff","patch"],"syntax":"diff"},
+  {"category":"text","filenames":["Dockerfile","Makefile",".gitignore"],"syntax":"config"}
+]

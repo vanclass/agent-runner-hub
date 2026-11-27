@@ -1,7 +1,8 @@
 import { msg, errorText, HubError, type HubText } from './i18n';
 import { selectFiles, selectFolder } from '../../.project-config/managed/web-app-desktop/io/nativeIO';
 import { commandNamed, controlTiming, clipboardMaxBytes, type RunnerControl } from './runnerControl';
-import { LocalPreviews, previewKind } from './localPreviews';
+import { LocalPreviews } from './localPreviews';
+import { previewFormat } from './previewCatalog';
 
 export type ReferenceRequest = { operation: 'references.register'; path: string }
   | { operation: 'references.list'; offset: number }
@@ -110,7 +111,7 @@ export class RunnerReferenceSelection {
     for (const path of paths.slice(0, Math.max(0, 128 - this.candidates.length))) {
       const candidate: Candidate = { key: ++this.sequence, path, sessionId: this.owner?.sessionId, phase: 'staged' };
       this.candidates.push(candidate);
-      if (previewKind(path) === 'image') this.previews.load(candidate.key, path);
+      if (previewFormat(path)?.category === 'image') this.previews.load(candidate.key, path);
     }
     this.error = ''; this.changed();
   }

@@ -1,6 +1,16 @@
 {
   "preview": {
     "focus": "Image preview",
+    "find": "Find in file",
+    "match": "{{current}} of {{total}}",
+    "noMatches": "No matches",
+    "previousMatch": "Previous match",
+    "nextMatch": "Next match",
+    "wrap": "Word wrap",
+    "copy": "Copy text",
+    "copied": "Original text copied",
+    "copyFailed": "Could not copy text",
+    "originalText": "Original file content",
     "loading": "Reading original file…",
     "unavailable": "This file cannot be previewed. It remains attached.",
     "escape": "Press Escape to return.",

@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { RunnerReferenceSelection, Candidate } from './referenceSelection';
 import { t, tr } from './i18n';
-import { FocusedViewer } from './FocusedViewer';
-import { attachmentName, previewKind } from './localPreviews';
+import { LocalPreviewViewer } from './LocalPreviewViewer';
+import { attachmentName, previewFormat } from './previewCatalog';
 
 function referenceState(state: Candidate['phase']) {
   switch (state) {
@@ -48,7 +48,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
         <button type="button" className="attachment-open" title={item.path}
           aria-label={t('preview.open', { name: attachmentName(item.path) || t('references.clipboardNumber', { index: item.key }) })}
           onClick={() => {
-            if (!item.image && previewKind(item.path) !== 'unsupported') selection.previews.load(item.key, item.path);
+            if (!item.image && previewFormat(item.path)) selection.previews.load(item.key, item.path);
             setFocusedKey(item.key);
           }}>
           {thumbnail && <img src={thumbnail} alt={item.image ? t('references.clipboardPreview', { index: item.key }) : name} />}
@@ -70,7 +70,7 @@ export function ComposerAttachments({ selection, disabled, children }: {
     {selection.error && <p role="alert">{tr(selection.error)}</p>}
     </div>
     {children}
-    {focused && <FocusedViewer key={focused.key} name={attachmentName(focused.path) || undefined}
+    {focused && <LocalPreviewViewer key={focused.key} name={attachmentName(focused.path) || undefined}
       content={content} onDismiss={() => setFocusedKey(undefined)} />}
   </div>;
 }

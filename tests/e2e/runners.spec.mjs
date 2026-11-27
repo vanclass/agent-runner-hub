@@ -720,14 +720,14 @@ test('live Hub language and theme preserve Runner output, ownership, settings, c
   const target = await page.getByRole('combobox', { name: 'Requested Project / Target', exact: true }).inputValue();
   await page.getByRole('textbox', { name: 'Runner instructions', exact: true }).fill('draft /status 그대로');
   await drop(page, ['/fixture/image.png']);
-  await expect(page.locator('.attachment-chip')).toContainText('Staged');
+  await expect(page.getByRole('button', { name: 'Open attachment image.png', exact: true })).toBeVisible();
   await expect(page.locator('.generated-images summary')).toHaveCount(0);
   await expect(page.getByRole('img', { name: 'Verified generated image', exact: true })).toBeVisible();
   await chooseAppPreference(page, 'settings', 'language', 'ko');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('combobox', { name: '요청 프로젝트 / 대상', exact: true })).toHaveValue(target);
   await expect(page.getByRole('textbox', { name: 'Runner 지시문', exact: true })).toHaveValue('draft /status 그대로');
-  await expect(page.locator('.attachment-chip')).toContainText('임시');
+  await expect(page.getByRole('button', { name: '첨부 파일 image.png 열기', exact: true })).toBeVisible();
   await expect(page.getByRole('img', { name: '검증된 생성 이미지', exact: true })).toBeVisible();
   await chooseAppPreference(page, 'view', 'theme', 'black');
   await page.keyboard.press('Escape');

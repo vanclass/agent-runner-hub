@@ -19,7 +19,8 @@ await fs.mkdir(directory, { recursive: true });
 const image = path.join(directory, 'selected-image.png');
 await fs.writeFile(image, PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640*320*4,180) }));
 const original = '첫 줄\n  둘째 줄\t{"value":42}\n';
-const files = ['txt','md','json'].map(ext => path.join(directory, 'original.'+ext));
+const files = ['original.txt','original.md','original.json','original.ts','Dockerfile','.gitignore']
+  .map(name => path.join(directory, name));
 for (const file of files) await fs.writeFile(file, original, 'utf8');
 after(async () => {
   for (const file of [image,...files]) await fs.unlink(file);
@@ -34,10 +35,10 @@ const preview = defineNativeCase({
     const hub = new HubActions(browser);
     const attachments = hub.attachments, viewer = attachments.viewer, surface = 'single-entry';
     await attachments.dropPaths(surface, [image, ...files, directory]);
-    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 5, 'Native drop did not stage paths');
+    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === files.length + 2, 'Native drop did not stage paths');
     assert.deepEqual((await attachments.inventory(surface)).items.map(item => item.path), [image, ...files, directory]);
-    await attachments.remove(surface, 4);
-    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 4, 'Folder card did not retire');
+    await attachments.remove(surface, files.length + 1);
+    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === files.length + 1, 'Folder card did not retire');
     const texts = [];
     for (const [index, file] of files.entries()) {
       await attachments.openPreview(surface, index + 1);
@@ -56,7 +57,8 @@ const preview = defineNativeCase({
         tags: [...guide.querySelectorAll('.preview-format-tags')].map(list => [...list.children].map(tag => tag.textContent)),
         contained: bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight };
     });
-    assert.deepEqual(help.tags, [formats.image, formats.text].map(list => list.map(extension => '.' + extension)));
+    assert.deepEqual(help.tags, ['image', 'text'].map(category => formats.filter(format => format.category === category)
+      .flatMap(({ extensions, filenames }) => [...(extensions ?? []).map(ext => '.' + ext), ...(filenames ?? [])])));
     assert.match(help.text, /Attachment eligibility is separate/);
     assert.ok(help.contained);
     await hub.dom.click('.preview-help .settings-close');
@@ -70,7 +72,7 @@ const preview = defineNativeCase({
     const state = await viewer.state();
     assert.equal(state.name, 'selected-image.png');
     assert.equal(state.buttons, 0);
-    assert.equal((await attachments.inventory(surface)).items.length, 4);
+    assert.equal((await attachments.inventory(surface)).items.length, files.length + 1);
     return { texts, help, state, method: 'Actual native filesystem IPC and production DOM consumer; scripted drop and clicks',
       physicalGestures: 'unverified; browser gesture evidence is separate' };
   },

@@ -51,7 +51,8 @@ export const menuPresentation = runnerRoot => defineNativeCase({
     assert.equal(guide.theme, 'black');
     assert.equal(guide.title, '파일 미리 보기 안내');
     assert.ok(guide.fits && guide.width >= 460 && guide.width <= 520);
-    assert.deepEqual(guide.tags, [formats.image, formats.text].map(list => list.map(extension => '.' + extension)));
+    assert.deepEqual(guide.tags, ['image', 'text'].map(category => formats.filter(format => format.category === category)
+      .flatMap(({ extensions, filenames }) => [...(extensions ?? []).map(ext => '.' + ext), ...(filenames ?? [])])));
     return { menu, guide };
   }
 });

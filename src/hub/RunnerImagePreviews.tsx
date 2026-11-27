@@ -1,6 +1,7 @@
 import { useHubTranslation, t, tr } from './i18n';
 import { useEffect, useState } from 'react';
 import { FocusedViewer } from './FocusedViewer';
+import { ImageViewport } from './ImageViewport';
 import type { RunnerImages } from './runnerImages';
 import './runnerImages.css';
 
@@ -26,7 +27,9 @@ export function RunnerImagePreviews({ images }: { images: RunnerImages }) {
     {preview && <button className="generated-image-preview" type="button" aria-label={t('images.enlarge')}
       onClick={() => setEnlarged(true)}><img src={preview.url} alt={t('images.verified')}
         onError={() => { images.rejectRendering(); }} /><span>{preview.image.width} × {preview.image.height} · {t('images.enlargeAction')}</span></button>}
-    {enlarged && preview && <FocusedViewer key={preview.url} content={{ kind: 'image', url: preview.url }}
-      onDismiss={() => setEnlarged(false)} />}
+    {enlarged && preview && <FocusedViewer key={preview.url} className="generated-image-dialog" dismissOnBackdrop
+      onDismiss={() => setEnlarged(false)}>
+      <ImageViewport url={preview.url} name={t('images.verifiedEnlarged')} />
+    </FocusedViewer>}
   </section>;
 }

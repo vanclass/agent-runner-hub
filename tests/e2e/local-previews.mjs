@@ -132,7 +132,8 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
   test('local preview shared catalog, exact response identity and truthful read failure', async ({ page }) => {
     await ready(page); await reader(page);
     const result = await page.evaluate(async () => {
-      const { LocalPreviews, previewKind, previewExtensions } = await import('/src/hub/localPreviews.ts');
+      const { LocalPreviews } = await import('/src/hub/localPreviews.ts');
+      const { previewFormat, previewFormats } = await import('/src/hub/previewCatalog.ts');
       const previews = new LocalPreviews(() => {}), native = window.__TAURI_INTERNALS__;
       const invoke = native.invoke.bind(native);
       native.invoke = async (command, args) => command === 'local_file_preview'
@@ -147,11 +148,22 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       previews.load(2,'/missing.png');
       while(previews.get(2)?.kind === 'loading') await new Promise(r=>setTimeout(r,5));
       const missing = previews.get(2); previews.dispose();
-      return { mismatch, missing, formats: previewExtensions,
-        kinds: ['x.PNG','x.txt','x.md','x.json','x.pdf','folder','png'].map(previewKind), allocated: window.__localPreview.allocated };
+      const kind = path => previewFormat(path)?.category ?? 'unsupported';
+      const declared = previewFormats.flatMap(({ category, extensions, filenames }) =>
+        [...(extensions ?? []).map(extension => 'sample.' + extension), ...(filenames ?? [])]
+          .map(name => ({ name, category, dispatched: kind('C:\\selected\\' + name.toUpperCase()) })));
+      return { mismatch, missing, declared, kinds: ['x.pdf','folder','png','.json','Dockerfile.pdf'].map(kind),
+        allocated: window.__localPreview.allocated };
     });
-    expect(result.kinds).toEqual(['image','text','text','text','unsupported','unsupported','unsupported']);
-    expect(result.formats).toEqual({ image:['png'],text:['txt','md','json'],other:[] });
+    expect(result.kinds).toEqual(Array(5).fill('unsupported'));
+    const textSelectors = ['txt','md','json','c','cpp','h','hpp','cs','py','js','jsx','ts','tsx','rs','java','sql',
+      'xml','yaml','yml','toml','ini','cfg','csv','tsv','jsonl','sh','bat','cmd','ps1','html','css','scss','log','diff','patch']
+      .map(extension => 'sample.' + extension).concat('Dockerfile', 'Makefile', '.gitignore');
+    expect(result.declared.map(entry => entry.name).sort()).toEqual(['sample.png', ...textSelectors].sort());
+    for (const entry of result.declared) {
+      expect(entry.category).toBe(entry.name === 'sample.png' ? 'image' : 'text');
+      expect(entry.dispatched).toBe(entry.category);
+    }
     expect(result.mismatch).toEqual({ kind:'unavailable',reason:'unreadable' });
     expect(result.missing).toEqual({ kind:'unavailable',reason:'unreadable' });
     expect(result.allocated).toEqual([]);

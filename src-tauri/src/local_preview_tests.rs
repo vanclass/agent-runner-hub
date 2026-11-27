@@ -2,6 +2,21 @@ use super::*;
 use std::{fs, time::{SystemTime, UNIX_EPOCH}};
 
 #[test]
+fn catalog_dispatches_all_declared_names() {
+    let formats: Vec<Format> = serde_json::from_str(include_str!("preview_formats.json")).unwrap();
+    let mut names = std::collections::HashSet::new();
+    for format in formats {
+        for name in format.extensions.iter().map(|ext| format!("sample.{ext}"))
+            .chain(format.filenames.iter().cloned()) {
+            assert!(names.insert(name.to_ascii_lowercase()), "Duplicate selector: {name}");
+            let path = format!("C:\\selected\\{}", name.to_ascii_uppercase());
+            assert!(matches!((classify(&path), format.category),
+                (Some(Category::Image), Category::Image) | (Some(Category::Text), Category::Text)), "{path}");
+        }
+    }
+}
+
+#[test]
 fn selected_originals_and_failures() {
     let root = std::env::temp_dir().join(format!("hub-local-preview-{}-{}", std::process::id(),
         SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
@@ -9,9 +24,22 @@ fn selected_originals_and_failures() {
     struct Cleanup(std::path::PathBuf);
     impl Drop for Cleanup { fn drop(&mut self) { fs::remove_dir_all(&self.0).unwrap(); } }
     let _cleanup = Cleanup(root.clone());
-    let original = "첫 줄\n  둘째 줄\t {\"value\": 42}\n";
-    for extension in ["txt", "md", "json"] {
-        let path = root.join(format!("original.{extension}"));
+    for (name, original) in [
+        ("original.txt", "첫 줄\n  둘째 줄\t {\"value\": 42}\n"),
+        ("original.md", "# Markdown\n\n  원문\n"),
+        ("original.json", "\u{feff}{\"value\": true}\n  "),
+        ("source.CPP", "  int main() {\r\n\treturn 0;\r\n}\r\n"),
+        ("config.yaml", "items:\n  - 한글\n"),
+        ("data.jsonl", "{\"n\":1}\n{\"n\":2}\n"),
+        ("deploy.ps1", "Write-Output '원문'\r\n"),
+        ("page.html", "<script>Example()</script>\r\n"),
+        ("build.log", "[INFO] build complete\r"),
+        ("change.patch", "@@ -1 +1 @@\n-old\n+new\n"),
+        ("Dockerfile", "FROM scratch\n"),
+        ("Makefile", "build:\n\t@echo ok\n"),
+        (".gitignore", "# Ignore outputs\n/dist/\n"),
+    ] {
+        let path = root.join(name);
         fs::write(&path, original).unwrap();
         let identity = path.to_str().unwrap().to_string();
         match read(identity.clone()) {
@@ -32,9 +60,10 @@ fn selected_originals_and_failures() {
         value => panic!("Unexpected {value:?}"),
     }
     for (name, bytes, reason) in [("bad.png", vec![1,2,3], "decoding"),
-        ("binary.txt", vec![0,1], "decoding"), ("encoding.md", vec![0xff], "decoding"),
-        ("large.json", vec![b'a'; MAX_TEXT_BYTES+1], "oversize"),
-        ("large.png", vec![0; MAX_FILE_BYTES+1], "oversize"), ("other.pdf", vec![], "unsupported")] {
+        ("binary.txt", vec![0,1], "decoding"), ("encoding.rs", vec![0xff], "decoding"),
+        ("large.jsonl", vec![b'a'; MAX_TEXT_BYTES+1], "oversize"),
+        ("large.png", vec![0; MAX_FILE_BYTES+1], "oversize"), ("other.pdf", vec![], "unsupported"),
+        (".json", vec![], "unsupported"), ("Dockerfile.pdf", vec![], "unsupported")] {
         let path = root.join(name); fs::write(&path, bytes).unwrap();
         match read(path.to_str().unwrap().into()) {
             Preview::Unavailable { reason: actual, .. } => assert_eq!(actual, reason),
