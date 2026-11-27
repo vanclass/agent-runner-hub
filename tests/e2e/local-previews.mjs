@@ -1,4 +1,6 @@
 import { PNG } from 'pngjs';
+import { HubActions } from '../native/webdriver/hub-actions.mjs';
+import { testBrowser } from './test-browser.mjs';
 const selected = [...PNG.sync.write({ width: 2, height: 1, data: Buffer.from([255,0,0,255,0,255,0,255]) })];
 
 // Simulated native bytes; Rust exercises actual filesystem/PNG/UTF-8 acquisition separately.
@@ -29,7 +31,7 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
     test('local preview ' + label + ' exact cancellation, paste identity, original preflight and uncertain/confirmed delivery', async ({ page }, info) => {
       await setup(page, { workMode: 'unknown' });
       const path = '/fixture/selected-original.png';
-      await drop(page, [path]); await paste(page, label + ' instructions');
+      await drop(page, [path]); await paste(page, entry ? 'single-entry' : 'runner');
       const image = page.locator('.attachment-chip img').first();
       await expect(image).toHaveJSProperty('naturalWidth', 2);
       await expect(page.locator('.attachment-chip img').nth(1)).toHaveJSProperty('naturalWidth', 1);
@@ -41,7 +43,7 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       await drop(page, ['/fixture/cancel.png']);
       const cancelled = page.locator('.attachment-chip').last(), cancelURL = await cancelled.locator('img').getAttribute('src');
       await expect(cancelled.locator('img')).toHaveJSProperty('naturalWidth', 2);
-      await cancelled.getByRole('button', { name: 'Remove attachment /fixture/cancel.png', exact: true }).click();
+      await new HubActions(testBrowser(page, expect)).attachments.remove(entry ? 'single-entry' : 'runner', 2);
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.revokedUrls)).toContain(cancelURL);
       expect(await page.evaluate(() => window.__nativeFixture.revokedUrls)).not.toContain(selectedURL);
       expect(await page.evaluate(() => window.__nativeFixture.revokedUrls)).not.toContain(pastedURL);
@@ -90,7 +92,7 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       await page.evaluate(() => { window.__localPreview.gate = new Promise(resolve => { window.__localPreview.release = resolve; }); });
       await drop(page, ['/fixture/late.png']);
       await expect.poll(() => page.evaluate(() => window.__localPreview.reads)).toContain('/fixture/late.png');
-      await page.getByRole('button', { name: 'Remove attachment /fixture/late.png', exact: true }).click();
+      await new HubActions(testBrowser(page, expect)).attachments.remove(entry ? 'single-entry' : 'runner', 0);
       await page.evaluate(() => { window.__localPreview.gate = undefined; window.__localPreview.release(); });
       // A subsequent read also proves the cancelled read settled before these assertions.
       await drop(page, ['/fixture/current.png']);
@@ -132,11 +134,16 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
     const result = await page.evaluate(async () => {
       const { LocalPreviews, previewKind, previewExtensions } = await import('/src/hub/localPreviews.ts');
       const previews = new LocalPreviews(() => {}), native = window.__TAURI_INTERNALS__;
-      native.invoke = async () => ({ kind: 'image', path: '/wrong.png', base64: '' });
+      const invoke = native.invoke.bind(native);
+      native.invoke = async (command, args) => command === 'local_file_preview'
+        ? { kind: 'image', path: '/wrong.png', base64: '' } : invoke(command, args);
       previews.load(1,'/right.png');
       while(previews.get(1)?.kind === 'loading') await new Promise(r=>setTimeout(r,5));
       const mismatch = previews.get(1);
-      native.invoke = async () => { throw Error('unreadable'); };
+      native.invoke = async (command, args) => {
+        if (command === 'local_file_preview') throw Error('unreadable');
+        return invoke(command, args);
+      };
       previews.load(2,'/missing.png');
       while(previews.get(2)?.kind === 'loading') await new Promise(r=>setTimeout(r,5));
       const missing = previews.get(2); previews.dispose();

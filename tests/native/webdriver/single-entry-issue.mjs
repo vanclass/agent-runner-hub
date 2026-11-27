@@ -94,13 +94,8 @@ export function singleEntryIssueCase(runnerRoot, project, brief) {
       if (!requestedTarget) throw new BlockedPrerequisite('Exact IssueRun probe target was absent from the startup Runner catalog');
       await hub.edit('target', requestedTarget);
       await hub.draft('single-entry', body);
-      await browser.execute(({ input, png }) => {
-        const element = document.querySelector(input);
-        const clipboard = new DataTransfer();
-        clipboard.items.add(new File([new Uint8Array(png)], 'native-acceptance.png', { type: 'image/png' }));
-        element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: clipboard, bubbles: true, cancelable: true }));
-      }, { input, png });
-      await wait(browser, () => browser.execute(() => document.querySelectorAll('.attachment-chip').length === 1),
+      await hub.attachments.pasteImage('single-entry', { bytes: png, name: 'native-acceptance.png', type: 'image/png' });
+      await wait(browser, async () => (await hub.attachments.inventory('single-entry'))?.items.length === 1,
         'Single Entry image card unavailable');
       await browser.execute(({ input, brief }) => {
         const element = document.querySelector(input);

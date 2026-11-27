@@ -3,25 +3,20 @@ import { runnerReadOnly } from '../native/webdriver/runner-read-only.mjs';
 import { watchObservations } from '../native/webdriver/runner-flow.mjs';
 import { HubActions } from '../native/webdriver/hub-actions.mjs';
 import { domInteractions } from '../native/webdriver/dom-interactions.mjs';
+import { testBrowser } from './test-browser.mjs';
 
 // Executes feature assertions against synthetic transport. This is not native acceptance.
 export function registerWG3({ test, expect, transport, configure }) {
-  const testBrowser = page => ({
-    options: { waitforTimeout: 10_000 },
-    execute: (fn, ...args) => page.evaluate(({ source, args }) => (0, eval)('(' + source + ')')(...args),
-      { source: fn.toString(), args }),
-    waitUntil: async predicate => { await expect.poll(predicate).toBeTruthy(); }
-  });
   test('WG3 simulated DOM interaction contract', async ({ page }) => {
     await page.goto('/');
-    await domInteractions.run(testBrowser(page));
+    await domInteractions.run(testBrowser(page, expect));
   });
   for (const [factory, unbound] of [[configurationSelection, false], [runnerReadOnly, false], [runnerReadOnly, true]]) {
     const spec = factory('/fixture/install', 'C:/fixture/test-root');
     test('WG3 simulated case contract: ' + spec.id + (unbound ? ' unbound draft' : ''), async ({ page }) => {
       await transport(page, undefined, { auto: true, work: true });
       await page.goto('/');
-      const browser = testBrowser(page);
+      const browser = testBrowser(page, expect);
       const hub = new HubActions(browser);
       await configure(page);
       await watchObservations(browser);

@@ -1,6 +1,8 @@
 import { BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
 import { Dom } from '../../../tools/native-probe/dom.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
+import { ComposerAttachments, instructionSelector } from './composer-attachments.mjs';
+import { GeneratedImages } from './generated-images.mjs';
 
 const configuration = {
   account: ['.account-settings select', JSON.parse, JSON.stringify],
@@ -12,15 +14,12 @@ const configuration = {
   directRoot: ['.execution-settings .directory-input input']
 };
 
-const editor = {
-  'single-entry': '.composer-area:not(.runner-composer) textarea[data-instruction]',
-  runner: '.runner-composer textarea[data-instruction]'
-};
-
 export class HubActions {
   constructor(browser) {
     this.browser = browser;
     this.dom = new Dom(browser);
+    this.attachments = new ComposerAttachments(this.dom);
+    this.images = new GeneratedImages(this.dom);
   }
 
   wait(predicate, timeoutMsg, timeout = startupMs) {
@@ -121,7 +120,7 @@ export class HubActions {
   }
 
   instructionState(surface) {
-    return this.dom.state(editor[surface]);
+    return this.dom.state(instructionSelector(surface));
   }
 
   async draft(surface, text) {
@@ -129,12 +128,12 @@ export class HubActions {
       const state = await this.instructionState(surface);
       return state && !state.disabled && !state.readOnly;
     }, 'Instruction editor unavailable: ' + surface);
-    await this.dom.changeValue(editor[surface], text);
+    await this.dom.changeValue(instructionSelector(surface), text);
   }
 
   // Enter submits the current draft, including supported slash commands and /run.
   // Control+Enter uses the application's IssueRun Brief action.
   submit(surface, { brief = false } = {}) {
-    return this.dom.key(editor[surface], 'Enter', { code: 'Enter', ctrlKey: brief });
+    return this.dom.key(instructionSelector(surface), 'Enter', { code: 'Enter', ctrlKey: brief });
   }
 }

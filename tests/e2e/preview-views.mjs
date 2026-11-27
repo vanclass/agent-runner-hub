@@ -1,5 +1,7 @@
 import { PNG } from 'pngjs';
 import { imageBackdrop, registerOrdinaryBackdrops } from './dialog-backdrops.mjs';
+import { HubActions } from '../native/webdriver/hub-actions.mjs';
+import { testBrowser } from './test-browser.mjs';
 const png = [...PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640 * 320 * 4, 180) })];
 const original = '  첫 번째 줄\n# 원문 <script>window.previewExecuted=true</script>\n{"값": "한글"}\n  ';
 
@@ -69,8 +71,9 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
       await setup(page);
       const paths = ['original.txt','original.md','original.json','missing.txt','unsupported.pdf','folder'];
       await drop(page, paths.map(name => '/fixture/' + name));
-      for (const name of paths) {
-        await page.getByRole('button', { name: 'Open attachment ' + name, exact: true }).click();
+      const { attachments } = new HubActions(testBrowser(page, expect));
+      for (const [index, name] of paths.entries()) {
+        await attachments.openPreview(entry ? 'single-entry' : 'runner', index);
         await expect(page.getByRole('dialog', { name, exact: true })).toBeVisible();
         if (name.startsWith('original')) {
           await expect(page.locator('.focused-text')).toHaveJSProperty('textContent', original);

@@ -295,6 +295,7 @@ async function transport(page, freshTarget, referenceOptions) {
         }
         if (command === 'plugin:dialog|open') return args.options.directory ? '/fixture/folder' : ['/fixture/image.png'];
         if (command === 'plugin:event|listen') { listeners.set(args.handler, { event: args.event, target: args.target }); return args.handler; }
+        if (command === 'plugin:event|emit_to') { nativeEvent(args.event, args.payload, args.target.label); return; }
         if (command === 'plugin:event|unlisten') { listeners.delete(args.eventId); return; }
         if (command === 'pty_resize') { resizes.push(args); return; }
         if (command === 'pty_ack') { acknowledgements.push(args); return; }

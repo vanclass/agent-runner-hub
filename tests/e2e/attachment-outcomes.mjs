@@ -18,7 +18,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
     await ready(page, { unknownAdmission: true });
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
-    await paste(page, 'Single Entry instructions');
+    await paste(page, 'single-entry');
     await page.getByRole('textbox', { name: 'Single Entry instructions', exact: true }).fill('retain exact destination');
     await page.locator('textarea[data-instruction]').press('Enter');
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
@@ -50,7 +50,7 @@ export function registerAttachmentOutcomes({ test, expect, ready, paste, request
         await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
         await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
       }
-      await paste(page, entry ? 'Single Entry instructions' : 'Runner instructions');
+      await paste(page, entry ? 'single-entry' : 'runner');
       const input = page.getByRole('textbox', { name: entry ? 'Single Entry instructions' : 'Runner instructions', exact: true });
       await input.fill('one uncertain instruction');
       if (entry) await page.locator('textarea[data-instruction]').press('Enter');

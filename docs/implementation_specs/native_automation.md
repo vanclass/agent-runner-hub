@@ -67,7 +67,16 @@ operations. Adding a case changes composition, never a feature branch in the exe
 interaction and state queries for the existing driver.
 [`hub-actions.mjs`](../../tests/native/webdriver/hub-actions.mjs) composes those
 primitives for installation, Runner navigation, requested settings and composers.
-Both are importable from arbitrary cases. See the
+Composer attachment operations target the mounted Single Entry or selected Runner
+composer. Scripted path drops enter the existing Tauri event listener. Simulated
+paste uses event-local text or image bytes and preserves the composer as the draft
+and attachment owner. Ordinary submission still performs authenticated reference
+registration, inventory verification, and Work admission. Generated-image
+operations use the existing list/read and viewer paths. Synthetic image fixtures
+establish consumer behavior, while genuine provenance requires an authenticated
+Runner item. Both local and generated previews use the same background viewer
+operations for state, wheel zoom, and closing.
+`Dom` and `HubActions` are importable from arbitrary cases. See the
 [native probe usage guide](../../tools/native-probe/README.md#add-or-select-a-case)
 for API and example code. Verify trusted OS interaction through its existing native
 input owner.

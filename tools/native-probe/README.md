@@ -216,7 +216,7 @@ the existing Runner launch owner rejects macOS detached-child containment.
 
 Import `Dom` from `tools/native-probe/dom.mjs` for CSS-selector-based `click`,
 `doubleClick`, `rightClick`, `hover`, `changeValue`, `key`, `dispatch`,
-`scroll`, `drag` and `state`. Read state for value, checked, disabled, focus,
+`scroll`, `drag`, `paste` and `state`. Read state for value, checked, disabled, focus,
 geometry, scroll offsets and select options. `changeValue` uses the native DOM
 setter and dispatches input or change for controlled React fields. `click`
 invokes DOM activation, including checkbox toggling and submit buttons.
@@ -226,6 +226,15 @@ the DOM element and dispatches keydown and keyup with supplied modifiers.
 when the destination accepts dragover. These interactions provide synthetic
 handler evidence. Trusted input, CSS hover, keyboard default editing, native
 menus, file transfer and dialogs need their own supported validation path.
+
+`Dom.paste(selector, text)` dispatches an in-memory paste event. For an editable
+textarea, an uncancelled event simulates replacing the current selection or
+inserting at the caret. It normalizes line endings, respects the textarea length
+limit, and notifies the regular input handler. Image content takes
+`{ bytes, name, type }` and goes through the application's paste handler.
+The return value reports `{ cancelled, inserted }` for the event and text edit.
+Wait for the attachment inventory to confirm image capture. Neither form accesses
+the OS clipboard or establishes trusted clipboard delivery.
 
 Import `HubActions` from `tests/native/webdriver/hub-actions.mjs` for the Hub
 installation form, Single Entry selection, Runner creation and tab selection.
@@ -245,6 +254,80 @@ Use `draft(surface, text)` and `submit(surface)` with `single-entry` or
 paths, including typed `/run` where available. Pass `{ brief: true }` for the
 IssueRun Control+Enter Brief action. Observe the authoritative result before
 making assertions about submission, and leave uncertain effects unreplayed.
+
+### Compose an attachment scenario
+
+`hub.attachments` uses the mounted Single Entry or selected Runner composer.
+Select the owning surface first. `dropPaths(surface, paths)` accepts explicit
+absolute file and folder paths through the existing scripted native drop event.
+It opens no picker and needs no physical drag. The app validates and classifies
+paths during its ordinary attachment flow. `pasteText` and `pasteImage` dispatch
+in-memory clipboard content to the chosen composer.
+
+```js
+await hub.selectSingleEntry();
+const surface = 'single-entry';
+const { attachments } = hub;
+await attachments.dropPaths(surface, [absoluteTextFile, absoluteFolder]);
+await attachments.pasteImage(surface, { bytes: pngBytes, name: 'sample.png', type: 'image/png' });
+await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 3, 'Cards missing');
+await attachments.openPreview(surface, 0);
+await hub.wait(async () => (await attachments.viewer.state())?.text != null, 'Text preview missing');
+await attachments.viewer.close();
+await hub.wait(async () => !await attachments.viewer.state(), 'Preview still open');
+await attachments.remove(surface, 1);
+await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 2, 'Folder card still present');
+await hub.draft(surface, '');
+await attachments.pasteText(surface, 'Summarize the attached sample.');
+await hub.submit(surface);
+```
+
+For a Runner tab, call `selectRunner(tabId)` or `addRunner()` and use
+`surface = 'runner'`. Inventory reports visible card order, paths, state messages,
+removability, thumbnail dimensions, and composer alerts. Read it again after edits
+before using a card index. Registration happens during ordinary submission.
+Correlate the resulting `references.register`, verified inventory, and original
+`work.submit` observations with the owning PTY and generation.
+
+### Inspect and open a generated image
+
+```js
+const { images } = hub;
+await hub.wait(async () => (await images.state())?.refreshDisabled === false, 'Refresh unavailable');
+await images.refresh();
+await hub.wait(async () => (await images.state())?.items.length > 0, 'Image inventory empty');
+const { items } = await images.state();
+await images.select(items.at(-1).id);
+await hub.wait(async () => (await images.state())?.preview?.width > 0, 'Preview missing');
+await images.openPreview();
+await hub.wait(async () => (await images.viewer.state())?.image?.naturalWidth > 0, 'Viewer image missing');
+await images.viewer.zoom(-300);
+await hub.wait(async () => (await images.viewer.state())?.image?.scale > 1, 'Zoom missing');
+await images.viewer.close();
+```
+
+The same viewer operations apply to local image attachments. Synthetic wheel
+and dialog close establish handler behavior. Native Escape, pointer capture
+and pan, physical clipboard and drag delivery, and displayed animation retain
+their existing input or presentation checks.
+For provenance evidence, `images.list(sessionId)` and
+`images.read(sessionId, imageId)` read the existing native inventory and bytes for
+an exact, caller-verified connection. Classify results from an injected image
+fixture as consumer evidence. Actual generation provenance requires a genuine
+item from an authenticated Runner session.
+
+```powershell
+node tools/native-probe/hub.mjs --case attachment-work --runner-root "<absolute existing Runner root>"
+$env:HUB_RUNNER_ACCEPTANCE_ROOT = "<absolute existing Runner root>"
+$env:HUB_PREVIEW_BACKGROUND_ONLY = '1'
+node --test tests/native/preview-views.mjs
+```
+
+`attachment-work` uses the installed Runner's startup account and submits one
+harmless Pure Direct instruction with a clipboard image. The background-only
+preview selection checks native local file/folder paths and a synthetic
+generated image with the window hidden. The existing displayed preview and GIF
+frame checks require an explicit presentation invocation.
 
 For installed Runner scenarios, use `readyInstalledHub(browser, runnerRoot)`
 from `tests/native/webdriver/runner-flow.mjs` as your readiness callback.

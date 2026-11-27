@@ -9,6 +9,7 @@ import { nativeSuite } from '../../tools/native-probe/suite.mjs';
 import { defineNativeCase, UnverifiedObservation } from '../../tools/native-probe/case.mjs';
 import { readyInstalledHub } from './webdriver/runner-flow.mjs';
 import { generatedSource, animatedFixture, injectGeneratedImage } from './webdriver/attachment-preview.mjs';
+import { HubActions } from './webdriver/hub-actions.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const runnerRoot = process.env.HUB_RUNNER_ACCEPTANCE_ROOT;
 const directory = path.join(root, 'temp/preview-originals', randomUUID());
@@ -23,39 +24,42 @@ after(async () => {
   await fs.rmdir(directory);
   await fs.rmdir(path.dirname(directory)).catch(error => { if (error.code !== 'ENOTEMPTY') throw error; });
 });
-async function close(browser) {
-  await browser.execute(() => document.querySelector('.focused-viewer[open]').close());
-  await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.focused-viewer[open]')));
-}
-async function open(browser, name) {
-  await browser.execute(name => [...document.querySelectorAll('.attachment-open')].find(e => e.getAttribute('aria-label') === 'Open attachment '+name).click(), name);
-  await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.focused-viewer[open]')));
-}
+const background = process.env.HUB_PREVIEW_BACKGROUND_ONLY === '1';
 const preview = defineNativeCase({
-  id: 'preview-views', presentation: 'nonactivating',
+  id: 'preview-views', presentation: background ? 'background' : 'nonactivating',
   ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
-    await browser.execute(async paths => {
-      const r = document.querySelector('.attachment-composer').getBoundingClientRect();
-      await window.__TAURI_INTERNALS__.invoke('plugin:event|emit_to', { target: { kind: 'Window', label: 'main' },
-        event: 'tauri://drag-drop', payload: { paths, position: { x: (r.x+20)*devicePixelRatio, y: (r.y+20)*devicePixelRatio } } });
-    }, [image,...files]);
+    const hub = new HubActions(browser);
+    const attachments = hub.attachments, viewer = attachments.viewer, surface = 'single-entry';
+    await attachments.dropPaths(surface, [image, ...files, directory]);
+    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 5, 'Native drop did not stage paths');
+    assert.deepEqual((await attachments.inventory(surface)).items.map(item => item.path), [image, ...files, directory]);
+    await attachments.remove(surface, 4);
+    await hub.wait(async () => (await attachments.inventory(surface))?.items.length === 4, 'Folder card did not retire');
     const texts = [];
-    for (const file of files) {
-      await open(browser, path.basename(file));
-      await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.focused-text')));
-      const text = await browser.execute(() => document.querySelector('.focused-text').textContent);
-      assert.equal(text, original); texts.push({ name: path.basename(file), original: true }); await close(browser);
+    for (const [index, file] of files.entries()) {
+      await attachments.openPreview(surface, index + 1);
+      await hub.wait(async () => (await viewer.state())?.text != null, 'Local text preview did not load');
+      assert.equal((await viewer.state()).text, original);
+      texts.push({ name: path.basename(file), original: true });
+      await viewer.close();
+      await hub.wait(async () => !await viewer.state(), 'Local text preview did not close');
     }
     await browser.execute(() => [...document.querySelectorAll('.hub-preferences button')].find(e => e.textContent === 'Help').click());
     const help = await browser.execute(() => ({ text: document.querySelector('.preview-help[open]').textContent,
       positions: [...document.querySelectorAll('.hub-preferences > button')].map(e=>e.getBoundingClientRect().x) }));
     assert.match(help.text, /\.png/); assert.match(help.text, /\.txt, \.md, \.json/); assert.ok(help.positions[1]>help.positions[0]);
-    await close(browser); await open(browser, 'selected-image.png');
-    await browser.waitUntil(async () => browser.execute(() => document.querySelector('.focused-image-viewport img')?.naturalWidth === 640));
-    const state = await browser.execute(() => ({ title: document.querySelector('.focused-viewer header').textContent,
-      buttons: document.querySelectorAll('.focused-viewer[open] button').length, chips: document.querySelectorAll('.attachment-chip').length }));
-    assert.deepEqual(state, { title: 'selected-image.png', buttons: 0, chips: 4 });
+    await browser.execute(() => document.querySelector('.preview-help[open]').close());
+    await attachments.openPreview(surface, 0);
+    await hub.wait(async () => (await viewer.state())?.image?.naturalWidth === 640, 'Local image preview did not load');
+    await viewer.zoom(-300);
+    await hub.wait(async () => (await viewer.state())?.image?.scale > 1, 'Image preview did not zoom');
+    await viewer.zoom(300);
+    await hub.wait(async () => Math.abs((await viewer.state())?.image?.scale - 1) < 0.001, 'Image preview did not return to baseline');
+    const state = await viewer.state();
+    assert.equal(state.name, 'selected-image.png');
+    assert.equal(state.buttons, 0);
+    assert.equal((await attachments.inventory(surface)).items.length, 4);
     return { texts, help, state, method: 'Actual native filesystem IPC and production DOM consumer; scripted drop and clicks',
       physicalGestures: 'unverified; browser gesture evidence is separate' };
   },
@@ -70,16 +74,22 @@ const preview = defineNativeCase({
   }
 });
 const generated = defineNativeCase({
-  id: 'generated-consumer', presentation: 'nonactivating',
+  id: 'generated-consumer', presentation: background ? 'background' : 'nonactivating',
   ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
     const fixture = animatedFixture();
     await injectGeneratedImage(browser, fixture);
-    return { classification: 'Synthetic image IPC only; no genuine Codex generation provenance', fixture };
+    const classification = 'Synthetic image IPC only; no genuine Codex generation provenance';
+    if (!background) return { classification };
+    try {
+      const result = await generatedSource(browser);
+      assert.equal(result.outcome, 'supported', JSON.stringify(result));
+      return { classification, result };
+    } finally { await browser.execute(() => window.__restoreGeneratedFixture()); }
   },
   async observe(browser) {
     try {
-      const result = await generatedSource(browser);
+      const result = await generatedSource(browser, { observeAnimation: true });
       assert.equal(result.outcome, 'supported', JSON.stringify(result));
       return result;
     } finally { await browser.execute(() => window.__restoreGeneratedFixture()); }
@@ -90,8 +100,9 @@ const genuineGenerated = defineNativeCase({
   ready: browser => readyInstalledHub(browser, runnerRoot),
   async run(browser) {
     const result = await generatedSource(browser);
-    throw new UnverifiedObservation(JSON.stringify(result));
+    if (result.outcome !== 'supported') throw new UnverifiedObservation(JSON.stringify(result));
+    return result;
   }
 });
-nativeSuite(process.env.GENERATED_GIF_ONLY === '1' ? [generated] : [preview, generated, genuineGenerated],
+nativeSuite(background ? [preview, generated] : process.env.GENERATED_GIF_ONLY === '1' ? [generated] : [preview, generated, genuineGenerated],
   { root, target: process.env.CARGO_TARGET_DIR || path.join(root,'local/hub-native/target') });

@@ -14,12 +14,14 @@ import { semanticWorkCase } from '../../tests/native/webdriver/semantic-work.mjs
 import { singleEntryIssueCase } from '../../tests/native/webdriver/single-entry-issue.mjs';
 import { issueSidebarLifecycle } from '../../tests/native/webdriver/issue-sidebar-lifecycle.mjs';
 import { domInteractions } from '../../tests/native/webdriver/dom-interactions.mjs';
+import { attachmentWorkCase } from '../../tests/native/webdriver/attachment-work.mjs';
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--help') {
   console.log('Background work: semantic-work and single-entry-work submit one harmless instruction each. Add -presentation to either ID for its separate displayed terminal and composer checks. semantic-presentation checks /help and rejected command output. These cases require --runner-root.');
   console.log('Presentation and interaction cases: configuration-presentation requires --runner-root; dom-interactions checks synthetic DOM primitives in a hidden Hub without Runner.');
   console.log('Additional case: hub-log (requires --runner-root); checks tab-independent capture and a fresh native process with the same isolated app data.');
+  console.log('Background attachment-work (requires --runner-root): submits one harmless instruction with an image through the selected Runner composer.');
   console.log('IssueRun cases: native-single-entry-issue-work and native-single-entry-delayed-brief. Both require --runner-root and --issue-target <authorized registered Project ID>. Each creates one disposable IssueRun.');
   console.log('issue-sidebar-lifecycle: requires --producer-source <absolute local Git repository>; uses a fresh scripted Discussion fixture from the accepted producer revision.');
   console.log('node tools/native-probe/hub.mjs [--case <id>] [--runner-root <absolute existing Runner installation>] [--target-dir <absolute Cargo cache>]\nCases: installation-entry, configuration-selection, runner-read-only, renderer-probe, language-preference, hub-log, subagent-run, semantic-presentation, semantic-work. Default: the three WG3 cases. Repeat --case for explicit composition. Runner cases reuse the ordinary authenticated startup account in a new test-owned Hub process. Select the existing installation for the fresh Hub profile. Only explicitly selected work cases may submit their declared instruction. No automatic presentation escalation.');
@@ -47,6 +49,7 @@ if (args.length === 1 && args[0] === '--help') {
   cases.push(singleEntryIssueCase(runnerRoot, values.get('--issue-target'), false));
   cases.push(singleEntryIssueCase(runnerRoot, values.get('--issue-target'), true));
   cases.push(issueSidebarLifecycle(values.get('--producer-source')));
+  cases.push(attachmentWorkCase(runnerRoot, root));
   const selected = ids.length ? ids.map(id => {
     const spec = cases.find(c => c.id === id);
     if (!spec) throw new Error('Unknown case: ' + id + '; see --help');

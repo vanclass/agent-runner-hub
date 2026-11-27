@@ -88,6 +88,37 @@ export class Dom {
     }, selector, position);
   }
 
+  paste(selector, content) {
+    return this.browser.execute(({ selector, content }) => {
+      const node = document.querySelector(selector);
+      if (!node || node.matches(':disabled') || node.readOnly) throw new Error('Control unavailable: ' + selector);
+      const clipboardData = new DataTransfer();
+      const text = typeof content === 'string';
+      if (text) clipboardData.setData('text/plain', content);
+      else {
+        const { bytes, name, type } = content;
+        clipboardData.items.add(new File([new Uint8Array(bytes)], name, { type }));
+      }
+      const allowed = node.dispatchEvent(new ClipboardEvent('paste', {
+        clipboardData, bubbles: true, cancelable: true, composed: true
+      }));
+      // Synthetic paste has no browser default action. Emulate only textarea plain-text insertion.
+      if (!allowed || !text) return { cancelled: !allowed, inserted: false };
+      if (!(node instanceof HTMLTextAreaElement)) throw new Error('Text paste requires a textarea');
+      const { selectionStart, selectionEnd, maxLength } = node;
+      const normalized = content.replace(/\r\n?/g, '\n');
+      const insertion = maxLength < 0 ? normalized
+        : normalized.slice(0, Math.max(0, maxLength - node.value.length + selectionEnd - selectionStart));
+      if (!insertion) return { cancelled: false, inserted: false };
+      const input = { inputType: 'insertFromPaste', data: insertion, bubbles: true, composed: true };
+      if (!node.dispatchEvent(new InputEvent('beforeinput', { ...input, cancelable: true })))
+        return { cancelled: true, inserted: false };
+      node.setRangeText(insertion, selectionStart, selectionEnd, 'end');
+      node.dispatchEvent(new InputEvent('input', input));
+      return { cancelled: false, inserted: true };
+    }, { selector, content });
+  }
+
   drag(source, destination, point = {}) {
     return this.browser.execute((source, destination, point) => {
       const from = document.querySelector(source), to = document.querySelector(destination);

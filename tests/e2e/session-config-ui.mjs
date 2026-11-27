@@ -17,7 +17,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
     await page.locator('.runner-row').first().locator('.nav-row').click();
     await expect(field(page, 'Model')).toBeEnabled();
 
-    await field(page, 'Account').selectOption(JSON.stringify({ agent_id: 'other', profile_name: 'first' }));
+    await field(page, 'Account').selectOption(JSON.stringify({ agent_id: 'codex', profile_name: 'first' }));
     await expect(field(page, 'Model').getByRole('option', { name: 'm2', exact: true })).toBeAttached();
     await field(page, 'Model').selectOption({ label: 'm2' });
     await field(page, 'Reasoning effort').selectOption('high');
@@ -72,7 +72,7 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
       return { current: f.config.current, work: f.requests, other: n.sessions.get('pty-2').feature.requests,
         effects: f.features.results.filter(r => ['session_config.apply', 'work.submit'].includes(r.operation)).map(r => r.operation), writes: n.writes };
     });
-    expect(result.current).toEqual({ target: 'project:Exact', account: { agent_id: 'other', profile_name: 'first' },
+    expect(result.current).toEqual({ target: 'project:Exact', account: { agent_id: 'codex', profile_name: 'first' },
       model: { id: 'm2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'direct-run', root: 'C:/explicit-root' });
     expect(result.work.filter(r => r.operation === 'work.submit')).toEqual([{ operation: 'work.submit', api_version: 1, instruction: 'exact once\n안녕 🌍' }]);
     expect(result.effects).toEqual(['session_config.apply', 'work.submit']);
