@@ -15,6 +15,8 @@ async function reader(page) {
       window.__localPreview.reads.push(args.path);
       if (window.__localPreview.gate) await window.__localPreview.gate;
       if (args.path.endsWith('.pdf')) return { kind: 'pdf', path: args.path, base64: btoa('%PDF-1.4') };
+      if (args.path.endsWith('.zip')) return { kind: 'archive', path: args.path,
+        entries: [{ name: 'docs/readme.txt', directory: false, size: '24' }] };
       return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...bytes)) };
     };
   }, selected);
@@ -48,13 +50,20 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.revokedUrls)).toContain(cancelURL);
       expect(await page.evaluate(() => window.__nativeFixture.revokedUrls)).not.toContain(selectedURL);
       expect(await page.evaluate(() => window.__nativeFixture.revokedUrls)).not.toContain(pastedURL);
+      const archivePath = '/fixture/ZIP source/selected.zip';
+      await drop(page, [archivePath]);
+      expect(await page.evaluate(() => window.__localPreview.reads)).not.toContain(archivePath);
+      await page.getByRole('button', { name: 'Open attachment selected.zip' }).click();
+      await expect(page.getByRole('region', { name: 'Archive contents' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('button', { name: 'Open attachment selected.zip' })).toBeFocused();
       const input = page.getByRole('textbox', { name: label + ' instructions', exact: true });
       await input.fill('one exact request'); await input.press('Enter');
       if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
       const id = entry ? 'pty-2' : 'pty-1';
       await expect.poll(() => page.evaluate(id => window.__nativeFixture.deliveredSets.filter(x => x.id === id).length, id)).toBe(1);
       expect((await requests(page)).filter(x => x.request.operation === 'references.register').map(x => [x.id,x.request.path]))
-        .toEqual([[id,path],[id,expect.stringContaining('/clipboard/session-' + id + '/')]]);
+        .toEqual([[id,path],[id,expect.stringContaining('/clipboard/session-' + id + '/')],[id,archivePath]]);
       expect(await page.evaluate(() => window.__nativeFixture.revokedUrls)).not.toContain(selectedURL);
       expect(await page.evaluate(() => window.__nativeFixture.revokedUrls)).not.toContain(pastedURL);
       await expect(page.locator('.attachment-chip img')).toHaveCount(2);
@@ -168,9 +177,10 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       'xml','yaml','yml','toml','ini','cfg','csv','tsv','jsonl','sh','bat','cmd','ps1','html','css','scss','log','diff','patch']
       .map(extension => 'sample.' + extension).concat('Dockerfile', 'Makefile', '.gitignore');
     const imageSelectors = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'gif', 'svg'].map(extension => 'sample.' + extension);
-    expect(result.declared.map(entry => entry.name).sort()).toEqual([...imageSelectors, ...textSelectors, 'sample.pdf'].sort());
+    expect(result.declared.map(entry => entry.name).sort()).toEqual([...imageSelectors, ...textSelectors, 'sample.pdf', 'sample.zip'].sort());
+    const dedicated = { 'sample.pdf': 'pdf', 'sample.zip': 'archive' };
     for (const entry of result.declared) {
-      expect(entry.category).toBe(entry.name === 'sample.pdf' ? 'pdf' : imageSelectors.includes(entry.name) ? 'image' : 'text');
+      expect(entry.category).toBe(dedicated[entry.name] ?? (imageSelectors.includes(entry.name) ? 'image' : 'text'));
       expect(entry.dispatched).toBe(entry.category);
     }
     expect(result.mismatch).toEqual({ kind:'unavailable',reason:'unreadable' });

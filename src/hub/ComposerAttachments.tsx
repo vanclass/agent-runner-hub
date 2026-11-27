@@ -30,10 +30,11 @@ export function ComposerAttachments({ selection, disabled, children }: {
     && (selection.state(item) !== 'removed' || !item.cancelRequested));
   const focused = items.find(item => item.key === focusedKey);
   useEffect(() => { if (!focused) setFocusedKey(undefined); }, [focused]);
-  const focusedPdfKey = focused && previewFormat(focused.path)?.category === 'pdf' ? focused.key : undefined;
+  const focusedCategory = focused && previewFormat(focused.path)?.category;
+  const focusedTransientKey = focusedCategory === 'pdf' || focusedCategory === 'archive' ? focused?.key : undefined;
   useEffect(() => {
-    if (focusedPdfKey !== undefined) return () => selection.previews.release(focusedPdfKey);
-  }, [selection, focusedPdfKey]);
+    if (focusedTransientKey !== undefined) return () => selection.previews.release(focusedTransientKey);
+  }, [selection, focusedTransientKey]);
   const focusedThumbnail = focused && selection.thumbnail(focused);
   const content = focusedThumbnail ? { kind: 'image' as const, url: focusedThumbnail }
     : focused && selection.previews.get(focused.key) || { kind: 'unavailable' as const, reason: 'unsupported' };

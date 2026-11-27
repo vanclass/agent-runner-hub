@@ -76,7 +76,8 @@ fn selected_originals_and_failures() {
         ("large.jsonl", vec![b'a'; MAX_TEXT_BYTES+1], "oversize"),
         ("large.png", vec![0; MAX_FILE_BYTES+1], "oversize"), ("bad.pdf", vec![], "decoding"),
         ("large.pdf", vec![0; pdf::MAX_PDF_BYTES+1], "oversize"),
-        (".json", vec![], "unsupported"), ("archive.zip", vec![], "unsupported")] {
+        (".json", vec![], "unsupported"), ("unsupported.rar", vec![], "unsupported"),
+        ("bad.zip", b"invalid ZIP".to_vec(), "decoding")] {
         let path = root.join(name); fs::write(&path, bytes).unwrap();
         match read(path.to_str().unwrap().into()) {
             Preview::Unavailable { reason: actual, .. } => assert_eq!(actual, reason),
@@ -90,6 +91,71 @@ fn selected_originals_and_failures() {
     bytes.truncate(bytes.len()-8); fs::write(&path, bytes).unwrap();
     assert!(matches!(read(path.to_str().unwrap().into()), Preview::Unavailable { reason: "decoding", .. }));
     selected_images(&root);
+    selected_archive(&root);
+}
+
+fn selected_archive(root: &Path) {
+    let path = root.join("selected.ZIP");
+    let original = include_bytes!("../test-fixtures/preview-sample.zip");
+    fs::write(&path, original).unwrap();
+    let identity = path.to_str().unwrap().to_string();
+    let Preview::Archive { path: returned, entries } = read(identity.clone()) else {
+        panic!("Expected archive metadata for {identity}");
+    };
+    assert_eq!(returned, identity);
+    assert_eq!(serde_json::to_value(entries).unwrap(), serde_json::json!([
+        {"name": "empty/", "directory": true, "size": "0"},
+        {"name": "docs/nested/notes.txt", "directory": false, "size": "1536"},
+        {"name": "docs/quarter & year.txt", "directory": false, "size": "25"},
+        {"name": "../literal.txt", "directory": false, "size": "0"},
+    ]));
+    assert_eq!(fs::read(path).unwrap(), original);
+    assert!(!root.join("docs").exists());
+    archive_limits(root, original);
+}
+
+fn archive_limits(root: &Path, original: &[u8]) {
+    let path = root.join("bounded.zip");
+    let identity = path.to_str().unwrap();
+    let mut too_many = original.to_vec();
+    let end = too_many.len() - 22;
+    too_many[end + 8..end + 10].copy_from_slice(&2_049u16.to_le_bytes());
+    too_many[end + 10..end + 12].copy_from_slice(&2_049u16.to_le_bytes());
+    fs::write(&path, too_many).unwrap();
+    assert!(matches!(read(identity.into()), Preview::Unavailable { reason: "oversize", .. }));
+
+    let mut split = original.to_vec();
+    split[end + 4] = 1;
+    fs::write(&path, split).unwrap();
+    assert!(matches!(read(identity.into()), Preview::Unavailable { reason: "unsupported", .. }));
+
+    let mut empty = [0; 22];
+    empty[..4].copy_from_slice(b"PK\x05\x06");
+    fs::write(&path, empty).unwrap();
+    assert!(matches!(read(identity.into()), Preview::Archive { entries, .. } if entries.is_empty()));
+
+    large_stored_archive(&path);
+    let Preview::Archive { entries, .. } = read(identity.into()) else { panic!("Expected large ZIP listing"); };
+    assert_eq!(serde_json::to_value(entries).unwrap(), serde_json::json!([
+        {"name": "large.bin", "directory": false, "size": "26214400"}
+    ]));
+}
+
+fn large_stored_archive(path: &Path) {
+    use std::io::Write;
+    let mut archive = zip::ZipWriter::new(File::create(path).unwrap());
+    archive.set_comment("Include a ZIP comment").unwrap();
+    archive.set_raw_zip64_extensible_data_sector(Box::new([]));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .large_file(true);
+    archive.start_file("large.bin", options).unwrap();
+    let block = vec![0; 1024 * 1024];
+    for _ in 0..25 {
+        archive.write_all(&block).unwrap();
+    }
+    archive.finish().unwrap();
+    assert!(fs::metadata(path).unwrap().len() > pdf::MAX_PDF_BYTES as u64);
 }
 
 fn selected_images(root: &std::path::Path) {

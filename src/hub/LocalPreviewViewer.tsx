@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { FocusedViewer } from './FocusedViewer';
 import { ImageViewport } from './ImageViewport';
 import { TextPreview } from './TextPreview';
+import { ArchivePreview } from './ArchivePreview';
 import { t } from './i18n';
 import type { LocalPreview } from './localPreviews';
 import { previewFormat } from './previewCatalog';
@@ -15,9 +16,10 @@ export function LocalPreviewViewer({ name, content, onDismiss }: {
 }) {
   const text = content.kind === 'text';
   const pdf = content.kind === 'pdf';
-  return <FocusedViewer name={name} showTitle={!text && !pdf} onDismiss={onDismiss}
+  const archive = content.kind === 'archive';
+  return <FocusedViewer name={name} showTitle={!text && !pdf && !archive} onDismiss={onDismiss}
     dismissOnBackdrop={content.kind === 'image'}
-    className={pdf ? 'focused-pdf-dialog' : text ? 'focused-text-dialog' : undefined}>
+    className={pdf ? 'focused-pdf-dialog' : text ? 'focused-text-dialog' : archive ? 'focused-archive-dialog' : undefined}>
     {content.kind === 'image' && <ImageViewport key={content.url} url={content.url}
       name={name || t('images.verifiedEnlarged')} />}
     {content.kind === 'text' && <TextPreview name={name ?? ''} text={content.text}
@@ -26,6 +28,7 @@ export function LocalPreviewViewer({ name, content, onDismiss }: {
       <PdfPreview name={name ?? ''} bytes={content.bytes} onDismiss={onDismiss}
         loading={<PreviewStatus />} unavailable={<PreviewStatus unavailable />} />
     </Suspense>}
+    {content.kind === 'archive' && <ArchivePreview name={name ?? ''} entries={content.entries} onDismiss={onDismiss} />}
     {content.kind === 'loading' && <PreviewStatus />}
     {content.kind === 'unavailable' && <PreviewStatus unavailable />}
   </FocusedViewer>;

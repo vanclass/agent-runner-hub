@@ -56,9 +56,29 @@ function PdfPages({ document, aspectRatio, name, onDismiss, onError }: {
   const [draft, setDraft] = useState<string>();
   const [zoomIndex, setZoomIndex] = useState(ZOOM_LEVELS.indexOf(100));
   const [fitWidth, setFitWidth] = useState(0);
+  const [visiblePages, setVisiblePages] = useState<ReadonlySet<number>>(() => new Set());
   const zoom = ZOOM_LEVELS[zoomIndex];
   const count = document.numPages;
   const width = Math.round(fitWidth * zoom / 100);
+  const hasPageSlots = width > 0;
+
+  useLayoutEffect(() => {
+    if (!hasPageSlots) return;
+    const root = viewport.current!;
+    const observer = new IntersectionObserver(entries => {
+      setVisiblePages(previous => {
+        const visible = new Set(previous);
+        for (const entry of entries) {
+          const number = Number((entry.target as HTMLElement).dataset.page);
+          if (entry.isIntersecting) visible.add(number);
+          else visible.delete(number);
+        }
+        return visible;
+      });
+    }, { root });
+    root.querySelectorAll('[data-page]').forEach(element => observer.observe(element));
+    return () => observer.disconnect();
+  }, [count, hasPageSlots]);
 
   useLayoutEffect(() => {
     const element = viewport.current!;
@@ -131,10 +151,10 @@ function PdfPages({ document, aspectRatio, name, onDismiss, onError }: {
       <button type="button" onClick={onDismiss}>{t('menu.close')}</button>
     </header>
     <div className="pdf-scroll" ref={viewport} onScroll={onScroll} tabIndex={0}>
-      {width > 0 && Array.from({ length: count }, (_, index) => {
+      {hasPageSlots && Array.from({ length: count }, (_, index) => {
         const number = index + 1;
         return <PdfPage key={number} document={document} number={number} width={width} aspectRatio={aspectRatio}
-          slotRef={element => { pages.current[index] = element; }} active={Math.abs(number - page) <= 1} onError={onError} />;
+          slotRef={element => { pages.current[index] = element; }} active={visiblePages.has(number)} onError={onError} />;
       })}
     </div>
   </>;

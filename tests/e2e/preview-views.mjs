@@ -39,6 +39,14 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
         if (command !== 'local_file_preview') return invoke(command, args);
         if (args.path.endsWith('/preview-sample.pdf')) return { kind: 'pdf', path: args.path, base64: pdf };
         if (args.path.endsWith('/malformed.pdf')) return { kind: 'pdf', path: args.path, base64: btoa('%PDF-1.4\ninvalid') };
+        if (args.path.endsWith('/listing.ZIP')) return { kind: 'archive', path: args.path, entries: [
+          { name: 'empty/', directory: true, size: '0' },
+          { name: 'docs/nested/notes.txt', directory: false, size: '1536' },
+          { name: 'docs/<script>.txt', directory: false, size: '25' },
+          { name: '../literal.txt', directory: false, size: '0' },
+          ...Array.from({ length: 35 }, (_, index) => ({ name: 'file-' + index, directory: false, size: '1048576' })),
+        ] };
+        if (args.path.endsWith('/malformed.zip')) return { kind: 'unavailable', path: args.path, reason: 'decoding' };
         if (args.path.endsWith('.png')) return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...png)) };
         if (args.path.endsWith('.gif')) return { kind: 'image', path: args.path, mime: 'image/gif', base64: btoa(String.fromCharCode(...gif)) };
         if (/\.(txt|md|json)$/.test(args.path) && !args.path.includes('missing')) return { kind: 'text', path: args.path, text: original };
@@ -48,6 +56,26 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
       };
     }, { png, gif: animatedFixture().bytes, original, source, pdf });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+  }
+  async function verifyLocalizedArchive(page, expect, info, viewer) {
+    await chooseAppPreference(page, 'view', 'theme', 'black');
+    await page.keyboard.press('Escape');
+    await chooseAppPreference(page, 'settings', 'language', 'ko');
+    await page.keyboard.press('Escape');
+    const opener = page.getByRole('button', { name: '첨부 파일 listing.ZIP 열기' });
+    await opener.click();
+    await expect(viewer.getByRole('region', { name: '압축 파일 내용' })).toBeVisible();
+    await expect(viewer.getByRole('button', { name: '닫기' })).toBeVisible();
+    await expect(viewer).toHaveCSS('background-color', 'rgb(17, 18, 20)');
+    await info.attach('archive-korean-black', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+    const malformed = page.getByRole('button', { name: '첨부 파일 malformed.zip 열기' });
+    await malformed.click();
+    await expect(page.getByRole('dialog', { name: 'malformed.zip' })).toContainText('첨부는 유지됩니다');
+    await page.keyboard.press('Escape');
+    await expect(malformed).toBeFocused();
+    await expect(page.locator('.attachment-chip')).toHaveCount(2);
   }
   for (const entry of [false, true]) {
     const label = entry ? 'Single Entry' : 'Runner';
@@ -95,7 +123,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     });
     test('focused preview ' + label + ' exact original txt md json and retained failures', async ({ page }) => {
       await setup(page, entry);
-      const paths = ['original.txt','original.md','original.json','.gitignore','build.log','missing.txt','unsupported.zip','folder'];
+      const paths = ['original.txt','original.md','original.json','.gitignore','build.log','missing.txt','unsupported.rar','folder'];
       await drop(page, paths.map(name => '/fixture/' + name));
       const { attachments } = new HubActions(testBrowser(page, expect));
       for (const [index, name] of paths.entries()) {
@@ -114,6 +142,37 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
       }
     });
   }
+  test('focused ZIP preview lists implicit folders and sizes, scrolls and returns focus', async ({ page }, info) => {
+    await setup(page);
+    await drop(page, ['/fixture/listing.ZIP', '/fixture/malformed.zip']);
+    const opener = page.getByRole('button', { name: 'Open attachment listing.ZIP' });
+    await opener.click();
+    const viewer = page.getByRole('dialog', { name: 'listing.ZIP', exact: true });
+    const contents = viewer.getByRole('region', { name: 'Archive contents' });
+    const docs = contents.locator('details').filter({ has: page.locator('summary', { hasText: /^docs$/ }) }).first();
+    const notes = contents.getByText('notes.txt', { exact: true });
+    await expect(notes).toBeHidden();
+    await docs.locator('summary').first().press('Enter');
+    await docs.getByText('nested', { exact: true }).click();
+    await expect(notes).toBeVisible();
+    await expect(notes.locator('..')).toContainText('1.5 KiB');
+    await expect(contents.getByText('<script>.txt', { exact: true }).locator('..')).toContainText('25 B');
+    await contents.getByText('..', { exact: true }).click();
+    await expect(contents.getByText('literal.txt', { exact: true }).locator('..')).toContainText('0 B');
+    await contents.getByText('empty', { exact: true }).click();
+    await expect(contents.getByText('Empty', { exact: true })).toBeVisible();
+    await info.attach('archive-light', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await docs.locator('summary').first().click();
+    await expect(notes).toBeHidden();
+    await contents.focus();
+    await contents.press('End');
+    await expect.poll(() => contents.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    await expect(contents.getByText('file-34', { exact: true })).toBeInViewport();
+    await viewer.getByRole('button', { name: 'Close' }).click();
+    await expect(opener).toBeFocused();
+    await verifyLocalizedArchive(page, expect, info, viewer);
+  });
+
   test('focused PDF preview renders, navigates, zooms and releases the local document', async ({ page }, info) => {
     await setup(page);
     await page.evaluate(() => {
@@ -178,6 +237,28 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(page.getByRole('dialog', { name: 'malformed.pdf' })).toContainText('첨부는 유지됩니다');
     await page.keyboard.press('Escape');
     await expect(page.locator('.attachment-chip')).toHaveCount(2);
+  });
+
+  test('focused PDF preview renders every intersecting page at reduced zoom', async ({ page }, info) => {
+    await setup(page);
+    await drop(page, ['/fixture/preview-sample.pdf']);
+    await page.setViewportSize({ width: 500, height: 1200 });
+    await page.getByRole('button', { name: 'Open attachment preview-sample.pdf' }).click();
+    const viewer = page.getByRole('dialog', { name: 'preview-sample.pdf', exact: true });
+    const zoomOut = viewer.getByRole('button', { name: 'Zoom out' });
+    await zoomOut.click();
+    await zoomOut.click();
+    await expect(viewer.getByText('50%')).toBeVisible();
+    await expect(viewer.getByRole('textbox', { name: 'Page number' })).toHaveValue('1');
+    await expect(viewer.locator('[data-page="3"]')).toBeInViewport({ ratio: .3 });
+    await expect.poll(() => viewer.locator('.pdf-scroll').evaluate(root => {
+      const viewport = root.getBoundingClientRect();
+      return [...root.querySelectorAll('[data-page]')].filter(node => {
+        const page = node.getBoundingClientRect();
+        return page.bottom > viewport.top && page.top < viewport.bottom && !node.querySelector('[data-rendered]');
+      }).map(node => node.dataset.page);
+    })).toEqual([]);
+    await info.attach('pdf-reduced-zoom', { body: await viewer.screenshot(), contentType: 'image/png' });
   });
 
   test('closing a loading PDF discards its late native result', async ({ page }) => {
@@ -267,14 +348,16 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     expect(Math.abs(right.y-left.y)).toBeLessThan(4);
     await openAppEntry(page, 'help', 'preview');
     const dialog = page.getByRole('dialog', { name: 'File Preview Guide', exact: true }); await expect(dialog).toBeVisible();
-    await expect(dialog.locator('h2')).toHaveText(['Supported images', 'Supported text', 'Supported documents', 'Unsupported previews', 'Preview limitations']);
+    await expect(dialog.locator('h2')).toHaveText(['Supported images', 'Supported text', 'Supported documents',
+      'Supported archives', 'Unsupported previews', 'Preview limitations']);
     const formats = await page.evaluate(async () => (await import('/src/hub/previewCatalog.ts')).previewFormats);
-    for (const [index, category] of ['image', 'text', 'pdf'].entries()) {
+    for (const [index, category] of ['image', 'text', 'pdf', 'archive'].entries()) {
       const labels = formats.filter(format => format.category === category)
         .flatMap(({ extensions, filenames }) => [...(extensions ?? []).map(ext => '.' + ext), ...(filenames ?? [])]);
       await expect(dialog.locator('.preview-format-tags').nth(index).locator('li')).toHaveText(labels);
     }
-    await expect(dialog).toContainText('no local content preview');
+    await expect(dialog).toContainText('RAR and 7Z cannot be previewed');
+    await expect(dialog).toContainText('ZIP previews list files, folders, and original file sizes');
     await expect(dialog).toContainText('Attachment eligibility is separate');
     await expect(dialog).toContainText('UTF-8');
     await expect(dialog).toContainText('GIFs animate in thumbnails and in the focused viewer');
@@ -290,6 +373,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(localized).toHaveCSS('background-color', 'rgb(17, 18, 20)');
     await expect(localized.getByText('.gitignore', { exact: true })).toBeVisible();
     await expect(localized.getByText('.pdf', { exact: true })).toBeVisible();
+    await expect(localized.getByText('.zip', { exact: true })).toBeVisible();
     await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });

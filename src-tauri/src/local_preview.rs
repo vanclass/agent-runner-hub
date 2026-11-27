@@ -3,6 +3,8 @@ use std::{fs::File, io::Read, path::Path, sync::OnceLock};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 
+#[path = "local_archive.rs"]
+mod archive;
 #[path = "local_image.rs"]
 mod image;
 #[path = "local_pdf.rs"]
@@ -10,7 +12,7 @@ mod pdf;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-enum Category { Image, Text, Pdf }
+enum Category { Image, Text, Pdf, Archive }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +49,7 @@ pub enum Preview {
     Image { path: String, base64: String, mime: &'static str },
     Text { path: String, text: String },
     Pdf { path: String, base64: String },
+    Archive { path: String, entries: Vec<archive::Entry> },
     Unavailable { path: String, reason: &'static str },
 }
 
@@ -63,6 +66,7 @@ fn content(path: &str) -> Result<Preview, &'static str> {
         Category::Image => read_image(path, format),
         Category::Text => read_text(path),
         Category::Pdf => pdf::read(path),
+        Category::Archive => archive::read(path),
     }
 }
 

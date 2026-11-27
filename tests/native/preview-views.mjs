@@ -19,6 +19,9 @@ await fs.mkdir(directory, { recursive: true });
 const image = path.join(directory, 'selected-image.png');
 const pdf = path.join(root, 'src-tauri/test-fixtures/preview-sample.pdf');
 const brokenPdf = path.join(directory, 'malformed.pdf');
+const zip = path.join(root, 'src-tauri/test-fixtures/preview-sample.zip');
+const brokenZip = path.join(directory, 'malformed.zip');
+await fs.writeFile(brokenZip, 'invalid ZIP');
 await fs.writeFile(brokenPdf, '%PDF-1.4\ninvalid');
 await fs.writeFile(image, PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640*320*4,180) }));
 const imageFiles = ['sample.jpg', 'sample.jpeg', 'sample.webp', 'sample.bmp', 'sample.ico', 'animated.gif', 'static.svg']
@@ -32,7 +35,7 @@ const files = ['original.txt','original.md','original.json','original.ts','Docke
   .map(name => path.join(directory, name));
 for (const file of files) await fs.writeFile(file, original, 'utf8');
 after(async () => {
-  for (const file of [image, brokenPdf, ...imageFiles, ...files]) await fs.unlink(file);
+  for (const file of [image, brokenPdf, brokenZip, ...imageFiles, ...files]) await fs.unlink(file);
   await fs.rmdir(directory);
   await fs.rmdir(path.dirname(directory)).catch(error => { if (error.code !== 'ENOTEMPTY') throw error; });
 });
@@ -75,6 +78,39 @@ async function observeLocalGif(browser, hub, surface) {
     'Animated GIF viewer did not load');
   return { thumbnail, focused: await animationFrames(browser, '.focused-image-viewport img') };
 }
+async function exerciseArchive(browser, hub, surface, index) {
+  const { attachments } = hub;
+  const original = await fs.readFile(zip);
+  await attachments.dropPaths(surface, [zip, brokenZip]);
+  await hub.wait(async () => (await attachments.inventory(surface))?.items.length === index + 2,
+    'Native drop did not stage both ZIP paths');
+  await browser.execute(path => {
+    [...document.querySelectorAll('.attachment-open')].find(button => button.title === path).focus();
+  }, zip);
+  await attachments.openPreview(surface, index);
+  await hub.wait(async () => await browser.execute(() => Boolean(document.querySelector('.archive-scroll'))),
+    'Native ZIP preview did not load');
+  await hub.dom.click('.archive-scroll > ul > li:nth-child(2) > details > summary');
+  await hub.dom.click('.archive-scroll details[open] ul summary');
+  assert.deepEqual(await browser.execute(() => {
+    const row = [...document.querySelectorAll('.archive-file')].find(row => row.querySelector('bdi').textContent === 'notes.txt');
+    const nested = row.closest('details'), folder = nested.parentElement.closest('details');
+    return [folder.open, nested.open, row.querySelector('.archive-size').textContent];
+  }), [true, true, '1.5 KiB']);
+  await hub.dom.click('.archive-toolbar button');
+  await hub.wait(async () => !await attachments.viewer.state(), 'Native ZIP preview did not close');
+  assert.equal(await browser.execute(() => document.activeElement?.title), zip);
+  await attachments.openPreview(surface, index + 1);
+  await hub.wait(async () => await browser.execute(() =>
+    document.querySelector('.focused-viewer[open] [role="status"]')?.textContent.includes('It remains attached')),
+  'Malformed native ZIP did not show the shared failure');
+  await attachments.viewer.close();
+  assert.deepEqual((await attachments.inventory(surface)).items.slice(index).map(item => item.path), [zip, brokenZip]);
+  assert.deepEqual(await fs.readFile(zip), original);
+  await attachments.remove(surface, index + 1);
+  await attachments.remove(surface, index);
+}
+
 const preview = defineNativeCase({
   id: 'preview-views', presentation: background ? 'background' : 'nonactivating',
   ready: browser => readyInstalledHub(browser, runnerRoot),
@@ -120,6 +156,7 @@ const preview = defineNativeCase({
     assert.equal((await attachments.inventory(surface)).items.length, files.length + 3);
     await attachments.remove(surface, files.length + 2);
     await attachments.remove(surface, files.length + 1);
+    await exerciseArchive(browser, hub, surface, files.length + 1);
     await hub.settings.openMenu('help');
     await hub.dom.click('[data-menu-item="preview"]');
     const help = await browser.execute(() => {
@@ -129,7 +166,7 @@ const preview = defineNativeCase({
         tags: [...guide.querySelectorAll('.preview-format-tags')].map(list => [...list.children].map(tag => tag.textContent)),
         contained: bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight };
     });
-    assert.deepEqual(help.tags, ['image', 'text', 'pdf'].map(category => formats.filter(format => format.category === category)
+    assert.deepEqual(help.tags, ['image', 'text', 'pdf', 'archive'].map(category => formats.filter(format => format.category === category)
       .flatMap(({ extensions, filenames }) => [...(extensions ?? []).map(ext => '.' + ext), ...(filenames ?? [])])));
     assert.match(help.text, /Attachment eligibility is separate/);
     assert.ok(help.contained);

@@ -1,6 +1,6 @@
 import catalog from '../../src-tauri/src/preview_formats.json';
 
-export type PreviewCategory = 'image' | 'text' | 'pdf';
+export type PreviewCategory = 'image' | 'text' | 'pdf' | 'archive';
 type PreviewFormat = {
   category: PreviewCategory;
   extensions?: readonly string[];

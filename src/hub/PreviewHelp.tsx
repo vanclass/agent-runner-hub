@@ -8,9 +8,12 @@ export function PreviewHelp({ onClose }: { onClose: () => void }) {
       <PreviewFormats label={t('preview.images')} category="image" />
       <PreviewFormats label={t('preview.text')} category="text" />
       <PreviewFormats label={t('preview.pdf')} category="pdf" />
+      <PreviewFormats label={t('preview.archives')} category="archive" />
     </div>
     <section><h2>{t('preview.other')}</h2><p>{t('preview.otherLimits')}</p></section>
-    <section><h2>{t('preview.limitations')}</h2><p>{t('preview.limits')}</p><p>{t('preview.pdfLimits')}</p></section>
+    <section><h2>{t('preview.limitations')}</h2>
+      <p>{t('preview.limits')}</p><p>{t('preview.pdfLimits')}</p><p>{t('preview.archiveLimits')}</p>
+    </section>
   </HubDialog>;
 }
 

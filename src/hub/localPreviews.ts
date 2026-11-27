@@ -1,11 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { LocalImageResources } from './localImageResources';
 import { previewFormat } from './previewCatalog';
+
+export type ArchiveEntry = { name: string; directory: boolean; size: string };
+type ArchivePreview = { kind: 'archive'; entries: ArchiveEntry[] };
+
 export type LocalPreview = { kind: 'image'; url: string } | { kind: 'text'; text: string }
-  | { kind: 'pdf'; bytes: Uint8Array<ArrayBuffer> }
+  | { kind: 'pdf'; bytes: Uint8Array<ArrayBuffer> } | ArchivePreview
   | { kind: 'loading' } | { kind: 'unavailable'; reason: string };
 type NativePreview = { path: string } & ({ kind: 'image'; base64: string; mime: string }
-  | { kind: 'pdf'; base64: string }
+  | { kind: 'pdf'; base64: string } | ArchivePreview
   | { kind: 'text'; text: string } | { kind: 'unavailable'; reason: string });
 // One bounded sequential reader per selection avoids competing decoders and large IPC fan-out.
 // Preview bytes have no submission semantics; cancellation invalidates the entry before completion.
@@ -38,6 +42,9 @@ export class LocalPreviews {
           const bytes = new Uint8Array(binary.length);
           for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
           entry.value = { kind: 'pdf', bytes };
+        } else if (result.kind === 'archive') {
+          if (previewFormat(path)?.category !== 'archive') throw new Error('Unexpected archive preview');
+          entry.value = { kind: 'archive', entries: result.entries };
         } else entry.value = result;
       } catch { if (this.entries.get(key) === entry) entry.value = { kind: 'unavailable', reason: 'unreadable' }; }
       finally { if (!this.disposed && this.entries.get(key) === entry) this.changed(); }
