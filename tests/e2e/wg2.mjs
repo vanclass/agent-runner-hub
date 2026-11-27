@@ -5,14 +5,13 @@ export function registerWG2({ test, expect, transport, configure }) {
       const result = await page.evaluate(async ({ display, scenario }) => {
         const { RunnerSessions } = await import('/src/hub/RunnerSessions.ts');
         const owner = new RunnerSessions({ allocationPolicy: ['missing', 'busy'].includes(scenario) ? 'reuse-same-mode' : scenario,
-          runMode: 'task-run', accountIdentity: { agent_id: 'codex', profile_name: 'first' } });
-        const issue = owner.create('/fixture/install'); await issue.launched;
-        const task = owner.create('/fixture/install'); await task.launched;
+          runMode: 'task-run', accountIdentity: { agent_id: 'codex', profile_name: 'first' },
+          target: { binding_state: 'bound', owner: 'Workspace', project: '' } });
+        const issue = owner.create('/fixture/install', undefined, 'issue-run'); await issue.launched;
+        const task = owner.create('/fixture/install', undefined, scenario === 'missing' ? 'issue-run' : 'task-run'); await task.launched;
         await Promise.all([issue.session.control.fresh(), task.session.control.fresh()]);
         if (!issue.session.assignmentAvailable || !task.session.assignmentAvailable)
           throw Error('fixture candidates not ready');
-        owner.navigation.intent(issue.session.view.id, 'issue-run');
-        owner.navigation.intent(task.session.view.id, scenario === 'missing' ? 'issue-run' : 'task-run');
         owner.navigation.project(owner.getSnapshot(), display);
         const token = Symbol('busy fixture');
         if (scenario === 'busy' && !task.session.reserve(token)) throw Error('fixture reservation failed');
