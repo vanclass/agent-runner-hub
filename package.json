@@ -35,6 +35,7 @@
     "@tauri-apps/plugin-clipboard-manager": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "i18next": "^26.5.11",
-    "react-i18next": "^17.1.9"
+    "react-i18next": "^17.1.9",
+    "pdfjs-dist": "5.5.207"
   }
 }

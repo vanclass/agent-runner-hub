@@ -17,6 +17,9 @@ const formats = JSON.parse(readFileSync(new URL('../../src-tauri/src/preview_for
 const directory = path.join(root, 'temp/preview-originals', randomUUID());
 await fs.mkdir(directory, { recursive: true });
 const image = path.join(directory, 'selected-image.png');
+const pdf = path.join(root, 'src-tauri/test-fixtures/preview-sample.pdf');
+const brokenPdf = path.join(directory, 'malformed.pdf');
+await fs.writeFile(brokenPdf, '%PDF-1.4\ninvalid');
 await fs.writeFile(image, PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640*320*4,180) }));
 const imageFiles = ['sample.jpg', 'sample.jpeg', 'sample.webp', 'sample.bmp', 'sample.ico', 'animated.gif', 'static.svg']
   .map(name => path.join(directory, name));
@@ -29,7 +32,7 @@ const files = ['original.txt','original.md','original.json','original.ts','Docke
   .map(name => path.join(directory, name));
 for (const file of files) await fs.writeFile(file, original, 'utf8');
 after(async () => {
-  for (const file of [image, ...imageFiles, ...files]) await fs.unlink(file);
+  for (const file of [image, brokenPdf, ...imageFiles, ...files]) await fs.unlink(file);
   await fs.rmdir(directory);
   await fs.rmdir(path.dirname(directory)).catch(error => { if (error.code !== 'ENOTEMPTY') throw error; });
 });
@@ -93,6 +96,30 @@ const preview = defineNativeCase({
       await viewer.close();
       await hub.wait(async () => !await viewer.state(), 'Local text preview did not close');
     }
+    await attachments.dropPaths(surface, [pdf, brokenPdf]);
+    await attachments.openPreview(surface, files.length + 1);
+    await hub.wait(async () => await browser.execute(() =>
+      Boolean(document.querySelector('[data-page="1"] canvas[data-rendered]'))), 'Native PDF did not render');
+    const renderedPdf = await browser.execute(() => {
+      const canvas = document.querySelector('[data-page="1"] canvas');
+      const sample = canvas.getContext('2d').getImageData(Math.round(canvas.width / 2),
+        Math.round(canvas.height * 95 / 720), 1, 1).data;
+      return { pixel: [...sample], toolbar: document.querySelector('.pdf-toolbar').textContent };
+    });
+    assert.deepEqual(renderedPdf.pixel, [33, 79, 166, 255]);
+    assert.match(renderedPdf.toolbar, /preview-sample\.pdf.*of 4/);
+    await hub.dom.click('.pdf-toolbar [aria-label="Next page"]');
+    await hub.wait(async () => await browser.execute(() =>
+      document.querySelector('.pdf-toolbar input')?.value === '2'), 'Native PDF did not navigate');
+    await viewer.close();
+    await attachments.openPreview(surface, files.length + 2);
+    await hub.wait(async () => await browser.execute(() =>
+      document.querySelector('.focused-viewer[open] [role="status"]')?.textContent.includes('It remains attached')),
+    'Malformed native PDF did not show the shared failure');
+    await viewer.close();
+    assert.equal((await attachments.inventory(surface)).items.length, files.length + 3);
+    await attachments.remove(surface, files.length + 2);
+    await attachments.remove(surface, files.length + 1);
     await hub.settings.openMenu('help');
     await hub.dom.click('[data-menu-item="preview"]');
     const help = await browser.execute(() => {
@@ -102,7 +129,7 @@ const preview = defineNativeCase({
         tags: [...guide.querySelectorAll('.preview-format-tags')].map(list => [...list.children].map(tag => tag.textContent)),
         contained: bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight };
     });
-    assert.deepEqual(help.tags, ['image', 'text'].map(category => formats.filter(format => format.category === category)
+    assert.deepEqual(help.tags, ['image', 'text', 'pdf'].map(category => formats.filter(format => format.category === category)
       .flatMap(({ extensions, filenames }) => [...(extensions ?? []).map(ext => '.' + ext), ...(filenames ?? [])])));
     assert.match(help.text, /Attachment eligibility is separate/);
     assert.ok(help.contained);
@@ -118,7 +145,7 @@ const preview = defineNativeCase({
     assert.equal(state.name, 'selected-image.png');
     assert.equal(state.buttons, 0);
     assert.equal((await attachments.inventory(surface)).items.length, files.length + 1);
-    return { images, texts, help, state, method: 'Actual native filesystem IPC and production DOM consumer; scripted drop and clicks',
+    return { images, texts, renderedPdf, help, state, method: 'Actual native filesystem IPC and production DOM consumer; scripted drop and clicks',
       physicalGestures: 'unverified; browser gesture evidence is separate' };
   },
   async observe(browser) {

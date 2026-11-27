@@ -14,6 +14,7 @@ async function reader(page) {
       if (command !== 'local_file_preview') return invoke(command, args);
       window.__localPreview.reads.push(args.path);
       if (window.__localPreview.gate) await window.__localPreview.gate;
+      if (args.path.endsWith('.pdf')) return { kind: 'pdf', path: args.path, base64: btoa('%PDF-1.4') };
       return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...bytes)) };
     };
   }, selected);
@@ -114,20 +115,22 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       await wait(() => entry.thumbnail(entry.candidates[0]) && runner.references.thumbnail(runner.references.candidates[0]));
       const urls = [entry.thumbnail(entry.candidates[0]),runner.references.thumbnail(runner.references.candidates[0])];
       window.__localPreview.gate = new Promise(resolve => { window.__localPreview.release = resolve; });
-      entry.select(['/fixture/entry-late.png']); runner.references.select(['/fixture/runner-late.png']);
+      entry.select(['/fixture/entry-late.png']); runner.references.select(['/fixture/runner-late.pdf']);
+      runner.references.previews.load(2, '/fixture/runner-late.pdf');
       await wait(() => window.__localPreview.reads.length === 4);
       await sessions.dispose(); await runner.dispose();
       const allocatedBefore = [...window.__localPreview.allocated];
       window.__localPreview.gate = undefined; window.__localPreview.release();
       await new Promise(r=>setTimeout(r,20));
       return { urls, allocatedBefore, allocatedAfter: window.__localPreview.allocated,
-        revoked: window.__nativeFixture.revokedUrls, empty: [entry.previews.get(1),runner.references.previews.get(1)] };
+        revoked: window.__nativeFixture.revokedUrls,
+        empty: [entry.previews.get(1), entry.previews.get(2), runner.references.previews.get(1), runner.references.previews.get(2)] };
     });
     expect(result.urls).toHaveLength(2);
     expect(result.revoked).toEqual(expect.arrayContaining(result.urls));
     for (const url of result.urls) expect(result.revoked.filter(x => x === url)).toHaveLength(1);
     expect(result.allocatedAfter).toEqual(result.allocatedBefore);
-    expect(result.empty).toEqual([undefined,undefined]);
+    expect(result.empty).toEqual([undefined, undefined, undefined, undefined]);
   });
   test('local preview shared catalog, exact response identity and truthful read failure', async ({ page }) => {
     await ready(page); await reader(page);
@@ -160,14 +163,14 @@ export function registerLocalPreviews({ test, expect, ready, paste, requests, dr
       return { mismatch, wrongMime, missing, declared, kinds: ['x.pdf','folder','png','.json','Dockerfile.pdf'].map(kind),
         allocated: window.__localPreview.allocated };
     });
-    expect(result.kinds).toEqual(Array(5).fill('unsupported'));
+    expect(result.kinds).toEqual(['pdf', 'unsupported', 'unsupported', 'unsupported', 'pdf']);
     const textSelectors = ['txt','md','json','c','cpp','h','hpp','cs','py','js','jsx','ts','tsx','rs','java','sql',
       'xml','yaml','yml','toml','ini','cfg','csv','tsv','jsonl','sh','bat','cmd','ps1','html','css','scss','log','diff','patch']
       .map(extension => 'sample.' + extension).concat('Dockerfile', 'Makefile', '.gitignore');
     const imageSelectors = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'gif', 'svg'].map(extension => 'sample.' + extension);
-    expect(result.declared.map(entry => entry.name).sort()).toEqual([...imageSelectors, ...textSelectors].sort());
+    expect(result.declared.map(entry => entry.name).sort()).toEqual([...imageSelectors, ...textSelectors, 'sample.pdf'].sort());
     for (const entry of result.declared) {
-      expect(entry.category).toBe(imageSelectors.includes(entry.name) ? 'image' : 'text');
+      expect(entry.category).toBe(entry.name === 'sample.pdf' ? 'pdf' : imageSelectors.includes(entry.name) ? 'image' : 'text');
       expect(entry.dispatched).toBe(entry.category);
     }
     expect(result.mismatch).toEqual({ kind:'unavailable',reason:'unreadable' });

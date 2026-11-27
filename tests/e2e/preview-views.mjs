@@ -1,10 +1,12 @@
 import { appTrigger, chooseAppPreference, openAppEntry } from './application-menu.mjs';
 import { PNG } from 'pngjs';
+import { readFileSync } from 'node:fs';
 import { imageBackdrop, registerOrdinaryBackdrops } from './dialog-backdrops.mjs';
 import { HubActions } from '../native/webdriver/hub-actions.mjs';
 import { testBrowser } from './test-browser.mjs';
 import { animationFrames, animatedFixture } from '../native/webdriver/attachment-preview.mjs';
 const png = [...PNG.sync.write({ width: 640, height: 320, data: Buffer.alloc(640 * 320 * 4, 180) })];
+const pdf = readFileSync(new URL('../../src-tauri/test-fixtures/preview-sample.pdf', import.meta.url)).toString('base64');
 const original = '  첫 번째 줄\n# 원문 <script>window.previewExecuted=true</script>\n{"값": "한글"}\n  ';
 const source = '\tconst start = "Find.Me";\r\n' + '// 공백 유지\r\n'.repeat(64)
   + 'const end = "find.me"; // ' + 'long line '.repeat(30) + '\r\n  ';
@@ -31,10 +33,12 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
   registerOrdinaryBackdrops({ test, expect, ready });
   async function setup(page, entry = false) {
     await ready(page);
-    await page.evaluate(({ png, gif, original, source }) => {
+    await page.evaluate(({ png, gif, original, source, pdf }) => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'local_file_preview') return invoke(command, args);
+        if (args.path.endsWith('/preview-sample.pdf')) return { kind: 'pdf', path: args.path, base64: pdf };
+        if (args.path.endsWith('/malformed.pdf')) return { kind: 'pdf', path: args.path, base64: btoa('%PDF-1.4\ninvalid') };
         if (args.path.endsWith('.png')) return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...png)) };
         if (args.path.endsWith('.gif')) return { kind: 'image', path: args.path, mime: 'image/gif', base64: btoa(String.fromCharCode(...gif)) };
         if (/\.(txt|md|json)$/.test(args.path) && !args.path.includes('missing')) return { kind: 'text', path: args.path, text: original };
@@ -42,7 +46,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
         if (args.path.endsWith('/.gitignore') || args.path.endsWith('.log')) return { kind: 'text', path: args.path, text: '  # exact\n/dist/\n' };
         return { kind: 'unavailable', path: args.path, reason: 'unsupported' };
       };
-    }, { png, gif: animatedFixture().bytes, original, source });
+    }, { png, gif: animatedFixture().bytes, original, source, pdf });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   }
   for (const entry of [false, true]) {
@@ -91,7 +95,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     });
     test('focused preview ' + label + ' exact original txt md json and retained failures', async ({ page }) => {
       await setup(page, entry);
-      const paths = ['original.txt','original.md','original.json','.gitignore','build.log','missing.txt','unsupported.pdf','folder'];
+      const paths = ['original.txt','original.md','original.json','.gitignore','build.log','missing.txt','unsupported.zip','folder'];
       await drop(page, paths.map(name => '/fixture/' + name));
       const { attachments } = new HubActions(testBrowser(page, expect));
       for (const [index, name] of paths.entries()) {
@@ -110,7 +114,97 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
       }
     });
   }
+  test('focused PDF preview renders, navigates, zooms and releases the local document', async ({ page }, info) => {
+    await setup(page);
+    await page.evaluate(() => {
+      const NativeWorker = window.Worker;
+      window.pdfWorkers = { started: 0, terminated: 0 };
+      window.Worker = class extends NativeWorker {
+        constructor(...args) { super(...args); window.pdfWorkers.started++; }
+        terminate() { super.terminate(); window.pdfWorkers.terminated++; }
+      };
+    });
+    await drop(page, ['/fixture/preview-sample.pdf', '/fixture/malformed.pdf']);
+    const opener = page.getByRole('button', { name: 'Open attachment preview-sample.pdf' });
+    await opener.click();
+    const viewer = page.getByRole('dialog', { name: 'preview-sample.pdf', exact: true });
+    const number = viewer.getByRole('textbox', { name: 'Page number' });
+    const canvas = pageNumber => viewer.locator(`[data-page="${pageNumber}"] canvas[data-rendered]`);
+    await expect(canvas(1)).toBeVisible();
+    await expect(viewer.getByText('of 4')).toBeVisible();
+    await expect(viewer.getByRole('button', { name: 'Previous page' })).toBeDisabled();
+    const first = await canvas(1).boundingBox();
+    expect(first.width / first.height).toBeCloseTo(2 / 3, 2);
+    await expect.poll(() => canvas(1).evaluate(node => [...node.getContext('2d').getImageData(
+      Math.round(node.width / 2), Math.round(node.height * 95 / 720), 1, 1,
+    ).data])).toEqual([33, 79, 166, 255]);
+    await info.attach('pdf-light', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await viewer.getByRole('button', { name: 'Next page' }).click();
+    await expect(number).toHaveValue('2');
+    await viewer.getByRole('button', { name: 'Previous page' }).click();
+    await expect(number).toHaveValue('1');
+    await number.fill('4');
+    await number.press('Enter');
+    await expect(number).toHaveValue('4');
+    await expect(canvas(4)).toBeInViewport({ ratio: .25 });
+    await expect(canvas(1)).toHaveCount(0);
+    await expect(viewer.getByRole('button', { name: 'Next page' })).toBeDisabled();
+    const scroll = viewer.locator('.pdf-scroll');
+    await scroll.evaluate(node => { node.scrollTop = node.querySelectorAll('.pdf-page-slot')[2].offsetTop; });
+    await expect(number).toHaveValue('3');
+    await viewer.getByRole('button', { name: 'Zoom in' }).click();
+    await expect(viewer.getByText('125%')).toBeVisible();
+    await expect.poll(async () => (await canvas(3).boundingBox())?.width ?? 0).toBeGreaterThan(first.width);
+    await viewer.getByRole('button', { name: 'Zoom out' }).click();
+    await expect(viewer.getByText('100%')).toBeVisible();
+    const retainedCanvas = await canvas(3).elementHandle();
+    await viewer.getByRole('button', { name: 'Close' }).click();
+    await expect(opener).toBeFocused();
+    await expect.poll(() => retainedCanvas.evaluate(node => [node.width, node.height])).toEqual([0, 0]);
+    await expect.poll(() => page.evaluate(() => window.pdfWorkers)).toEqual({ started: 1, terminated: 1 });
+    await chooseAppPreference(page, 'view', 'theme', 'black');
+    await page.keyboard.press('Escape');
+    await chooseAppPreference(page, 'settings', 'language', 'ko');
+    await page.keyboard.press('Escape');
+    const koreanOpener = page.getByRole('button', { name: '첨부 파일 preview-sample.pdf 열기' });
+    await koreanOpener.click();
+    await expect(viewer.getByRole('textbox', { name: '페이지 번호' })).toHaveValue('1');
+    await expect(viewer.getByRole('button', { name: '닫기' })).toBeVisible();
+    await expect(canvas(1)).toBeVisible();
+    await expect(viewer).toHaveCSS('background-color', 'rgb(17, 18, 20)');
+    await info.attach('pdf-korean-black', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '첨부 파일 malformed.pdf 열기' }).click();
+    await expect(page.getByRole('dialog', { name: 'malformed.pdf' })).toContainText('첨부는 유지됩니다');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.attachment-chip')).toHaveCount(2);
+  });
+
+  test('closing a loading PDF discards its late native result', async ({ page }) => {
+    await setup(page);
+    await page.evaluate(() => {
+      const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
+      native.invoke = (command, args) => {
+        if (command !== 'local_file_preview' || window.finishStalePdf) return invoke(command, args);
+        return new Promise(resolve => {
+          window.finishStalePdf = () => resolve({ kind: 'unavailable', path: args.path, reason: 'unreadable' });
+        });
+      };
+    });
+    await drop(page, ['/fixture/preview-sample.pdf']);
+    const opener = page.getByRole('button', { name: 'Open attachment preview-sample.pdf' });
+    await opener.click();
+    await expect(page.getByRole('dialog', { name: 'preview-sample.pdf' })).toContainText('Reading original file');
+    await expect.poll(() => page.evaluate(() => typeof window.finishStalePdf)).toBe('function');
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+    await opener.click();
+    await page.evaluate(() => window.finishStalePdf());
+    await expect(page.locator('[data-page="1"] canvas[data-rendered]')).toBeVisible();
+  });
+
   test('focused preview source tools preserve original text across search, wrapping and copying', async ({ page, context }, info) => {
+
     await setup(page);
     await drop(page, ['/fixture/source.ts']);
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -173,9 +267,9 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     expect(Math.abs(right.y-left.y)).toBeLessThan(4);
     await openAppEntry(page, 'help', 'preview');
     const dialog = page.getByRole('dialog', { name: 'File Preview Guide', exact: true }); await expect(dialog).toBeVisible();
-    await expect(dialog.locator('h2')).toHaveText(['Supported images', 'Supported text', 'Unsupported previews', 'Preview limitations']);
+    await expect(dialog.locator('h2')).toHaveText(['Supported images', 'Supported text', 'Supported documents', 'Unsupported previews', 'Preview limitations']);
     const formats = await page.evaluate(async () => (await import('/src/hub/previewCatalog.ts')).previewFormats);
-    for (const [index, category] of ['image', 'text'].entries()) {
+    for (const [index, category] of ['image', 'text', 'pdf'].entries()) {
       const labels = formats.filter(format => format.category === category)
         .flatMap(({ extensions, filenames }) => [...(extensions ?? []).map(ext => '.' + ext), ...(filenames ?? [])]);
       await expect(dialog.locator('.preview-format-tags').nth(index).locator('li')).toHaveText(labels);
@@ -195,6 +289,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     const localized = page.getByRole('dialog', { name: '파일 미리 보기 안내', exact: true });
     await expect(localized).toHaveCSS('background-color', 'rgb(17, 18, 20)');
     await expect(localized.getByText('.gitignore', { exact: true })).toBeVisible();
+    await expect(localized.getByText('.pdf', { exact: true })).toBeVisible();
     await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });

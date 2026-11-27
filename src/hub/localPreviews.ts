@@ -2,8 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { LocalImageResources } from './localImageResources';
 import { previewFormat } from './previewCatalog';
 export type LocalPreview = { kind: 'image'; url: string } | { kind: 'text'; text: string }
+  | { kind: 'pdf'; bytes: Uint8Array<ArrayBuffer> }
   | { kind: 'loading' } | { kind: 'unavailable'; reason: string };
 type NativePreview = { path: string } & ({ kind: 'image'; base64: string; mime: string }
+  | { kind: 'pdf'; base64: string }
   | { kind: 'text'; text: string } | { kind: 'unavailable'; reason: string });
 // One bounded sequential reader per selection avoids competing decoders and large IPC fan-out.
 // Preview bytes have no submission semantics; cancellation invalidates the entry before completion.
@@ -30,6 +32,12 @@ export class LocalPreviews {
           if (format?.category !== 'image' || result.mime !== (format.previewMime ?? format.mime))
             throw new Error('Preview MIME mismatch');
           Object.assign(entry, this.images.acquire(result.base64, result.mime));
+        } else if (result.kind === 'pdf') {
+          if (previewFormat(path)?.category !== 'pdf') throw new Error('Unexpected PDF preview');
+          const binary = atob(result.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+          entry.value = { kind: 'pdf', bytes };
         } else entry.value = result;
       } catch { if (this.entries.get(key) === entry) entry.value = { kind: 'unavailable', reason: 'unreadable' }; }
       finally { if (!this.disposed && this.entries.get(key) === entry) this.changed(); }

@@ -60,11 +60,23 @@ fn selected_originals_and_failures() {
         }
         value => panic!("Unexpected {value:?}"),
     }
+    let pdf_path = root.join("selected.PDF");
+    let original_pdf = b"%PDF-1.7\n%\xff\xff\n";
+    fs::write(&pdf_path, original_pdf).unwrap();
+    match read(pdf_path.to_str().unwrap().into()) {
+        Preview::Pdf { path, base64 } => {
+            assert_eq!(path, pdf_path.to_str().unwrap());
+            assert_eq!(STANDARD.decode(base64).unwrap(), original_pdf);
+            assert_eq!(fs::read(&pdf_path).unwrap(), original_pdf);
+        }
+        value => panic!("Unexpected {value:?}"),
+    }
     for (name, bytes, reason) in [("bad.png", vec![1,2,3], "decoding"),
         ("binary.txt", vec![0,1], "decoding"), ("encoding.rs", vec![0xff], "decoding"),
         ("large.jsonl", vec![b'a'; MAX_TEXT_BYTES+1], "oversize"),
-        ("large.png", vec![0; MAX_FILE_BYTES+1], "oversize"), ("other.pdf", vec![], "unsupported"),
-        (".json", vec![], "unsupported"), ("Dockerfile.pdf", vec![], "unsupported")] {
+        ("large.png", vec![0; MAX_FILE_BYTES+1], "oversize"), ("bad.pdf", vec![], "decoding"),
+        ("large.pdf", vec![0; pdf::MAX_PDF_BYTES+1], "oversize"),
+        (".json", vec![], "unsupported"), ("archive.zip", vec![], "unsupported")] {
         let path = root.join(name); fs::write(&path, bytes).unwrap();
         match read(path.to_str().unwrap().into()) {
             Preview::Unavailable { reason: actual, .. } => assert_eq!(actual, reason),

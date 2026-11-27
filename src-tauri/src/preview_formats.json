@@ -6,6 +6,7 @@
   {"category":"image","extensions":["ico"],"mime":"image/x-icon","previewMime":"image/png"},
   {"category":"image","extensions":["gif"],"mime":"image/gif"},
   {"category":"image","extensions":["svg"],"mime":"image/svg+xml","previewMime":"image/png"},
+  {"category":"pdf","extensions":["pdf"],"mime":"application/pdf"},
   {"category":"text","extensions":["txt","csv","tsv","log"]},
   {"category":"text","extensions":["md"],"syntax":"markdown"},
   {"category":"text","extensions":["json","jsonl"],"syntax":"json"},

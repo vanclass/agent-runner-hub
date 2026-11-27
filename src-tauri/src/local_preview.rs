@@ -5,10 +5,12 @@ use serde::{Deserialize, Serialize};
 
 #[path = "local_image.rs"]
 mod image;
+#[path = "local_pdf.rs"]
+mod pdf;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-enum Category { Image, Text }
+enum Category { Image, Text, Pdf }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +46,7 @@ const MAX_TEXT_BYTES: usize = 1024 * 1024;
 pub enum Preview {
     Image { path: String, base64: String, mime: &'static str },
     Text { path: String, text: String },
+    Pdf { path: String, base64: String },
     Unavailable { path: String, reason: &'static str },
 }
 
@@ -59,6 +62,7 @@ fn content(path: &str) -> Result<Preview, &'static str> {
     match format.category {
         Category::Image => read_image(path, format),
         Category::Text => read_text(path),
+        Category::Pdf => pdf::read(path),
     }
 }
 
