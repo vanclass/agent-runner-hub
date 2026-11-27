@@ -1,11 +1,13 @@
 import catalog from '../../src-tauri/src/preview_formats.json';
 
 export type PreviewCategory = 'image' | 'text' | 'pdf' | 'archive';
+export type StructuredTextMode = 'json' | 'records';
 type PreviewFormat = {
   category: PreviewCategory;
   extensions?: readonly string[];
   filenames?: readonly string[];
   syntax?: string;
+  structuredMode?: StructuredTextMode;
   mime?: string;
   previewMime?: string;
 };

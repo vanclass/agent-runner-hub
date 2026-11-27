@@ -10,6 +10,10 @@ const pdf = readFileSync(new URL('../../src-tauri/test-fixtures/preview-sample.p
 const original = '  첫 번째 줄\n# 원문 <script>window.previewExecuted=true</script>\n{"값": "한글"}\n  ';
 const source = '\tconst start = "Find.Me";\r\n' + '// 공백 유지\r\n'.repeat(64)
   + 'const end = "find.me"; // ' + 'long line '.repeat(30) + '\r\n  ';
+const json = '\uFEFF {\r\n  "9": 900719925474099312345, "2": 1.234567890123456789e+400,\r\n'
+  + '  "9": -0, "nested": {"values": [true, null, "한글", {}, []]}\r\n}\t\r\n';
+const records = '{"id":900719925474099312345,"data":[false]}\r\n{"bad":}\n\n'
+  + '"a\\nb"\rnull\n' + '0\n'.repeat(100) + '{"last":true}\n';
 
 export async function imageGestures(page, expect, width = 640) {
   const viewport = page.locator('.focused-image-viewport'), image = viewport.locator('img');
@@ -31,9 +35,19 @@ export async function imageGestures(page, expect, width = 640) {
 
 export function registerPreviewViews({ test, expect, ready, drop }) {
   registerOrdinaryBackdrops({ test, expect, ready });
+  async function captureClipboardInput(page) {
+    await page.evaluate(() => {
+      const clipboard = navigator.clipboard;
+      const write = clipboard.writeText.bind(clipboard);
+      clipboard.writeText = text => {
+        window.previewClipboardInput = text;
+        return write(text);
+      };
+    });
+  }
   async function setup(page, entry = false) {
     await ready(page);
-    await page.evaluate(({ png, gif, original, source, pdf }) => {
+    await page.evaluate(({ png, gif, original, source, pdf, json, records }) => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'local_file_preview') return invoke(command, args);
@@ -49,12 +63,17 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
         if (args.path.endsWith('/malformed.zip')) return { kind: 'unavailable', path: args.path, reason: 'decoding' };
         if (args.path.endsWith('.png')) return { kind: 'image', path: args.path, mime: 'image/png', base64: btoa(String.fromCharCode(...png)) };
         if (args.path.endsWith('.gif')) return { kind: 'image', path: args.path, mime: 'image/gif', base64: btoa(String.fromCharCode(...gif)) };
+        if (args.path.endsWith('/structured.JSON')) {
+          window.structuredPreviewReads = (window.structuredPreviewReads ?? 0) + 1;
+          return { kind: 'text', path: args.path, text: json };
+        }
+        if (args.path.endsWith('/records.jsonl')) return { kind: 'text', path: args.path, text: records };
         if (/\.(txt|md|json)$/.test(args.path) && !args.path.includes('missing')) return { kind: 'text', path: args.path, text: original };
         if (args.path.endsWith('.ts')) return { kind: 'text', path: args.path, text: source };
         if (args.path.endsWith('/.gitignore') || args.path.endsWith('.log')) return { kind: 'text', path: args.path, text: '  # exact\n/dist/\n' };
         return { kind: 'unavailable', path: args.path, reason: 'unsupported' };
       };
-    }, { png, gif: animatedFixture().bytes, original, source, pdf });
+    }, { png, gif: animatedFixture().bytes, original, source, pdf, json, records });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   }
   async function verifyLocalizedArchive(page, expect, info, viewer) {
@@ -294,6 +313,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     const viewer = page.getByRole('dialog', { name: 'source.ts' });
     const text = viewer.locator('.focused-text');
     await expect(text).toHaveJSProperty('textContent', source);
+    await expect(viewer.getByRole('group', { name: 'Preview mode' })).toHaveCount(0);
     await expect(text.locator('.preview-token-keyword').first()).toHaveText('const');
     await expect(text.locator('.preview-line')).toHaveCount(67);
     const gutter = await text.locator('.preview-line').first().evaluate(node => getComputedStyle(node, '::before').content);
@@ -340,6 +360,139 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await viewer.getByRole('searchbox').press('Escape');
     await expect(viewer).toHaveCount(0);
   });
+  test('structured preview parser preserves lexemes and rejects invalid JSON grammar', async ({ page }) => {
+    await ready(page);
+    const result = await page.evaluate(async () => {
+      const { parsePreviewJson: parse } = await import('/src/hub/previewJson.ts');
+      return {
+        keys: parse(String.raw`{"9":null,"2":true,"\u0039":false}`).entries.map(entry => entry.key),
+        tokens: parse(String.raw`[-0,1.234567890123456789e+400,900719925474099312345,"a\n\u0041",{},[]]`).items,
+        rejected: ['', '[1,]', '{"x":1,}', '{"a" 1}', '[01]', '1e+', 'null true', '"\t"', '"\\x"', '\u00a0true']
+          .every(input => parse(input) === undefined),
+        deep: parse('['.repeat(12000) + '0' + ']'.repeat(12000))?.kind,
+      };
+    });
+    expect(result).toEqual({
+      keys: ['"9"', '"2"', '"\\u0039"'],
+      tokens: [
+        ...['-0', '1.234567890123456789e+400', '900719925474099312345'].map(token => ({ kind: 'number', token })),
+        { kind: 'string', token: '"a\\n\\u0041"' },
+        { kind: 'object', entries: [] }, { kind: 'array', items: [] },
+      ],
+      rejected: true, deep: 'array',
+    });
+  });
+
+  test('structured preview JSON switches in place and preserves the exact original', async ({ page, context }, info) => {
+    await setup(page);
+    await drop(page, ['/fixture/structured.JSON', '/fixture/original.json']);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await captureClipboardInput(page);
+    const opener = page.getByRole('button', { name: 'Open attachment structured.JSON' });
+    const dialog = page.getByRole('dialog', { name: 'structured.JSON', exact: true });
+    await opener.click();
+    const raw = dialog.getByRole('button', { name: 'Raw View' });
+    const structured = dialog.getByRole('button', { name: 'JSON View' });
+    const text = dialog.locator('.focused-text');
+    await expect(raw).toHaveAttribute('aria-pressed', 'true');
+    await expect(text).toHaveJSProperty('textContent', json);
+    await expect(text.locator('.preview-token-literal').first()).toBeVisible();
+    await expect(text.locator('.preview-line')).toHaveCount(5);
+    const search = dialog.getByRole('searchbox'), wrap = dialog.getByRole('button', { name: 'Word wrap' });
+    await search.fill('"9"');
+    await search.press('Enter');
+    await wrap.click();
+    await structured.click();
+    await expect(structured).toHaveAttribute('aria-pressed', 'true');
+    await expect(search).toHaveCount(0);
+    await expect(wrap).toHaveCount(0);
+    await expect(text).toBeHidden();
+    const tree = dialog.getByRole('region', { name: 'JSON View' });
+    await expect(tree.locator('.preview-json-key')).toHaveText(['"9"', '"2"', '"9"', '"nested"']);
+    await expect(tree.locator('.preview-json-number')).toHaveText(['900719925474099312345', '1.234567890123456789e+400', '-0']);
+    const nested = tree.getByRole('button', { name: /"nested"/ });
+    await nested.click();
+    const values = tree.getByRole('button', { name: /"values"/ });
+    await values.click();
+    await expect(tree.locator('.preview-json-boolean')).toHaveText('true');
+    await expect(tree.locator('.preview-json-null')).toHaveText('null');
+    await expect(tree.locator('.preview-json-string')).toHaveText('"한글"');
+    await expect(tree.getByText('{} (0)')).toBeVisible();
+    await expect(tree.getByText('[] (0)')).toBeVisible();
+    await info.attach('structured-json-light', { body: await dialog.screenshot(), contentType: 'image/png' });
+    await nested.click();
+    await expect(values).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Copy text' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(json);
+    await raw.click();
+    await expect(text).toBeVisible();
+    await expect(search).toHaveValue('"9"');
+    await expect(dialog.getByRole('status').filter({ hasText: '2 of 2' })).toBeVisible();
+    await expect(wrap).toHaveAttribute('aria-pressed', 'false');
+    await dialog.getByRole('button', { name: 'Previous match' }).click();
+    await expect(dialog.getByRole('status').filter({ hasText: '1 of 2' })).toBeVisible();
+    expect(await page.evaluate(() => window.structuredPreviewReads)).toBe(1);
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(opener).toBeFocused();
+    await opener.click();
+    await expect(raw).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Escape');
+
+    const malformed = page.getByRole('button', { name: 'Open attachment original.json' });
+    await malformed.click();
+    const invalid = page.getByRole('dialog', { name: 'original.json', exact: true });
+    await invalid.getByRole('button', { name: 'JSON View' }).click();
+    await expect(invalid.getByRole('status')).toHaveText('Invalid JSON. Open Raw View to see the original text.');
+    await invalid.getByRole('button', { name: 'Copy text' }).click();
+    await expect(invalid.getByText('Original text copied')).toBeVisible();
+    expect(await page.evaluate(() => window.previewClipboardInput)).toBe(original);
+    await invalid.getByRole('button', { name: 'Raw View' }).click();
+    await expect(invalid.locator('.focused-text')).toHaveJSProperty('textContent', original);
+    await page.keyboard.press('Escape');
+    await expect(malformed).toBeFocused();
+  });
+
+  test('structured preview JSONL keeps record boundaries and line numbers in Black theme', async ({ page, context }, info) => {
+    await setup(page, true);
+    await chooseAppPreference(page, 'view', 'theme', 'black');
+    await page.keyboard.press('Escape');
+    await chooseAppPreference(page, 'settings', 'language', 'ko');
+    await page.keyboard.press('Escape');
+    await drop(page, ['/fixture/records.jsonl']);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await captureClipboardInput(page);
+    const opener = page.getByRole('button', { name: '첨부 파일 records.jsonl 열기' });
+    await opener.click();
+    const dialog = page.getByRole('dialog', { name: 'records.jsonl', exact: true });
+    await expect(dialog.getByRole('button', { name: '원본 보기' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog.getByRole('button', { name: 'JSON 보기', exact: true })).toHaveCount(0);
+    await dialog.getByRole('button', { name: '레코드 보기' }).click();
+    const list = dialog.getByRole('region', { name: '레코드 보기' });
+    await expect(list).toHaveCSS('background-color', 'rgb(21, 22, 25)');
+    const rows = list.locator('.preview-json-record');
+    await expect(rows).toHaveCount(100);
+    await expect(rows.nth(1)).toHaveText('2행올바른 JSON 레코드가 아닙니다.');
+    await expect(rows.nth(2)).toHaveText('3행올바른 JSON 레코드가 아닙니다.');
+    await expect(rows.nth(3).locator('.preview-json-string')).toHaveText('"a\\nb"');
+    await expect(rows.nth(4)).toHaveText('5행null');
+    await rows.first().getByRole('button', { name: /\{\}/ }).click();
+    await expect(rows.first().locator('.preview-json-number')).toHaveText('900719925474099312345');
+    await rows.first().getByRole('button', { name: /"data"/ }).click();
+    await expect(rows.first().getByText('0', { exact: true })).toBeVisible();
+    await expect(rows.first().locator('.preview-json-boolean')).toHaveText('false');
+    await info.attach('structured-jsonl-korean-black', { body: await dialog.screenshot(), contentType: 'image/png' });
+    await list.getByRole('button', { name: '6개 더 보기' }).click();
+    await expect(rows.last()).toContainText('106행');
+    await expect.poll(() => list.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    await dialog.getByRole('button', { name: '텍스트 복사' }).click();
+    await expect(dialog.getByText('원본 텍스트를 복사했습니다')).toBeVisible();
+    expect(await page.evaluate(() => window.previewClipboardInput)).toBe(records);
+    await dialog.getByRole('button', { name: '원본 보기' }).click();
+    await expect(dialog.locator('.focused-text')).toHaveJSProperty('textContent', records);
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+  });
+
   test('preview guide follows Settings and shares truthful catalog domains', async ({ page }, info) => {
     await ready(page);
     const settings = appTrigger(page, 'settings'), help = appTrigger(page, 'help');
@@ -360,6 +513,8 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(dialog).toContainText('ZIP previews list files, folders, and original file sizes');
     await expect(dialog).toContainText('Attachment eligibility is separate');
     await expect(dialog).toContainText('UTF-8');
+    await expect(dialog).toContainText('Switch to JSON View');
+    await expect(dialog).toContainText('Record View');
     await expect(dialog).toContainText('GIFs animate in thumbnails and in the focused viewer');
     await expect(dialog).toContainText('without scripts');
     await info.attach('catalog-help', { body: await page.screenshot(), contentType: 'image/png' });
@@ -375,6 +530,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(localized.getByText('.pdf', { exact: true })).toBeVisible();
     await expect(localized.getByText('.zip', { exact: true })).toBeVisible();
     await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
+    await expect(localized).toContainText('레코드 보기');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });
 }

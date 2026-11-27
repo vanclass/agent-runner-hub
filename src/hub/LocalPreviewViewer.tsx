@@ -15,6 +15,7 @@ export function LocalPreviewViewer({ name, content, onDismiss }: {
   name?: string; content: LocalPreview; onDismiss: () => void;
 }) {
   const text = content.kind === 'text';
+  const format = text && name ? previewFormat(name) : undefined;
   const pdf = content.kind === 'pdf';
   const archive = content.kind === 'archive';
   return <FocusedViewer name={name} showTitle={!text && !pdf && !archive} onDismiss={onDismiss}
@@ -23,7 +24,7 @@ export function LocalPreviewViewer({ name, content, onDismiss }: {
     {content.kind === 'image' && <ImageViewport key={content.url} url={content.url}
       name={name || t('images.verifiedEnlarged')} />}
     {content.kind === 'text' && <TextPreview name={name ?? ''} text={content.text}
-      syntax={name && previewFormat(name)?.syntax} onDismiss={onDismiss} />}
+      syntax={format?.syntax} structuredMode={format?.structuredMode} onDismiss={onDismiss} />}
     {content.kind === 'pdf' && <Suspense fallback={<PreviewStatus />}>
       <PdfPreview name={name ?? ''} bytes={content.bytes} onDismiss={onDismiss}
         loading={<PreviewStatus />} unavailable={<PreviewStatus unavailable />} />

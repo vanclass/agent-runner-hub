@@ -31,9 +31,13 @@ for (const file of imageFiles) {
   await fs.copyFile(path.join(root, 'src-tauri/test-fixtures/preview-images', name), file);
 }
 const original = '첫 줄\n  둘째 줄\t{"value":42}\n';
-const files = ['original.txt','original.md','original.json','original.ts','Dockerfile','.gitignore']
+const jsonOriginals = new Map([
+  ['original.json', '\uFEFF {"value":900719925474099312345,"value":-0}\r\n'],
+  ['original.jsonl', '{"first":true}\r\n{"bad":}\r\n[null]\r\n'],
+]);
+const files = ['original.txt','original.md',...jsonOriginals.keys(),'original.ts','Dockerfile','.gitignore']
   .map(name => path.join(directory, name));
-for (const file of files) await fs.writeFile(file, original, 'utf8');
+for (const file of files) await fs.writeFile(file, jsonOriginals.get(path.basename(file)) ?? original, 'utf8');
 after(async () => {
   for (const file of [image, brokenPdf, brokenZip, ...imageFiles, ...files]) await fs.unlink(file);
   await fs.rmdir(directory);
@@ -127,8 +131,29 @@ const preview = defineNativeCase({
     for (const [index, file] of files.entries()) {
       await attachments.openPreview(surface, index + 1);
       await hub.wait(async () => (await viewer.state())?.text != null, 'Local text preview did not load');
-      assert.equal((await viewer.state()).text, original);
-      texts.push({ name: path.basename(file), original: true });
+      const name = path.basename(file);
+      const expected = jsonOriginals.get(name) ?? original;
+      assert.equal((await viewer.state()).text, expected);
+      const modes = '.focused-viewer[open] .preview-text-modes';
+      if (jsonOriginals.has(name)) {
+        await hub.dom.click(modes + ' button:last-child');
+        const values = await browser.execute(() => {
+          const content = document.querySelector('.focused-viewer[open] .preview-json');
+          return {
+            numbers: [...content.querySelectorAll('.preview-json-number')].map(node => node.textContent),
+            lines: [...content.querySelectorAll('.preview-json-line')].map(node => node.textContent),
+            errors: content.querySelectorAll('.preview-json-error').length
+          };
+        });
+        assert.deepEqual(values, name === 'original.json'
+          ? { numbers: ['900719925474099312345', '-0'], lines: [], errors: 0 }
+          : { numbers: [], lines: ['Line 1', 'Line 2', 'Line 3'], errors: 1 });
+        await hub.dom.click(modes + ' button:first-child');
+        assert.equal((await viewer.state()).text, expected);
+      } else {
+        assert.equal(await browser.execute(selector => Boolean(document.querySelector(selector)), modes), false);
+      }
+      texts.push({ name, original: true, structured: jsonOriginals.has(name) });
       await viewer.close();
       await hub.wait(async () => !await viewer.state(), 'Local text preview did not close');
     }
