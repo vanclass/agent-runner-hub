@@ -3,6 +3,7 @@ import { t } from './i18n';
 import { RawTextPreview } from './RawTextPreview';
 import { JsonPreview, JsonlPreview } from './StructuredTextPreview';
 import { MarkdownPreview } from './MarkdownPreview';
+import { DelimitedTextPreview } from './DelimitedTextPreview';
 import type { StructuredTextMode } from './previewCatalog';
 import './textPreview.css';
 
@@ -10,6 +11,10 @@ const structuredViews = {
   json: { label: 'preview.jsonView', View: JsonPreview },
   records: { label: 'preview.recordView', View: JsonlPreview },
   markdown: { label: 'preview.markdownView', View: MarkdownPreview },
+  csv: { label: 'preview.tableView', View: ({ text }: { text: string }) =>
+    <DelimitedTextPreview text={text} delimiter="," /> },
+  tsv: { label: 'preview.tableView', View: ({ text }: { text: string }) =>
+    <DelimitedTextPreview text={text} delimiter={'\t'} /> },
 } as const;
 
 export function TextPreview({ name, text, syntax, structuredMode, onDismiss }: {

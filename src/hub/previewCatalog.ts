@@ -1,7 +1,7 @@
 import catalog from '../../src-tauri/src/preview_formats.json';
 
 export type PreviewCategory = 'image' | 'text' | 'pdf' | 'archive';
-export type StructuredTextMode = 'json' | 'records' | 'markdown';
+export type StructuredTextMode = 'json' | 'records' | 'markdown' | 'csv' | 'tsv';
 type PreviewFormat = {
   category: PreviewCategory;
   extensions?: readonly string[];

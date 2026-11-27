@@ -1,5 +1,15 @@
 {
   "preview": {
+    "tableView": "Table View",
+    "tableEmpty": "No rows to display.",
+    "tableInvalid": "This file could not be shown as a table. Switch to Raw View to see the complete source.",
+    "tablePreviousRows": "Previous rows",
+    "tableNextRows": "Next rows",
+    "tablePreviousColumns": "Previous columns",
+    "tableNextColumns": "Next columns",
+    "tableRowRange": "Rows {{start}}–{{end}} of {{total}}",
+    "tableColumnRange": "Columns {{start}}–{{end}} ({{total}} total)",
+    "tableGuide": "Choose Table View for read-only .csv and .tsv previews. Row numbers and column letters identify cells, and the first row is shown as data. Switch back to Raw View to see the complete source.",
     "focus": "Image preview",
     "find": "Find in file",
     "match": "{{current}} of {{total}}",

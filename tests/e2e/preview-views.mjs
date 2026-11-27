@@ -17,6 +17,10 @@ const json = '\uFEFF {\r\n  "9": 900719925474099312345, "2": 1.23456789012345678
   + '  "9": -0, "nested": {"values": [true, null, "한글", {}, []]}\r\n}\t\r\n';
 const records = '{"id":900719925474099312345,"data":[false]}\r\n{"bad":}\n\n'
   + '"a\\nb"\rnull\n' + '0\n'.repeat(100) + '{"last":true}\n';
+const csv = '\uFEFF0007,"two,items","said ""hello""","line\r\nbreak",,900719925474099312345,  padded  ,\r\n'
+  + '=1+2,<b>literal</b>\n' + 'short\r'.repeat(98) + ','.repeat(26) + 'last,';
+const tsv = '0008\t"two\titems"\t"say ""hi"""\t"line\nbreak"\t\t  padded  \t\rnext\tvalue';
+const malformedCsv = 'first,row\r\n"unterminated,field';
 
 export async function imageGestures(page, expect, width = 640) {
   const viewport = page.locator('.focused-image-viewport'), image = viewport.locator('img');
@@ -50,10 +54,15 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
   }
   async function setup(page, entry = false) {
     await ready(page);
-    await page.evaluate(({ png, gif, original, source, pdf, json, records, markdown }) => {
+    await page.evaluate(({ png, gif, original, source, pdf, json, records, markdown, tables }) => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'local_file_preview') return invoke(command, args);
+        const table = tables[args.path];
+        if (table !== undefined) {
+          window.tablePreviewReads = (window.tablePreviewReads ?? 0) + 1;
+          return { kind: 'text', path: args.path, text: table };
+        }
         if (args.path.endsWith('/preview-sample.pdf')) return { kind: 'pdf', path: args.path, base64: pdf };
         if (args.path.endsWith('/malformed.pdf')) return { kind: 'pdf', path: args.path, base64: btoa('%PDF-1.4\ninvalid') };
         if (args.path.endsWith('/listing.ZIP')) return { kind: 'archive', path: args.path, entries: [
@@ -81,7 +90,8 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
         if (args.path.endsWith('/.gitignore') || args.path.endsWith('.log')) return { kind: 'text', path: args.path, text: '  # exact\n/dist/\n' };
         return { kind: 'unavailable', path: args.path, reason: 'unsupported' };
       };
-    }, { png, gif: animatedFixture().bytes, original, source, pdf, json, records, markdown });
+    }, { png, gif: animatedFixture().bytes, original, source, pdf, json, records, markdown,
+      tables: { '/fixture/data.CSV': csv, '/fixture/data.tsv': tsv, '/fixture/malformed.csv': malformedCsv } });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   }
   async function verifyLocalizedArchive(page, expect, info, viewer) {
@@ -103,6 +113,29 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await page.keyboard.press('Escape');
     await expect(malformed).toBeFocused();
     await expect(page.locator('.attachment-chip')).toHaveCount(2);
+  }
+  async function verifyTablePaging(page, expect, viewer, table, info) {
+    const region = viewer.getByRole('region', { name: 'Table View' });
+    expect(await region.evaluate(node => {
+      const dialog = node.closest('dialog').getBoundingClientRect();
+      const bounds = node.getBoundingClientRect();
+      node.scrollTo(node.scrollWidth, node.scrollHeight);
+      const cell = node.querySelector('td');
+      const heading = node.querySelectorAll('thead th')[1];
+      return bounds.right <= dialog.right && bounds.bottom <= dialog.bottom
+        && node.scrollLeft > 0 && node.scrollTop > 0
+        && cell.getBoundingClientRect().left === heading.getBoundingClientRect().left
+        && getComputedStyle(cell).borderRightStyle === 'solid';
+    })).toBe(true);
+    await region.evaluate(node => node.scrollTo(0, 0));
+    await info.attach('csv-light', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await expect(table.locator('tbody tr')).toHaveCount(100);
+    await expect(table.getByRole('columnheader', { name: 'A', exact: true })).toBeVisible();
+    await viewer.getByRole('button', { name: 'Next rows' }).click();
+    await viewer.getByRole('button', { name: 'Next columns' }).click();
+    await expect(table.getByRole('columnheader', { name: 'AA', exact: true })).toBeVisible();
+    await expect(table.getByRole('rowheader')).toHaveText('101');
+    expect(await table.locator('td').allTextContents()).toEqual(['', '', 'last', '']);
   }
   for (const entry of [false, true]) {
     const label = entry ? 'Single Entry' : 'Runner';
@@ -603,6 +636,67 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(dialog.locator('.focused-text')).toHaveJSProperty('textContent', 'x'.repeat(300_000) + '\nLast line  ');
   });
 
+  test('Table View preserves CSV cells and pages wide and tall attachments', async ({ page, context }, info) => {
+    await setup(page);
+    await drop(page, ['/fixture/data.CSV']);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await captureClipboardInput(page);
+    const opener = page.getByRole('button', { name: 'Open attachment data.CSV' });
+    await opener.click();
+    const viewer = page.getByRole('dialog', { name: 'data.CSV' });
+    const raw = viewer.getByRole('button', { name: 'Raw View' });
+    const table = viewer.getByRole('table', { name: 'Table View' });
+    await expect(raw).toHaveAttribute('aria-pressed', 'true');
+    await expect(viewer.locator('table')).toHaveCount(0);
+    await viewer.getByRole('searchbox').fill('0007');
+    await viewer.getByRole('button', { name: 'Word wrap' }).click();
+    await viewer.getByRole('button', { name: 'Table View' }).click();
+    expect((await table.locator('tbody tr').first().locator('td').allTextContents()).slice(0, 8)).toEqual(
+      ['0007', 'two,items', 'said "hello"', 'line\r\nbreak', '', '900719925474099312345', '  padded  ', '']);
+    expect((await table.locator('tbody tr').nth(1).locator('td').allTextContents()).slice(0, 2))
+      .toEqual(['=1+2', '<b>literal</b>']);
+    await expect(table.locator('b')).toHaveCount(0);
+    await verifyTablePaging(page, expect, viewer, table, info);
+    await viewer.getByRole('button', { name: 'Copy text' }).click();
+    expect(await page.evaluate(() => window.previewClipboardInput)).toBe(csv);
+    await raw.click();
+    await expect(viewer.locator('.focused-text')).toHaveJSProperty('textContent', csv);
+    await expect(viewer.getByRole('searchbox')).toHaveValue('0007');
+    await expect(viewer.getByRole('button', { name: 'Word wrap' })).toHaveAttribute('aria-pressed', 'false');
+    await viewer.getByRole('button', { name: 'Table View' }).click();
+    await expect(table.getByRole('cell', { name: 'last' })).toBeVisible();
+    expect(await page.evaluate(() => window.tablePreviewReads)).toBe(1);
+    await viewer.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(opener).toBeFocused();
+  });
+
+  test('Table View shows TSV cells and malformed CSV feedback in Korean Black', async ({ page }, info) => {
+    await setup(page, true);
+    await drop(page, ['/fixture/data.tsv', '/fixture/malformed.csv']);
+    await chooseAppPreference(page, 'view', 'theme', 'black');
+    await page.keyboard.press('Escape');
+    await chooseAppPreference(page, 'settings', 'language', 'ko');
+    await page.keyboard.press('Escape');
+    const opener = page.getByRole('button', { name: '첨부 파일 data.tsv 열기' });
+    await opener.click();
+    const viewer = page.getByRole('dialog', { name: 'data.tsv' });
+    await expect(viewer.getByRole('button', { name: '원본 보기' })).toHaveAttribute('aria-pressed', 'true');
+    await viewer.getByRole('button', { name: '테이블 보기' }).click();
+    const table = viewer.getByRole('table', { name: '테이블 보기' });
+    expect(await table.locator('td').allTextContents()).toEqual(
+      ['0008', 'two\titems', 'say "hi"', 'line\nbreak', '', '  padded  ', '', 'next', 'value', '', '', '', '', '']);
+    await expect(viewer).toHaveCSS('background-color', 'rgb(17, 18, 20)');
+    await info.attach('tsv-korean-black', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+    await page.getByRole('button', { name: '첨부 파일 malformed.csv 열기' }).click();
+    const bad = page.getByRole('dialog', { name: 'malformed.csv' });
+    await bad.getByRole('button', { name: '테이블 보기' }).click();
+    await expect(bad.getByRole('status')).toContainText('이 파일을 테이블로 표시할 수 없습니다.');
+    await bad.getByRole('button', { name: '원본 보기' }).click();
+    await expect(bad.locator('.focused-text')).toHaveJSProperty('textContent', malformedCsv);
+  });
+
   test('preview guide follows Settings and shares truthful catalog domains', async ({ page }, info) => {
     await ready(page);
     const settings = appTrigger(page, 'settings'), help = appTrigger(page, 'help');
@@ -626,6 +720,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(dialog).toContainText('Switch to MD View for read-only Markdown');
     await expect(dialog).toContainText('JSON View');
     await expect(dialog).toContainText('Record View');
+    await expect(dialog).toContainText('Choose Table View for read-only .csv and .tsv previews.');
     await expect(dialog).toContainText('GIFs animate in thumbnails and in the focused viewer');
     await expect(dialog).toContainText('without scripts');
     await info.attach('catalog-help', { body: await page.screenshot(), contentType: 'image/png' });
@@ -642,6 +737,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(localized.getByText('.zip', { exact: true })).toBeVisible();
     await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
     await expect(localized).toContainText('레코드 보기');
+    await expect(localized).toContainText('.csv 및 .tsv 파일은 테이블 보기에서 읽기 전용으로 확인할 수 있습니다.');
     await expect(localized).toContainText('MD 보기에서 읽기 전용으로 표시');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });
