@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
-import { changeValue, readyInstalledHub, ownedConnection, visibleConnection, correlated } from './runner-flow.mjs';
+import { readyInstalledHub, ownedConnection, visibleConnection, correlated } from './runner-flow.mjs';
+import { HubActions } from './hub-actions.mjs';
 
 const input = 'textarea[data-instruction]';
 const png = [...PNG.sync.write({width: 1, height: 1, data: Buffer.from([31,87,201,255])})];
@@ -67,56 +68,32 @@ export function singleEntryIssueCase(runnerRoot, project, brief) {
       return readyInstalledHub(browser, runnerRoot);
     },
     async run(browser) {
-      const route = '.task-panel .execution-settings select';
+      const hub = new HubActions(browser);
       const body = (brief ? 'Brief' : 'Work') + ' Windows acceptance ' + randomUUID() + '. Describe the attached one-pixel image in one sentence. Make no file, code, repository, or setting changes. Do not use tools. Ask me to confirm before any implementation. Do not publish or modify anything.';
       const initial = await ownedConnection(browser, runnerRoot);
-      const accountSelect = '.task-panel .account-settings select';
       let account;
       await wait(browser, async () => {
-        account = await browser.execute(({ input, accountSelect }) => {
+        account = await browser.execute(input => {
           const element = document.querySelector(input);
           let fiber = element?.[Object.keys(element).find(key => key.startsWith('__reactFiber$'))];
           for (; fiber && !fiber.memoizedProps?.entry; fiber = fiber.return) {}
-          const current = fiber?.memoizedProps.entry.catalog?.inspection.current.account;
-          if (!current) return null;
-          const value = JSON.stringify(current);
-          const select = document.querySelector(accountSelect);
-          return select && !select.disabled && [...select.options].some(o => o.value === value && !o.disabled) ? value : null;
-        }, { input, accountSelect });
+          return fiber?.memoizedProps.entry.catalog?.inspection.current.account ?? null;
+        }, input);
         return !!account;
       }, 'Verified current startup account is unavailable to Single Entry');
-      const accountSelected = await browser.execute(({ account, accountSelect }) => {
-        const select = document.querySelector(accountSelect);
-        return select.value === account;
-      }, { account, accountSelect });
-      if (!accountSelected) await changeValue(browser, accountSelect, account);
+      await hub.selectProviderAccount(account.agent_id, account);
       const supports = initial.snapshot.features;
       if (brief ? !supports.run?.operations?.includes('run.status') || !supports.brief?.operations?.includes('brief.stage')
         : !supports.work?.operations?.includes('work.submit')) {
         // IssueRun-specific capabilities can appear after configuration. Check again at the destination.
         console.log('Startup mode gates feature capability:', initial.snapshot.observation.run_mode);
       }
-      await wait(browser, () => browser.execute(selector => {
-        const select = document.querySelector(selector);
-        return select && !select.disabled && [...select.options].some(o => o.value === '"issue-run"' && !o.disabled);
-      }, route), 'IssueRun mode unavailable to Single Entry').catch(error => { throw new BlockedPrerequisite(error.message); });
-      await changeValue(browser, route, '"issue-run"');
-      const targetSelect = '.task-panel .execution-settings label:nth-of-type(2) select';
-      const requestedTarget = await browser.execute(project => {
-        const selects = [...document.querySelectorAll('.task-panel .execution-settings select')];
-        return [...(selects[1]?.options ?? [])].find(option => {
-          if (option.disabled || !option.value) return false;
-          const value = JSON.parse(option.value);
-          return value.binding_state === 'bound' && value.owner === 'Project' && value.project === project;
-        })?.value ?? null;
-      }, project);
-      if (requestedTarget === null) throw new BlockedPrerequisite('Exact IssueRun probe target was absent from the startup Runner catalog');
-      await changeValue(browser, targetSelect, requestedTarget);
-      await wait(browser, () => browser.execute(selector => {
-        const element = document.querySelector(selector);
-        return element && !element.disabled && !element.readOnly;
-      }, input), 'Single Entry editor unavailable');
-      await changeValue(browser, input, body);
+      await hub.edit('mode', 'issue-run').catch(error => { throw new BlockedPrerequisite(error.message); });
+      const requestedTarget = (await hub.field('target'))?.options.find(({ value, disabled }) =>
+        !disabled && value?.binding_state === 'bound' && value.owner === 'Project' && value.project === project)?.value;
+      if (!requestedTarget) throw new BlockedPrerequisite('Exact IssueRun probe target was absent from the startup Runner catalog');
+      await hub.edit('target', requestedTarget);
+      await hub.draft('single-entry', body);
       await browser.execute(({ input, png }) => {
         const element = document.querySelector(input);
         const clipboard = new DataTransfer();
@@ -185,10 +162,8 @@ export function singleEntryIssueCase(runnerRoot, project, brief) {
             if (active && !trace.session) trace.session = active.session;
           }});
         }
-        element.focus();
-        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', ctrlKey: brief,
-          bubbles: true, cancelable: true }));
       }, { input, brief });
+      await hub.submit('single-entry', { brief });
       const connection = await visibleConnection(browser, runnerRoot);
       const readEntry = () => browser.execute(() => {
         const trace = window.__entryProbe;

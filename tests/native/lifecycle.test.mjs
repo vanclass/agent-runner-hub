@@ -77,6 +77,16 @@ test('background mode never shows a native window', async () => {
   assert.ok(!f.calls.includes('capture'));
 });
 
+test('a background case fails if its Hub becomes visible during actions', async () => {
+  const f = fixture();
+  const result = await executeCase({ ...spec('visible', f.calls),
+    async run() { await f.owner.request('show'); }
+  }, {}, f.resources);
+  assert.equal(result.outcome, 'failed');
+  assert.match(result.failure.message, /Background Hub became visible/);
+  assert.deepEqual(f.calls.slice(-4), ['deleteSession', 'stop', 'release', 'record']);
+});
+
 test('explicit startup presentation is verified and cannot satisfy a hidden case', async () => {
   for (const presentation of ['background', 'nonactivating']) {
     const f = fixture();

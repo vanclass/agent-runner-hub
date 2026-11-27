@@ -1,23 +1,35 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
-import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { isInspection } from './config-contract.mjs';
-import { changeValue, readyInstalledHub, ownedConnection, inspection,
+import { HubActions } from './hub-actions.mjs';
+import { readyInstalledHub, ownedConnection, inspection,
   inspectRequest, receiptEvidence, stopWatching } from './runner-flow.mjs';
 
-export function configurationSelection(runnerRoot) {
+export function configurationPresentation(runnerRoot) {
   return defineNativeCase({
-    id: 'configuration-selection', presentation: 'nonactivating',
+    id: 'configuration-presentation', presentation: 'nonactivating',
+    ready: browser => readyInstalledHub(browser, runnerRoot),
+    async run(browser) {
+      await ownedConnection(browser, runnerRoot);
+      const hub = new HubActions(browser);
+      return { tab: await hub.addRunner() };
+    },
     async observe(browser) {
+      const hub = new HubActions(browser);
+      const id = await hub.activeRunner();
       const instructionFocus = [];
-      for (const selector of ['.sidebar .nav-row', '.runner-row .nav-row']) {
-        await browser.execute(selector => document.querySelector(selector).click(), selector);
+      for (const surface of ['single-entry', 'runner']) {
+        if (surface === 'single-entry') await hub.selectSingleEntry();
+        else await hub.selectRunner(id);
+        await hub.wait(async () => (await hub.instructionState(surface))?.disabled === false,
+          'Displayed editor unavailable: ' + surface);
         const focus = await browser.execute(() => {
           const input = document.querySelector('textarea[data-instruction]');
           input.focus();
+          const rect = input.getBoundingClientRect();
           return { surface: input.getAttribute('aria-label'), focused: input === document.activeElement,
             outline: getComputedStyle(input).outlineStyle, disabled: input.disabled,
-            visible: input.getBoundingClientRect().height > 0 && document.visibilityState === 'visible' };
+            visible: rect.height > 0 && rect.width > 0 && document.visibilityState === 'visible' };
         });
         assert.equal(focus.focused, true); assert.equal(focus.outline, 'none');
         assert.equal(focus.disabled, false); assert.equal(focus.visible, true);
@@ -32,9 +44,16 @@ export function configurationSelection(runnerRoot) {
       });
       assert.deepEqual(activity, { height: 22, wrap: 'nowrap', belowComposer: true, settingsOpen: false, detailedPanels: 0 });
       return { ...activity, instructionFocus };
-    },
+    }
+  });
+}
+
+export function configurationSelection(runnerRoot, directRoot) {
+  return defineNativeCase({
+    id: 'configuration-selection', presentation: 'background',
     ready: browser => readyInstalledHub(browser, runnerRoot),
     async run(browser) {
+      const hub = new HubActions(browser);
       try {
         const connection = await ownedConnection(browser, runnerRoot);
         const before = await inspection(browser, connection);
@@ -44,17 +63,12 @@ export function configurationSelection(runnerRoot) {
           && JSON.stringify(value) === JSON.stringify(before.result.reply.current.account));
         if (!account || !before.result.reply.availability.account) throw new BlockedPrerequisite(
           'The effective Provider has no current account available in the authenticated catalog.');
-        const accountSelector = '.task-panel .account-settings select';
-        await browser.waitUntil(async () => browser.execute((selector, account) => {
-          const select = document.querySelector(selector);
-          return select && !select.disabled && [...select.options].some(o => o.value === JSON.stringify(account));
-        }, accountSelector, account), { timeout: startupMs, timeoutMsg: 'Verified current account absent from Hub catalog' });
-        const providers = await browser.execute(selector => [...document.querySelector(selector).options]
-          .filter(option => option.value && !option.disabled).map(option => JSON.parse(option.value).agent_id), accountSelector);
+        await hub.selectProviderAccount(provider, account);
+        await hub.wait(async () => (await hub.field('account'))?.disabled === false,
+          'Hub account catalog did not settle');
+        const providers = (await hub.field('account')).options
+          .filter(option => option.value && !option.disabled).map(option => option.value.agent_id);
         assert.ok(providers.every(id => id === provider));
-        await changeValue(browser, accountSelector, JSON.stringify(account));
-        await browser.waitUntil(async () => browser.execute(selector => !document.querySelector(selector).disabled,
-          accountSelector), { timeout: startupMs });
         const catalog = await inspectRequest(browser, connection,
           { operation: 'session_config.inspect', api_version: 1, account, offset: 0 });
         assert.equal(catalog.result.state, 'accepted');
@@ -62,66 +76,71 @@ export function configurationSelection(runnerRoot) {
         assert.deepEqual(catalog.result.reply.model_options_account, account);
         if (catalog.result.reply.model_catalog_status !== 'available') throw new BlockedPrerequisite(
           'Ordinary startup account model catalog unavailable: ' + catalog.result.reply.model_catalog_status);
-        const uiModels = await browser.execute(() => [...document.querySelector(
-          '.task-panel .model-settings select').options].filter(o => o.value && !o.disabled)
-          .map(o => JSON.parse(o.value).model));
+        let models;
+        await hub.wait(async () => {
+          const field = await hub.field('model');
+          if (!field || field.disabled) return false;
+          models = field.options.filter(option => option.value && !option.disabled).map(option => option.value);
+          return models.length > 0;
+        }, 'Hub model catalog did not settle after account selection');
+        const uiModels = models.map(model => model.model);
         for (const model of catalog.result.reply.options.models) assert.ok(uiModels.includes(model.id));
-        const modelSelector = '.task-panel .model-settings select';
-        const candidate = await browser.execute(selector => [...document.querySelector(selector).options]
-          .find(option => option.value && !option.disabled)?.value, modelSelector);
-        if (!candidate) throw new BlockedPrerequisite('No selectable authenticated model candidate');
-        const model = JSON.parse(candidate);
+        const compatible = models.filter(choice => catalog.result.reply.options.models.some(value => value.id === choice.model
+          && value.reasoning_efforts.includes(choice.reasoning_effort) && value.service_tiers.includes(choice.service_tier)));
+        const currentModel = (await hub.field('model')).value;
+        const model = compatible.find(choice => choice.model !== currentModel?.model) ?? compatible[0];
+        if (!model) throw new BlockedPrerequisite('No compatible authenticated model candidate');
         assert.equal(model.agent_id, provider);
-        assert.ok(catalog.result.reply.options.models.some(value => value.id === model.model
-          && value.reasoning_efforts.includes(model.reasoning_effort) && value.service_tiers.includes(model.service_tier)));
-        await changeValue(browser, modelSelector, candidate);
-        const modeSelector = '.task-panel .execution-settings select';
-        const mode = catalog.result.reply.options.run_modes[0];
+        await hub.edit('model', model);
+        assert.deepEqual((await hub.field('model')).value, model);
+        const reasoning = (await hub.field('reasoning')).options.find(option => !option.disabled && option.value !== model.reasoning_effort);
+        if (reasoning) await hub.edit('reasoning', reasoning.value);
+        const fast = await hub.field('fast');
+        if (!fast.disabled) await hub.edit('fast', !fast.value);
+        const requestedModel = (await hub.field('model')).value;
+        if (reasoning) assert.equal(requestedModel.reasoning_effort, reasoning.value);
+        if (!fast.disabled) assert.equal(requestedModel.service_tier, fast.value ? 'default' : 'fast');
+        const modeField = await hub.field('mode');
+        const modes = modeField.options.filter(option => option.value && !option.disabled).map(option => option.value);
+        const targetModes = modes.filter(value => !['direct-run', 'pure-direct-run'].includes(value));
+        const mode = targetModes.find(value => value !== modeField.value) ?? targetModes[0] ?? modes[0];
         if (!mode) throw new BlockedPrerequisite('No available run-mode candidate in native catalog');
-        await changeValue(browser, modeSelector, JSON.stringify(mode));
-        const draft = await browser.execute(() => ({
-          account: JSON.parse(document.querySelector('.task-panel .account-settings select').value),
-          mode: JSON.parse(document.querySelector('.task-panel .execution-settings select').value),
-          saved: JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry,
-          instruction: document.querySelector('textarea[data-instruction]').value }));
-        assert.deepEqual(draft.account, account);
-        assert.deepEqual(draft.saved.accountIdentity, account);
-        assert.equal(draft.mode, mode);
-        assert.equal(draft.saved.runMode, mode);
-        assert.deepEqual(draft.saved.model, model);
-        assert.equal(draft.instruction, '');
-        const instructionFocus = [];
+        await hub.edit('mode', mode);
+        const target = (await hub.field('target'))?.options.find(option => !option.disabled && option.value)?.value;
+        if (target) {
+          await hub.edit('target', target);
+          assert.deepEqual((await hub.field('target')).value, target);
+        }
+        const saved = await browser.execute(() =>
+          JSON.parse(localStorage.getItem('agent-runner-hub.preferences.v1')).singleEntry);
+        assert.deepEqual((await hub.field('account')).value, account);
+        assert.deepEqual(saved.accountIdentity, account);
+        assert.equal((await hub.field('mode')).value, mode);
+        assert.equal(saved.runMode, mode);
+        assert.deepEqual(saved.model, requestedModel);
+        assert.equal((await hub.instructionState('single-entry')).value, '');
+        const directMode = modes.find(value => ['direct-run', 'pure-direct-run'].includes(value));
+        if (directRoot && directMode) {
+          await hub.edit('mode', directMode);
+          await hub.edit('directRoot', directRoot);
+          assert.equal((await hub.field('directRoot')).value, directRoot);
+        }
         for (const surface of ['Single Entry', 'Runner']) {
-          if (surface === 'Runner') {
-            await browser.execute(() => document.querySelector('.add-runner').click());
-            await browser.waitUntil(async () => browser.execute(() =>
-              !!document.querySelector('.runner-composer textarea[data-instruction]')), { timeout: startupMs });
-          }
-          await browser.waitUntil(async () => browser.execute(label => {
-            const settings = document.querySelector('.account-settings');
-            return settings?.textContent.includes(`Effective Provider: ${label}`);
-          }, providerLabel(provider)), { timeout: startupMs });
+          if (surface === 'Runner') await hub.addRunner();
+          await hub.wait(async () => (await hub.providerLabels()).includes(`Effective Provider: ${providerLabel(provider)}`),
+            'Effective Provider unavailable: ' + surface);
           const startupLabel = providerLabel(process.env.HUB_EXPECTED_STARTUP_PROVIDER ?? provider);
-          await browser.waitUntil(async () => browser.execute(label =>
-            document.querySelector('.account-settings')?.textContent.includes(`Configured Startup Provider: ${label}`),
-          startupLabel), { timeout: startupMs });
-          const focus = await browser.execute(() => {
-            const input = document.querySelector('textarea[data-instruction]');
-            input.focus();
-            const style = getComputedStyle(input), rect = input.getBoundingClientRect();
-            return { focused: input === document.activeElement, outline: style.outlineStyle,
-              width: rect.width, height: rect.height, disabled: input.disabled };
-          });
-          assert.equal(focus.focused, true); assert.equal(focus.outline, 'none');
-          assert.ok(focus.width > 0 && focus.height > 0); assert.equal(focus.disabled, false);
-          instructionFocus.push({ surface, ...focus });
+          await hub.wait(async () => (await hub.providerLabels()).includes(`Configured Startup Provider: ${startupLabel}`),
+            'Configured Startup Provider unavailable: ' + surface);
         }
         const after = await inspection(browser, connection);
         assert.equal(after.result.reply.revision, before.result.reply.revision, 'Hub draft must not apply native configuration');
         return { method: 'actual Hub draft selection from ordinary authenticated catalog',
           identity: { session: connection.session, generation: connection.generation },
           initialInspection: receiptEvidence(before), catalog: receiptEvidence(catalog),
-          uiCatalogAgreesWithNative: true, draftPersisted: true, nativeRevisionUnchanged: true, instructionFocus,
+          uiCatalogAgreesWithNative: true, draftPersisted: true, nativeRevisionUnchanged: true,
+          edited: { account: true, model: true, mode: true, reasoning: !!reasoning, fast: !fast.disabled,
+            target: !!target, directRoot: !!(directRoot && directMode) },
           workAdmission: 'not exercised', workStart: 'not exercised' };
       } finally { await stopWatching(browser); }
     }

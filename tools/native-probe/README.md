@@ -53,7 +53,7 @@ authorize escalation to a displayed window or foreground control.
 | Property | Least disruptive supported path | Evidence boundary |
 | --- | --- | --- |
 | React state, simulated transport, response/error handling | Headless Playwright | Synthetic Runner packets; no native authentication or OS input |
-| Actual installation UI/resolver, native configuration and read-only response | WG3 background native cases | Real Tauri assets/IPC; Runner-backed claims require isolated prerequisites |
+| Actual installation UI/resolver, native configuration and submission | Background native cases | Real Tauri assets/IPC with the installed Runner and its ordinary authentication |
 | Displayed renderer/theme/language | WG2 nonactivating cases | Owned rear window and screenshot; no trusted keyboard/mouse claim |
 | Native correlation, handle isolation, cleanup/error contracts | Focused Rust/Node fixtures | Synthetic protocol children are not installed Runner acceptance |
 | Focus-dependent terminal input, clipboard or OS dialogs | Existing authorized Computer Use | Requires its own target identity, readiness, input and settlement evidence |
@@ -71,7 +71,13 @@ node --test tests/native/wg3.test.mjs tests/native/lifecycle.test.mjs tests/nati
 
 `semantic-presentation` (retained case ID) compares original xterm scrollback and visible rows with diagnostic canonical records for `/help`, then checks retention after a read-only invalid `/files` argument rejection. The fresh owned Hub uses the existing verified installation and displays its original terminal. This case does not submit Provider work; browser fixtures do not establish installed-Runner delivery.
 
-The explicitly selected `semantic-work` case adds one long Korean/English multiline read-only Pure Direct instruction through the Runner composer. `single-entry-work` independently submits one short read-only instruction through Single Entry. Both count the original instruction in the full assigned xterm buffer and diagnostic canonical records, inherit the verified canonical startup account/model and require canonical work start/success. Composer acceptance records editing, post-Enter and confirmed rectangles, draft clearing and retained history. These cases never change persistent Runner configuration, provision credentials, replay submission or grant PTY user-input authority. DOM focus stays inside the owned WebView without acquiring desktop focus.
+The explicitly selected background cases `semantic-work` and `single-entry-work` submit
+one harmless Pure Direct instruction each through the Runner and Single Entry
+composers. They require canonical work start, successful completion, execution
+release and clearing of the originating draft. Both use the installed Runner's
+startup account and model. The separately selected `semantic-work-presentation`
+and `single-entry-work-presentation` repeat the corresponding work to check xterm
+output, instruction retention and composer layout.
 
 Presentation cases click the ordinary Add Runner action before waiting for a connection. A hidden Spare is optional. Read-only renderer inspection binds the active sidebar tab and mounted xterm to their existing RunnerSession control identity; native observations and command receipts must match that exact PTY and generation. Unavailable renderer identity is unverified, never permission to assume the first observed session is the destination.
 
@@ -80,8 +86,10 @@ Work cases submit their declared instruction directly after native/configuration
 ```text
 node tools/native-probe/hub.mjs --help
 node tools/native-probe/hub.mjs --case installation-entry
+node tools/native-probe/hub.mjs --case dom-interactions
 node tools/native-probe/hub.mjs --case renderer-probe --case language-preference
 node tools/native-probe/hub.mjs --case configuration-selection --case runner-read-only --runner-root "<absolute Runner Workspace root>"
+node tools/native-probe/hub.mjs --case semantic-work --case single-entry-work --runner-root "<absolute Runner Workspace root>"
 ```
 
 Repeat `--case` to compose only the required cases in one build; each still gets a
@@ -89,8 +97,10 @@ fresh owned process/profile. With no case selector, the three WG3 cases run.
 `--target-dir <absolute Cargo cache>` works with either native entry.
 Installation-entry checks mandatory setup, native rejection of a relative path,
 unchanged saved installation and retry availability. Configuration-selection uses
-the ordinary authenticated account's catalog to edit and persist a Hub draft without applying
-it. Runner-read-only compares Hub selections and native inspection in the same
+the ordinary authenticated account's catalog to edit and persist a Hub draft and
+verifies that the native configuration revision stays unchanged.
+`configuration-presentation` checks the displayed composer and activity layout.
+Runner-read-only compares Hub selections and native inspection in the same
 observed session/generation and verifies unchanged native revision. It then closes the exact observed
 PTY and verifies removal from the native session registry.
 
@@ -123,8 +133,8 @@ selection; no user Hub profile is copied. The actual installation form/native
 resolver verifies the managed runtime before the Hub session owner launches a new
 Runner. Ordinary startup account authentication and `session_config.inspect` are
 required; no saved Test account or second installation is needed. Missing authentication/capability
-remains blocked; this command never provisions accounts, copies credentials,
-injects startup authentication or adopts existing processes. Model work is confined to the explicitly selected `semantic-work` case above.
+remains blocked. Each selected work case submits through the application's normal
+authentication and delivery flow from its own Hub profile and process.
 Use the normally installed runtime, never an already-running Hub or Runner session.
 If startup authentication or inspection is unavailable, retain the exact blocked
 reason and complete independent installation/UI, fixture and headless checks.
@@ -134,11 +144,10 @@ Read-only instrumentation forwards callbacks unchanged. Native Tauri has immutab
 retaining terminal bytes. The case observes that exact session with `runner_observe`.
 Synthetic fixtures use their writable invoke wrapper. Neither replaces responses.
 Only `session_config.inspect` feature requests are issued by the case. Evidence retains
-transport admission separately from the matching completed authoritative receipt;
-neither proves work admission or work start, which are explicitly unexercised.
+transport admission separately from the matching completed authoritative receipt.
 Account identity and credential paths are not copied into case observations.
-Configuration-selection chooses verified account/model/run-mode options and changes
-only the isolated Hub draft. Read-only comparison respects unbound UI selections
+Configuration-selection edits the isolated Hub draft with the verified catalog.
+Read-only comparison respects unbound UI selections
 and compares current and effective settings according to their separate contracts.
 
 ## Rust and focus-required paths
@@ -205,6 +214,44 @@ the existing Runner launch owner rejects macOS detached-child containment.
 
 ## Add or select a case
 
+Import `Dom` from `tools/native-probe/dom.mjs` for CSS-selector-based `click`,
+`doubleClick`, `rightClick`, `hover`, `changeValue`, `key`, `dispatch`,
+`scroll`, `drag` and `state`. Read state for value, checked, disabled, focus,
+geometry, scroll offsets and select options. `changeValue` uses the native DOM
+setter and dispatches input or change for controlled React fields. `click`
+invokes DOM activation, including checkbox toggling and submit buttons.
+`doubleClick`, `rightClick` and `hover` deliver handler events. `key` focuses
+the DOM element and dispatches keydown and keyup with supplied modifiers.
+`drag` sends HTML drag events with one in-memory DataTransfer and drops only
+when the destination accepts dragover. These interactions provide synthetic
+handler evidence. Trusted input, CSS hover, keyboard default editing, native
+menus, file transfer and dialogs need their own supported validation path.
+
+Import `HubActions` from `tests/native/webdriver/hub-actions.mjs` for the Hub
+installation form, Single Entry selection, Runner creation and tab selection.
+`addRunner()` returns the new active tab ID. Use `field(name)` to read the
+rendered choices and requested value, and `edit(name, value)` to use the
+ordinary controls. Fields are `account`, `mode`, `target`, `model`,
+`reasoning`, `fast`, and `directRoot`. Use catalog values as returned, including
+the Provider in account and model identities. `selectProviderAccount(provider,
+account)` selects a qualified account in the current effective Provider catalog.
+The panel shows effective and configured startup Provider labels. `fast` takes
+a boolean when the model offers both Fast and default service tiers. Mode governs
+whether Target or Direct Root is rendered. Check applied settings with the
+existing Runner observations after the relevant product operation.
+
+Use `draft(surface, text)` and `submit(surface)` with `single-entry` or
+`runner`. Enter follows the ordinary instruction and supported slash-command
+paths, including typed `/run` where available. Pass `{ brief: true }` for the
+IssueRun Control+Enter Brief action. Observe the authoritative result before
+making assertions about submission, and leave uncertain effects unreplayed.
+
+For installed Runner scenarios, use `readyInstalledHub(browser, runnerRoot)`
+from `tests/native/webdriver/runner-flow.mjs` as your readiness callback.
+It verifies the installation and starts observing Hub-owned connections.
+Use that module's `visibleConnection` for the active Runner tab and `inspection`
+for its authenticated native configuration.
+
 Export a `defineNativeCase` value from an application-owned module, then pass it
 to `nativeSuite([myCase], { root, target })` from a node:test entry. The existing
 `run.mjs` is the composition example. Use `node --test <your-entry.mjs>` for an
@@ -214,6 +261,33 @@ Use unique path-safe case IDs. `ready(browser)` owns bounded application readine
 For `presentation: 'nonactivating'`, provide `observe(browser)` for displayed checks.
 For `presentation: 'background'`, the window stays hidden and no capture/display is requested.
 The environment resets profiles between cases; do not depend on another case's state.
+
+For example, save this as `tests/native/custom-installation.mjs` and run
+`node --test tests/native/custom-installation.mjs` from the checkout root.
+
+```js
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { defineNativeCase } from '../../tools/native-probe/case.mjs';
+import { nativeSuite } from '../../tools/native-probe/suite.mjs';
+import { HubActions } from './webdriver/hub-actions.mjs';
+import { readyHub } from './webdriver/probe.mjs';
+
+const root = process.cwd();
+const myCase = defineNativeCase({
+  id: 'custom-installation',
+  presentation: 'background',
+  ready: readyHub,
+  async run(browser) {
+    const hub = new HubActions(browser);
+    await hub.installationPath('invalid-relative-installation');
+    const result = await hub.verifyInstallation();
+    assert.match(result.rejection, /absolute path/i);
+    return { rejected: true };
+  }
+});
+nativeSuite([myCase], { root, target: path.join(root, 'local/native-probe/target') });
+```
 
 Window operations belong to the platform adapter. macOS displayed cases start
 nonactivating at native Ready; Windows performs actions hidden before rear placement.

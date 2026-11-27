@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
+import { defineNativeCase, BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
 import { startupMs, subagentCompletionMs } from '../../../tools/native-probe/limits.mjs';
-import { changeValue, correlated, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
+import { readyInstalledHub, stopWatching, correlated, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
+import { HubActions } from './hub-actions.mjs';
 import { terminalBuffer, canonicalRecords } from './terminal-buffer.mjs';
 
 async function geometry(browser) {
@@ -18,51 +19,37 @@ async function geometry(browser) {
 }
 
 // One explicit harmless Provider instruction; inherit the verified startup account/model.
-export async function semanticWork(browser, connection, workRoot, route = 'runner') {
+async function semanticWork(browser, hub, connection, workRoot, route, presentation) {
   const single = route === 'single-entry';
-  if (single) {
-    const canonical = await visibleConfiguration(browser, connection);
-    await browser.execute(() => document.querySelector('.sidebar > .nav-row, .sidebar .nav-row').click());
-    const account = JSON.stringify(canonical.current.account);
-    await browser.waitUntil(async () => browser.execute(account => [...document.querySelector(
-      '.task-panel .account-settings select').options].some(o => o.value === account), account), { timeout: startupMs });
-    await changeValue(browser, '.task-panel .account-settings select', account);
-  }
-  const inputSelector = single ? '.composer-area textarea[data-instruction]' : '.runner-composer textarea';
-  const mode = '.task-panel .execution-settings select';
-  await browser.waitUntil(async () => browser.execute(selector => {
-    const select = document.querySelector(selector);
-    return select && !select.disabled && select.options.length > 1;
-  }, mode), { timeout: startupMs, timeoutMsg: 'Requested mode catalog did not settle after account selection' });
-  const supported = await browser.execute(selector => [...document.querySelector(selector).options]
-    .some(option => option.value === JSON.stringify('pure-direct-run') && !option.disabled), mode);
+  const canonicalConfig = await visibleConfiguration(browser, connection);
+  if (single) await hub.selectSingleEntry();
+  await hub.selectProviderAccount(canonicalConfig.effective.agent_id, canonicalConfig.current.account);
+  let mode;
+  await hub.wait(async () => {
+    mode = await hub.field('mode');
+    return mode && !mode.disabled && mode.options.some(option => option.value && !option.disabled);
+  }, 'Requested mode catalog did not settle after account selection');
+  const supported = mode.options.some(option => option.value === 'pure-direct-run' && !option.disabled);
   if (!supported) throw new BlockedPrerequisite('Installed Runner does not offer Pure Direct for isolated semantic work acceptance');
-  await changeValue(browser, mode, JSON.stringify('pure-direct-run'));
-  await changeValue(browser, '.task-panel .directory-input input', workRoot);
+  await hub.edit('mode', 'pure-direct-run');
+  await hub.edit('directRoot', workRoot);
   const instruction = single
     ? 'Reply HUB_SINGLE_ENTRY_ACCEPTANCE. No tools or file/settings changes.'
     : ['Reply with exactly HUB_LONG_COMPOSER_ACCEPTANCE. Do not use tools, modify files, run commands or change settings.',
       ...Array.from({ length: 24 }, (_, i) => `읽기 전용 확인 ${i + 1}: Korean/English multiline presentation check only.`)].join('\n');
-  await browser.waitUntil(async () => browser.execute(selector => {
-    const input = document.querySelector(selector); return input && !input.disabled && !input.readOnly;
-  }, inputSelector), { timeout: startupMs });
-  const compact = await geometry(browser);
-  const retainedLine = single ? undefined : (await terminalBuffer(browser)).full.split('\n').find(line => line.trim());
-  await changeValue(browser, inputSelector, instruction);
-  const editing = await geometry(browser);
+  const compact = presentation ? await geometry(browser) : undefined;
+  const retainedLine = presentation && !single
+    ? (await terminalBuffer(browser)).full.split('\n').find(line => line.trim()) : undefined;
+  await hub.draft(route, instruction);
+  assert.equal((await hub.instructionState(route)).value, instruction);
+  const editing = presentation ? await geometry(browser) : undefined;
   const previousRequests = await browser.execute(async () => {
     return (await Promise.all(Object.keys(window.__wg3Observation.snapshots).map(async id =>
       window.__TAURI_INTERNALS__.invoke('runner_observe', { id })))).flatMap(s => s.features?.results ?? [])
       .filter(r => r.feature === 'work' && r.operation === 'work.submit').map(r => r.id);
   });
-  const pendingDelivery = await browser.execute(selector => {
-    const input = document.querySelector(selector);
-    input.focus();
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
-    return { draftLength: input.value.length, height: input.getBoundingClientRect().height,
-      disabled: input.disabled, rows: input.rows };
-  }, inputSelector);
-  const entered = await geometry(browser);
+  await hub.submit(route);
+  const entered = presentation ? await geometry(browser) : undefined;
   connection = await visibleConnection(browser);
   let submitted, completed, instructionPublication;
   await browser.waitUntil(async () => {
@@ -72,8 +59,8 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
     if (submitted?.state === 'rejected') throw new BlockedPrerequisite('Read-only work rejected: ' + submitted.code);
     if (submitted?.state === 'outcome-unknown') throw new UnverifiedObservation('Work effect unknown; do not replay');
     const observations = snapshot.features.results.filter(r => r.feature === 'work').flatMap(r => [r.reply?.work, ...(r.reply?.works ?? [])]).filter(Boolean);
-    completed = observations.find(work => work.submission_request_id === submitted?.id && work.terminal);
-    if (!instructionPublication) {
+    completed = submitted && observations.find(work => work.submission_request_id === submitted.id && work.terminal);
+    if (presentation && !instructionPublication) {
       const buffer = await terminalBuffer(browser);
       if (buffer.full.replace(/\s/g, '').includes(instruction.replace(/\s/g, '')))
         instructionPublication = { buffer, workTerminal: !!completed };
@@ -88,6 +75,21 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
   });
   assert.ok(submitted && completed.started_event_id > 0, 'Canonical work start must be observed');
   assert.equal(completed.outcome, 'succeeded', 'Actual read-only Provider work must succeed');
+  const identity = { tab: connection.tab, session: connection.session, generation: connection.generation };
+  const result = { originalRequestId: submitted.id, started: completed.started_event_id,
+    outcome: completed.outcome, identity, draftCleared: true };
+  if (!presentation) {
+    await hub.wait(async () => {
+      const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke(
+        'runner_observe', { id }), connection.session), connection);
+      const execution = snapshot.observation?.execution;
+      return execution?.lifecycle_state === 'INTERACTIVE_READY'
+        && execution.owned_execution_alive === false && execution.workflow_kind === '';
+    }, 'Completed work did not release its owned execution');
+    if (single) await hub.selectSingleEntry();
+    assert.equal((await hub.instructionState(route)).value, '', 'Canonical start clears the originating draft');
+    return { ...result, executionReleased: true };
+  }
   const reply = single ? 'HUB_SINGLE_ENTRY_ACCEPTANCE' : 'HUB_LONG_COMPOSER_ACCEPTANCE';
   await browser.waitUntil(async () => (await terminalBuffer(browser)).full.includes(reply), { timeout: startupMs });
   const confirmed = await geometry(browser);
@@ -138,7 +140,37 @@ export async function semanticWork(browser, connection, workRoot, route = 'runne
     terminalReplyObserved: true, instructionCount: count, buffer, canonical, released,
     originalInstructionBufferCount,
     identity: { tab: connection.tab, session: connection.session, generation: connection.generation },
-    geometry: { compact, editing, pendingDelivery, entered, confirmed }, instructionPublication,
+    geometry: { compact, editing, entered, confirmed }, instructionPublication,
     scrollback,
     accountAndModel: 'inherited from verified canonical startup configuration' };
+}
+
+export function semanticWorkCase(runnerRoot, workRoot, route = 'runner', presentation = false) {
+  const id = route === 'single-entry' ? 'single-entry-work' : 'semantic-work';
+  return defineNativeCase({
+    id: presentation ? id + '-presentation' : id,
+    presentation: presentation ? 'nonactivating' : 'background',
+    ready: browser => readyInstalledHub(browser, runnerRoot),
+    async run(browser) {
+      const hub = new HubActions(browser);
+      try {
+        await hub.addRunner();
+        const connection = await visibleConnection(browser, runnerRoot);
+        return await semanticWork(browser, hub, connection, workRoot, route, presentation);
+      } finally { await stopWatching(browser); }
+    },
+    async observe(browser) {
+      const hub = new HubActions(browser);
+      const terminal = await hub.dom.state('.terminal-host');
+      const composer = await hub.instructionState('runner');
+      assert.ok(terminal.rect.width > 0 && terminal.rect.height > 100);
+      assert.ok(composer.rect.top >= terminal.rect.bottom);
+      const rendered = await browser.execute(() => ({
+        visibility: getComputedStyle(document.querySelector('.terminal-host')).visibility,
+        semanticRenderers: document.querySelectorAll('.runner-semantic').length
+      }));
+      assert.deepEqual(rendered, { visibility: 'visible', semanticRenderers: 0 });
+      return { terminal: terminal.rect, composer: composer.rect };
+    }
+  });
 }

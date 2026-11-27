@@ -1,39 +1,24 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
-import { readyInstalledHub, visibleConnection, visibleConfiguration, changeValue, correlated } from './runner-flow.mjs';
-import { semanticWork } from './semantic-work.mjs';
+import { readyInstalledHub, visibleConnection, visibleConfiguration, correlated } from './runner-flow.mjs';
+import { HubActions } from './hub-actions.mjs';
 import { terminalBuffer, canonicalRecords } from './terminal-buffer.mjs';
 
-export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
+export function semanticPresentation(runnerRoot) {
   return defineNativeCase({
-    id: workRoot ? (route === 'single-entry' ? 'single-entry-work' : 'semantic-work') : 'semantic-presentation',
+    id: 'semantic-presentation',
     presentation: 'nonactivating', ready: browser => readyInstalledHub(browser, runnerRoot),
     async run(browser) {
-      await browser.execute(() => document.querySelector('.add-runner').click());
+      const hub = new HubActions(browser);
+      const tab = await hub.addRunner();
       const connection = await visibleConnection(browser, runnerRoot);
       const configuration = await visibleConfiguration(browser, connection);
-      const account = JSON.stringify(configuration.current.account);
-      await browser.waitUntil(async () => browser.execute(account => {
-        const select = document.querySelector('.task-panel .account-settings select');
-        return select && !select.disabled && [...select.options].some(option => option.value === account);
-      }, account), { timeout: startupMs });
-      await changeValue(browser, '.task-panel .account-settings select', account);
-      await browser.waitUntil(async () => browser.execute(() => {
-        const select = document.querySelector('.task-panel .model-settings select');
-        return select && !select.disabled && select.options.length > 1;
-      }), { timeout: startupMs });
-      await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.runner-composer textarea')?.disabled), { timeout: startupMs });
+      await hub.selectProviderAccount(configuration.effective.agent_id, configuration.current.account);
       const startup = await terminalBuffer(browser);
-      if (workRoot) return { startup, workAdmission: await semanticWork(browser, connection, workRoot, route) };
       async function command(text) {
-        await browser.waitUntil(async () => browser.execute(() => !document.querySelector('.runner-composer textarea')?.disabled), { timeout: startupMs });
-        await changeValue(browser, '.runner-composer textarea', text);
-        await browser.execute(() => {
-          const input = document.querySelector('.runner-composer textarea');
-          input.focus();
-          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        });
+        await hub.draft('runner', text);
+        await hub.submit('runner');
         let receipt;
         await browser.waitUntil(async () => {
           const snapshot = correlated(await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_observe', { id }), connection.session), connection);
@@ -66,12 +51,9 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
       assert.equal(scroll.top, 0); assert.ok(scroll.base > 0);
       const editors = [];
       for (const single of [false, true]) {
-        if (single) await browser.execute(() => document.querySelector('.single-entry').click());
-        await browser.waitUntil(async () => browser.execute(() => {
-          const input = document.querySelector('textarea[data-instruction]');
-          return input && !input.disabled && !input.readOnly;
-        }), { timeout: startupMs });
-        await changeValue(browser, 'textarea[data-instruction]', 'native viewport line\n'.repeat(120));
+        if (single) await hub.selectSingleEntry();
+        const surface = single ? 'single-entry' : 'runner';
+        await hub.draft(surface, 'native viewport line\n'.repeat(120));
         editors.push(await browser.execute(() => {
           const input = document.querySelector('textarea[data-instruction]');
           input.scrollTop = 240;
@@ -84,9 +66,9 @@ export function semanticPresentation(runnerRoot, workRoot, route = 'runner') {
         assert.ok(last.overflow && last.scroll >= 200);
         assert.ok(last.output.height >= 45 && last.output.bottom <= last.composer.top + 1);
         assert.ok(last.composer.bottom <= last.footer.top + 1);
-        await changeValue(browser, 'textarea[data-instruction]', '');
+        await hub.draft(surface, '');
       }
-      await browser.execute(() => document.querySelector('.runner-row .nav-row').click());
+      await hub.selectRunner(tab);
       return { connection, startup, helpReceipt, publication, canonical, errorReceipt, after, scroll, editors };
     },
     async observe(browser) {

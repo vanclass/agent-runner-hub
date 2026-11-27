@@ -63,6 +63,14 @@ contract: path-safe `id`, explicit `background`, `nonactivating` or Windows-only
 `ready(browser)`, `run(browser)` and a displayed-case `observe(browser)` assertion.
 Cases own application readiness and feature assertions; they contain no OS window
 operations. Adding a case changes composition, never a feature branch in the executor.
+[`dom.mjs`](../../tools/native-probe/dom.mjs) provides selector-based synthetic
+interaction and state queries for the existing driver.
+[`hub-actions.mjs`](../../tests/native/webdriver/hub-actions.mjs) composes those
+primitives for installation, Runner navigation, requested settings and composers.
+Both are importable from arbitrary cases. See the
+[native probe usage guide](../../tools/native-probe/README.md#add-or-select-a-case)
+for API and example code. Verify trusted OS interaction through its existing native
+input owner.
 On Windows a displayed case may request `windowWidth`; the existing placement
 adapter sizes only its owned HWND while retaining rear, nonactivating placement.
 The responsive activity selection in `tests/native/activity.test.mjs` uses the
@@ -94,8 +102,9 @@ Installed presentation acceptance allocates through Add Runner before connection
 observation; optional hidden Spare readiness is not an admission prerequisite.
 The mounted terminal and active tab bind the existing RunnerSession PTY identity,
 then authenticated native observations and receipts verify its generation.
-`single-entry-work` and `semantic-work` independently check original instruction
-visibility and long bilingual composer geometry through the normal UI. See
+`single-entry-work` and `semantic-work` use normal UI handlers while hidden
+and check authoritative work start, completion, release and draft clearing.
+Each has a separate `-presentation` case for output and composer geometry. See
 [`runner-flow.mjs`](../../tests/native/webdriver/runner-flow.mjs) and
 [`semantic-work.mjs`](../../tests/native/webdriver/semantic-work.mjs).
 
@@ -262,8 +271,8 @@ inspection receipts correlate request ID, session and generation; transport subm
 alone cannot pass. Verified available account/model/run-mode choices change only Hub
 draft preferences. Unbound UI choices stay unbound; current configuration and effective
 selection have distinct comparisons. The Runner configuration revision must stay unchanged.
-Cases issue only read-only inspection and never submit work. Work admission/start and
-trusted physical input remain unexercised. Missing prerequisites/capabilities block;
+The configuration and read-only cases use read-only native inspection.
+Separate work cases submit only when explicitly selected. Missing prerequisites/capabilities block;
 uncertain native effects remain unverified without replay or presentation escalation.
 
 [`wg3.test.mjs`](../../tests/native/wg3.test.mjs) covers correlation and failure boundaries;

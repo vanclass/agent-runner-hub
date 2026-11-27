@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { defineNativeCase } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { readyInstalledHub, ownedConnection, inspection, receiptEvidence, stopWatching, correlated } from './runner-flow.mjs';
+import { HubActions } from './hub-actions.mjs';
 
 export function runnerReadOnly(runnerRoot) {
   return defineNativeCase({
@@ -10,15 +11,14 @@ export function runnerReadOnly(runnerRoot) {
     async run(browser) {
       try {
         const connection = await ownedConnection(browser, runnerRoot);
+        const hub = new HubActions(browser);
+        await hub.wait(async () => {
+          const mode = await hub.field('mode');
+          return mode?.disabled === false && mode.options.some(option => option.value && !option.disabled);
+        }, 'Hub verified configuration selections not ready');
+        // The app's startup inspection can retire earlier read receipts in the native result list.
         const before = await inspection(browser, connection);
-        await browser.waitUntil(async () => browser.execute(() => {
-          const account = document.querySelector('.context-settings .account-settings select');
-          const model = document.querySelector('.context-settings .model-settings select');
-          return account && model && !account.disabled && !model.disabled;
-        }), { timeout: startupMs, timeoutMsg: 'Hub verified configuration selections not ready' });
-        const ui = await browser.execute(() => ({
-          account: JSON.parse(document.querySelector('.context-settings .account-settings select').value || 'null'),
-          model: JSON.parse(document.querySelector('.context-settings .model-settings select').value || 'null') }));
+        const ui = { account: (await hub.field('account')).value, model: (await hub.field('model')).value };
         const after = await inspection(browser, connection);
         assert.equal(before.result.reply.revision, after.result.reply.revision, 'Read-only inspection cannot mutate configuration');
         if (ui.account) {

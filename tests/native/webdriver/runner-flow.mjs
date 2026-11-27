@@ -3,15 +3,7 @@ import { BlockedPrerequisite, UnverifiedObservation } from '../../../tools/nativ
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
 import { readyHub } from './probe.mjs';
 import { isInspection, sameInstallation } from './config-contract.mjs';
-
-export async function changeValue(browser, selector, value) {
-  await browser.execute((selector, value) => {
-    const element = document.querySelector(selector);
-    if (!element || element.disabled) throw new Error('Control unavailable: ' + selector);
-    Object.getOwnPropertyDescriptor(element.constructor.prototype, 'value').set.call(element, value);
-    element.dispatchEvent(new Event(element.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
-  }, selector, value);
-}
+import { HubActions } from './hub-actions.mjs';
 
 // Observe existing application IPC without replacing responses, credentials or transport.
 // Retain only observation IDs/snapshots, never PTY bytes or authentication material.
@@ -56,23 +48,16 @@ export async function readyInstalledHub(browser, runnerRoot, platform = process.
   if (platform !== 'win32') throw new BlockedPrerequisite(
     'Runner launch is unsupported on macOS by the existing native containment owner; native integration is unverified.');
   await readyHub(browser);
-  runnerRoot ??= await browser.execute(() => localStorage.getItem('agent-runner-hub.installation'));
+  const hub = new HubActions(browser);
+  runnerRoot ??= (await hub.installationState())?.saved;
   if (!runnerRoot) throw new BlockedPrerequisite(
     'Select --runner-root with your existing installed Runner; the fresh Hub profile has no saved installation.');
   await watchObservations(browser);
-  await changeValue(browser, '.runner-location input', runnerRoot);
-  await browser.execute(() => document.querySelector('.runner-location').requestSubmit());
-  await browser.waitUntil(async () => browser.execute(() =>
-    !document.querySelector('.app-settings[open]') || !!document.querySelector('.runner-location [role="alert"]')),
-  { timeout: startupMs, timeoutMsg: 'Installation UI did not settle' });
-  const error = await browser.execute(() => document.querySelector('.runner-location [role="alert"]')?.textContent);
-  if (error) throw new BlockedPrerequisite('Installed Runner verification: ' + error);
-  const saved = await browser.execute(() => localStorage.getItem('agent-runner-hub.installation'));
+  await hub.installationPath(runnerRoot);
+  const { rejection, saved } = await hub.verifyInstallation();
+  if (rejection) throw new BlockedPrerequisite('Installed Runner verification: ' + rejection);
   assert.ok(sameInstallation(saved, runnerRoot), 'UI must persist the verified explicit installation');
-  await browser.execute(() => {
-    const toggle = document.querySelector('.task-panel-toggle');
-    if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click();
-  });
+  await hub.openConfiguration();
 }
 
 export async function visibleConnection(browser, runnerRoot) {

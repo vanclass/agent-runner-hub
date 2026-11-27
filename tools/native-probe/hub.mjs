@@ -3,19 +3,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nativeSuite } from './suite.mjs';
 import { installationEntry } from '../../tests/native/webdriver/installation.mjs';
-import { configurationSelection } from '../../tests/native/webdriver/configuration.mjs';
+import { configurationSelection, configurationPresentation } from '../../tests/native/webdriver/configuration.mjs';
 import { runnerReadOnly } from '../../tests/native/webdriver/runner-read-only.mjs';
 import { rendererProbe } from '../../tests/native/webdriver/probe.mjs';
 import { languageCase } from '../../tests/native/webdriver/language.mjs';
 import { hubLogCase } from '../../tests/native/webdriver/hub-log.mjs';
 import { subagentRun } from '../../tests/native/webdriver/subagent.mjs';
 import { semanticPresentation } from '../../tests/native/webdriver/terminal-presentation.mjs';
+import { semanticWorkCase } from '../../tests/native/webdriver/semantic-work.mjs';
 import { singleEntryIssueCase } from '../../tests/native/webdriver/single-entry-issue.mjs';
 import { issueSidebarLifecycle } from '../../tests/native/webdriver/issue-sidebar-lifecycle.mjs';
+import { domInteractions } from '../../tests/native/webdriver/dom-interactions.mjs';
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === '--help') {
-  console.log('Terminal cases (retained case IDs): semantic-presentation compares original xterm scrollback/viewport and diagnostic canonical records for /help; semantic-work submits a long bilingual read-only instruction; single-entry-work checks one original instruction in its assigned terminal. All require --runner-root and use the canonical startup account/model.');
+  console.log('Background work: semantic-work and single-entry-work submit one harmless instruction each. Add -presentation to either ID for its separate displayed terminal and composer checks. semantic-presentation checks /help and rejected command output. These cases require --runner-root.');
+  console.log('Presentation and interaction cases: configuration-presentation requires --runner-root; dom-interactions checks synthetic DOM primitives in a hidden Hub without Runner.');
   console.log('Additional case: hub-log (requires --runner-root); checks tab-independent capture and a fresh native process with the same isolated app data.');
   console.log('IssueRun cases: native-single-entry-issue-work and native-single-entry-delayed-brief. Both require --runner-root and --issue-target <authorized registered Project ID>. Each creates one disposable IssueRun.');
   console.log('issue-sidebar-lifecycle: requires --producer-source <absolute local Git repository>; uses a fresh scripted Discussion fixture from the accepted producer revision.');
@@ -34,9 +37,13 @@ if (args.length === 1 && args[0] === '--help') {
     }
   }
   const runnerRoot = values.get('--runner-root');
-  const cases = [installationEntry, configurationSelection(runnerRoot), runnerReadOnly(runnerRoot), rendererProbe, languageCase, hubLogCase(runnerRoot), subagentRun(runnerRoot), semanticPresentation(runnerRoot)];
-  cases.push(semanticPresentation(runnerRoot, root));
-  cases.push(semanticPresentation(runnerRoot, root, 'single-entry'));
+  const cases = [installationEntry, configurationSelection(runnerRoot, root), runnerReadOnly(runnerRoot),
+    rendererProbe, languageCase, hubLogCase(runnerRoot), subagentRun(runnerRoot), semanticPresentation(runnerRoot),
+    configurationPresentation(runnerRoot), domInteractions];
+  for (const surface of ['runner', 'single-entry']) {
+    cases.push(semanticWorkCase(runnerRoot, root, surface));
+    cases.push(semanticWorkCase(runnerRoot, root, surface, true));
+  }
   cases.push(singleEntryIssueCase(runnerRoot, values.get('--issue-target'), false));
   cases.push(singleEntryIssueCase(runnerRoot, values.get('--issue-target'), true));
   cases.push(issueSidebarLifecycle(values.get('--producer-source')));

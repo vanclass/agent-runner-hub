@@ -73,7 +73,12 @@ export async function executeCase(spec, environment, resources) {
     if (focusRequired) {
       assert.equal(evidence.stages.afterActions.pid, owner.pid);
       assert.equal(evidence.stages.afterActions.hwnd, evidence.stages.initial.hwnd, 'Owned input window changed');
-    } else noActivation(evidence.stages.afterActions);
+    } else {
+      noActivation(evidence.stages.afterActions);
+      if (testCase.presentation === 'background') {
+        assert.equal(evidence.stages.afterActions.visible, false, 'Background Hub became visible');
+      }
+    }
     resources.signal.throwIfAborted();
     if (testCase.presentation === 'nonactivating') {
       evidence.stage = 'presentation';

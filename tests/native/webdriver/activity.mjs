@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase, BlockedPrerequisite } from '../../../tools/native-probe/case.mjs';
 import { startupMs } from '../../../tools/native-probe/limits.mjs';
-import { changeValue, readyInstalledHub, ownedConnection, stopWatching } from './runner-flow.mjs';
+import { readyInstalledHub, ownedConnection, stopWatching } from './runner-flow.mjs';
+import { HubActions } from './hub-actions.mjs';
 
 export function assertSupportedStartup(messages) {
   assert.ok(!messages.includes('Hub 이 Runner는 설정 조회를 지원하지 않습니다.'), JSON.stringify(messages));
@@ -32,7 +33,8 @@ export function activityCase(runnerRoot, windowWidth) {
       if (process.platform !== 'win32') throw new BlockedPrerequisite('This responsive native observation requires the Windows owned placement adapter.');
       await browser.waitUntil(async () => browser.execute(() => !!document.querySelector('.language-picker select')),
         { timeout: startupMs });
-      await changeValue(browser, '.language-picker select', 'ko');
+      const hub = new HubActions(browser);
+      await hub.dom.changeValue('.language-picker select', 'ko');
       await browser.execute(() => {
         window.__startupActivity = [];
         const record = () => {
@@ -61,7 +63,7 @@ export function activityCase(runnerRoot, windowWidth) {
     async observe(browser) {
       const rows = [];
       rows.push(await geometry(browser));
-      await browser.execute(() => document.querySelector('.add-runner').click());
+      await new HubActions(browser).addRunner();
       await browser.waitUntil(async () => browser.execute(() =>
         !!document.querySelector('.runner-row.active') &&
         document.querySelector('.hub-activity').textContent === 'Hub 프로젝트 또는 대상을 선택하세요.'),
