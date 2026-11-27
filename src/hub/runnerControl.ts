@@ -8,7 +8,7 @@ import { RunnerBrief } from './RunnerBrief';
 import { RunnerTypedRun } from './RunnerTypedRun';
 import { supportsRun, type RunRequest } from './runnerRunContract';
 import { RunnerRecovery } from './RunnerRecovery';
-import type { FeatureSnapshot, FeatureAdmission } from './runnerConfigContract';
+import type { FeatureSnapshot, FeatureAdmission, InteractionRequest } from './runnerConfigContract';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
 // Python str.isspace(), including its extra information separators and excluding BOM.
@@ -51,6 +51,8 @@ export type RunnerObservation = {
   };
   run_mode: string;
   target: { binding_state: string; owner: string; project: string };
+  context_location?: { kind: 'direct_root'; path: string }
+    | ({ kind: 'target'; label: string } & RunnerObservation['target']) | { kind: 'unbound' };
   selection: { agent_id?: string; account: string; model: string; reasoning_effort: string; service_tier: string; source: string;
     next_model: string; next_reasoning_effort: string; next_service_tier: string };
   execution: { lifecycle_state: string; owned_execution_alive: boolean; workflow_kind: string };
@@ -278,6 +280,26 @@ export class RunnerControl {
       this.commandAttempt = attempt;
       this.sending = false; this.changed(); return attempt;
     }
+  }
+  async interaction(request: InteractionRequest) {
+    const id = this.id, generation = this.snapshot.features?.generation;
+    if (this.stopped || this.tabClosing || !id || !generation || !this.snapshot.features?.interaction)
+      return { state: 'not-sent', code: 'INTERACTION_UNAVAILABLE', reply: undefined };
+    const unavailable = { state: 'outcome-unknown' as const, detail: 'INTERACTION_RECEIPT_UNAVAILABLE' };
+    const admission = await invoke<FeatureAdmission>('runner_feature', {
+      id, request: { feature: 'interaction', request: { ...request, api_version: 1 } },
+    }).catch(() => unavailable);
+    if (admission.state !== 'submitted') return { state: admission.state, code: admission.detail, reply: undefined };
+    const deadline = performance.now() + controlTiming.completionMs;
+    while (!this.stopped && this.id === id && admission.generation === generation
+      && this.snapshot.features?.generation === generation && this.snapshot.state === 'ready' && performance.now() < deadline) {
+      const receipt = this.snapshot.features.results.find(r => r.id === admission.id
+        && r.feature === 'interaction' && r.operation === request.operation);
+      if (receipt && (receipt.phase === 'completed' || ['rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(receipt.state)))
+        return receipt;
+      await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
+    }
+    return { state: unavailable.state, code: unavailable.detail, reply: undefined };
   }
   private observeCommand() {
     const attempt = this.commandAttempt;

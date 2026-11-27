@@ -2,7 +2,7 @@ import { msg, errorText, HubError, type HubText } from './i18n';
 import { projectEntryDefaults } from './preferences';
 import type { EntryDefaults } from './singleEntry';
 import type { RunnerConfigService } from './RunnerConfigService';
-import { copy, same, isSessionProvider, type ConfigCatalog } from './runnerConfigContract';
+import { copy, same, isSessionProvider, type ConfigCatalog, type ConfigDesired, type ConfigSettings } from './runnerConfigContract';
 import { configToEntryDefaults, currentProviderDefaults } from './runnerConfigDefaults';
 import type { RunnerObservation } from './runnerControl';
 import { runModes } from './runnerWork';
@@ -120,6 +120,46 @@ export class HubSelections {
   }
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) {
     this.updateDefault(key, value);
+  }
+  refreshConfirmedCatalog(service: RunnerConfigService) {
+    this.catalog = same(service.catalog?.inspection.model_options_account, this.defaults.accountIdentity) ? service.catalog : undefined;
+    this.changed();
+  }
+  synchronizeConfirmed(service: RunnerConfigService, committed: ConfigDesired, current?: ConfigSettings,
+    catalog?: ConfigCatalog, providerChanged = false) {
+    this.observeProvider(service);
+    const defaults = copy(this.defaults);
+    const provider = service.observedAgentId;
+    if (!this.initialized && current && catalog) {
+      const verified = currentProviderDefaults(current, catalog, this.observation(service));
+      if (verified) {
+        defaults.accountIdentity = verified.accountIdentity;
+        defaults.model = verified.model;
+      }
+    }
+    if (providerChanged || committed.account || committed.model || committed.service_tier) {
+      defaults.accountIdentity = current?.account.profile_name ? current.account : undefined;
+      defaults.model = current?.model.id && isSessionProvider(provider) && current.account.agent_id === provider
+        && current.model.reasoning_effort && current.service_tier
+        ? { agent_id: provider, model: current.model.id, reasoning_effort: current.model.reasoning_effort,
+          service_tier: current.service_tier } : undefined;
+    }
+    if (providerChanged || committed.account || committed.model || committed.service_tier) {
+      const saved = this.savedProviders();
+      if (isSessionProvider(provider)) saved[provider] = { accountIdentity: defaults.accountIdentity ?? null, model: defaults.model ?? null };
+      defaults.providerPreferences = saved;
+    }
+    const mode = runModes.find(mode => mode === committed.run_mode);
+    if (mode) defaults.runMode = mode;
+    if (committed.root !== undefined) defaults.root = committed.root || undefined;
+    const target = catalog?.options.targets.find(t => t.id === committed.target);
+    if (target) defaults.target = { binding_state: 'bound', owner: target.owner, project: target.project };
+    else if (committed.target === '') defaults.target = undefined;
+    this.defaults = { ...defaults, initialized: true };
+    this.refreshProvider = false;
+    if (mode) this.commitTabMode?.(mode);
+    this.save(copy(this.defaults));
+    this.changed();
   }
   private updateDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K], commitOrder?: () => void) {
     if (!this.editable) return;

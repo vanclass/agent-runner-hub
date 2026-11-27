@@ -8,7 +8,8 @@ import { runnerAttachmentsDisabled } from './hubFileDrop';
 export function RunnerComposer({ session }: { session: RunnerSession }) {
   useHubTranslation();
   const text = session.view.draft ?? '';
-  const pending = !!session.view.submitting || session.control.commandPending;
+  const pending = !!session.view.submitting || session.control.commandPending || session.control.assignmentLocked
+    || session.quick.interactionBusy || session.control.config.busy || !!session.hubSelections?.loadingOptions;
   const started = session.control.work.current;
   const typedRun = session.control.typedRun;
   const canDraft = session.view.canSubmit || typedRun.pending || session.typedRunCanEdit

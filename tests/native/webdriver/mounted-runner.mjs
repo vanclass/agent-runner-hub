@@ -12,6 +12,14 @@ export function mountedRunner(browser, operation, argument) {
       switch (operation) {
         case 'identity': return identity;
         case 'configuration': return identity.session === argument ? session.control.config.actual : null;
+        case 'quick-state': {
+          const { control, quick } = session;
+          return { fresh: control.observationFresh, controlBusy: control.busy, configActivity: control.config.activity,
+            uncertain: control.config.uncertain, recovery: control.recovery.busy, work: control.work.busy,
+            assignment: control.assignmentLocked, quick: quick.available, editing: session.hubSelections?.editable,
+            loading: session.hubSelections?.loadingOptions, foreground: session.foregroundInteraction,
+            lifecycle: control.snapshot.observation?.execution.lifecycle_state };
+        }
         case 'state': {
           const view = session.tabView;
           return { identity, process: view.status, activity: view.activity,

@@ -32,6 +32,10 @@ pub enum Request {
     Plan { api_version: u32, desired: Desired },
     #[serde(rename = "session_config.apply")]
     Apply { api_version: u32, desired: Desired, revision: String, plan_id: String },
+    #[serde(rename = "session_config.providers")]
+    Providers { api_version: u32 },
+    #[serde(rename = "session_config.select_provider")]
+    SelectProvider { api_version: u32, expected_agent_id: String, agent_id: String },
 }
 fn text(value: &str) -> bool { !value.is_empty() && value == value.trim() && !value.contains('\0') }
 fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
@@ -51,6 +55,8 @@ impl Request {
     pub fn operation(&self) -> &'static str { match self {
         Self::Inspect { .. } => "session_config.inspect", Self::Plan { .. } => "session_config.plan",
         Self::Apply { .. } => "session_config.apply",
+        Self::Providers { .. } => "session_config.providers",
+        Self::SelectProvider { .. } => "session_config.select_provider",
     } }
     pub fn validate(&self) -> Result<(), &'static str> {
         let valid = match self {
@@ -65,6 +71,9 @@ impl Request {
             Self::Plan { api_version, desired } => *api_version == 1 && desired.valid(),
             Self::Apply { api_version, desired, revision, plan_id } => *api_version == 1
                 && desired.valid() && digest(revision) && digest(plan_id),
+            Self::Providers { api_version } => *api_version == 1,
+            Self::SelectProvider { api_version, expected_agent_id, agent_id } =>
+                *api_version == 1 && text(expected_agent_id) && text(agent_id),
         };
         if valid { Ok(()) } else { Err("INVALID_SESSION_CONFIG_REQUEST") }
     }
@@ -73,6 +82,7 @@ impl Request {
         // policy checks and apply repeats validation around canonical commits.
         std::time::Duration::from_secs(match self {
             Self::Inspect { .. } => 420, Self::Plan { .. } => 600, Self::Apply { .. } => 1800,
+            Self::Providers { .. } => 420, Self::SelectProvider { .. } => 1800,
         })
     }
     pub fn response(&self, packet: &Value) -> Result<Response, &'static str> {
@@ -95,6 +105,10 @@ impl Request {
                 serde_json::from_value(packet.clone()).map(Response::Plan),
             Self::Apply { .. } if packet.get("apply_status").is_some() =>
                 serde_json::from_value(packet.clone()).map(Response::Apply),
+            Self::Providers { .. } if packet["status"] == "accepted" =>
+                serde_json::from_value(packet.clone()).map(Response::Providers),
+            Self::SelectProvider { .. } if packet.get("current_agent_id").is_some() =>
+                serde_json::from_value(packet.clone()).map(Response::ProviderSelection),
             _ => serde_json::from_value(packet.clone()).map(Response::Error),
         };
         parse().map_err(|_| "Malformed session configuration completion")
@@ -140,7 +154,18 @@ pub struct Failure { pub api_version: Option<u32>, pub code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")] pub recommended_next_action: Option<String> }
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
-pub enum Response { Inspect(Inspection), TestSelection(TestSelection), Plan(Plan), Apply(Apply), Error(Failure) }
+pub enum Response { Inspect(Inspection), TestSelection(TestSelection), Plan(Plan), Apply(Apply),
+    Providers(Providers), ProviderSelection(ProviderSelection), Error(Failure) }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProviderOption { pub agent_id: String, pub label: String, pub selected: bool,
+    pub available: bool, pub disabled_reason: String }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Providers { pub api_version: u32, pub current_agent_id: String, pub providers: Vec<ProviderOption> }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProviderSelection { pub api_version: u32, pub current_agent_id: String,
+    pub changed: Option<bool>, pub code: Option<String>, pub required_confirmations: Option<Vec<String>>,
+    pub interaction_owner: Option<String>, pub outcome_unknown: Option<bool>, pub reason: Option<String> }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TestSelection { pub api_version: u32, pub execution_context: String,

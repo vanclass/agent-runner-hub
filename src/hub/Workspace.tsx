@@ -6,6 +6,7 @@ import { HubLogView } from './HubLogView';
 import type { HubLog } from './HubLog';
 import { RunnerComposer } from './RunnerComposer';
 import { RunnerImagePreviews } from './RunnerImagePreviews';
+import { RunnerQuickSettings } from './RunnerQuickSettings';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { SingleEntry } from './singleEntry';
 import { SingleEntryComposer } from './SingleEntryComposer';
@@ -38,6 +39,7 @@ export function Workspace({ runner, session, installation, entry, onSelectRunner
         <span className="empty-note">{t('workspace.previewDisconnected')}</span>
       </div>}
     </section>
+    {session && !singleEntry && <RunnerQuickSettings key={session.control.sessionId ?? session.view.id} session={session} />}
     {session && <div className="workspace-context">
       <RunnerImagePreviews images={session.control.images} />
     </div>}

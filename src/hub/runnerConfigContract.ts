@@ -3,7 +3,10 @@ import type { WorkCapability, WorkRequest } from './runnerWork';
 import type { RecoveryCapability, RecoveryRequest } from './RunnerRecovery';
 import type { RunCapability, RunRequest } from './runnerRunContract';
 type InteractionCapability = { version: 1; operations: string[]; dispatch_boundary: 'foreground_input'; automatic_replay: false; lifetime: 'current_owner' };
-type InteractionRequest = { operation: 'interaction.observe' | 'interaction.respond' };
+export type InteractionAction = { action: 'confirm' | 'select'; choice_id: string }
+  | { action: 'back' | 'cancel' } | { action: 'text'; text: string };
+export type InteractionRequest = { operation: 'interaction.observe' }
+  | ({ operation: 'interaction.respond'; interaction_id: string } & InteractionAction);
 
 export type ConfigAccount = { agent_id: string; profile_name: string };
 export type ConfigModel = { id: string; reasoning_effort: string };
@@ -17,6 +20,17 @@ export type ConfigCapability = { version: 1; operations: string[]; options_page_
   test_account_selection?: boolean; test_account_providers?: string[] };
 export type SessionProvider = 'codex' | 'claude';
 export const isSessionProvider = (value: unknown): value is SessionProvider => value === 'codex' || value === 'claude';
+export type ProviderOption = { agent_id: string; label: string; selected: boolean; available: boolean; disabled_reason: string };
+export type ProviderCatalog = { api_version: 1; current_agent_id: string; providers: ProviderOption[] };
+export function isProviderCatalog(value: unknown): value is ProviderCatalog {
+  if (!record(value) || value.api_version !== 1 || typeof value.current_agent_id !== 'string'
+    || !Array.isArray(value.providers)) return false;
+  const { providers, current_agent_id } = value;
+  return providers.every(p => record(p) && typeof p.agent_id === 'string' && !!p.agent_id
+    && typeof p.label === 'string' && typeof p.available === 'boolean' && typeof p.disabled_reason === 'string'
+    && p.selected === (p.agent_id === current_agent_id))
+    && providers.some(p => p.selected) && new Set(providers.map(p => p.agent_id)).size === providers.length;
+}
 export type ConfigTestSelection = { api_version: 1; execution_context: 'test';
   runner_root: string; authentication: 'available' } & (
     | { account: ConfigAccount & { agent_id: 'codex' }; codex_home: string; claude_config_dir?: never }
@@ -41,7 +55,10 @@ export type ConfigRequest = { operation: 'session_config.inspect'; api_version: 
   | { operation: 'session_config.inspect'; api_version: 1; execution_context: 'test'; agent_id: SessionProvider;
       account?: never; offset?: never; options_revision?: never }
   | { operation: 'session_config.plan'; api_version: 1; desired: ConfigDesired }
-  | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string };
+  | { operation: 'session_config.apply'; api_version: 1; desired: ConfigDesired; revision: string; plan_id: string }
+  | { operation: 'session_config.providers'; api_version: 1 }
+  | { operation: 'session_config.select_provider'; api_version: 1; agent_id: string; expected_agent_id: string };
+export type ConfigAction = ConfigRequest['operation'] extends `session_config.${infer Action}` ? Action : never;
 export type FeatureResult = { id: number; feature: 'recovery' | 'session_config' | 'work' | 'brief' | 'run' | 'interaction'; operation: RecoveryRequest['operation'] | ConfigRequest['operation'] | WorkRequest['operation'] | RunRequest['operation'] | InteractionRequest['operation'] | 'brief.stage';
   state: 'sending' | 'queued' | 'pending-interaction' | 'accepted' | 'rejected' | 'failure' | 'outcome-unknown' | 'not-sent';
   admission: 'unconfirmed' | 'queued' | 'rejected' | 'not-sent'; phase?: string | null; code?: string | null;

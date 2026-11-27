@@ -9,6 +9,30 @@ fn configured() -> Protocol {
     protocol.snapshot.features.discover(&json!({"session_config":capability()}));
     protocol
 }
+#[test]
+fn provider_selection_uses_the_authenticated_mutation_and_keeps_confirmation_requirements() {
+    let mut protocol = configured();
+    let mut capability = capability();
+    capability["operations"].as_array_mut().unwrap().extend([
+        json!("session_config.providers"), json!("session_config.select_provider"),
+    ]);
+    let request = serde_json::from_value::<features::Request>(json!({"feature":"session_config","request":{
+        "operation":"session_config.select_provider","api_version":1,"expected_agent_id":"codex","agent_id":"claude"
+    }})).unwrap();
+    protocol.snapshot.features.discover(&json!({"session_config":capability}));
+    assert!(!protocol.snapshot.features.supports(&request));
+    capability["provider_selection_scope"] = json!("session");
+    protocol.snapshot.features.discover(&json!({"session_config":capability}));
+    let wire: Value = serde_json::from_slice(&protocol.feature_request(request.clone(), "private").unwrap()).unwrap();
+    assert_eq!(wire["expected_agent_id"], "codex");
+    assert_eq!(wire["agent_id"], "claude");
+    let reply = json!({"phase":"completed","status":"rejected","api_version":1,
+        "current_agent_id":"codex","code":"CONFIG_CONFIRMATION_REQUIRED","interaction_owner":"runner_terminal",
+        "required_confirmations":["release_provider_context_in_runner_terminal"]});
+    let response = serde_json::to_value(request.response(&reply, 2).unwrap()).unwrap();
+    assert_eq!(response["current_agent_id"], "codex");
+    assert_eq!(response["required_confirmations"], reply["required_confirmations"]);
+}
 fn inspect() -> features::Request {
     features::Request::SessionConfig(session_config::Request::Inspect { api_version:1, account:None,
         offset:Some(0), options_revision:None, execution_context:None, agent_id:None })

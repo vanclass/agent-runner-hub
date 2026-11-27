@@ -4,6 +4,58 @@ import { startupMs, subagentCompletionMs } from '../../../tools/native-probe/lim
 import { readyInstalledHub, stopWatching, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
 import { executionReleased, observeSession, workSubmissions, workObservations } from './runner-observations.mjs';
 import { HubActions } from './hub-actions.mjs';
+import { mountedRunner } from './mounted-runner.mjs';
+
+async function quickDirect(browser, hub, connection, root, initial) {
+  const ready = () => hub.wait(async () => (await mountedRunner(browser, 'quick-state'))?.quick,
+    'Runner quick settings did not settle');
+  const modeButton = '.quick-grid > button:nth-child(6)';
+  const rootButton = '.quick-grid > button:nth-child(7)';
+  await ready();
+  await hub.dom.click(initial.current.run_mode === 'pure-direct-run' ? rootButton : modeButton);
+  if (initial.current.run_mode !== 'pure-direct-run') {
+    const selected = await browser.execute(() => {
+      const option = [...document.querySelectorAll('.quick-popover .quick-option')]
+        .find(node => node.lastElementChild.textContent === 'Pure Direct Run' && node.getAttribute('aria-disabled') === 'false');
+      option?.click();
+      return !!option;
+    });
+    if (!selected) throw new BlockedPrerequisite('Pure Direct is unavailable in the authenticated quick Run Mode catalog');
+  }
+  await hub.dom.changeValue('.quick-popover input', root);
+  await hub.dom.click('.quick-popover button[type="submit"]');
+  await ready();
+  const before = await visibleConfiguration(browser, connection);
+  assert.equal(before.current.run_mode, 'pure-direct-run');
+  assert.equal(before.current.root.replaceAll('\\', '/').toLowerCase(), root.replaceAll('\\', '/').toLowerCase());
+  return before;
+}
+
+async function cancelProviderRelease(browser, hub, connection, agent) {
+  const providerButton = '.quick-grid > button:first-child';
+  await hub.wait(async () => (await mountedRunner(browser, 'quick-state'))?.quick, 'Provider control unavailable after work');
+  await hub.dom.click(providerButton);
+  const choose = (selector, labels) => browser.execute(({ selector, labels }) => {
+    const option = [...document.querySelectorAll(selector)].find(button =>
+      button.getAttribute('aria-disabled') !== 'true' && !button.disabled
+      && labels.includes((button.matches('.quick-option') ? button.lastElementChild.firstChild : button.firstChild)?.textContent.trim()));
+    option?.click();
+    return !!option;
+  }, { selector, labels });
+  const none = ['None', '없음'];
+  await hub.wait(() => choose('.quick-popover button.quick-option', none), 'No available alternate Provider');
+  await hub.wait(async () => (await hub.dom.state('.quick-feedback button'))
+    || (await hub.observations.snapshot(connection)).observation?.selection.agent_id === 'none',
+  'Provider change produced neither a continuation nor an effective selection');
+  if (!await hub.dom.state('.quick-feedback button')) return 'Runner did not require context release';
+  await hub.dom.click('.quick-feedback button');
+  await hub.wait(() => choose('.quick-interaction button', none), 'Structured Provider menu unavailable');
+  await hub.wait(() => choose('.quick-interaction button', ['No', '아니요', '아니오']), 'Structured release confirmation unavailable');
+  await hub.wait(() => choose('.quick-interaction button', ['Back', 'Cancel']), 'Provider menu did not return after cancellation');
+  await hub.wait(async () => (await mountedRunner(browser, 'quick-state'))?.quick, 'Cancelled Provider command did not settle');
+  assert.equal((await hub.observations.snapshot(connection)).observation.selection.agent_id, agent);
+  return 'explicit decline preserved the active Provider';
+}
 
 async function geometry(browser) {
   return browser.execute(() => {
@@ -22,18 +74,23 @@ async function geometry(browser) {
 async function semanticWork(browser, hub, connection, workRoot, route, presentation) {
   const { terminal } = hub;
   const single = route === 'single-entry';
+  const quick = route === 'runner-quick';
+  const surface = single ? 'single-entry' : 'runner';
   const canonicalConfig = await visibleConfiguration(browser, connection);
-  if (single) await hub.selectSingleEntry();
-  await hub.selectProviderAccount(canonicalConfig.effective.agent_id, canonicalConfig.current.account);
-  let mode;
-  await hub.wait(async () => {
-    mode = await hub.field('mode');
-    return mode && !mode.disabled && mode.options.some(option => option.value && !option.disabled);
-  }, 'Requested mode catalog did not settle after account selection');
-  const supported = mode.options.some(option => option.value === 'pure-direct-run' && !option.disabled);
-  if (!supported) throw new BlockedPrerequisite('Installed Runner does not offer Pure Direct for isolated semantic work acceptance');
-  await hub.edit('mode', 'pure-direct-run');
-  await hub.edit('directRoot', workRoot);
+  const quickSettings = quick ? await quickDirect(browser, hub, connection, workRoot, canonicalConfig) : undefined;
+  if (!quick) {
+    if (single) await hub.selectSingleEntry();
+    await hub.selectProviderAccount(canonicalConfig.effective.agent_id, canonicalConfig.current.account);
+    let mode;
+    await hub.wait(async () => {
+      mode = await hub.field('mode');
+      return mode && !mode.disabled && mode.options.some(option => option.value && !option.disabled);
+    }, 'Requested mode catalog did not settle after account selection');
+    const supported = mode.options.some(option => option.value === 'pure-direct-run' && !option.disabled);
+    if (!supported) throw new BlockedPrerequisite('Installed Runner does not offer Pure Direct for isolated semantic work acceptance');
+    await hub.edit('mode', 'pure-direct-run');
+    await hub.edit('directRoot', workRoot);
+  }
   const instruction = single
     ? 'Reply HUB_SINGLE_ENTRY_ACCEPTANCE. No tools or file/settings changes.'
     : ['Reply with exactly HUB_LONG_COMPOSER_ACCEPTANCE. Do not use tools, modify files, run commands or change settings.',
@@ -41,8 +98,8 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
   const compact = presentation ? await geometry(browser) : undefined;
   const retainedLine = presentation && !single
     ? (await terminal.buffer()).full.split('\n').find(line => line.trim()) : undefined;
-  await hub.draft(route, instruction);
-  assert.equal((await hub.instructionState(route)).value, instruction);
+  await hub.draft(surface, instruction);
+  assert.equal((await hub.instructionState(surface)).value, instruction);
   const editing = presentation ? await geometry(browser) : undefined;
   const observedSessions = await browser.execute(() => {
     return Object.keys(window.__wg3Observation.snapshots);
@@ -50,13 +107,16 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
   const priorSnapshots = await Promise.all(observedSessions.map(id => observeSession(browser, id)));
   const priorBySession = new Map(observedSessions.map((id, index) =>
     [id, new Set(workSubmissions(priorSnapshots[index]).map(result => result.id))]));
-  await hub.submit(route);
+  await hub.submit(surface);
   const entered = presentation ? await geometry(browser) : undefined;
   connection = await visibleConnection(browser);
   let submitted, completed, instructionPublication;
+  const admissionDeadline = performance.now() + startupMs;
   await browser.waitUntil(async () => {
     const snapshot = await hub.observations.snapshot(connection);
     submitted ??= workSubmissions(snapshot).find(r => !priorBySession.get(connection.session)?.has(r.id));
+    if (!submitted && performance.now() > admissionDeadline)
+      throw new UnverifiedObservation('Original work admission was not observed; do not resubmit');
     if (submitted?.state === 'rejected') throw new BlockedPrerequisite('Read-only work rejected: ' + submitted.code);
     if (submitted?.state === 'outcome-unknown') throw new UnverifiedObservation('Work effect unknown; do not replay');
     completed = submitted && workObservations(snapshot).find(work => work.submission_request_id === submitted.id && work.terminal);
@@ -83,7 +143,14 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
       return executionReleased(await hub.observations.snapshot(connection));
     }, 'Completed work did not release its owned execution');
     if (single) await hub.selectSingleEntry();
-    assert.equal((await hub.instructionState(route)).value, '', 'Canonical start clears the originating draft');
+    assert.equal((await hub.instructionState(surface)).value, '', 'Canonical start clears the originating draft');
+    if (quickSettings) {
+      const verified = await visibleConfiguration(browser, connection);
+      assert.equal(verified.current.run_mode, quickSettings.current.run_mode);
+      assert.equal(verified.current.root, quickSettings.current.root);
+      const providerConfirmation = await cancelProviderRelease(browser, hub, connection, verified.effective.agent_id);
+      return { ...result, executionReleased: true, quickModeAndRootPreserved: true, providerConfirmation };
+    }
     return { ...result, executionReleased: true };
   }
   const reply = single ? 'HUB_SINGLE_ENTRY_ACCEPTANCE' : 'HUB_LONG_COMPOSER_ACCEPTANCE';
@@ -140,7 +207,7 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
 }
 
 export function semanticWorkCase(runnerRoot, workRoot, route = 'runner', presentation = false) {
-  const id = route === 'single-entry' ? 'single-entry-work' : 'semantic-work';
+  const id = route === 'single-entry' ? 'single-entry-work' : route === 'runner-quick' ? 'quick-settings-work' : 'semantic-work';
   return defineNativeCase({
     id: presentation ? id + '-presentation' : id,
     presentation: presentation ? 'nonactivating' : 'background',

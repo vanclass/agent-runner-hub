@@ -138,7 +138,7 @@ export function planRequest(browser, connection, desired) {
   return readConfigRequest(browser, connection, { operation: 'session_config.plan', api_version: 1, desired });
 }
 
-async function readConfigRequest(browser, connection, request) {
+export async function readConfigRequest(browser, connection, request) {
   const admission = await browser.execute((id, request) => window.__TAURI_INTERNALS__.invoke(
     'runner_feature', { id, request: { feature: 'session_config', request } }), connection.session, request);
   // Classify provably unsent/uncertain transport before waiting for any response.

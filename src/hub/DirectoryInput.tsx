@@ -4,8 +4,9 @@ import { isTauri } from '@tauri-apps/api/core';
 import { errorText, HubError, msg, t, tr, type HubText } from './i18n';
 
 /** A picker edits one directory draft; verification and apply stay with its owner. */
-export function DirectoryInput({ label, value, onChange, disabled = false, placeholder, scope, isCurrent }: {
+export function DirectoryInput({ label, value, onChange, onPick = onChange, disabled = false, placeholder, scope, isCurrent }: {
   label: string; value: string; onChange: (value: string) => void; disabled?: boolean;
+  onPick?: (value: string) => void;
   placeholder?: string; scope?: unknown; isCurrent: () => boolean;
 }) {
   const id = useId();
@@ -26,7 +27,7 @@ export function DirectoryInput({ label, value, onChange, disabled = false, place
     try {
       if (!isTauri()) throw new HubError(msg('location.nativeRequired'));
       const folder = await selectFolder();
-      if (valid() && typeof folder === 'string') onChange(folder);
+      if (valid() && typeof folder === 'string') onPick(folder);
     } catch (reason) { if (valid()) setError(errorText(reason)); }
     finally { picking.current = false; if (alive.current) setPending(false); }
   }

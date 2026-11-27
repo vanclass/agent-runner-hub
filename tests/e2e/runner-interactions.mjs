@@ -13,7 +13,7 @@ export function registerRunnerInteractions({ test, expect, transport, configure,
       }, state);
       if (state !== 'disconnected') await expect(page.locator('textarea[data-instruction]')).toBeDisabled();
       expect(await page.locator('.workspace > *').evaluateAll(nodes => nodes.map(n => n.className)))
-        .toEqual(['output', 'workspace-context', 'composer-area runner-composer', 'hub-activity']);
+        .toEqual(['output', 'runner-quick-settings', 'workspace-context', 'composer-area runner-composer', 'hub-activity']);
       await expect(page.locator('.runner-interaction, .runner-work-status, .runner-instructions, .terminal-tools')).toHaveCount(0);
       expect(await page.evaluate(() => window.__nativeFixture.writes)).toEqual([]);
       expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].flatMap(s => s.feature.requests)

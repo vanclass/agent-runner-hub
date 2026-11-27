@@ -18,6 +18,7 @@ import { copy, same } from './runnerConfigContract';
 import { issueSidebarActivity, issueUserAction, type WorkAttempt } from './runnerWork';
 import type { BriefResult } from './RunnerBrief';
 import { HubSelections } from './HubSelections';
+import { RunnerQuickConfig } from './RunnerQuickConfig';
 import { InstructionHistory } from './instructionHistory';
 import { terminalPalettes, type TerminalTheme } from './terminalTheme';
 import '@xterm/xterm/css/xterm.css';
@@ -45,6 +46,7 @@ export class RunnerSession {
   readonly fit = new FitAddon();
   readonly input: RunnerInput;
   readonly control: RunnerControl;
+  readonly quick: RunnerQuickConfig;
   readonly references: RunnerReferenceSelection;
   private pty?: Pty;
   private opening?: Promise<void>;
@@ -164,6 +166,11 @@ export class RunnerSession {
         this.captureVerified(); this.observeSubmission(); this.syncTerminalInput(); return this.changed();
       }
     });
+    this.quick = new RunnerQuickConfig(this.control, () => this.hubSelections,
+      () => !this.disposed && !this.reservation && !this.view.closing && this.view.status === 'running'
+        && !this.view.submitting && !this.submissionUncertain && !this.hubSelections?.loadingOptions
+        && !this.control.snapshot.observation?.execution.owned_execution_alive,
+      () => { if (!this.disposed) this.changed(); });
     const historicalModes = [this.tabRecord?.recoveryHint?.runMode, this.tabRecord?.lastVerified?.runMode]
       .filter((mode): mode is string => !!mode);
     this.control.recovery.restore(this.tabRecord?.recovery, restored && this.tabRecord?.launchOnOpen === true, historicalModes);
@@ -213,6 +220,7 @@ export class RunnerSession {
   }
   get assignmentAvailable() {
     return !this.disposed && !this.view.closing && !this.reservation && !this.control.config.busy && !this.control.config.uncertain
+      && !this.quick.interactionBusy
       && !this.control.recovery.busy
       && !this.control.work.blocked && !this.control.work.busy
       && !this.view.submitting && !this.references.prepared
@@ -507,6 +515,8 @@ export class RunnerSession {
     if (this.control.recovery.busy) throw new HubError(msg('runtime.control.finishPending'));
     if (this.view.status !== 'running' || !this.pty) throw new HubError(msg('runtime.session.notRunning'));
     if (this.view.submitting || this.control.typedRun.pending) throw new HubError(msg('runtime.session.submissionPending'));
+    if (this.control.assignmentLocked || this.control.config.busy || this.quick.interactionBusy)
+      throw new HubError(msg('runtime.control.finishPending'));
     if (this.reservation) throw new HubError(msg('runtime.session.entryReserved'));
     if (this.foregroundInteraction) throw new HubError(msg('interaction.foregroundBlocked'));
     if (this.submissionUncertain) throw new HubError(msg('runtime.session.previousUnknown'));
@@ -703,7 +713,7 @@ export class RunnerSessions {
     const id = session.view.id, saved = this.savedSelections[id];
     const defaults = retained ?? saved ?? this.entry.defaults;
     const selections = new HubSelections(() => session.control.snapshot.state === 'ready'
-      && !session.control.assignmentLocked && !session.control.recovery.busy ? session.control.config : undefined,
+      && !session.control.recovery.busy ? session.control.config : undefined,
     this.changed, defaults, value => {
       if (this.sessions.get(id) !== session) return;
       session.control.config.setDraft({});

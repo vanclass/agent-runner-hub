@@ -21,6 +21,7 @@ import { registerLogViewport } from './log-viewport.mjs';
 import { registerHubSelectionUI } from './hub-selection-ui.mjs';
 import { registerComposerAttachments, drop } from './composer-attachments.mjs';
 import { registerRunnerInteractions } from './runner-interactions.mjs';
+import { registerQuickSettings } from './runner-quick-settings.mjs';
 import { registerSlashCommands } from './slash-commands.mjs';
 import { registerWG2 } from './wg2.mjs';
 import { registerWG3 } from './wg3.mjs';
@@ -46,6 +47,7 @@ registerLogViewport({ test, expect, transport, configure, create });
 registerHubSelectionUI({ test, expect, transport, configure, create });
 registerComposerAttachments({ test, expect, transport, configure, create: createWork });
 registerRunnerInteractions({ test, expect, transport, configure, create: createWork, generatedFixture });
+registerQuickSettings({ test, expect, transport, configure, create: createWork, chooseAppPreference });
 registerSlashCommands({ test, expect, transport, configure, create, entry });
 
 async function transport(page, freshTarget, referenceOptions) {
@@ -149,6 +151,12 @@ async function transport(page, freshTarget, referenceOptions) {
             fixture.mode = referenceOptions.workMode ?? 'started';
             sessions.get(id).feature = fixture;
             sessions.get(id).control.features = fixture.features;
+            if (referenceOptions.quick) fixture.features.sessionConfig.operations.push('session_config.providers', 'session_config.select_provider');
+            if (referenceOptions.quickConfirm) {
+              fixture.features.interaction = { version: 1, operations: ['interaction.observe', 'interaction.respond'] };
+              sessions.get(id).control.observation.commands.push({ id: 'provider', text: '/provider',
+                aliases: [], visible: true, enabled: true, children: [] });
+            }
             if (referenceOptions.brief !== undefined && referenceOptions.brief !== 'unsupported')
               fixture.features.brief = { version: 1, operations: ['brief.stage'] };
             if (referenceOptions.recoveryContexts) fixture.features.recovery = {
@@ -196,6 +204,10 @@ async function transport(page, freshTarget, referenceOptions) {
               model: current.model.id, reasoning_effort: current.model.reasoning_effort, service_tier: current.service_tier,
               source: 'configuration', next_model: current.model.id, next_reasoning_effort: current.model.reasoning_effort,
               next_service_tier: current.service_tier });
+            if (referenceOptions.quick) session.control.observation.context_location =
+              ['pure-direct-run', 'direct-run'].includes(current.run_mode)
+                ? { kind: 'direct_root', path: current.root } : { kind: 'target', ...session.control.observation.target,
+                  label: current.target === 'workspace' ? 'Workspace' : 'Exact · A long registered Target label for truncation at narrow widths' };
           }
           if (sessions.get(args.id).control.age) window.__nativeFixture.observedStale = true;
           observed.set(args.id, JSON.stringify(sessions.get(args.id).control));
@@ -218,6 +230,10 @@ async function transport(page, freshTarget, referenceOptions) {
           commands.push(args);
           const control = sessions.get(args.id).control;
           control.results = [{ id: commands.length, command: args.command, state: 'queued', changed: true }];
+          if (referenceOptions.quickConfirm && args.command === '/provider') {
+            control.results[0].state = 'pending-interaction';
+            control.observation.attention.foreground_interaction_active = true;
+          }
           if (writeGate) await writeGate;
           if (failWrite) {
             failWrite = false; control.results[0].state = 'outcome-unknown';
@@ -227,6 +243,24 @@ async function transport(page, freshTarget, referenceOptions) {
         }
         if (command === 'runner_feature') {
           const fixture = sessions.get(args.id).feature;
+          if (args.request.feature === 'interaction' && referenceOptions.quickConfirm) {
+            const request = args.request.request, control = sessions.get(args.id).control;
+            const id = Math.max(1000, ...fixture.features.results.map(r => r.id)) + 1;
+            if (request.operation === 'interaction.respond') {
+              if (request.action !== 'confirm' || request.interaction_id !== 'fixture-confirmation' || request.choice_id !== 'no')
+                throw new Error('Expected explicit cancellation of the canonical confirmation');
+              Object.assign(control.results[0], { state: 'accepted', phase: 'completed', ownerStatus: 'CANCELLED' });
+              control.observation.attention.foreground_interaction_active = false;
+            }
+            const interaction = { state: 'active', interaction_id: 'fixture-confirmation', kind: 'confirmation',
+              prompt: 'Release Provider context?', context: '', actions: ['confirm'], text_input: null,
+              consequences: [{ role: 'destructive', text: 'Current context will be released.', details: [] }],
+              choices: [{ choice_id: 'no', label: 'Keep context', description: '', enabled: true, disabled_reason: '' }] };
+            fixture.features.results.push({ id, feature: 'interaction', operation: request.operation, state: 'accepted',
+              admission: 'queued', phase: 'completed', reply: request.operation === 'interaction.observe'
+                ? { interaction } : { input_status: 'accepted', interaction_status: 'cancelled', outcome_unknown: false } });
+            return { state: 'submitted', id, generation: fixture.features.generation };
+          }
           if (args.request.feature === 'recovery') {
             const request = args.request.request, id = 9000 + (sessions.get(args.id).recoveries ??= []).length;
             sessions.get(args.id).recoveries.push(structuredClone(request));

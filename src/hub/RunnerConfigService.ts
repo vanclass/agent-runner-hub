@@ -3,7 +3,8 @@ import type { ConnectedRunMode } from './RunnerRecovery';
 import { copy, same, record, isInspection, isTestSelection, isSessionProvider, sameInstallation, isPlan, isApply, validatePage, uniqueOptions, validDesired,
   type ConfigAccount, type ConfigCapability, type ConfigCatalog, type ConfigDesired, type ConfigIdentity,
   type ConfigInspect, type ConfigPlan, type ConfigApply, type ConfigSettings, type ConfigRequest, type FeatureSnapshot,
-  type FeatureAdmission, type FeatureResult, type BoundTestSelection, type SessionProvider } from './runnerConfigContract';
+  type FeatureAdmission, type FeatureResult, type BoundTestSelection, type SessionProvider,
+  isProviderCatalog, type ProviderCatalog, type ConfigAction } from './runnerConfigContract';
 
 export interface ConfigTransport {
   identity(): ConfigIdentity | undefined;
@@ -24,10 +25,14 @@ export class RunnerConfigService {
   progress?: FeatureResult;
   actual?: ConfigInspect;
   catalog?: ConfigCatalog;
+  currentCatalog?: ConfigCatalog;
+  providers?: ProviderCatalog;
+  providerOutcomeUnknown = false;
   draft: ConfigDesired = {};
   plan?: ConfigPlan;
   error: HubText = '';
   readonly applications: ConfigApplication[] = [];
+  private confirmations = new WeakMap<ConfigApplication, (application: ConfigApplication) => void>();
   private presentationOffset = 0;
   private presentationReceiptOffset = 0;
   private previousProgress: FeatureResult | undefined | null = null;
@@ -57,8 +62,9 @@ export class RunnerConfigService {
   get busy() { return !['idle', 'closed'].includes(this.activity); }
   get modeRestorationActive() { return this.restoringMode; }
   get latestApplication() { return this.applications.at(-1); }
-  get uncertain() { return this.applications.some(a => a.verification === 'unknown' || a.result?.outcome_unknown); }
-  supports(action: 'inspect' | 'plan' | 'apply') {
+  get uncertain() { return this.providerOutcomeUnknown
+    || this.applications.some(a => a.verification === 'unknown' || a.result?.outcome_unknown); }
+  supports(action: ConfigAction) {
     return !this.closed && this.capability?.version === 1 && this.capability.options_revision === true
       && this.capability.operations.includes(`session_config.${action}`) === true;
   }
@@ -77,6 +83,8 @@ export class RunnerConfigService {
       this.draftVersion++;
       this.actual = undefined;
       this.catalog = undefined;
+      this.currentCatalog = undefined;
+      this.providers = undefined;
       this.plan = undefined;
       this.planned = undefined;
       const { account, model, service_tier, ...independent } = this.draft;
@@ -97,7 +105,8 @@ export class RunnerConfigService {
     this.inspectionUnsupported = !!identity && !this.supports('inspect');
     if (!this.capability) {
       if (previousCapability) this.effectiveRevision++;
-      this.actual = undefined; this.catalog = undefined; this.plan = undefined; this.planned = undefined;
+      this.actual = undefined; this.catalog = undefined; this.currentCatalog = undefined; this.providers = undefined;
+      this.plan = undefined; this.planned = undefined;
     }
     for (const receipt of snapshot?.results ?? []) {
       if (receipt.feature !== 'session_config') continue;
@@ -107,6 +116,7 @@ export class RunnerConfigService {
         application.receipt = copy(receipt);
         application.result = copy(receipt.reply);
         application.verification = receipt.reply.outcome_unknown ? 'unknown' : 'unavailable';
+        this.publishConfirmation(application);
         applicationChanged = true;
       }
     }
@@ -133,6 +143,8 @@ export class RunnerConfigService {
     this.capability = undefined;
     this.actual = undefined;
     this.catalog = undefined;
+    this.currentCatalog = undefined;
+    this.providers = undefined;
     this.plan = undefined;
     this.planned = undefined;
     const wait = this.waiting;
@@ -150,7 +162,7 @@ export class RunnerConfigService {
   }
   private request(request: ConfigRequest): Promise<FeatureResult> {
     const identity = this.transport.identity();
-    const action = request.operation.split('.')[1] as 'inspect' | 'plan' | 'apply';
+    const action = request.operation.split('.')[1] as ConfigAction;
     if (!identity || !this.supports(action) || this.waiting) throw new HubError(msg('config.unsupported'));
     this.assertIdentity(identity);
     this.progress = { id: 0, feature: 'session_config', operation: request.operation,
@@ -168,7 +180,7 @@ export class RunnerConfigService {
       };
       // Native owns the FIFO-head deadline; this is a bounded delivery grace.
       const timer = setTimeout(() => finish(this.unknown(request, this.waiting?.id)),
-        (action === 'apply' ? 1830 : action === 'plan' ? 630 : 450) * 1000);
+        (action === 'apply' || action === 'select_provider' ? 1830 : action === 'plan' ? 630 : 450) * 1000);
       this.waiting = { identity: copy(identity), request, finish, timer };
       void this.transport.submit(identity.session, request).then(admission => {
         if (this.waiting?.finish !== finish) return;
@@ -188,6 +200,46 @@ export class RunnerConfigService {
     if (receipt.phase !== 'completed' || !['accepted', 'rejected', 'failure', 'outcome-unknown'].includes(receipt.state))
       throw new HubError(msg(receipt.state === 'not-sent' ? 'config.notSent' : 'config.receiptUnknown'));
     return receipt.reply;
+  }
+  async selectProvider(agentId: string) {
+    const catalog = this.providers;
+    if (this.busy || this.closed || this.uncertain || this.providerOutcomeUnknown || !catalog
+      || catalog.current_agent_id !== this.observedAgentId || !this.transport.available()
+      || !catalog.providers.some(p => p.agent_id === agentId && p.available)) return;
+    this.error = '';
+    this.activity = 'applying'; this.changed();
+    try {
+      const receipt = await this.request({ operation: 'session_config.select_provider', api_version: 1,
+        expected_agent_id: catalog.current_agent_id, agent_id: agentId });
+      this.providers = undefined;
+      const reply = receipt.reply;
+      if (receipt.phase === 'completed' && record(reply) && reply.api_version === 1) {
+        if (receipt.state === 'accepted' && reply.current_agent_id === agentId && typeof reply.changed === 'boolean')
+          return { confirmed: true, changed: reply.changed };
+        if (receipt.state === 'rejected' && !reply.outcome_unknown)
+          return { confirmed: false, code: receipt.code, reason: typeof reply.reason === 'string' ? reply.reason : undefined,
+            confirmations: reply.interaction_owner === 'runner_terminal' && Array.isArray(reply.required_confirmations)
+              ? reply.required_confirmations.filter((v): v is string => typeof v === 'string') : [] };
+      }
+      this.providerOutcomeUnknown = receipt.state !== 'not-sent' && receipt.admission !== 'rejected';
+      this.error = msg(this.providerOutcomeUnknown ? 'config.receiptUnknown' : 'config.notSent');
+    } catch (reason) { this.error = errorText(reason); }
+    finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
+  }
+  async inspectProviders() {
+    if (this.busy || this.closed) return;
+    this.providers = undefined;
+    this.error = '';
+    this.activity = 'inspecting'; this.changed();
+    try {
+      const receipt = await this.request({ operation: 'session_config.providers', api_version: 1 });
+      const reply = this.completion(receipt);
+      if (receipt.state !== 'accepted' || !isProviderCatalog(reply)
+        || reply.current_agent_id !== this.observedAgentId) throw new HubError(msg('config.identityChanged'));
+      this.providers = copy(reply);
+      this.providerOutcomeUnknown = false;
+    } catch (reason) { this.error = errorText(reason); }
+    finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
   private async page(identity: ConfigIdentity, account?: ConfigAccount, offset = 0, guard?: string) {
     this.assertIdentity(identity);
@@ -283,7 +335,12 @@ export class RunnerConfigService {
         }
       }
       this.catalog = { identity: copy(identity), account: copy(selected), inspection: first, options };
-    } catch (reason) { this.catalog = undefined; this.error = errorText(reason); }
+      if (same(first.current.account, first.model_options_account)) this.currentCatalog = this.catalog;
+    } catch (reason) {
+      this.catalog = undefined;
+      if (!account || same(account, this.actual?.current.account)) this.currentCatalog = undefined;
+      this.error = errorText(reason);
+    }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
   setDraft(change: ConfigDesired) {
@@ -354,7 +411,13 @@ export class RunnerConfigService {
     } catch (reason) { this.error = errorText(reason); }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
-  async apply() {
+  private publishConfirmation(application: ConfigApplication) {
+    if (!application.result) return;
+    const notify = this.confirmations.get(application);
+    this.confirmations.delete(application);
+    notify?.(application);
+  }
+  async apply(onConfirmed?: (application: ConfigApplication) => void) {
     if (!this.canApply || !this.plan || !this.planned) return;
     const plan = copy(this.plan), identity = copy(this.planned.identity), version = this.draftVersion;
     const providerRevision = this.providerRevision;
@@ -375,7 +438,9 @@ export class RunnerConfigService {
         verification: noEffect ? 'pending' : !valid || receipt.state === 'outcome-unknown' || (valid && reply.outcome_unknown) ? 'unknown' : 'pending' };
       // This record is independent of the following read; confirmed receipts survive it.
       this.applications.push(application);
-      this.plan = undefined; this.planned = undefined; this.catalog = undefined;
+      if (onConfirmed) this.confirmations.set(application, onConfirmed);
+      this.publishConfirmation(application);
+      this.plan = undefined; this.planned = undefined; this.catalog = undefined; this.currentCatalog = undefined;
       if (!valid) this.error = receipt.state === 'not-sent' ? msg('config.notSent') : receipt.admission === 'rejected'
         ? msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_REQUEST_REJECTED' }) : msg('config.receiptUnknown');
       this.activity = this.closed ? 'closed' : 'verifying'; this.changed();

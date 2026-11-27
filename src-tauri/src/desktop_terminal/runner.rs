@@ -133,7 +133,7 @@ pub fn prepare(location: &str, cols: u16, rows: u16) -> Result<OpenRequest, Laun
     { env.insert("__PYVENV_LAUNCHER__".into(), installation.python.clone()); }
     let program = if cfg!(windows) { installation.interpreter } else { installation.python };
     Ok(OpenRequest { program: Some(program), args: vec!["-I".into(), "-m".into(), "runner".into(),
-        "run".into(), "--repo-root".into(), installation.root.clone()], cwd: Some(installation.root),
+        "run".into(), "--repo-root".into(), installation.root.clone(), "--hub-presentation".into()], cwd: Some(installation.root),
         env,
         cols, rows, ..Default::default() })
 }

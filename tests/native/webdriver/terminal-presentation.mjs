@@ -14,6 +14,9 @@ export function terminalCommands(runnerRoot, displayed = false) {
       const tab = await hub.addRunner();
       const connection = await visibleConnection(browser, runnerRoot);
       const startup = await terminal.buffer();
+      assert.ok(startup.visible.split('\n').some(line => line.trim()), 'Runner startup output missing');
+      assert.ok(startup.visible.split('\n').slice(-4).every(line => !line.trim()),
+        'The idle PTY still shows composer or Context Footer rows');
       async function command(text) {
         await hub.draft('runner', text);
         await hub.wait(async () => {
@@ -74,7 +77,7 @@ export function terminalCommands(runnerRoot, displayed = false) {
         await hub.draft(surface, '');
       }
       await hub.selectRunner(tab);
-      return { connection, startup, helpReceipt, publication, canonical, errorReceipt, after, scroll, editors };
+      return { connection, startup, idleChromeRows: 0, helpReceipt, publication, canonical, errorReceipt, after, scroll, editors };
     },
     async observe(browser) {
       const { settings, terminal } = new HubActions(browser);

@@ -32,12 +32,17 @@ impl Request {
 pub struct Capability { pub version: u32, pub operations: Vec<String>, pub options_page_size: u32,
     pub options_revision: bool,
     #[serde(default)] pub test_account_selection: bool,
+    #[serde(default)] pub provider_selection_scope: Option<String>,
     #[serde(default)] pub test_account_providers: Vec<String> }
 impl Capability {
     fn read(value: &Value) -> Option<Self> {
         let mut cap: Self = serde_json::from_value(value.clone()).ok()?;
         cap.operations.retain(|operation| matches!(operation.as_str(),
-            "session_config.inspect" | "session_config.plan" | "session_config.apply"));
+            "session_config.inspect" | "session_config.plan" | "session_config.apply"
+            | "session_config.providers" | "session_config.select_provider"));
+        if cap.provider_selection_scope.as_deref() != Some("session") {
+            cap.operations.retain(|op| op != "session_config.select_provider");
+        }
         (cap.version == 1 && cap.options_revision && cap.options_page_size > 0 && cap.options_page_size <= 32
             && cap.operations.iter().any(|op| op == "session_config.inspect")
             && value["interaction_owner"] == "runner_terminal" && value["automatic_retry"] == false)
@@ -102,7 +107,7 @@ impl Features {
     } }
     pub fn begin(&mut self, id: u64, request: &Request) {
         // Completed reads/plans can retire; apply receipts and uncertain results survive.
-        self.results.retain(|r| r.feature != request.name() || r.operation == "session_config.apply" || r.operation == "work.submit" || r.operation == "brief.stage" || r.operation == "run.invoke"
+        self.results.retain(|r| r.feature != request.name() || r.operation == "session_config.apply" || r.operation == "session_config.select_provider" || r.operation == "work.submit" || r.operation == "brief.stage" || r.operation == "run.invoke"
             || !matches!(r.state.as_str(), "accepted" | "rejected" | "failure"));
         self.results.push(ResultView { id, feature: request.name().into(), operation: request.operation().into(),
             state: "sending".into(), admission: "unconfirmed".into(), phase: None, code: None, reply: None });

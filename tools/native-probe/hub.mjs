@@ -18,6 +18,7 @@ import { attachmentWorkCase } from '../../tests/native/webdriver/attachment-work
 import { backgroundWorkspace } from '../../tests/native/webdriver/background-workspace.mjs';
 import { providerSwitchCase } from '../../tests/native/webdriver/provider-switch.mjs';
 import { menuPresentation } from '../../tests/native/webdriver/menu-presentation.mjs';
+import { quickSettings } from '../../tests/native/webdriver/quick-settings.mjs';
 
 export async function runProbe(args, { smoke = false } = {}) {
   const root = await fs.realpath(fileURLToPath(new URL('../../', import.meta.url)));
@@ -49,6 +50,8 @@ export async function runProbe(args, { smoke = false } = {}) {
   cases.push(attachmentWorkCase(runnerRoot, root));
   cases.push(backgroundWorkspace(runnerRoot));
   cases.push(menuPresentation(runnerRoot));
+  cases.push(quickSettings(runnerRoot));
+  cases.push(semanticWorkCase(runnerRoot, root, 'runner-quick'));
   cases.push(providerSwitchCase(runnerRoot));
   cases.push(providerSwitchCase(runnerRoot, root));
   if (help) {

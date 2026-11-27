@@ -16,6 +16,7 @@ export class ConfigFixture {
   holdOperation = '';
   fault = '';
   applyOutcome = '';
+  providerRejection = '';
   planStatus = 'ready';
   postApplyFailure = false;
   testSelection: unknown = { api_version: 1, execution_context: 'test',
@@ -99,6 +100,26 @@ export class ConfigFixture {
         }
         result.reply = page;
       }
+    } else if (request.operation === 'session_config.providers') {
+      result.reply = { api_version: 1, current_agent_id: this.current.account.agent_id,
+        providers: ['codex', 'claude', 'none'].map(id => ({
+          agent_id: id, label: id === 'codex' ? 'Codex' : id === 'claude' ? 'Claude' : 'None',
+          selected: id === this.current.account.agent_id, available: id !== 'none',
+          disabled_reason: id === 'none' ? 'Fixture Provider is unavailable' : '',
+        })) };
+    } else if (request.operation === 'session_config.select_provider') {
+      const before = this.current.account.agent_id;
+      if (this.providerRejection || before !== request.expected_agent_id) {
+        result.state = 'rejected';
+        result.code = this.providerRejection || 'CONFIG_PROVIDER_STALE';
+      } else {
+        this.current = { ...this.current, account: this.accounts.find(a => a.agent_id === request.agent_id)!,
+          model: { id: 'm0', reasoning_effort: 'medium' }, service_tier: 'default' };
+      }
+      result.reply = { api_version: 1, current_agent_id: this.current.account.agent_id,
+        changed: before !== this.current.account.agent_id,
+        ...(result.code === 'CONFIG_CONFIRMATION_REQUIRED' ? { interaction_owner: 'runner_terminal',
+          required_confirmations: ['release_provider_context_in_runner_terminal'] } : {}) };
     } else if (request.operation === 'session_config.plan') {
       result.reply = this.plan(request.desired);
       if (this.planStatus !== 'ready') result.state = 'rejected';
