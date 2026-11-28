@@ -30,8 +30,16 @@ export function savedRunnerLocation() {
 export function saveRunnerLocation(root: string) {
   try { localStorage.setItem(storageKey, root); } catch { /* Verification remains valid for this window. */ }
 }
+const resolving = new Map<string, Promise<RunnerInstallation>>();
+
 export async function resolveRunnerInstallation(location: string) {
   if (!isTauri()) throw new HubError(msg('location.nativeRequired'));
-  try { return await invoke<RunnerInstallation>('runner_resolve', { location }); }
-  catch (reason) { throw new HubError(launchFailure(location, reason, true).detail); }
+  const key = location.trim();
+  const pending = resolving.get(key);
+  if (pending) return pending;
+  const request = invoke<RunnerInstallation>('runner_resolve', { location: key })
+    .catch(reason => { throw new HubError(launchFailure(key, reason, true).detail); })
+    .finally(() => resolving.delete(key));
+  resolving.set(key, request);
+  return request;
 }

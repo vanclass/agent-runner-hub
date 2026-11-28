@@ -117,7 +117,8 @@ export class RunnerControl {
     this.recovery = new RunnerRecovery(undefined, false, {
       completionMs: controlTiming.completionMs,
       observeMs: controlTiming.refreshMs,
-      restoreMode: mode => this.config.restoreMode(mode),
+      restoreMode: mode => this.observationFresh && this.snapshot.observation?.run_mode === mode
+        ? Promise.resolve(true) : this.config.restoreMode(mode),
       submit: request => invoke<FeatureAdmission>('runner_feature', { id: this.id, request: { feature: 'recovery', request } }),
     }, changed);
     this.brief = new RunnerBrief({
@@ -148,6 +149,7 @@ export class RunnerControl {
       identity: () => this.id && this.snapshot.features
         ? { session: this.id, generation: this.snapshot.features.generation } : undefined,
       available: (operation, lease) => !this.stopped && (!this.tabClosing || operation === 'work.list') && this.snapshot.state === 'ready'
+        && this.snapshot.observation?.selection.agent_id !== 'none'
         && !this.recovery.busy
         && !this.brief.busy
         && !(['work.status', 'work.observe'].includes(operation) || operation === 'work.submit' && lease && lease === this.attachmentLease
@@ -330,9 +332,8 @@ export class RunnerControl {
     if (this.stopped || id !== this.id || this.otherControlBusyExceptAttachments || this.assignmentLocked
       || this.attachmentLease !== lease || this.snapshot.state !== 'ready')
       throw new HubError(msg('runtime.control.ownerUnavailable'));
-    const thumbnail = await clipboardThumbnail(blob);
     const path = await invoke<string>('runner_stage_clipboard', { id, png: Array.from(png) });
-    return { path, sessionId: id, thumbnail };
+    return { path, sessionId: id };
   }
   async reference(request: ReferenceRequest, owningSession?: string, lease?: symbol): Promise<ReferenceAdmission> {
     const id = this.id;
@@ -378,23 +379,6 @@ export class RunnerControl {
     this.work.close();
     this.changed();
   }
-}
-
-async function clipboardThumbnail(blob: Blob) {
-  const bitmap = await createImageBitmap(blob);
-  try {
-    const scale = Math.min(1, 160 / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext('2d');
-    if (!context) throw new HubError(msg('runtime.control.previewUnavailable'));
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(thumbnail => {
-      if (thumbnail && thumbnail.size <= 256 * 1024) resolve(thumbnail);
-      else reject(new HubError(msg('runtime.control.previewTooLarge')));
-    }, 'image/png'));
-  } finally { bitmap.close(); }
 }
 
 export function flattenCommands(commands: RunnerCommand[]): RunnerCommand[] {

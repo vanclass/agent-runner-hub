@@ -76,7 +76,7 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
     await expect(setup).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('agent-runner-hub.installation'))).toBe('/fixture/install');
   });
-  test('installation setup: pending saved verification blocks restoration then starts each owner once', async ({ page }) => {
+  test('installation setup: pending saved verification blocks restoration then starts each owner once', async ({ page }, info) => {
     await transport(page);
     await page.addInitScript(() => {
       localStorage.setItem('agent-runner-hub.installation', '/fixture/install');
@@ -85,8 +85,12 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
       ] }));
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       const gate = new Promise(resolve => { window.__finishInstallation = resolve; });
+      window.__installationProbes = 0;
+      window.__startupListeners = [];
       native.invoke = async (command, args) => {
-        if (command === 'runner_resolve') await gate;
+        if (command === 'runner_resolve') { window.__installationProbes++; await gate; }
+        if (command === 'plugin:event|listen' && /tauri:\/\/(close-requested|drag-)/.test(args.event))
+          window.__startupListeners.push(args.event);
         return invoke(command, args);
       };
     });
@@ -104,6 +108,12 @@ export function registerInstallationSetup({ test, expect, transport, configure, 
     await expect(page.locator('.single-entry')).toHaveAttribute('aria-current', 'page');
     const tabs = await page.evaluate(() => JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs);
     expect(tabs[0].installationRoot).toBe('/fixture/other');
+    const probes = await page.evaluate(() => window.__installationProbes);
+    await info.attach('installation-probes', { body: JSON.stringify({ probes }), contentType: 'application/json' });
+    expect(probes).toBe(1);
+    const listeners = await page.evaluate(() => window.__startupListeners);
+    expect(listeners.filter(event => event === 'tauri://close-requested')).toHaveLength(1);
+    expect(listeners.filter(event => event.startsWith('tauri://drag-'))).toHaveLength(4);
   });
   test('installation setup: later changes preserve tabs and failed drafts, valid restart bypasses setup', async ({ page }) => {
     await transport(page); await configure(page); await create(page);

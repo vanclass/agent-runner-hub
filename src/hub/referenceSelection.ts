@@ -281,7 +281,7 @@ export class RunnerReferenceSelection {
       return !this.candidates.some(item => item.removalId === result.id && item.reconciled);
     });
   }
-  async preflight() {
+  async preflight(requireEmpty = false) {
     this.bind(this.control);
     if (this.picking || this.staging || this.registering || this.listing || this.submission)
       throw new HubError(msg('runtime.references.finishEditing'));
@@ -300,6 +300,7 @@ export class RunnerReferenceSelection {
     if (selected.some(item => !['staged', 'registered'].includes(this.state(item))))
       throw new HubError(msg('runtime.references.cancelFailed'));
     const before = await this.stableInventory(lease, true);
+    if (requireEmpty && before.length) throw new HubError(msg('runtime.references.assignmentPending'));
     const excluded = this.candidates.filter(item => item.cancelRequested || inactive(this.state(item)))
       .map(item => this.referenceId(item)).filter((id): id is string => !!id);
     if (before.some(item => excluded.includes(item.reference_id)))

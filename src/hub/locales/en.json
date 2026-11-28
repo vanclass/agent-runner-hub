@@ -325,8 +325,6 @@
       "processExited": "Runner process exited",
       "launchFailed": "Runner failed to launch",
       "workspaceClosed": "Runner workspace closed",
-      "previewUnavailable": "Clipboard preview is unavailable.",
-      "previewTooLarge": "Clipboard preview could not be bounded.",
       "compatibility": "{{detail}}. This installation did not establish verified Runner control; check local-control launch compatibility."
     },
     "session": {

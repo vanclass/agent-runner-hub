@@ -93,7 +93,10 @@ export class SingleEntry {
   setDefault<K extends keyof EntryDefaults>(key: K, value: EntryDefaults[K]) { this.selections.setDefault(key, value); }
   inspectOptions() { return this.selections.inspectOptions(); }
   async submit(location?: string, focus: (id: string) => void = () => {}, briefRun = false) {
-    if (!this.editable || this.loadingOptions || !this.draft.trim()) return;
+    if (!this.editable || !this.draft.trim()) return;
+    if (this.loadingOptions && (briefRun || !isRunnerCommand(this.draft))) {
+      this.detail = msg('config.notReady'); this.changed(); return;
+    }
     if (briefRun && this.defaults.runMode !== 'issue-run') return;
     const text = this.draft, defaults = copy(this.defaults), token = Symbol('Single Entry submission');
     const provider = briefRun || !isRunnerCommand(text) ? defaults.accountIdentity?.agent_id : undefined;
@@ -165,12 +168,11 @@ export class SingleEntry {
       this.attachments.bind(destination.control);
       const submission = submitConfiguredWork<WorkAttempt | BriefResult>(session.control.config, session.control.work, defaults, text, async () => {
         await destination.control.fresh(true);
-        await destination.references.verifyAssignment();
         const finalReason = idleReason(destination);
         if (finalReason || !destination.ownsAssignment(token)) throw new HubError(msg('runtime.entry.unsent',
           { reason: finalReason || msg('runtime.entry.inputUnsettled') }));
         destination.control.assignmentLocked = false;
-        await this.attachments.preflight();
+        await this.attachments.preflight(true);
         await destination.control.fresh(true);
         this.attachments.assertReadyForDelivery();
         const attachmentReason = idleReason(destination, true);

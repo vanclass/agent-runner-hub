@@ -2,6 +2,27 @@
 import { drop } from './composer-attachments.mjs';
 
 export function registerSlashCommands({ test, expect, transport, configure, create, entry }) {
+  test('Single Entry slash command can reach admission while option loading is held', async ({ page }) => {
+    await transport(page, undefined, { work: true, auto: true });
+    await page.addInitScript(() => {
+      const bridge = window.__TAURI_INTERNALS__, invoke = bridge.invoke;
+      bridge.invoke = (command, args) => {
+        if (command === 'runner_feature' && args.request.request.operation === 'session_config.inspect') {
+          window.__nativeFixture.sessions.get(args.id).feature.config.holdOperation = 'session_config.inspect';
+        }
+        return invoke(command, args);
+      };
+    });
+    await configure(page);
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1')?.feature.config.requests.length)).toBe(1);
+    const input = page.locator('textarea[data-instruction]');
+    await input.fill('/status');
+    await input.press('Enter');
+    await expect.poll(() => page.evaluate(() => window.__nativeFixture.commands.map(item => item.command))).toEqual(['/status']);
+    expect(await page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.features.results
+      .some(result => result.operation === 'session_config.inspect' && result.state === 'queued'))).toBe(true);
+  });
+
   async function typedRun(page, fault) {
     await transport(page, undefined, { auto: true, work: true, brief: 'accepted', captureHubLog: true });
     await configure(page);

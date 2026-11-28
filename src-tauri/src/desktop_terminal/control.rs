@@ -303,6 +303,10 @@ impl Protocol {
         if self.snapshot.state != "ready" || self.snapshot.observation.is_none() || !self.snapshot.features.supports(&request) {
             return Err("Unsupported or unavailable native feature");
         }
+        if matches!(&request, features::Request::SessionConfig(session_config::Request::Inspect { .. }))
+            && self.snapshot.observation.as_ref().and_then(|view| view.selection.agent_id.as_deref()) == Some("none") {
+            return Err("Session configuration inspection requires an active Provider");
+        }
         if matches!(&request, features::Request::Work(_)) && self.snapshot.observation.as_ref().is_none_or(|view|
             !work::RUN_MODES.contains(&view.run_mode.as_str()) || self.snapshot.features.work.as_ref()
                 .is_none_or(|cap| !cap.run_modes.contains(&view.run_mode))) {
@@ -439,6 +443,7 @@ impl Protocol {
         else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
         Ok(())
     }
+    #[cfg(test)]
     fn public_snapshot(&self) -> Snapshot {
         let mut snapshot = self.snapshot.clone();
         snapshot.observation_age_ms = self.observed_at.map(|time| time.elapsed().as_millis() as u64);

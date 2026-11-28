@@ -12,6 +12,7 @@ enum Request { Command(String), Reference(ReferenceRequest), Image(generated_ima
     Feature(super::features::Request),
     Presentation(super::presentation::Request, u64, super::presentation::Completion) }
 type Admission = mpsc::Sender<Result<u64, String>>;
+type Published = (Snapshot, Option<Instant>);
 struct SubmitError { detail: String, unknown: bool }
 impl From<&str> for SubmitError {
     fn from(detail: &str) -> Self { Self { detail: detail.into(), unknown: false } }
@@ -61,7 +62,7 @@ impl Launch {
     pub fn bind(mut self, pid: u32) -> Arc<Client> {
         // Release redundant child endpoints immediately after CreateProcessW, before any hello wait.
         self.children.clear();
-        let state = Arc::new(Mutex::new(Snapshot::default()));
+        let state = Arc::new(Mutex::new((Snapshot::default(), None)));
         let stopped = Arc::new(AtomicBool::new(false));
         let (send, receive) = mpsc::sync_channel::<(Request, Admission)>(32);
         let worker_state = state.clone();
@@ -71,7 +72,7 @@ impl Launch {
             protocol.snapshot.features.runner_root = self.runner_root;
             let result = serve(&self.read, &self.write, &mut protocol, &self.key, receive, &worker_stop, &worker_state);
             protocol.disconnect(result.err().unwrap_or("Runner control closed"));
-            *worker_state.lock().unwrap() = protocol.public_snapshot();
+            publish(&worker_state, &protocol);
             // The key is retained only by this native worker for authenticated requests.
             unsafe { self.key.as_bytes_mut().fill(0); }
         });
@@ -80,7 +81,7 @@ impl Launch {
 }
 
 pub struct Client {
-    state: Arc<Mutex<Snapshot>>, stopped: Arc<AtomicBool>, send: mpsc::SyncSender<(Request, Admission)>,
+    state: Arc<Mutex<Published>>, stopped: Arc<AtomicBool>, send: mpsc::SyncSender<(Request, Admission)>,
     worker: Mutex<Option<thread::JoinHandle<()>>>,
     images: Images,
 }
@@ -103,9 +104,14 @@ impl Client {
         matches(commands, candidate, &mut best);
         best.is_some_and(|(_, command)| command.visible && command.enabled)
     }
-    pub fn snapshot(&self) -> Snapshot { self.state.lock().unwrap().clone() }
+    pub fn snapshot(&self) -> Snapshot {
+        let (mut snapshot, observed_at) = self.state.lock().unwrap().clone();
+        snapshot.observation_age_ms = observed_at.map(|time| time.elapsed().as_millis() as u64);
+        snapshot
+    }
+    fn ready(&self) -> bool { self.state.lock().unwrap().0.state == "ready" }
     pub fn presentation(&self, request: super::presentation::Request, generation: u64) -> Result<serde_json::Value, String> {
-        if self.stopped.load(Ordering::Acquire) || self.snapshot().state != "ready" {
+        if self.stopped.load(Ordering::Acquire) || !self.ready() {
             return Err("Presentation control is unavailable".into());
         }
         let deadline = Instant::now() + super::COMPLETION_TIMEOUT + super::DELIVERY_GRACE;
@@ -118,7 +124,7 @@ impl Client {
         receive.recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .map_err(|_| "Presentation response unavailable; coverage is unverified".to_owned())?
     }
-    fn image_alive(&self) -> bool { !self.stopped.load(Ordering::Acquire) && self.snapshot().state == "ready" }
+    fn image_alive(&self) -> bool { !self.stopped.load(Ordering::Acquire) && self.ready() }
     fn image_reply(&self, request: generated_images::Request) -> Result<generated_images::Reply, generated_images::Failure> {
         let (send, receive) = mpsc::channel();
         self.submit(Request::Image(request, send)).map_err(|_| generated_images::Failure::unavailable())?;
@@ -139,7 +145,7 @@ impl Client {
             || !snapshot.observation.as_ref().is_some_and(|o| Self::available(&o.commands, candidate)) {
             return Ok(super::features::Admission::NotSent { detail: "Choose an available Runner slash command".into() });
         }
-        let generation = self.snapshot().features.generation;
+        let generation = snapshot.features.generation;
         Ok(match self.submit(Request::Command(command)) {
             Ok(id) => super::features::Admission::Submitted { id, generation },
             Err(error) if error.unknown => super::features::Admission::OutcomeUnknown { detail: error.detail },
@@ -148,7 +154,7 @@ impl Client {
     }
     pub fn reference(&self, request: ReferenceRequest) -> ReferenceAdmission {
         if let Err(detail) = request.validate() { return ReferenceAdmission::Failure { detail: detail.into() }; }
-        if self.snapshot().references.capability.is_none() {
+        if self.state.lock().unwrap().0.references.capability.is_none() {
             return ReferenceAdmission::Failure { detail: "This Runner offers only the manual /files flow".into() };
         }
         match self.submit(Request::Reference(request)) {
@@ -171,7 +177,7 @@ impl Client {
         }
     }
     fn submit(&self, request: Request) -> Result<u64, SubmitError> {
-        if self.stopped.load(Ordering::Acquire) || self.snapshot().state != "ready" {
+        if self.stopped.load(Ordering::Acquire) || !self.ready() {
             return Err("Runner control is disconnected or still connecting".into());
         }
         let (admitted, admission) = mpsc::channel();
@@ -188,8 +194,13 @@ impl Client {
 }
 impl Drop for Client { fn drop(&mut self) { self.close(); } }
 
+fn publish(state: &Mutex<Published>, protocol: &Protocol) {
+    let published = (protocol.snapshot.clone(), protocol.observed_at);
+    *state.lock().unwrap() = published;
+}
+
 fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: &str,
-    receive: mpsc::Receiver<(Request, Admission)>, stopped: &AtomicBool, state: &Mutex<Snapshot>) -> Result<(), &'static str> {
+    receive: mpsc::Receiver<(Request, Admission)>, stopped: &AtomicBool, state: &Mutex<Published>) -> Result<(), &'static str> {
     let mut incoming = Vec::<u8>::new();
     let mut outgoing = Vec::<u8>::new();
     let mut deferred = std::collections::VecDeque::new();
@@ -220,6 +231,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 } else { protocol.response(packet)?; }
             }
             if incoming.len() > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
+            publish(state, protocol);
         }
         if protocol.snapshot.state == "ready" && !protocol.recovering_direct() {
             deferred.extend(receive.try_iter());
@@ -237,7 +249,7 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 };
                 let receipt = result.map(|bytes| {
                     outgoing.extend(bytes);
-                    *state.lock().unwrap() = protocol.public_snapshot();
+                    publish(state, protocol);
                     protocol.next
                 }).map_err(str::to_owned);
                 let _ = admitted.send(receipt);
@@ -258,7 +270,6 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
             outgoing.drain(..count as usize);
             protocol.written_bytes += count as u64;
         }
-        *state.lock().unwrap() = protocol.public_snapshot();
         protocol.expire_presentations();
         if protocol.expired() { return Err("Runner control completion timed out; uncertain commands were not retried"); }
         if protocol.connection.is_none() && started.elapsed() > Duration::from_secs(30) {

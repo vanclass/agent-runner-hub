@@ -46,13 +46,15 @@ export function useHubFileDrop(host: RefObject<HTMLDivElement>, destination: Des
       const x = position.x / window.devicePixelRatio, y = position.y / window.devicePixelRatio;
       if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) return target;
     };
-    void Promise.resolve().then(() => watchFileDrop((paths, position) => {
+    void Promise.resolve().then(() => {
       if (disposed) return;
-      const target = targetAt(position);
-      setHovered(undefined);
-      if (target) target.selection.select([...new Set(paths)]);
-    }, position => { if (!disposed) setHovered(targetAt(position)); }))
-      .then(unlisten => { if (disposed) unlisten(); else stop = unlisten; })
+      return watchFileDrop((paths, position) => {
+        if (disposed) return;
+        const target = targetAt(position);
+        setHovered(undefined);
+        if (target) target.selection.select([...new Set(paths)]);
+      }, position => { if (!disposed) setHovered(targetAt(position)); });
+    }).then(unlisten => { if (disposed) unlisten?.(); else stop = unlisten; })
       .catch(() => { if (!disposed) setUnavailable(true); });
     return () => { disposed = true; stop?.(); };
   }, [host]);

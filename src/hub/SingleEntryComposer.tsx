@@ -97,7 +97,7 @@ export function SingleEntryComposer({ entry, location, onSelectRunner }: {
 }) {
   return <ComposerPresentation text={entry.draft} compact={entry.composerCompact}>
     <ComposerAttachments selection={entry.attachments} disabled={entryAttachmentsDisabled(entry)}>
-      <InstructionTextarea aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable} readOnly={entry.loadingOptions}
+      <InstructionTextarea aria-label={t(entry.defaults.runMode === 'issue-run' ? 'brief.input' : 'entry.instructions')} rows={3} value={entry.draft} disabled={!entry.editable}
         history={entry.instructionHistory} edit={value => entry.setDraft(value)}
         submit={briefRun => {
           if (!briefRun || entry.defaults.runMode === 'issue-run') void entry.submit(location, onSelectRunner, briefRun);

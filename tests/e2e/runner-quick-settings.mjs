@@ -4,8 +4,35 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await configure(page);
     await expect(page.getByRole('region', { name: 'Runner quick settings' })).toHaveCount(0);
     await create(page);
+    const terminal = page.locator('.xterm-rows');
+    await expect(terminal).toContainText(/pty-\d+:/);
+    await terminal.evaluate(node => { window.__quickSession = node.textContent.match(/pty-\d+/)[0]; });
     return page.getByRole('region', { name: 'Runner quick settings' });
   }
+
+  test('Runner quick settings discover Providers and resume Work and options after None', async ({ page }) => {
+    const bar = await setup(page);
+    const counts = () => page.evaluate(() => {
+      const { config, requests } = window.__nativeFixture.sessions.get(window.__quickSession).feature;
+      return { inspect: config.requests.filter(r => r.operation === 'session_config.inspect').length,
+        work: requests.filter(r => r.operation === 'work.list').length };
+    });
+    await expect.poll(async () => (await counts()).inspect).toBe(3);
+    await page.clock.install();
+    await page.evaluate(() => {
+      const { config } = window.__nativeFixture.sessions.get(window.__quickSession).feature;
+      config.current.account = { agent_id: 'none', profile_name: '' };
+    });
+    await expect(bar.getByRole('button', { name: 'Provider · None' })).toBeVisible();
+    const inactive = await counts();
+    await page.clock.runFor(3500);
+    expect(await counts()).toEqual(inactive);
+    await bar.getByRole('button', { name: 'Provider · None' }).click();
+    await bar.getByRole('button', { name: 'Codex', exact: true }).click();
+    await expect(bar.getByRole('button', { name: 'Provider · Codex' })).toBeVisible();
+    await expect.poll(async () => (await counts()).inspect).toBeGreaterThan(inactive.inspect);
+    await expect.poll(async () => (await counts()).work).toBeGreaterThan(inactive.work);
+  });
 
   test('Runner quick settings proportional row, anchored choices and themes', async ({ page }, info) => {
     const bar = await setup(page);
@@ -59,7 +86,7 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     const bar = await setup(page);
     const trigger = bar.getByRole('button', { name: 'Model · m0' });
     const popup = bar.getByRole('dialog', { name: 'Model' });
-    const count = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests.length);
+    const count = () => page.evaluate(() => window.__nativeFixture.sessions.get(window.__quickSession).feature.config.requests.length);
     await expect(page.getByRole('combobox', { name: 'Requested Model' }).getByRole('option', { name: 'm1', exact: true })).toBeAttached();
     await expect.poll(count).toBe(4);
     await trigger.click();
@@ -70,7 +97,7 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await page.keyboard.press('Escape');
     expect(await count()).toBe(4);
     await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       const inspect = config.inspection.bind(config);
       config.inspection = (...args) => {
         const reply = inspect(...args);
@@ -86,7 +113,7 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await expect.poll(count).toBe(8);
     await page.keyboard.press('Escape');
     await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       config.holdOperation = 'session_config.inspect';
       config.fault = 'missing';
     });
@@ -97,7 +124,7 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await expect(popup.getByRole('button', { name: 'new-model', exact: true })).toHaveAttribute('aria-disabled', 'false');
     expect(await count()).toBe(9);
     await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       config.holdOperation = '';
       config.complete();
     });
@@ -105,18 +132,19 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await expect(popup.getByRole('status')).toContainText('CONFIG_STATE_CHANGED');
     await expect(popup.getByRole('button', { name: 'new-model', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.fault = ''; });
+    await page.evaluate(() => { window.__nativeFixture.sessions.get(window.__quickSession).feature.config.fault = ''; });
     await trigger.click();
     await expect(popup.getByRole('button', { name: 'new-model' })).toBeVisible();
   });
 
   test('Runner quick settings count startup, menu and reasoning requests', async ({ page }, info) => {
     const bar = await setup(page);
-    const requests = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
+    const requests = () => page.evaluate(() => window.__nativeFixture.sessions.get(window.__quickSession).feature.config.requests
       .map(request => request.operation.replace('session_config.', '')));
     const trigger = bar.getByRole('button', { name: 'Reasoning effort · medium' });
     await expect(page.getByRole('combobox', { name: 'Requested Model' }).getByRole('option', { name: 'm1', exact: true })).toBeAttached();
     await expect(bar).toHaveAttribute('aria-busy', 'false');
+    await expect.poll(requests).toHaveLength(4);
     const startup = await requests();
     for (let i = 0; i < 2; i++) {
       await trigger.click();
@@ -137,15 +165,15 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     expect(startup.filter(op => op === 'inspect')).toHaveLength(3);
     expect(startup.filter(op => op === 'providers')).toHaveLength(1);
     expect(menus).toEqual([]);
-    expect(change).toEqual(['plan', 'inspect', 'apply', 'inspect']);
+    expect(change).toEqual(['plan', 'apply', 'inspect']);
   });
 
   test('Runner quick settings admit a change before the held refresh completes', async ({ page }) => {
     await page.clock.install();
     const bar = await setup(page);
-    const configRequests = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests);
+    const configRequests = () => page.evaluate(() => window.__nativeFixture.sessions.get(window.__quickSession).feature.config.requests);
     await expect.poll(async () => (await configRequests()).length).toBe(4);
-    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.hold = true; });
+    await page.evaluate(() => { window.__nativeFixture.sessions.get(window.__quickSession).feature.config.hold = true; });
     await page.clock.fastForward(31_000);
     await expect.poll(async () => (await configRequests()).length).toBe(5);
     await bar.getByRole('button', { name: 'Reasoning effort · medium' }).click();
@@ -153,14 +181,14 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await expect.poll(async () => (await configRequests()).slice(4).map(r => r.operation))
       .toEqual(['session_config.inspect', 'session_config.plan']);
     await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       config.hold = false;
       config.complete(); config.complete();
     });
     await expect(bar.getByRole('button', { name: 'Reasoning effort · high' })).toBeVisible();
     await expect(bar).toHaveAttribute('aria-busy', 'false');
-    expect((await configRequests()).slice(5, 9).map(r => [r.operation, r.offset ?? null])).toEqual([
-      ['session_config.plan', null], ['session_config.inspect', 0], ['session_config.apply', null], ['session_config.inspect', 0],
+    expect((await configRequests()).slice(5, 8).map(r => [r.operation, r.offset ?? null])).toEqual([
+      ['session_config.plan', null], ['session_config.apply', null], ['session_config.inspect', 0],
     ]);
   });
 
@@ -170,20 +198,20 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     const popup = bar.getByRole('dialog');
     await expect(page.getByRole('combobox', { name: 'Requested Model' }).getByRole('option', { name: 'm1', exact: true })).toBeAttached();
     await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       const inspect = config.inspection.bind(config);
       config.inspection = (...args) => {
         const reply = inspect(...args);
         const candidate = reply.options.models.find(model => model.id === 'm1');
         if (candidate) candidate.reasoning_efforts = ['medium', 'low'];
         reply.options_revision = 'f'.repeat(64);
+        if (reply.options_page.next_offset === null) window.__quickCatalogComplete = true;
         return reply;
       };
     });
     await page.clock.fastForward(31_000);
     await bar.getByRole('button', { name: 'Model · m0' }).click();
-    await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.features.results
-      .some(r => r.reply?.options_revision === 'f'.repeat(64) && r.reply?.options_page?.next_offset === null))).toBe(true);
+    await expect.poll(() => page.evaluate(() => !!window.__quickCatalogComplete)).toBe(true);
     await page.clock.runFor(600);
     await popup.getByRole('button', { name: 'm1', exact: true }).click();
     await expect(bar.getByRole('button', { name: 'Model · m1' })).toBeVisible();
@@ -197,29 +225,26 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     const medium = popup.getByRole('button', { name: 'medium', exact: true });
     await expect(medium).toBeVisible();
     await page.evaluate(() => {
-      window.__nativeFixture.sessions.get('pty-1').feature.config.holdOperation = 'session_config.inspect';
+      window.__nativeFixture.sessions.get(window.__quickSession).feature.config.holdOperation = 'session_config.apply';
     });
-    const applies = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
+    const applies = () => page.evaluate(() => window.__nativeFixture.sessions.get(window.__quickSession).feature.config.requests
       .filter(r => r.operation === 'session_config.apply').length);
     const confirmed = await applies();
-    const readCount = () => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').feature.config.requests
-      .filter(r => r.operation === 'session_config.inspect').length);
-    const before = await readCount();
     await medium.click();
-    await expect.poll(readCount).toBeGreaterThan(before);
+    await expect.poll(applies).toBe(confirmed + 1);
     await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       config.current.model = { id: 'm2', reasoning_effort: 'medium' };
       config.revision = 'f'.repeat(64);
       config.holdOperation = '';
       config.complete();
     });
-    await expect(bar.getByText(/Runner state changed or the plan is stale/)).toBeVisible();
+    await expect(bar.getByText(/CONFIG_REVISION_STALE/)).toBeVisible();
     expect(await page.evaluate(() => {
-      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const config = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       return config.current.model;
     })).toEqual({ id: 'm2', reasoning_effort: 'medium' });
-    expect(await applies()).toBe(confirmed);
+    expect(await applies()).toBe(confirmed + 1);
   });
 
   test('Runner quick settings continue an advertised confirmation and preserve cancellation', async ({ page }) => {
@@ -256,7 +281,7 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await choose('Account · first', 'second');
     await bar.getByRole('dialog').getByRole('button', { name: 's0', exact: true }).click();
     await expect.poll(() => page.evaluate(() => {
-      const { current, requests } = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const { current, requests } = window.__nativeFixture.sessions.get(window.__quickSession).feature.config;
       return { account: current.account.profile_name, last: requests.filter(r => !r.operation.endsWith('.inspect')).slice(-2) };
     })).toMatchObject({ account: 'second' });
     await expect(bar.getByRole('button', { name: 'Account · second' })).toBeVisible();
@@ -266,11 +291,11 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await bar.getByRole('dialog').getByRole('button', { name: /Browse/ }).click();
     await expect(bar.getByRole('button', { name: 'Direct / Pure Direct Root · /fixture/folder' })).toBeVisible();
 
-    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.providerRejection = 'CONFIG_PROVIDER_STALE'; });
+    await page.evaluate(() => { window.__nativeFixture.sessions.get(window.__quickSession).feature.config.providerRejection = 'CONFIG_PROVIDER_STALE'; });
     await choose('Provider · Codex', 'Claude');
     await expect(bar.getByText(/CONFIG_PROVIDER_STALE/)).toBeVisible();
     await expect(bar.getByRole('button', { name: 'Provider · Codex' })).toBeVisible();
-    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.providerRejection = ''; });
+    await page.evaluate(() => { window.__nativeFixture.sessions.get(window.__quickSession).feature.config.providerRejection = ''; });
     await choose('Provider · Codex', 'Claude');
     await expect(bar.getByRole('button', { name: 'Provider · Claude' })).toBeVisible();
     await bar.getByRole('button', { name: 'Account · first' }).click();
@@ -286,7 +311,7 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     await composer.fill('Quick settings preserve the originating tab.');
     await composer.press('Enter');
     await expect.poll(() => page.evaluate(() => {
-      const { config, requests } = window.__nativeFixture.sessions.get('pty-1').feature;
+      const { config, requests } = window.__nativeFixture.sessions.get(window.__quickSession).feature;
       return { submitted: requests.some(request => request.operation === 'work.submit'), ...config.current };
     })).toMatchObject({ submitted: true, run_mode: 'direct-run', root: '/fixture/folder',
       account: { agent_id: 'claude', profile_name: 'first' } });

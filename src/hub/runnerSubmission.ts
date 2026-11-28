@@ -55,16 +55,29 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
   if ((!deliver && !work.supports('work.submit', defaults.runMode)) || work.blocked || work.busy)
     throw new HubError(msg('work.unavailable'));
   if (config.busy || config.uncertain) throw new HubError(msg('config.partial'));
+  const account = defaults.accountIdentity;
+  if (!account) throw new HubError(msg('config.defaultsUnresolved', { fields: 'accountIdentity' }));
   const providerRevision = config.providerRevision;
   config.resetDraft();
-  await config.inspect(defaults.accountIdentity);
-  if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
-  const taskRun = (defaults.runMode ?? config.actual.current.run_mode) === 'task-run';
-  const prepared = taskRun ? prepareTaskRunInstruction(instruction, defaults.target, config.catalog) : instruction;
-  // TaskRun owns identity and tier resolution in its instruction, including session-pair fallback.
-  const mapped = entryDefaultsToDesired(taskRun ? { ...defaults, target: undefined, model: undefined } : defaults, config.catalog);
-  if (!defaults.accountIdentity) throw new HubError(msg('config.defaultsUnresolved', { fields: 'accountIdentity' }));
-  if (mapped.unresolved.length) throw new HubError(msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') }));
+  const retained = defaults.runMode === undefined ? undefined : config.optionsFor(account);
+  await config.inspect(account, !!retained);
+  const resolve = () => {
+    if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
+    const runMode = defaults.runMode ?? config.actual.current.run_mode;
+    const taskRun = runMode === 'task-run';
+    // TaskRun owns identity and tier resolution in its instruction, including session-pair fallback.
+    const mapped = entryDefaultsToDesired(taskRun ? { ...defaults, target: undefined, model: undefined } : defaults, config.catalog);
+    if (mapped.unresolved.length) throw new HubError(msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') }));
+    return { runMode, mapped, prepared: taskRun ? prepareTaskRunInstruction(instruction, defaults.target, config.catalog) : instruction };
+  };
+  let intent;
+  try { intent = resolve(); }
+  catch (reason) {
+    if (!retained || config.catalog !== retained) throw reason;
+    await config.inspect(account);
+    intent = resolve();
+  }
+  const { runMode, mapped, prepared } = intent;
   config.setDraft(mapped.desired);
   await config.createPlan();
   const plan = config.plan;
@@ -78,15 +91,16 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
       throw new HubError(config.error || msg('config.partial'));
   } else if (plan.revision !== config.actual?.revision) {
     // Reinspect only when the canonical no-op plan observed a different configuration.
-    await config.inspect(defaults.accountIdentity);
+    await config.inspect(account);
     if (config.error || !config.catalog) throw new HubError(config.error || msg('config.incomplete'));
   }
   const inspection = config.actual;
-  if (!inspection || inspection.setup_required || inspection.effective.agent_id !== defaults.accountIdentity.agent_id
+  if (!inspection || inspection.setup_required || inspection.current.run_mode !== runMode
+    || inspection.effective.agent_id !== account.agent_id
     || !Object.entries(mapped.desired).every(([key, value]) =>
     same(inspection.current[key as keyof typeof inspection.current], value))) throw new HubError(msg('config.stalePlan'));
   const attachmentLease = await admit();
-  if (providerRevision !== config.providerRevision || config.observedAgentId !== defaults.accountIdentity.agent_id)
+  if (providerRevision !== config.providerRevision || config.observedAgentId !== account.agent_id)
     throw new HubError(msg('config.stalePlan'));
   if (deliver && (defaults.runMode !== 'issue-run' || inspection.current.run_mode !== 'issue-run'))
     throw new HubError(msg('brief.unavailable'));

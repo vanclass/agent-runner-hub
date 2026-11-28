@@ -54,11 +54,11 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
     window.addEventListener('beforeunload', closing);
     let removed = false;
     let unlisten: (() => void) | undefined;
-    try {
-      void getCurrentWindow().onCloseRequested(closing).then(stop => {
-        if (removed) stop(); else unlisten = stop;
-      }).catch(() => {});
-    } catch { /* Browser previews have no native window. */ }
+    void Promise.resolve().then(() => {
+      if (!removed) return getCurrentWindow().onCloseRequested(closing);
+    }).then(stop => {
+      if (removed) stop?.(); else unlisten = stop;
+    }).catch(() => { /* Browser previews have no native window. */ });
     return () => { removed = true; unlisten?.(); window.removeEventListener('beforeunload', closing); };
   }, [sessions]);
   const [selectedId, setSelectedId] = useState<string | null>(null);

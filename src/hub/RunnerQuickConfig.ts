@@ -47,12 +47,18 @@ export class RunnerQuickConfig {
         return { account: desired.account };
       config.setDraft(desired);
       await config.createPlan();
-      if (reasoningAccount && config.plan && config.plan.revision !== catalog.inspection.revision)
+      const plan = config.plan;
+      if (reasoningAccount && plan && plan.revision !== catalog.inspection.revision)
         throw new HubError(msg('config.stalePlan'));
-      this.confirmations = config.plan?.required_confirmations ?? [];
-      if (!config.canApply) {
-        if (config.plan?.errors.length) this.detail = msg('config.requestFailed', { code: config.plan.errors.join(', ') });
+      this.confirmations = plan?.required_confirmations ?? [];
+      if (!plan || !config.canApply) {
+        if (plan?.errors.length) this.detail = msg('config.requestFailed', { code: plan.errors.join(', ') });
         else if (!this.confirmations.length) this.detail = config.error;
+        return;
+      }
+      if (!plan.steps.length && !Object.keys(plan.changes).length && plan.revision === catalog.inspection.revision) {
+        if (owner === this.selections()) owner?.synchronizeConfirmed(config, desired, current, catalog);
+        config.resetDraft();
         return;
       }
       const previous = config.latestApplication;
@@ -86,6 +92,10 @@ export class RunnerQuickConfig {
   async selectProvider(agentId: string) {
     if (!this.available) return;
     const { config } = this.control;
+    if (config.observedAgentId === agentId) {
+      this.detail = ''; this.confirmations = []; this.changed();
+      return;
+    }
     const owner = this.selections();
     this.control.assignmentLocked = true;
     this.detail = ''; this.confirmations = []; this.changed();
@@ -98,7 +108,7 @@ export class RunnerQuickConfig {
         return;
       }
       if (!result.changed) return;
-      await this.control.fresh();
+      await this.control.fresh(config.observedAgentId === agentId);
       if (config.observedAgentId !== agentId) throw new HubError(msg('config.identityChanged'));
       await this.adoptProvider(owner);
     } catch (reason) { this.detail = errorText(reason); }
@@ -107,7 +117,7 @@ export class RunnerQuickConfig {
 
   private async adoptProvider(owner: HubSelections | undefined) {
     const { config } = this.control;
-    if (config.observedAgentId !== 'none') await config.inspect();
+    if (config.inspectionApplicable) await config.inspect(undefined, true);
     if (owner === this.selections()) {
       owner?.synchronizeConfirmed(config, {}, config.actual?.current, config.catalog, true);
       owner?.refreshConfirmedCatalog(config);

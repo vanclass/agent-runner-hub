@@ -78,22 +78,16 @@ test('unbound startup with an unavailable empty model catalog preserves explicit
   expect(result.after).toBe(result.requests);
 });
 
-for (const agentId of ['none', undefined]) test(`unknown Provider keeps only independent configuration choices: ${agentId}`, async ({ page }) => {
+test('missing Provider evidence keeps only independent configuration choices', async ({ page }) => {
   await page.goto('/');
-  const result = await page.evaluate(async agentId => {
+  const result = await page.evaluate(async () => {
     const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
-    fixture.changed = () => service.observe(fixture.session, 'ready', structuredClone(fixture.features), agentId);
+    fixture.changed = () => service.observe(fixture.session, 'ready', structuredClone(fixture.features));
     fixture.changed();
-    const inspect = fixture.inspection.bind(fixture);
-    fixture.inspection = (...args) => {
-      const reply = inspect(...args);
-      if (agentId !== undefined) reply.effective.agent_id = agentId;
-      return reply;
-    };
     await service.inspect();
     return { options: service.catalog.options, effective: service.actual.effective.agent_id, requests: fixture.requests };
-  }, agentId);
-  expect(result.effective).toBe(agentId ?? 'codex');
+  });
+  expect(result.effective).toBe('codex');
   expect(result.options.accounts).toEqual([]);
   expect(result.options.models).toEqual([]);
   expect(result.options.targets).toHaveLength(2);
@@ -124,6 +118,48 @@ for (const changedRevision of [false, true]) test('configured no-op submission u
   expect(result.submissions).toEqual(['Target\nOwner: Project\nProject: Explicit\nGoal\none']);
 });
 
+test('Provider discovery drops the obsolete wait for a retired catalog receipt', async ({ page }) => {
+  await page.goto('/');
+  expect(await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { fixture, service } = createConfigHarness();
+    const submit = fixture.submit.bind(fixture);
+    fixture.submit = (id, request) => request.operation === 'session_config.inspect'
+      ? Promise.resolve({ state: 'submitted', id: 999, generation: 1 }) : submit(id, request);
+    const retired = service.lookupOptions();
+    fixture.current.account = { agent_id: 'none', profile_name: '' };
+    fixture.features.sessionConfig.operations.push('session_config.providers');
+    fixture.changed();
+    await Promise.race([retired, new Promise(resolve => setTimeout(resolve, 100))]);
+    service.refreshOptions();
+    while (service.providersRefreshing) await new Promise(resolve => setTimeout(resolve, 5));
+    return { stillWaiting: service.optionsRefreshing, agent: service.providers?.current_agent_id };
+  })).toEqual({ stillWaiting: false, agent: 'none' });
+});
+
+test('Provider None discovers Providers and defers every inspection until activation', async ({ page }, info) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { fixture, service } = createConfigHarness();
+    fixture.features.sessionConfig.operations.push('session_config.providers', 'session_config.select_provider');
+    fixture.current.account = { agent_id: 'none', profile_name: '' };
+    fixture.changed();
+    service.refreshOptions();
+    while (service.providersRefreshing) await new Promise(resolve => setTimeout(resolve, 5));
+    await service.lookupOptions();
+    await service.inspect();
+    await service.selectTestAccount('codex');
+    const inactive = fixture.requests.map(r => r.operation);
+    const switched = await service.selectProvider('codex');
+    service.refreshOptions();
+    await service.inspect();
+    return { inactive, switched, active: service.currentCatalog?.inspection.effective.agent_id };
+  });
+  await info.attach('provider-requests', { body: JSON.stringify(result), contentType: 'application/json' });
+  expect(result).toEqual({ inactive: ['session_config.providers'], switched: { confirmed: true, changed: true }, active: 'codex' });
+});
+
 test('configured submission joins equivalent background options and preserves canonical admission', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
@@ -148,7 +184,31 @@ test('configured submission joins equivalent background options and preserves ca
   expect(result.submitted).toEqual(['Target\nOwner: Workspace\nProject: agent-workspace\nGoal\none']);
 });
 
-test('background options leave a reviewed plan and its revision check intact', async ({ page }) => {
+test('warm configured submission reuses exact option pages before planning', async ({ page }, info) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { submitConfiguredWork } = await import('/src/hub/runnerSubmission.ts');
+    const { fixture, service } = createConfigHarness();
+    await service.inspect();
+    const submit = fixture.submit.bind(fixture);
+    fixture.submit = async (id, request) => {
+      if (request.operation === 'session_config.inspect') await new Promise(resolve => setTimeout(resolve, 100));
+      return submit(id, request);
+    };
+    const before = fixture.requests.length, started = performance.now();
+    let delivered = false;
+    await submitConfiguredWork(service, { supports: () => true, blocked: false, busy: false,
+      submit: async () => { delivered = true; } }, { accountIdentity: fixture.current.account, runMode: 'task-run' },
+    'Target\nOwner: Workspace\nProject: agent-workspace\nGoal\none', async () => undefined);
+    return { delivered, requests: fixture.requests.slice(before).map(r => r.operation), elapsedMs: performance.now() - started };
+  });
+  await info.attach('submission-requests', { body: JSON.stringify(result), contentType: 'application/json' });
+  expect(result.delivered).toBe(true);
+  expect(result.requests).toEqual(['session_config.plan']);
+});
+
+test('background options leave a reviewed plan for authoritative stale rejection', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
@@ -165,9 +225,11 @@ test('background options leave a reviewed plan and its revision check intact', a
     const retained = plan === service.plan && draft === service.draft && progress === service.progress;
     const refreshed = service.currentCatalog?.inspection.revision === fixture.revision;
     await service.apply();
-    return { retained, refreshed, error: service.error, applied: fixture.requests.some(r => r.operation === 'session_config.apply') };
+    return { retained, refreshed, error: service.error, outcome: service.latestApplication?.result?.apply_status,
+      uncertain: service.uncertain, last: fixture.requests.at(-1)?.operation };
   });
-  expect(result).toEqual({ retained: true, refreshed: true, error: { key: 'config.stalePlan' }, applied: false });
+  expect(result).toEqual({ retained: true, refreshed: true, error: { key: 'config.stalePlan' },
+    outcome: 'rejected', uncertain: false, last: 'session_config.apply' });
 });
 
 test('unbound native startup preserves verified choices without choosing a target', async ({ page }) => {
@@ -317,7 +379,7 @@ test('draft edits and fresh Runner state invalidate plans without silently repla
     await service.createPlan(); fixture.revision = 'f'.repeat(64); await service.apply();
     return { edited, stale: !service.plan, applyCount: fixture.requests.filter(r => r.operation.endsWith('.apply')).length };
   });
-  expect(result).toEqual({ edited: true, stale: true, applyCount: 0 });
+  expect(result).toEqual({ edited: true, stale: true, applyCount: 1 });
 });
 
 for (const outcome of ['partial', 'cancelled', 'failed', 'unknown']) {

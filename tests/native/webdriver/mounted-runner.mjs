@@ -15,6 +15,8 @@ export function mountedRunner(browser, operation, argument) {
         case 'quick-state': {
           const { control, quick } = session;
           return { fresh: control.observationFresh, controlBusy: control.busy, configActivity: control.config.activity,
+            optionsRefreshing: control.config.optionsRefreshing, providersRefreshing: control.config.providersRefreshing,
+            supportsProviders: control.config.supports('providers'),
             uncertain: control.config.uncertain, recovery: control.recovery.busy, work: control.work.busy,
             assignment: control.assignmentLocked, quick: quick.available, editing: session.hubSelections?.editable,
             loading: session.hubSelections?.loadingOptions, foreground: session.foregroundInteraction,

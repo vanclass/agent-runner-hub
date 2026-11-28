@@ -10,6 +10,19 @@ fn configured() -> Protocol {
     protocol
 }
 #[test]
+fn observed_none_suppresses_inspection_without_disabling_provider_discovery() {
+    let mut protocol = configured();
+    let mut cap = capability();
+    cap["operations"].as_array_mut().unwrap().push(json!("session_config.providers"));
+    protocol.snapshot.features.discover(&json!({"session_config":cap}));
+    protocol.snapshot.observation.as_mut().unwrap().selection.agent_id = Some("none".into());
+    assert!(protocol.feature_request(inspect(), "private").is_err());
+    let providers = serde_json::from_value(json!({"operation":"session_config.providers","api_version":1})).unwrap();
+    assert!(protocol.feature_request(features::Request::SessionConfig(providers), "private").is_ok());
+    protocol.snapshot.observation.as_mut().unwrap().selection.agent_id = Some("codex".into());
+    assert!(protocol.feature_request(inspect(), "private").is_ok());
+}
+#[test]
 fn provider_selection_uses_the_authenticated_mutation_and_keeps_confirmation_requirements() {
     let mut protocol = configured();
     let mut capability = capability();

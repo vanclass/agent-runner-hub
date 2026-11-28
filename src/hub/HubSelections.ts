@@ -70,6 +70,7 @@ export class HubSelections {
     }
     if (service.busy) return;
     this.observeProvider(service);
+    if (!service.inspectionApplicable) return;
     if (this.observation(service)?.attention?.foreground_interaction_active) return;
     const current = service.currentCatalog;
     if (!current && service.optionsError) {
@@ -212,7 +213,7 @@ export class HubSelections {
     if (service?.supports('inspect')) this.observeProvider(service);
     const before = this.defaults, initialize = !this.initialized;
     const current = service?.currentCatalog;
-    if (!service?.supports('inspect')) return;
+    if (!service?.inspectionApplicable) return;
     const account = before.accountIdentity;
     const retained = service.optionsFor(account);
     const needsDestination = account && current?.options.accounts.some(candidate => same(candidate, account))

@@ -26,7 +26,13 @@ export function quickSettings(runnerRoot) {
         await hub.wait(() => browser.execute(() => !!document.querySelector('.quick-popover button.quick-option')),
           'Runner quick candidate list did not render for control ' + field).catch(async error => {
           const popup = await hub.dom.state('.quick-popover [role="status"]');
-          throw new Error(error.message + ': ' + (popup?.text ?? 'popover unavailable'));
+          const snapshot = await hub.observations.snapshot(connection);
+          const receipts = snapshot.features?.results.slice(-8).map(({ feature, operation, state, code }) =>
+            ({ feature, operation, state, code }));
+          throw new Error(error.message + ': ' + (popup?.text ?? 'popover unavailable') + ' ' + JSON.stringify({
+            observedProvider: snapshot.observation?.selection.agent_id,
+            quick: await mountedRunner(browser, 'quick-state'), receipts,
+          }));
         });
         return browser.execute(() => [...document.querySelectorAll('.quick-popover button.quick-option')].map(node => ({
           value: node.lastElementChild.firstChild.textContent, selected: node.getAttribute('aria-current') === 'true',
@@ -76,11 +82,13 @@ export function quickSettings(runnerRoot) {
         const efforts = await choices();
         const next = efforts.find(effort => effort.enabled && !effort.selected);
         if (!next) throw new BlockedPrerequisite('No alternate reasoning effort advertised by the current model.');
+        const reasoningStarted = performance.now();
         await choose(efforts, next);
         await hub.wait(() => browser.execute(({ trigger, value }) =>
           document.querySelector(trigger)?.textContent === value, { trigger: button(4), value: next.value }),
         'Effective reasoning did not update from the confirmed Runner change');
         const after = await readCurrent();
+        const reasoningVerificationMs = Math.round(performance.now() - reasoningStarted);
         assert.equal(after.current.model.reasoning_effort, next.value);
         assert.equal(after.effective.reasoning_effort, next.value);
         assert.ok(connection.snapshot.observation.context_location, 'Authenticated context_location missing');
@@ -157,10 +165,24 @@ export function quickSettings(runnerRoot) {
           assert.ok(option, 'Runner-advertised None selection missing');
           await choose(available, option);
           await observe(o => o.selection.agent_id === 'none');
+          const inspection = await browser.execute(id => window.__TAURI_INTERNALS__.invoke('runner_feature', {
+            id, request: { feature: 'session_config', request: { operation: 'session_config.inspect', api_version: 1, offset: 0 } }
+          }), connection.session);
+          assert.equal(inspection.state, 'not-sent');
+          assert.match(inspection.detail, /active Provider/);
+          await click(1, 'Provider None');
+          const choicesAfterNone = await choices();
+          const original = providerCatalog.result.reply.providers.find(p => p.agent_id === before.effective.agent_id);
+          const restore = choicesAfterNone.find(p => p.value === original?.label && p.enabled);
+          assert.ok(restore, 'Original Provider missing from live discovery after selecting None');
+          await choose(choicesAfterNone, restore);
+          await observe(o => o.selection.agent_id === before.effective.agent_id);
+          assert.equal((await readCurrent()).effective.agent_id, before.effective.agent_id);
           switchedProvider = true;
         }
         return { authenticated: true, providers: providers.length, accounts: accounts.length, models: models.length,
-          reasoningCommitted: true, effectiveConfirmed: true, switchedAccount, switchedModel, fastToggled, switchedProvider,
+          reasoningCommitted: true, reasoningVerificationMs, effectiveConfirmed: true,
+          switchedAccount, switchedModel, fastToggled, switchedProvider, noneInspectionNotSentAndCatalogRestored: switchedProvider,
           modeChanged: true, targetChanged: true, invalidRootRejected: true, contextLocation: 'target' };
       } finally { await stopWatching(browser); }
     },

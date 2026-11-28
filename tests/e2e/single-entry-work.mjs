@@ -165,11 +165,14 @@ export function registerSingleEntryWork({ test, expect, transport, configure, cr
       original: window.__nativeFixture.sessions.get('pty-1').feature.work.submission_request_id,
       count: window.__nativeFixture.count(), writes: window.__nativeFixture.writes,
       deliveries: window.__nativeFixture.deliveredSets,
+      inventoryReads: window.__nativeFixture.referenceRequests.filter(r => r.id === 'pty-1'
+        && r.request.operation === 'references.list').length,
       references: window.__nativeFixture.sessions.get('pty-1').items.map(item => item.reference_id),
       tabs: JSON.parse(localStorage.getItem('agent-runner-hub.workspace.v1')).tabs }));
     expect(receipt.requests.filter(r => r.operation === 'work.submit')).toHaveLength(1);
     expect(receipt.requests.find(r => r.operation === 'work.submit').instruction).toBe('one instruction\n안녕 🌍');
     expect(receipt.references).toHaveLength(1);
+    expect(receipt.inventoryReads).toBe(5);
     expect(receipt.deliveries).toEqual([{ id: 'pty-1', instruction: 'one instruction\n안녕 🌍', ids: receipt.references }]);
     expect(receipt.requests.filter(r => r.operation === 'work.observe').every(r => r.observation_id === `api:${receipt.original}`)).toBeTruthy();
     expect(receipt.writes).toEqual([]);

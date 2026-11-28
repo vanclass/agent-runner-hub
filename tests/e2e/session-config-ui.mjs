@@ -102,10 +102,10 @@ export function registerSessionConfigUI({ test, expect, transport, configure }) 
         if (fault === 'final-inspection') { f.applyOutcome = 'partial'; f.postApplyFailure = true; }
         if (fault === 'unknown-config') f.applyOutcome = 'unknown';
         if (fault === 'unsupported') {
-          const inspect = f.inspection.bind(f);
-          f.inspection = (...args) => { const v = inspect(...args); v.options.models = []; v.options_page.totals.models = 0; return v; };
+          f.features.sessionConfig.operations = f.features.sessionConfig.operations.filter(op => op !== 'session_config.inspect');
         }
       }, fault);
+      if (fault === 'unsupported') await expect(page.locator('.hub-activity')).toContainText(/unsupported|does not support/i);
       await composer(page).fill('keep me'); await send(page);
       await expect(composer(page)).toBeEnabled();
       await expect(composer(page)).toHaveValue('keep me');

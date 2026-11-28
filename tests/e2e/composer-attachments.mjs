@@ -205,12 +205,19 @@ export function registerComposerAttachments({ test, expect, transport, configure
     await drop(page, ['/fixture/folder']);
     await actions(page).attachments.remove('runner', 0);
     await page.evaluate(() => window.__nativeFixture.missingImage(true));
+    await page.evaluate(() => {
+      const decode = window.createImageBitmap.bind(window);
+      window.__submissionBitmapReads = 0;
+      window.createImageBitmap = (...args) => { window.__submissionBitmapReads++; return decode(...args); };
+    });
     await send(page);
     await expect.poll(() => page.evaluate(() => [...window.__nativeFixture.sessions.values()].map(s => s.feature.work).filter(Boolean)), { timeout: 35000 }).toEqual(expect.arrayContaining([expect.objectContaining({ started_event_id: expect.any(Number), work_id: expect.any(Object) })]));
     const result = await page.evaluate(() => ({ staged: window.__nativeFixture.staged, reads: window.__nativeFixture.clipboardReads,
+      bitmapReads: window.__submissionBitmapReads,
       refs: window.__nativeFixture.referenceRequests.filter(r => r.request.operation === 'references.register'),
       deliveries: window.__nativeFixture.deliveredSets }));
     expect(result.staged[0].png).toEqual(png); expect(result.reads).toEqual([]);
+    expect(result.bitmapReads).toBe(0);
     expect(result.refs.map(r => [r.id, r.request.path])).toEqual([['pty-1', result.staged[0].path], ['pty-1', '/fixture/folder']]);
     expect(result.deliveries).toHaveLength(1); expect(result.deliveries[0].ids).toHaveLength(2);
     await expect(page.locator('.attachment-chip')).toHaveCount(0);

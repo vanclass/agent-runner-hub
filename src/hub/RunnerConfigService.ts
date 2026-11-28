@@ -95,6 +95,9 @@ export class RunnerConfigService {
     return !this.closed && this.capability?.version === 1 && this.capability.options_revision === true
       && this.capability.operations.includes(`session_config.${action}`) === true;
   }
+  get inspectionApplicable() {
+    return this.observedAgentId !== 'none' && this.supports('inspect');
+  }
   get canApply() {
     return this.supports('apply') && !this.busy && !this.uncertain && this.plan?.plan_status === 'ready'
       && !!this.planned && this.planned.draftVersion === this.draftVersion
@@ -108,6 +111,10 @@ export class RunnerConfigService {
     if (previousAgentId !== this.observedAgentId) {
       this.effectiveRevision++;
       this.draftVersion++;
+      // A new Provider makes any old background read unusable, even if its
+      // completed receipt was retired before the frontend sampled it.
+      const background = this.backgroundWait;
+      if (background) background.finish(this.unknown(background.request, background.id, true));
       this.actual = undefined;
       this.catalog = undefined;
       this.effectiveCatalog = undefined;
@@ -212,6 +219,7 @@ export class RunnerConfigService {
     const identity = this.transport.identity();
     const action = request.operation.split('.')[1] as ConfigAction;
     const slot = background ? 'backgroundWait' : 'waiting';
+    if (action === 'inspect' && !this.inspectionApplicable) throw new HubError(msg('config.unsupported'));
     if (!identity || !this.supports(action) || this[slot]) throw new HubError(msg('config.unsupported'));
     this.assertIdentity(identity);
     if (!background) {
@@ -292,11 +300,11 @@ export class RunnerConfigService {
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
   private async refreshProviders() {
-    const revision = this.providerRevision, epoch = this.optionsEpoch;
+    const revision = this.providerRevision;
     this.providersDue = performance.now() + optionRefreshMs;
     try {
       const receipt = await this.request({ operation: 'session_config.providers', api_version: 1 }, true);
-      if (this.closed || revision !== this.providerRevision || epoch !== this.optionsEpoch) {
+      if (this.closed || revision !== this.providerRevision) {
         this.providersDue = 0;
         return;
       }
@@ -403,7 +411,7 @@ export class RunnerConfigService {
   }
   private async collect(identity: ConfigIdentity, selected?: ConfigAccount, background?: () => boolean) {
       const cap = this.capability;
-      if (!cap || !this.supports('inspect')) throw new HubError(msg('config.unsupported'));
+      if (!cap || !this.inspectionApplicable) throw new HubError(msg('config.unsupported'));
       const observedAgentId = this.observedAgentId;
       const first = await this.page(identity, selected, 0, undefined, !!background);
       if (!same(first.model_options_account, selected ?? first.current.account)) throw new HubError(msg('config.identityChanged'));
@@ -461,16 +469,17 @@ export class RunnerConfigService {
     if (this.supports('providers') && now >= this.providersDue
       && (this.providerOutcomeUnknown || !this.providers && !this.providersDue)) {
       void this.refreshProviders();
-    } else if (this.supports('inspect') && !this.providerOutcomeUnknown && now >= this.optionsDue) {
+    } else if (this.inspectionApplicable && !this.providerOutcomeUnknown && now >= this.optionsDue) {
       void this.startOptionsRead();
     } else if (this.supports('providers') && now >= this.providersDue) {
       void this.refreshProviders();
     }
   }
   lookupOptions(account?: ConfigAccount) {
+    if (!this.inspectionApplicable) return;
     if (account && account.agent_id !== this.observedAgentId) return;
     if (this.optionsRead && same(account, this.optionsRead.account)) return this.optionsRead.promise;
-    if (this.canRefreshOptions && this.supports('inspect') && !this.providerOutcomeUnknown
+    if (this.canRefreshOptions && !this.providerOutcomeUnknown
       && (account || performance.now() >= this.optionsDue)) return this.startOptionsRead(account);
   }
   private startOptionsRead(account?: ConfigAccount) {
@@ -580,16 +589,19 @@ export class RunnerConfigService {
     const providerRevision = this.providerRevision;
     this.activity = 'verifying'; this.error = ''; this.changed();
     try {
-      const latest = await this.page(identity);
+      const retained = [this.actual, this.currentCatalog?.inspection, this.catalog?.inspection]
+        .find(inspection => inspection?.revision === plan.revision);
+      const latest = retained ?? await this.page(identity);
       if (providerRevision !== this.providerRevision || version !== this.draftVersion || latest.revision !== plan.revision
         || latest.effective.agent_id !== this.catalog?.inspection.effective.agent_id) throw new HubError(msg('config.stalePlan'));
-      this.actual = latest;
+      if (!retained) this.actual = latest;
       this.activity = 'applying'; this.changed();
       const receipt = await this.request({ operation: 'session_config.apply', api_version: 1,
         desired: copy(plan.desired), revision: plan.revision, plan_id: plan.plan_id! });
       const reply = receipt.phase === 'completed' ? receipt.reply : undefined;
       const valid = isApply(reply, plan, latest.current);
-      const noEffect = receipt.state === 'not-sent' || receipt.admission === 'rejected';
+      const ownerRejected = receipt.state === 'rejected' && valid && reply.apply_status === 'rejected' && reply.results.length === 0;
+      const noEffect = receipt.state === 'not-sent' || receipt.admission === 'rejected' || ownerRejected;
       const application: ConfigApplication = { receipt: copy(receipt), result: valid ? copy(reply) : undefined,
         plan: copy(plan), before: copy(latest.current),
         verification: noEffect ? 'pending' : !valid || receipt.state === 'outcome-unknown' || (valid && reply.outcome_unknown) ? 'unknown' : 'pending' };
@@ -598,8 +610,14 @@ export class RunnerConfigService {
       if (onConfirmed) this.confirmations.set(application, onConfirmed);
       this.publishConfirmation(application);
       this.plan = undefined; this.planned = undefined; this.catalog = undefined;
-      this.optionsEpoch++;
-      this.optionsDue = 0;
+      if (ownerRejected) {
+        this.error = reply.code === 'CONFIG_REVISION_STALE' ? msg('config.stalePlan')
+          : msg('config.requestFailed', { code: reply.code ?? receipt.code ?? 'CONFIG_REQUEST_REJECTED' });
+      }
+      if (!noEffect || ownerRejected && reply.code === 'CONFIG_REVISION_STALE') {
+        this.optionsEpoch++;
+        this.optionsDue = 0;
+      }
       if (valid && reply.current && !same(reply.current.account, latest.current.account)) {
         if (!same(this.effectiveCatalog?.inspection.model_options_account, reply.current.account))
           this.effectiveCatalog = undefined;
@@ -608,6 +626,10 @@ export class RunnerConfigService {
       }
       if (!valid) this.error = receipt.state === 'not-sent' ? msg('config.notSent') : receipt.admission === 'rejected'
         ? msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_REQUEST_REJECTED' }) : msg('config.receiptUnknown');
+      if (noEffect) {
+        application.verification = 'unavailable';
+        return;
+      }
       this.activity = this.closed ? 'closed' : 'verifying'; this.changed();
       if (!this.closed && providerRevision === this.providerRevision) {
         try {
