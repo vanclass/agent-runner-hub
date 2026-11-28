@@ -74,13 +74,19 @@ for (const recovery of ['replacement', 'readiness']) {
       const { hubActivityKey } = await import('/src/hub/HubActivity.tsx');
       const first = createConfigHarness(), next = createConfigHarness();
       let source = first.service;
-      const choices = new HubSelections(() => source, () => {}, { runMode: 'issue-run' });
+      const choices = new HubSelections(() => source, () => {}, { runMode: 'issue-run' }, () => {}, () => true,
+        service => ({ selection: { agent_id: service.observedAgentId,
+          account: (service === first.service ? first : next).fixture.current.account.profile_name } }));
       const settle = async () => { while (choices.loadingOptions) await new Promise(r => setTimeout(r, 5)); };
       first.fixture.fault = 'missing'; choices.initialize(); await settle();
       const failed = first.fixture.requests.length;
       for (let i = 0; i < 5; i++) choices.initialize();
       const unchanged = first.fixture.requests.length;
-      if (recovery === 'readiness') { source = undefined; choices.initialize(); }
+      if (recovery === 'readiness') {
+        first.service.observe(first.fixture.session, 'connecting');
+        source = undefined; choices.initialize();
+        first.fixture.changed();
+      }
       source = recovery === 'replacement' ? next.service : first.service;
       first.fixture.fault = ''; choices.initialize(); await settle();
       return { failed, unchanged, catalog: !!choices.catalog, defaults: choices.defaults, activity: hubActivityKey(choices) };
@@ -200,12 +206,12 @@ for (const unbound of [false, true]) test(`verified same-session readiness recov
     const root = createRoot(host);
     const render = () => root.render(React.createElement(HubSelectionSettings, { entry: selections }));
     let observation, editable = true;
-    if (unbound) { fixture.current.target = ''; fixture.hold = true; }
+    if (unbound) { fixture.current.target = ''; fixture.changed(); fixture.hold = true; }
     const selections = new HubSelections(() => service, render, {}, () => {}, () => editable, () => observation);
     selections.initialize();
     if (unbound) { editable = false; fixture.hold = false; fixture.complete(); }
     while (selections.loadingOptions) await new Promise(r => setTimeout(r, 5));
-    const initial = { defaults: selections.defaults, catalog: !!selections.catalog, verified: !!service.catalog, detail: selections.detail };
+    const initial = { defaults: selections.defaults, catalog: !!selections.catalog, verified: !!service.currentCatalog, detail: selections.detail };
     const requests = fixture.requests.length;
     editable = true;
     observation = { selection: { agent_id: 'codex', account: 'unrelated' } }; selections.initialize();
@@ -235,6 +241,7 @@ for (const available of [true, false]) {
       const { service, fixture } = createConfigHarness(), commits = [];
       fixture.current = { ...fixture.current, account: fixture.accounts[1], target: 'project:Exact',
         model: { id: 's2', reasoning_effort: 'high' }, service_tier: 'fast', run_mode: 'issue-run' };
+      fixture.changed();
       const selection = new HubSelections(() => service, () => {}, {}, value => commits.push(value), () => true,
         () => available ? { selection: { agent_id: 'codex', account: fixture.current.account.profile_name } } : undefined);
       await selection.inspectOptions();

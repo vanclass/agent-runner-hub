@@ -161,7 +161,8 @@ export function registerHubSelectionUI({ test, expect, transport, configure, cre
     await page.keyboard.press('Escape');
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).singleEntry.allocationPolicy, key)).toBe('reuse-idle');
     expect(await page.evaluate(() => [...window.__nativeFixture.sessions.values()].every(s =>
-      s.feature.requests.length === 0 && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
+      s.feature.requests.every(r => r.operation === 'work.list')
+      && s.feature.config.requests.every(r => r.operation === 'session_config.inspect')))).toBe(true);
   });
   test('Hub selections automatically load fresh and restored independent tab catalogs', async ({ page }, info) => {
     await transport(page, undefined, { auto: true, work: true }); await configure(page);

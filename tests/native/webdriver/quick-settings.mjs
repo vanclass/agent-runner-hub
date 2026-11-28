@@ -16,8 +16,9 @@ export function quickSettings(runnerRoot) {
       async function click(index, stage = 'initial') {
         field = index;
         const trigger = button(index);
-        await hub.wait(() => browser.execute(trigger =>
-          document.querySelector(trigger)?.getAttribute('aria-disabled') === 'false', trigger), 'Quick control unavailable: ' + index)
+        await hub.wait(async () => (await mountedRunner(browser, 'quick-state'))?.quick
+          && browser.execute(trigger =>
+            document.querySelector(trigger)?.getAttribute('aria-disabled') === 'false', trigger), 'Quick control unavailable: ' + index)
           .catch(async error => { throw new Error(error.message + ' (' + stage + ') ' + JSON.stringify(await mountedRunner(browser, 'quick-state'))); });
         await hub.dom.click(trigger);
       }
@@ -123,13 +124,14 @@ export function quickSettings(runnerRoot) {
         await click(6);
         const modes = await choices();
         const mode = modes.find(o => !o.selected && o.enabled && ['Task Run', 'Issue Run'].includes(o.value));
-        assert.ok(mode, 'No alternative Target-based mode in native inventory');
+        assert.ok(mode, 'No alternative Target-based mode in native inventory (' + modes.filter(o => o.enabled).length + ' enabled)');
         await choose(modes, mode);
         await observe(o => o.run_mode === (mode.value === 'Issue Run' ? 'issue-run' : 'task-run'));
         await click(7);
         const targets = await choices();
         const target = targets.find(o => !o.selected && o.enabled);
-        assert.ok(target, 'No enabled alternate Target');
+        assert.ok(target, 'No enabled alternate Target (' + targets.length + ' choices, '
+          + targets.filter(o => o.enabled).length + ' enabled)');
         await choose(targets, target);
         await observe(o => o.context_location?.kind === 'target');
         await click(6);

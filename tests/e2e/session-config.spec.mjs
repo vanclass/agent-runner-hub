@@ -56,6 +56,7 @@ test('unbound startup with an unavailable empty model catalog preserves explicit
     const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
     const { HubSelections } = await import('/src/hub/HubSelections.ts');
     fixture.current.target = '';
+    fixture.changed();
     const inspect = fixture.inspection.bind(fixture);
     fixture.inspection = (...args) => {
       const reply = inspect(...args);
@@ -70,7 +71,7 @@ test('unbound startup with an unavailable empty model catalog preserves explicit
     const requests = fixture.requests.length;
     for (let i = 0; i < 5; i++) choices.initialize();
     return { defaults: choices.defaults, catalog: !!choices.catalog, detail: choices.detail,
-      actual: service.actual.model_catalog_status, requests, after: fixture.requests.length };
+      actual: service.currentCatalog.inspection.model_catalog_status, requests, after: fixture.requests.length };
   });
   expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
   expect(result).toMatchObject({ catalog: true, detail: '', actual: 'unavailable' });
@@ -123,6 +124,52 @@ for (const changedRevision of [false, true]) test('configured no-op submission u
   expect(result.submissions).toEqual(['Target\nOwner: Project\nProject: Explicit\nGoal\none']);
 });
 
+test('configured submission joins equivalent background options and preserves canonical admission', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { submitConfiguredWork } = await import('/src/hub/runnerSubmission.ts');
+    const { fixture, service } = createConfigHarness();
+    const submitted = [];
+    const work = { supports: () => true, blocked: false, busy: false,
+      submit: async text => { submitted.push(text); } };
+    fixture.hold = true;
+    service.refreshOptions();
+    const pending = submitConfiguredWork(service, work, { accountIdentity: fixture.current.account, runMode: 'task-run' },
+      'Target\nOwner: Workspace\nProject: agent-workspace\nGoal\none', async () => undefined);
+    const held = { requested: fixture.requests.length, loading: service.optionsRefreshing, foreground: service.busy };
+    fixture.hold = false;
+    fixture.complete();
+    await pending;
+    return { held, requests: fixture.requests.map(r => r.operation), submitted };
+  });
+  expect(result.held).toEqual({ requested: 1, loading: true, foreground: true });
+  expect(result.requests).toEqual(['session_config.inspect', 'session_config.inspect', 'session_config.inspect', 'session_config.plan']);
+  expect(result.submitted).toEqual(['Target\nOwner: Workspace\nProject: agent-workspace\nGoal\none']);
+});
+
+test('background options leave a reviewed plan and its revision check intact', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
+    const { fixture, service } = createConfigHarness();
+    await service.inspect();
+    service.setDraft({ model: { id: 'm2', reasoning_effort: 'high' } });
+    await service.createPlan();
+    const { plan, draft, progress } = service;
+    fixture.current.target = 'project:Exact';
+    fixture.revision = 'd'.repeat(64);
+    fixture.changed();
+    service.refreshOptions();
+    while (service.optionsRefreshing) await new Promise(resolve => setTimeout(resolve, 5));
+    const retained = plan === service.plan && draft === service.draft && progress === service.progress;
+    const refreshed = service.currentCatalog?.inspection.revision === fixture.revision;
+    await service.apply();
+    return { retained, refreshed, error: service.error, applied: fixture.requests.some(r => r.operation === 'session_config.apply') };
+  });
+  expect(result).toEqual({ retained: true, refreshed: true, error: { key: 'config.stalePlan' }, applied: false });
+});
+
 test('unbound native startup preserves verified choices without choosing a target', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
@@ -130,12 +177,15 @@ test('unbound native startup preserves verified choices without choosing a targe
     const { HubSelections } = await import('/src/hub/HubSelections.ts');
     const { configToEntryDefaults } = await import('/src/hub/runnerConfigDefaults.ts');
     fixture.current.target = '';
-    const observation = () => ({ target: { binding_state: 'unset', owner: '', project: '' }, selection: service.actual?.effective });
+    fixture.changed();
+    const observation = () => ({ target: { binding_state: 'unset', owner: '', project: '' },
+      selection: service.currentCatalog?.inspection.effective });
     const selections = new HubSelections(() => service, () => {}, {}, () => {}, () => true, observation);
     await selections.inspectOptions();
     const before = structuredClone(selections.defaults), available = !!selections.catalog;
-    const uncertain = configToEntryDefaults(service.actual.current, service.catalog, { ...observation(), target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
-    const unknown = configToEntryDefaults({ ...service.actual.current, target: 'project:missing' }, service.catalog, observation());
+    const catalog = service.currentCatalog, current = catalog.inspection.current;
+    const uncertain = configToEntryDefaults(current, catalog, { ...observation(), target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
+    const unknown = configToEntryDefaults({ ...current, target: 'project:missing' }, catalog, observation());
     selections.setDefault('target', { binding_state: 'bound', owner: 'Project', project: 'Exact' });
     return { available, before, selected: selections.defaults.target, uncertain: !!uncertain, unknown: !!unknown,
       readOnly: fixture.requests.every(r => r.operation === 'session_config.inspect') };

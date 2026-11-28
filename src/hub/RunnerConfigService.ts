@@ -9,6 +9,7 @@ import { copy, same, record, isInspection, isTestSelection, isSessionProvider, s
 export interface ConfigTransport {
   identity(): ConfigIdentity | undefined;
   available(): boolean;
+  backgroundAvailable(): boolean;
   submit(session: string, request: ConfigRequest): Promise<FeatureAdmission>;
 }
 export type ConfigActivity = 'idle' | 'inspecting' | 'catalog' | 'planning' | 'applying' | 'verifying' | 'closed';
@@ -16,6 +17,9 @@ export type ConfigApplication = { receipt: FeatureResult; result?: ConfigApply;
   plan: ConfigPlan; before: ConfigSettings;
   verification: 'pending' | 'verified' | 'unavailable' | 'unknown'; inspection?: ConfigInspect };
 const terminal = (result: FeatureResult) => ['accepted', 'rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(result.state);
+const optionRefreshMs = 30_000;
+type ConfigWait = { id?: number; identity: ConfigIdentity; request: ConfigRequest;
+  finish: (result: FeatureResult) => void; timer: ReturnType<typeof setTimeout> };
 
 /** One Runner instance owns this service; drafts and receipts never enter preferences. */
 export class RunnerConfigService {
@@ -25,7 +29,31 @@ export class RunnerConfigService {
   progress?: FeatureResult;
   actual?: ConfigInspect;
   catalog?: ConfigCatalog;
-  currentCatalog?: ConfigCatalog;
+  private effectiveCatalog?: ConfigCatalog;
+  private destinationCatalog?: ConfigCatalog;
+  private observedAccount?: string;
+  private observedSettings?: string;
+  private optionsEpoch = 0;
+  private optionsDue = 0;
+  private providersDue = 0;
+  private optionsRead?: { account?: ConfigAccount; claimed?: boolean; promise: Promise<ConfigCatalog | undefined> };
+  // Keep read progress separate while native continues to own admission and FIFO.
+  private backgroundWait?: ConfigWait;
+  optionsError: HubText = '';
+  providersError: HubText = '';
+  get currentCatalog() {
+    const current = this.effectiveCatalog;
+    return this.applicableOptions(current) ? current : undefined;
+  }
+  private applicableOptions(catalog?: ConfigCatalog) {
+    return !!catalog && catalog.inspection.effective.account === this.observedAccount
+      && catalog.inspection.effective.agent_id === this.observedAgentId && same(catalog.identity, this.identity);
+  }
+  optionsFor(account?: ConfigAccount) {
+    if (!account || same(account, this.currentCatalog?.inspection.model_options_account)) return this.currentCatalog;
+    return this.applicableOptions(this.destinationCatalog)
+      && same(account, this.destinationCatalog?.inspection.model_options_account) ? this.destinationCatalog : undefined;
+  }
   providers?: ProviderCatalog;
   providerOutcomeUnknown = false;
   draft: ConfigDesired = {};
@@ -56,8 +84,7 @@ export class RunnerConfigService {
   private restoringMode = false;
   private snapshot?: FeatureSnapshot;
   private receipts = new Map<number, FeatureResult>();
-  private waiting?: { id?: number; identity: ConfigIdentity; request: ConfigRequest;
-    finish: (result: FeatureResult) => void; timer: ReturnType<typeof setTimeout> };
+  private waiting?: ConfigWait;
   constructor(private readonly transport: ConfigTransport, private readonly changed: () => void) {}
   get busy() { return !['idle', 'closed'].includes(this.activity); }
   get modeRestorationActive() { return this.restoringMode; }
@@ -74,7 +101,7 @@ export class RunnerConfigService {
       && same(this.planned.identity, this.transport.identity()) && this.transport.available();
   }
   getReceipt(id: number) { return this.receipts.get(id); }
-  observe(session: string, state: string, snapshot?: FeatureSnapshot, agentId?: string) {
+  observe(session: string, state: string, snapshot?: FeatureSnapshot, agentId?: string, account?: string, settings?: string) {
     if (this.closed) return;
     const previousCapability = this.capability, previousAgentId = this.observedAgentId;
     this.agentId = state === 'ready' ? agentId : undefined;
@@ -83,12 +110,26 @@ export class RunnerConfigService {
       this.draftVersion++;
       this.actual = undefined;
       this.catalog = undefined;
-      this.currentCatalog = undefined;
+      this.effectiveCatalog = undefined;
+      this.destinationCatalog = undefined;
       this.providers = undefined;
+      this.providersDue = 0;
+      this.providersError = '';
       this.plan = undefined;
       this.planned = undefined;
       const { account, model, service_tier, ...independent } = this.draft;
       this.draft = independent;
+    }
+    if (previousAgentId !== this.observedAgentId || this.observedSettings !== settings || this.observedAccount !== account) {
+      this.optionsEpoch++;
+      this.optionsDue = 0;
+      this.optionsError = '';
+      if (this.observedAccount !== account) {
+        this.destinationCatalog = undefined;
+        if (this.effectiveCatalog?.inspection.effective.account !== account) this.effectiveCatalog = undefined;
+      }
+      this.observedSettings = settings;
+      this.observedAccount = account;
     }
     const previousUnsupported = this.inspectionUnsupported;
     let applicationChanged = false;
@@ -105,11 +146,15 @@ export class RunnerConfigService {
     this.inspectionUnsupported = !!identity && !this.supports('inspect');
     if (!this.capability) {
       if (previousCapability) this.effectiveRevision++;
-      this.actual = undefined; this.catalog = undefined; this.currentCatalog = undefined; this.providers = undefined;
+      this.actual = undefined; this.catalog = undefined; this.effectiveCatalog = undefined;
+      this.destinationCatalog = undefined; this.providers = undefined;
+      this.optionsDue = this.providersDue = 0;
+      this.optionsError = this.providersError = '';
+      if (previousCapability) this.optionsEpoch++;
       this.plan = undefined; this.planned = undefined;
     }
     for (const receipt of snapshot?.results ?? []) {
-      if (receipt.feature !== 'session_config') continue;
+      if (receipt.feature !== 'session_config' || (receipt.id !== this.waiting?.id && !this.receipts.has(receipt.id))) continue;
       if (terminal(receipt)) this.receipts.set(receipt.id, copy(receipt));
       const application = this.applications.find(a => a.receipt.id === receipt.id && a.receipt.phase !== 'completed');
       if (application && receipt.phase === 'completed' && isApply(receipt.reply, application.plan, application.before)) {
@@ -121,17 +166,17 @@ export class RunnerConfigService {
       }
     }
     this.deliver();
+    if (this.backgroundWait) this.deliver(this.backgroundWait);
     if (state === 'disconnected') this.close();
     else if (applicationChanged || this.waiting || previousUnsupported !== this.inspectionUnsupported
       || previousAgentId !== this.observedAgentId || !same(previousCapability, this.capability)) this.changed();
   }
-  private deliver() {
-    const wait = this.waiting;
+  private deliver(wait = this.waiting) {
     if (!wait || wait.id === undefined || !same(wait.identity, this.identity)) return;
     const result = this.snapshot?.results.find(r => r.id === wait.id && r.feature === 'session_config'
       && r.operation === wait.request.operation);
     if (!result) return;
-    this.progress = copy(result);
+    if (wait === this.waiting) this.progress = copy(result);
     if (terminal(result)) wait.finish(copy(result));
   }
   close() {
@@ -143,56 +188,64 @@ export class RunnerConfigService {
     this.capability = undefined;
     this.actual = undefined;
     this.catalog = undefined;
-    this.currentCatalog = undefined;
+    this.effectiveCatalog = undefined;
+    this.destinationCatalog = undefined;
     this.providers = undefined;
     this.plan = undefined;
     this.planned = undefined;
     const wait = this.waiting;
     if (wait) wait.finish(this.unknown(wait.request, wait.id));
+    const background = this.backgroundWait;
+    if (background) background.finish(this.unknown(background.request, background.id, true));
     this.activity = 'closed';
     this.changed();
   }
-  private unknown(request: ConfigRequest, id = 0): FeatureResult {
+  private unknown(request: ConfigRequest, id = 0, background = false): FeatureResult {
     return { id, feature: 'session_config', operation: request.operation, state: 'outcome-unknown',
-      admission: this.progress?.id === id ? this.progress.admission : 'unconfirmed', code: 'CONFIG_RECEIPT_UNAVAILABLE' };
+      admission: !background && this.progress?.id === id ? this.progress.admission : 'unconfirmed', code: 'CONFIG_RECEIPT_UNAVAILABLE' };
   }
   private assertIdentity(identity: ConfigIdentity) {
     if (this.closed || !same(identity, this.transport.identity()) || !same(identity, this.identity))
       throw new HubError(msg('config.identityChanged'));
   }
-  private request(request: ConfigRequest): Promise<FeatureResult> {
+  private request(request: ConfigRequest, background = false): Promise<FeatureResult> {
     const identity = this.transport.identity();
     const action = request.operation.split('.')[1] as ConfigAction;
-    if (!identity || !this.supports(action) || this.waiting) throw new HubError(msg('config.unsupported'));
+    const slot = background ? 'backgroundWait' : 'waiting';
+    if (!identity || !this.supports(action) || this[slot]) throw new HubError(msg('config.unsupported'));
     this.assertIdentity(identity);
-    this.progress = { id: 0, feature: 'session_config', operation: request.operation,
-      state: 'sending', admission: 'unconfirmed' };
-    this.changed();
+    if (!background) {
+      this.progress = { id: 0, feature: 'session_config', operation: request.operation,
+        state: 'sending', admission: 'unconfirmed' };
+      this.changed();
+    }
     return new Promise(resolve => {
       const finish = (result: FeatureResult) => {
-        if (this.waiting?.finish !== finish) return;
-        clearTimeout(this.waiting.timer);
-        this.waiting = undefined;
-        this.progress = result;
-        if (result.id) this.receipts.set(result.id, copy(result));
-        this.changed();
+        if (this[slot]?.finish !== finish) return;
+        clearTimeout(this[slot].timer);
+        this[slot] = undefined;
+        if (!background) {
+          this.progress = result;
+          if (result.id) this.receipts.set(result.id, copy(result));
+          this.changed();
+        }
         resolve(result);
       };
       // Native owns the FIFO-head deadline; this is a bounded delivery grace.
-      const timer = setTimeout(() => finish(this.unknown(request, this.waiting?.id)),
+      const timer = setTimeout(() => finish(this.unknown(request, this[slot]?.id, background)),
         (action === 'apply' || action === 'select_provider' ? 1830 : action === 'plan' ? 630 : 450) * 1000);
-      this.waiting = { identity: copy(identity), request, finish, timer };
+      this[slot] = { identity: copy(identity), request, finish, timer };
       void this.transport.submit(identity.session, request).then(admission => {
-        if (this.waiting?.finish !== finish) return;
+        if (this[slot]?.finish !== finish) return;
         if (admission.state !== 'submitted') {
-          finish({ ...this.unknown(request), state: admission.state,
+          finish({ ...this.unknown(request, 0, background), state: admission.state,
             admission: admission.state === 'not-sent' ? 'not-sent' : 'unconfirmed', code: admission.detail });
           return;
         }
-        if (admission.generation !== identity.generation) { finish(this.unknown(request, admission.id)); return; }
-        this.waiting.id = admission.id;
-        this.deliver();
-      }, () => finish(this.unknown(request, this.waiting?.id)));
+        if (admission.generation !== identity.generation) { finish(this.unknown(request, admission.id, background)); return; }
+        this[slot].id = admission.id;
+        this.deliver(this[slot]);
+      }, () => finish(this.unknown(request, this[slot]?.id, background)));
     });
   }
   private completion(receipt: FeatureResult) {
@@ -211,28 +264,42 @@ export class RunnerConfigService {
     try {
       const receipt = await this.request({ operation: 'session_config.select_provider', api_version: 1,
         expected_agent_id: catalog.current_agent_id, agent_id: agentId });
-      this.providers = undefined;
       const reply = receipt.reply;
       if (receipt.phase === 'completed' && record(reply) && reply.api_version === 1) {
-        if (receipt.state === 'accepted' && reply.current_agent_id === agentId && typeof reply.changed === 'boolean')
+        if (receipt.state === 'accepted' && reply.current_agent_id === agentId && typeof reply.changed === 'boolean') {
+          if (reply.changed) {
+            this.providers = undefined;
+            this.effectiveCatalog = this.destinationCatalog = undefined;
+            this.optionsEpoch++;
+          }
+          this.providersDue = 0;
           return { confirmed: true, changed: reply.changed };
+        }
+        this.providersDue = 0;
         if (receipt.state === 'rejected' && !reply.outcome_unknown)
           return { confirmed: false, code: receipt.code, reason: typeof reply.reason === 'string' ? reply.reason : undefined,
             confirmations: reply.interaction_owner === 'runner_terminal' && Array.isArray(reply.required_confirmations)
               ? reply.required_confirmations.filter((v): v is string => typeof v === 'string') : [] };
       }
       this.providerOutcomeUnknown = receipt.state !== 'not-sent' && receipt.admission !== 'rejected';
+      if (this.providerOutcomeUnknown) {
+        this.effectiveCatalog = this.destinationCatalog = undefined;
+        this.optionsEpoch++;
+      }
+      this.providersDue = 0;
       this.error = msg(this.providerOutcomeUnknown ? 'config.receiptUnknown' : 'config.notSent');
     } catch (reason) { this.error = errorText(reason); }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
-  async inspectProviders() {
-    if (this.busy || this.closed) return;
-    this.providers = undefined;
-    this.error = '';
-    this.activity = 'inspecting'; this.changed();
+  private async refreshProviders() {
+    const revision = this.providerRevision, epoch = this.optionsEpoch;
+    this.providersDue = performance.now() + optionRefreshMs;
     try {
-      const receipt = await this.request({ operation: 'session_config.providers', api_version: 1 });
+      const receipt = await this.request({ operation: 'session_config.providers', api_version: 1 }, true);
+      if (this.closed || revision !== this.providerRevision || epoch !== this.optionsEpoch) {
+        this.providersDue = 0;
+        return;
+      }
       const reply = this.completion(receipt);
       if (receipt.state !== 'accepted')
         throw new HubError(msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_PROVIDER_INSPECTION_FAILED' }));
@@ -240,18 +307,17 @@ export class RunnerConfigService {
         || reply.current_agent_id !== this.observedAgentId) throw new HubError(msg('config.identityChanged'));
       this.providers = copy(reply);
       this.providerOutcomeUnknown = false;
-      return { providers: this.providers };
+      this.providersError = '';
     } catch (reason) {
-      this.error = errorText(reason);
-      return { error: this.error };
+      this.providersError = errorText(reason);
     }
-    finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
+    finally { this.changed(); }
   }
-  private async page(identity: ConfigIdentity, account?: ConfigAccount, offset = 0, guard?: string) {
+  private async page(identity: ConfigIdentity, account?: ConfigAccount, offset = 0, guard?: string, background = false) {
     this.assertIdentity(identity);
     const revision = this.providerRevision;
     const receipt = await this.request({ operation: 'session_config.inspect', api_version: 1, offset,
-      ...(account ? { account: copy(account) } : {}), ...(guard ? { options_revision: guard } : {}) });
+      ...(account ? { account: copy(account) } : {}), ...(guard ? { options_revision: guard } : {}) }, background);
     this.assertIdentity(identity);
     if (revision !== this.providerRevision) throw new HubError(msg('config.identityChanged'));
     const reply = this.completion(receipt);
@@ -291,7 +357,7 @@ export class RunnerConfigService {
       return undefined;
     } finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
-  async inspect(account?: ConfigAccount) {
+  async inspect(account?: ConfigAccount, reuseOptions = false) {
     this.previousProgress = null;
     if (this.busy || this.closed) return;
     this.activity = account ? 'catalog' : 'inspecting';
@@ -305,19 +371,50 @@ export class RunnerConfigService {
     try {
       const identity = this.transport.identity();
       if (!identity) throw new HubError(msg('config.notReady'));
+      const observedAgentId = this.observedAgentId;
+      const selected = account?.agent_id === observedAgentId ? account : undefined;
+      const retained = reuseOptions ? this.optionsFor(selected) : undefined;
+      let catalog = retained;
+      const read = this.optionsRead;
+      if (!catalog && read && (same(read.account, selected)
+        || !read.account && selected?.profile_name === this.observedAccount)) {
+        read.claimed = true;
+        catalog = await read.promise;
+        if (selected && !same(catalog?.inspection.model_options_account, selected)) catalog = undefined;
+        if (!catalog && !read.account && this.optionsError) throw new HubError(this.optionsError);
+      }
+      catalog ??= await this.collect(identity, selected);
+      if (!catalog) throw new HubError(msg('config.incomplete'));
+      this.assertIdentity(identity);
+      if (version !== this.draftVersion) throw new HubError(msg('config.draftChanged'));
+      if (providerRevision !== this.providerRevision) throw new HubError(msg('config.identityChanged'));
+      if (!retained) {
+        this.actual = catalog.inspection;
+        this.reconcileInspection(catalog.inspection);
+      }
+      this.catalog = catalog;
+      if (!retained) this.storeOptions(catalog);
+      return { catalog };
+    } catch (reason) {
+      this.error = errorText(reason);
+      return { error: this.error };
+    }
+    finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
+  }
+  private async collect(identity: ConfigIdentity, selected?: ConfigAccount, background?: () => boolean) {
       const cap = this.capability;
       if (!cap || !this.supports('inspect')) throw new HubError(msg('config.unsupported'));
       const observedAgentId = this.observedAgentId;
-      const selected = account?.agent_id === observedAgentId ? account : undefined;
-      const first = await this.page(identity, selected);
+      const first = await this.page(identity, selected, 0, undefined, !!background);
       if (!same(first.model_options_account, selected ?? first.current.account)) throw new HubError(msg('config.identityChanged'));
       const options = copy(first.options);
       let page = first, offset = 0;
       for (;;) {
         if (!validatePage(page, first, offset, cap.options_page_size)) throw new HubError(msg('config.incomplete'));
         if (page.options_page.next_offset === null) break;
+        if (background && !background()) return undefined;
         offset = page.options_page.next_offset;
-        page = await this.page(identity, selected, offset, first.options_revision);
+        page = await this.page(identity, selected, offset, first.options_revision, !!background);
         for (const key of ['targets', 'accounts', 'models'] as const) {
           // Concatenate only after validating this page; publish only at terminal null.
           if (!validatePage(page, first, offset, cap.options_page_size)) throw new HubError(msg('config.incomplete'));
@@ -327,29 +424,81 @@ export class RunnerConfigService {
       }
       if (!uniqueOptions(options) || (selected && !options.accounts.some(a => same(a, selected))))
         throw new HubError(msg('config.identityChanged'));
-      this.assertIdentity(identity);
-      if (version !== this.draftVersion) throw new HubError(msg('config.draftChanged'));
-      if (providerRevision !== this.providerRevision) throw new HubError(msg('config.identityChanged'));
       const applicable = isSessionProvider(observedAgentId) && first.effective.agent_id === observedAgentId;
       options.accounts = applicable ? options.accounts.filter(a => a.agent_id === observedAgentId) : [];
       if (!applicable || first.model_options_account.agent_id !== observedAgentId) options.models = [];
-      this.actual = first;
-      for (const application of this.applications) {
-        if (application.result && application.verification === 'unavailable'
-          && application.before.account.agent_id === observedAgentId) {
-          application.verification = 'verified'; application.inspection = copy(first);
-        }
+      return { identity: copy(identity), account: copy(selected), inspection: first, options };
+  }
+  private reconcileInspection(first: ConfigInspect) {
+    for (const application of this.applications) {
+      if (application.result && application.verification === 'unavailable'
+        && application.before.account.agent_id === first.effective.agent_id) {
+        application.verification = 'verified'; application.inspection = copy(first);
       }
-      this.catalog = { identity: copy(identity), account: copy(selected), inspection: first, options };
-      if (same(first.current.account, first.model_options_account)) this.currentCatalog = this.catalog;
-      return { catalog: this.catalog };
-    } catch (reason) {
-      this.catalog = undefined;
-      if (!account || same(account, this.actual?.current.account)) this.currentCatalog = undefined;
-      this.error = errorText(reason);
-      return { error: this.error };
     }
-    finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
+  }
+  private storeOptions(catalog: ConfigCatalog) {
+    const { current, model_options_account } = catalog.inspection;
+    if (same(current.account, model_options_account)) {
+      this.optionsDue = performance.now() + optionRefreshMs;
+      if (catalog.inspection.model_catalog_status === 'unavailable'
+        && this.currentCatalog?.inspection.model_catalog_status === 'available') {
+        this.optionsError = msg('config.incomplete');
+        return;
+      }
+      this.effectiveCatalog = catalog;
+      this.optionsError = '';
+    } else this.destinationCatalog = catalog;
+  }
+  get optionsRefreshing() { return !!this.optionsRead && !this.optionsRead.account; }
+  get providersRefreshing() { return this.backgroundWait?.request.operation === 'session_config.providers'; }
+  private get canRefreshOptions() {
+    return !this.closed && !this.busy && !this.optionsRead && !this.backgroundWait && this.transport.backgroundAvailable();
+  }
+  refreshOptions() {
+    if (!this.canRefreshOptions) return;
+    const now = performance.now();
+    if (this.supports('providers') && now >= this.providersDue
+      && (this.providerOutcomeUnknown || !this.providers && !this.providersDue)) {
+      void this.refreshProviders();
+    } else if (this.supports('inspect') && !this.providerOutcomeUnknown && now >= this.optionsDue) {
+      void this.startOptionsRead();
+    } else if (this.supports('providers') && now >= this.providersDue) {
+      void this.refreshProviders();
+    }
+  }
+  lookupOptions(account?: ConfigAccount) {
+    if (account && account.agent_id !== this.observedAgentId) return;
+    if (this.optionsRead && same(account, this.optionsRead.account)) return this.optionsRead.promise;
+    if (this.canRefreshOptions && this.supports('inspect') && !this.providerOutcomeUnknown
+      && (account || performance.now() >= this.optionsDue)) return this.startOptionsRead(account);
+  }
+  private startOptionsRead(account?: ConfigAccount) {
+    const identity = this.transport.identity();
+    if (!identity) return;
+    const epoch = this.optionsEpoch;
+    if (!account) this.optionsDue = performance.now() + optionRefreshMs;
+    const promise = this.collect(identity, account, () => epoch === this.optionsEpoch
+      && (this.optionsRead?.claimed === true || !this.busy && this.transport.backgroundAvailable()))
+      .then(catalog => {
+        if (this.closed || epoch !== this.optionsEpoch || this.providerOutcomeUnknown) return;
+        if (!catalog || this.busy && !this.optionsRead?.claimed) {
+          if (!account) this.optionsDue = 0;
+          return;
+        }
+        if (catalog.inspection.effective.account !== this.observedAccount) {
+          if (!account) this.optionsError = msg('config.identityChanged');
+          return;
+        }
+        this.storeOptions(catalog);
+        if (!account && !this.plan && this.transport.backgroundAvailable()) this.actual = catalog.inspection;
+        return catalog;
+      }).catch(reason => {
+        if (!this.closed && epoch === this.optionsEpoch && !account) this.optionsError = errorText(reason);
+        return undefined;
+      }).finally(() => { this.optionsRead = undefined; this.changed(); });
+    this.optionsRead = { account, promise };
+    return promise;
   }
   setDraft(change: ConfigDesired) {
     if (this.closed) return;
@@ -401,8 +550,8 @@ export class RunnerConfigService {
     this.planned = undefined;
     const identity = this.transport.identity(), version = this.draftVersion, desired = copy(this.draft);
     const providerRevision = this.providerRevision;
-    if (!identity || !this.actual || !this.catalog || !same(identity, this.catalog.identity)
-      || !validDesired(desired, this.actual.current, this.catalog) || !this.transport.available()) {
+    if (!identity || !this.catalog || !same(identity, this.catalog.identity)
+      || !validDesired(desired, this.catalog.inspection.current, this.catalog) || !this.transport.available()) {
       this.error = msg('config.invalidCombination'); this.changed(); return;
     }
     this.activity = 'planning'; this.changed();
@@ -448,7 +597,15 @@ export class RunnerConfigService {
       this.applications.push(application);
       if (onConfirmed) this.confirmations.set(application, onConfirmed);
       this.publishConfirmation(application);
-      this.plan = undefined; this.planned = undefined; this.catalog = undefined; this.currentCatalog = undefined;
+      this.plan = undefined; this.planned = undefined; this.catalog = undefined;
+      this.optionsEpoch++;
+      this.optionsDue = 0;
+      if (valid && reply.current && !same(reply.current.account, latest.current.account)) {
+        if (!same(this.effectiveCatalog?.inspection.model_options_account, reply.current.account))
+          this.effectiveCatalog = undefined;
+        if (!same(this.destinationCatalog?.inspection.model_options_account, reply.current.account))
+          this.destinationCatalog = undefined;
+      }
       if (!valid) this.error = receipt.state === 'not-sent' ? msg('config.notSent') : receipt.admission === 'rejected'
         ? msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_REQUEST_REJECTED' }) : msg('config.receiptUnknown');
       this.activity = this.closed ? 'closed' : 'verifying'; this.changed();
@@ -457,6 +614,7 @@ export class RunnerConfigService {
           const observed = await this.page(identity);
           if (providerRevision !== this.providerRevision) throw new HubError(msg('config.stalePlan'));
           this.actual = observed;
+          this.reuseVerifiedPage(identity, observed);
           application.inspection = observed;
           if (application.verification !== 'unknown') application.verification = 'verified';
         } catch (reason) {
@@ -467,5 +625,20 @@ export class RunnerConfigService {
     } catch (reason) {
       this.plan = undefined; this.planned = undefined; this.error = errorText(reason);
     } finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
+  }
+  private reuseVerifiedPage(identity: ConfigIdentity, observed: ConfigInspect) {
+    const size = this.capability?.options_page_size;
+    if (!size || !validatePage(observed, observed, 0, size) || !uniqueOptions(observed.options)
+      || !same(observed.model_options_account, observed.current.account)) return;
+    const previous = [this.effectiveCatalog, this.destinationCatalog].find(catalog => catalog
+      && same(catalog.inspection.model_options_account, observed.model_options_account)
+      && catalog.inspection.options_revision === observed.options_revision
+      && same(catalog.inspection.options_page.totals, observed.options_page.totals)
+      && same(catalog.inspection.options, observed.options));
+    if (!previous && observed.options_page.next_offset !== null) return;
+    const options = copy(previous?.options ?? observed.options);
+    options.accounts = options.accounts.filter(account => account.agent_id === this.observedAgentId);
+    if (!isSessionProvider(this.observedAgentId)) options.models = [];
+    this.storeOptions({ identity: copy(identity), inspection: observed, options });
   }
 }

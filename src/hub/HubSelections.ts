@@ -17,6 +17,7 @@ export class HubSelections {
   readonly restoredDefaults: boolean;
   private attempted?: RunnerConfigService;
   private attemptedRevision?: number;
+  private attemptedCatalog?: ConfigCatalog;
   private providerSource?: RunnerConfigService;
   private providerRevision?: number;
   private provider?: string;
@@ -47,8 +48,6 @@ export class HubSelections {
       && (this.initialMode === undefined || key !== 'runMode'));
   }
   initialize() {
-    // Inspection itself temporarily hides a busy spare from the source supplier.
-    if (this.loadingOptions && this.attempted?.busy) return;
     const service = this.source();
     const unsupported = msg('config.unsupported');
     if (same(this.detail, unsupported) && !service?.inspectionUnsupported) {
@@ -62,7 +61,7 @@ export class HubSelections {
       this.attempted = undefined;
       this.catalog = undefined;
     }
-    if (this.loadingOptions || !this.editable || !service) return;
+    if (this.inspectionEdits || !this.editable || !service) return;
     if (!service.supports('inspect')) {
       if (service.inspectionUnsupported && !this.detail) {
         this.detail = unsupported; this.changed();
@@ -72,16 +71,15 @@ export class HubSelections {
     if (service.busy) return;
     this.observeProvider(service);
     if (this.observation(service)?.attention?.foreground_interaction_active) return;
-    const catalog = service.catalog;
-    // Publication can lose readiness after inspection; reuse verified evidence, not a failed inspection.
-    const observation = this.observation(service);
-    const recovered = !this.catalog && catalog && same(catalog.account, this.defaults.accountIdentity)
-      && (this.refreshProvider ? observation?.selection.agent_id === service.observedAgentId && !!observation
-        : catalog.options.run_modes.includes('task-run')
-          && ['target', 'account', 'run_mode', 'model', 'service_tier'].every(key => catalog.inspection.availability[key] === true)
-          && configToEntryDefaults(catalog.inspection.current, catalog, observation));
-    if (this.attempted === service && !recovered) return;
-    void this.loadOptions(!!recovered);
+    const current = service.currentCatalog;
+    if (!current && service.optionsError) {
+      this.catalog = undefined;
+      this.detail = service.optionsError;
+      return;
+    }
+    const recovered = current && !this.catalog && configToEntryDefaults(current.inspection.current, current, this.observation(service));
+    if (current && this.attempted === service && this.attemptedCatalog === current && !recovered) return;
+    void this.loadOptions();
   }
   private savedProviders() {
     const { providerPreferences, accountIdentity, model } = this.defaults;
@@ -103,7 +101,7 @@ export class HubSelections {
     const { accountIdentity, model, providerPreferences } = this.defaults;
     const incompatible = [accountIdentity?.agent_id, model?.agent_id]
       .some(id => isSessionProvider(id) && id !== provider);
-    if ((first && !incompatible && !providerPreferences) || (!first && !sameSource && previous === provider)) return;
+    if ((first && !incompatible && !providerPreferences) || (!first && previous === provider)) return;
     const saved = this.savedProviders();
     const picks = isSessionProvider(provider) ? saved[provider] : undefined;
     this.defaults = { ...this.defaults, providerPreferences: saved,
@@ -122,7 +120,8 @@ export class HubSelections {
     this.updateDefault(key, value);
   }
   refreshConfirmedCatalog(service: RunnerConfigService) {
-    this.catalog = same(service.catalog?.inspection.model_options_account, this.defaults.accountIdentity) ? service.catalog : undefined;
+    this.catalog = service.optionsFor(this.defaults.accountIdentity);
+    this.attemptedCatalog = undefined;
     this.changed();
   }
   synchronizeConfirmed(service: RunnerConfigService, committed: ConfigDesired, current?: ConfigSettings,
@@ -202,38 +201,54 @@ export class HubSelections {
     }
     return false;
   }
-  inspectOptions() { return this.loadOptions(false); }
-  private async loadOptions(reuseCatalog: boolean) {
-    if (!this.editable || this.loadingOptions) return;
+  inspectOptions() {
+    this.attemptedCatalog = undefined;
+    return this.loadOptions();
+  }
+  private async loadOptions() {
+    if (!this.editable || this.inspectionEdits) return;
     const service = this.source();
     if (service?.busy) { this.attempted = undefined; return; }
     if (service?.supports('inspect')) this.observeProvider(service);
     const before = this.defaults, initialize = !this.initialized;
+    const current = service?.currentCatalog;
+    if (!service?.supports('inspect')) return;
+    const account = before.accountIdentity;
+    const retained = service.optionsFor(account);
+    const needsDestination = account && current?.options.accounts.some(candidate => same(candidate, account))
+      && !same(account, current.inspection.model_options_account);
+    const lookup = !current ? service.lookupOptions()
+      : needsDestination && (!retained || this.attemptedCatalog && this.attemptedCatalog !== current)
+        ? service.lookupOptions(account) : undefined;
+    if ((!current || needsDestination && !retained) && !lookup) {
+      this.catalog = current;
+      return;
+    }
     this.attempted = service;
+    this.attemptedCatalog = current;
     const revision = this.attemptedRevision = service?.providerRevision;
     const edits = this.inspectionEdits = new Set<keyof EntryDefaults>();
-    this.loadingOptions = true; this.catalog = undefined; this.detail = msg('config.inspecting'); this.changed();
+    this.loadingOptions = !!lookup && !retained;
+    this.catalog = retained ?? current;
+    if (this.loadingOptions) { this.detail = msg('config.inspecting'); this.changed(); }
     try {
-      if (!service?.supports('inspect') || service.busy) throw new HubError(msg('config.notReady'));
-      if (!reuseCatalog) await service.inspect(before.accountIdentity);
-      let catalog = service.catalog;
-      if (!catalog && before.accountIdentity && this.defaults === before && this.source() === service
-        && revision === service.providerRevision) {
-        // Keep an unsupported saved identity, but expose verified alternatives for an explicit edit.
-        await service.inspect();
-        catalog = service.catalog;
-      }
-      if (!catalog) throw new HubError(service.error || msg('config.incomplete'));
+      const refreshed = lookup && await lookup;
+      const effective = service.currentCatalog;
+      const catalog = service.optionsFor(account) ?? effective;
       if (!this.editable || this.source() !== service || this.attempted !== service || revision !== service.providerRevision) {
+        this.attemptedCatalog = undefined;
         this.detail = msg('config.incomplete');
         return;
       }
+      if (!catalog) throw new HubError(service.optionsError || msg('config.incomplete'));
+      this.attemptedCatalog = !current && account && !same(account, catalog.inspection.model_options_account)
+        && catalog.options.accounts.some(candidate => same(candidate, account)) ? undefined : effective;
       const observation = this.observation(service);
       if (this.refreshProvider && isSessionProvider(service.observedAgentId) && !observation) {
         this.detail = msg('config.incomplete');
         return;
       }
-      if (!edits.has('accountIdentity')) this.catalog = copy(catalog);
+      if (!edits.has('accountIdentity')) this.catalog = catalog;
       if (this.refreshProvider) {
         const provider = service.observedAgentId;
         const picks = isSessionProvider(provider) ? this.defaults.providerPreferences?.[provider] : undefined;
@@ -265,13 +280,14 @@ export class HubSelections {
         this.defaults = projected;
         this.save(copy(projected));
       }
-      this.detail = before.accountIdentity && !same(before.accountIdentity, catalog.inspection.model_options_account)
-        ? msg('config.defaultsUnresolved', { fields: 'accountIdentity' }) : '';
+      this.detail = lookup && !refreshed && retained ? msg('config.incomplete')
+        : before.accountIdentity && !same(before.accountIdentity, catalog.inspection.model_options_account)
+          ? msg('config.defaultsUnresolved', { fields: 'accountIdentity' }) : '';
     } catch (reason) {
       this.catalog = undefined;
       this.detail = this.source() === service ? errorText(reason) : msg('config.incomplete');
     } finally {
-      if (edits.has('accountIdentity')) this.attempted = undefined;
+      if (edits.has('accountIdentity')) this.attemptedCatalog = undefined;
       this.inspectionEdits = undefined; this.loadingOptions = false; this.changed();
       this.initialize();
     }

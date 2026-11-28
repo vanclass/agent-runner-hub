@@ -139,6 +139,9 @@ export class RunnerControl {
       available: () => !this.stopped && !this.tabClosing && !this.brief.busy && !this.brief.blocked
         && this.snapshot.state === 'ready' && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
         && (!this.recovery.busy || this.config.modeRestorationActive),
+      backgroundAvailable: () => this.observationFresh && !this.busy && !this.work.busy
+        && !this.brief.blocked && !this.images.busy
+        && !this.snapshot.features?.results.some(result => ['sending', 'queued', 'pending-interaction'].includes(result.state)),
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'session_config', request } }),
     }, changed);
     this.work = new RunnerWork({
@@ -185,8 +188,10 @@ export class RunnerControl {
       this.observeCommand();
       this.typedRun.observe();
       this.brief.observe(snapshot);
-      this.config.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.selection.agent_id);
       const observation = snapshot.observation;
+      this.config.observe(this.id, snapshot.state, snapshot.features, observation?.selection.agent_id,
+        observation?.selection.account, observation && JSON.stringify([observation.selection, observation.run_mode,
+          observation.target, observation.context_location, observation.attention.account_setup_required]));
       const recoveryChange = JSON.stringify([observation?.run_mode, observation?.execution, observation?.target,
         snapshot.results.at(-1)?.id, this.config.latestApplication?.receipt.id,
         this.work.current?.work?.event_id]);
@@ -201,6 +206,7 @@ export class RunnerControl {
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
       this.changed();
+      this.config.refreshOptions();
       const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing
         || this.brief.busy || this.typedRun.pending;
       this.timer = setTimeout(() => void this.refresh(), foreground ? controlTiming.settleMs : controlTiming.pollMs);

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { t, tr, useHubTranslation } from './i18n';
 import { DirectoryInput } from './DirectoryInput';
 import { runModeLabel } from './runModeLabel';
@@ -13,18 +13,15 @@ const direct = (mode?: string) => mode === 'direct-run' || mode === 'pure-direct
 export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   useHubTranslation();
   const { control, quick } = session, { config } = control;
-  const observation = control.observationFresh ? control.snapshot.observation : undefined;
+  const observation = control.snapshot.state === 'ready' ? control.snapshot.observation : undefined;
   const effective = observation?.selection, location = observation?.context_location;
   const [field, setField] = useState<Field>();
-  const [lookup, setLookup] = useState<Awaited<ReturnType<RunnerQuickConfig['load']>>>();
   const opening = useRef(0);
   const [directory, setDirectory] = useState<{ mode?: string; value: string }>();
-  const [destination, setDestination] = useState<{ account: ConfigAccount; catalog: ConfigCatalog }>();
-  const account = destination?.account;
+  const [account, setAccount] = useState<ConfigAccount>();
   const [modelDraft, setModelDraft] = useState<{ model: ConfigModelOption; effort: string; tier: string }>();
   const anchor = useRef<HTMLButtonElement>();
   const panel = useRef<HTMLDivElement>(null);
-  const initialCatalogRevision = useRef<number>();
   const pending = config.busy || quick.interactionBusy;
   const catalog = config.currentCatalog;
   const current = catalog?.inspection.current;
@@ -37,8 +34,8 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     && quick.available && config.supports('plan') && config.supports('apply');
   const configReason = canEdit ? '' : t(pending ? 'config.inspecting' : 'quick.unavailable');
   const supported = (key: string) => catalog?.inspection.availability[key] !== false;
-  const canLoadProvider = quick.available || config.providerOutcomeUnknown && !control.busy;
-  const providerLabel = config.providers?.providers.find(p => p.agent_id === effective?.agent_id)?.label
+  const providers = config.providerOutcomeUnknown ? undefined : config.providers;
+  const providerLabel = providers?.providers.find(p => p.agent_id === effective?.agent_id)?.label
     ?? (effective?.agent_id === 'codex' ? 'Codex' : effective?.agent_id === 'claude' ? 'Claude'
       : effective?.agent_id === 'none' ? t('config.providerNone') : effective?.agent_id);
   const root = location?.kind === 'direct_root' ? location.path : '';
@@ -46,20 +43,13 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     : location?.kind === 'direct_root' ? root : observation?.target.project;
   const activeContext = direct(observation?.run_mode);
 
-  useEffect(() => {
-    if (quick.available && config.supports('inspect') && effective?.agent_id && effective.agent_id !== 'none'
-      && !config.currentCatalog && initialCatalogRevision.current !== config.providerRevision) {
-      initialCatalogRevision.current = config.providerRevision;
-      void quick.load(false);
-    }
-  }, [quick, config, effective?.agent_id, quick.available, config.currentCatalog, config.providerRevision]);
-
   function close(restoreFocus = false) {
     opening.current++;
-    setLookup(undefined);
-    setField(undefined); setDestination(undefined); setDirectory(undefined); setModelDraft(undefined);
+    setField(undefined); setAccount(undefined); setDirectory(undefined); setModelDraft(undefined);
     if (restoreFocus) anchor.current?.focus();
   }
+
+  useLayoutEffect(() => { close(); }, [config.providerRevision, effective?.account]);
 
   useLayoutEffect(() => {
     const popup = panel.current, trigger = anchor.current;
@@ -96,10 +86,6 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     close();
     anchor.current = button; setField(key);
     if (key === 'location' && activeContext) setDirectory({ value: root });
-    const request = opening.current;
-    void quick.load(key === 'provider').then(result => {
-      if (request === opening.current) setLookup(result);
-    });
   }
 
   const label = (key: Field) => ({
@@ -113,7 +99,8 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     const name = t('quick.value', { field: label(key), value });
     const operation = key === 'provider' ? 'providers' : 'inspect';
     const reason = !config.supports(operation) ? t('config.unsupported') : '';
-    const disabled = field !== key && (!!reason || (key === 'provider' ? !canLoadProvider : !canEdit));
+    const disabled = field !== key && (!!reason || pending || control.busy || !effective?.agent_id
+      || (key !== 'provider' && effective.agent_id === 'none'));
     return <button type="button" aria-haspopup="dialog" aria-expanded={field === key} aria-label={name}
       aria-disabled={disabled} title={reason ? name + ' · ' + reason : disabled && configReason ? name + ' · ' + configReason : name}
       onClick={event => { if (!disabled) selectField(key, event.currentTarget); }}>{value}</button>;
@@ -125,7 +112,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   }
 
   function option(key: string, text: string, selected: boolean, accept: () => void, reason = '') {
-    const disabled = !!reason || !quick.available || pending;
+    const disabled = !!reason || !quick.available || pending || (field !== 'provider' && !canEdit);
     return <button key={key} type="button" className="quick-option" aria-current={selected}
       aria-disabled={disabled} title={reason || text} onClick={() => { if (!disabled && quick.available) accept(); }}>
       <span aria-hidden="true">{selected ? '✓' : ''}</span><span>{text}{reason && <small>{reason}</small>}</span>
@@ -140,13 +127,11 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   }
 
   function contents(): ReactNode {
-    if (!lookup || lookup.error || pending) return;
-    if (field === 'provider') return lookup.providers === config.providers && lookup.providers?.providers.map(provider =>
+    if (field === 'provider') return providers?.providers.map(provider =>
       option(provider.agent_id, provider.label, provider.selected, () => { close(true); void quick.selectProvider(provider.agent_id); },
         !provider.available ? provider.disabled_reason || t('quick.unavailable')
           : !config.supports('select_provider') ? t('config.unsupported') : ''));
-    const candidates = destination ? (destination.catalog === config.catalog ? destination.catalog : undefined)
-      : related && lookup.catalog === catalog ? catalog : undefined;
+    const candidates = related ? account ? config.optionsFor(account) : catalog : undefined;
     if (!candidates) return;
     const { current, availability } = candidates.inspection;
     const supported = (key: string) => availability[key] !== false;
@@ -184,7 +169,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
         const request = opening.current;
         void quick.change({ account: candidate }).then(result => {
           if (request !== opening.current) return;
-          if (result) setDestination(result);
+          if (result) setAccount(result.account);
           else close(true);
         });
       }, supported('account') ? '' : t('quick.unavailable')));
@@ -218,6 +203,9 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   const fastLabel = t(!advertised ? 'quick.fastUnavailable' : !fastSupported ? 'quick.fastUnsupported'
     : effective?.service_tier === 'fast' ? 'quick.fastActive' : 'quick.fastInactive');
   const options = field && contents();
+  const optionError = field === 'provider' ? config.providersError : config.optionsError;
+  const loaded = field === 'provider' ? !!providers : !!(related && (!account || config.optionsFor(account)));
+  const loading = field === 'provider' ? config.providersRefreshing : config.optionsRefreshing;
   return <section className="runner-quick-settings" aria-label={t('quick.label')} aria-busy={pending}>
     <div className="quick-scroll">
       <div className="quick-grid">
@@ -232,8 +220,10 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     {field && <div className="quick-popover" role="dialog" aria-label={label(field)} tabIndex={-1} ref={panel}>
       <div className="quick-heading">{label(field)}{account && field === 'account' ? ' · ' + account.profile_name : ''}</div>
       {options}
-      {(!options || Array.isArray(options) && options.length === 0) &&
-        <p role="status">{!lookup || pending ? t('config.inspecting') : tr(lookup.error) || t('quick.noOptions')}</p>}
+      {optionError && <p role="status">{loaded ? t('quick.retainedOptions', { diagnostic: tr(optionError) }) : tr(optionError)}</p>}
+      {!optionError && (!options || Array.isArray(options) && options.length === 0) &&
+        <p role="status">{loading || !loaded && !account && !!effective?.agent_id ? t('config.inspecting')
+          : loaded ? t('quick.noOptions') : t('quick.unavailable')}</p>}
     </div>}
     {!!quick.confirmations.length && <div className="quick-feedback" role="status">
       <span>{t('config.confirmation')}</span>

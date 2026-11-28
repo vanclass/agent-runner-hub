@@ -478,6 +478,7 @@
     "apply": "적용",
     "choose": "선택",
     "noOptions": "확인된 선택 항목이 없습니다.",
+    "retainedOptions": "마지막으로 확인된 선택 항목을 표시합니다. 갱신 실패: {{diagnostic}}",
     "outcome": "{{status}} {{code}}",
     "partial": "일부 설정이 적용되었습니다.",
     "rejected": "Runner에서 변경을 거부했습니다.",

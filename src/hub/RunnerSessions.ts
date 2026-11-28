@@ -168,7 +168,7 @@ export class RunnerSession {
     });
     this.quick = new RunnerQuickConfig(this.control, () => this.hubSelections,
       () => !this.disposed && !this.reservation && !this.view.closing && this.view.status === 'running'
-        && !this.view.submitting && !this.submissionUncertain && !this.hubSelections?.loadingOptions
+        && !this.view.submitting && !this.submissionUncertain
         && !this.control.snapshot.observation?.execution.owned_execution_alive,
       () => { if (!this.disposed) this.changed(); });
     const historicalModes = [this.tabRecord?.recoveryHint?.runMode, this.tabRecord?.lastVerified?.runMode]

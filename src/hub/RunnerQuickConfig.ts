@@ -1,7 +1,7 @@
 import { controlTiming, flattenCommands, type CommandAttempt, type RunnerControl } from './runnerControl';
 import { errorText, HubError, msg, type HubText } from './i18n';
-import { record, same, validDesired, type ConfigAccount, type ConfigCatalog, type ConfigDesired,
-  type InteractionAction, type ProviderCatalog } from './runnerConfigContract';
+import { record, same, validDesired, type ConfigAccount, type ConfigDesired,
+  type InteractionAction } from './runnerConfigContract';
 import type { HubSelections } from './HubSelections';
 
 type Choice = { choice_id: string; label: string; description: string; enabled: boolean; disabled_reason: string };
@@ -24,19 +24,8 @@ export class RunnerQuickConfig {
 
   get available() {
     return !this.interactionBusy && this.editable() && this.control.observationFresh && !this.control.busy && !this.control.config.uncertain
-      && !this.control.work.busy && !this.control.commandUnresolved
+      && !this.control.work.writing && !this.control.commandUnresolved
       && !this.control.snapshot.observation?.attention.foreground_interaction_active;
-  }
-
-  async load(provider: boolean): Promise<{ catalog?: ConfigCatalog; providers?: ProviderCatalog; error?: HubText }> {
-    const { config } = this.control;
-    if (!this.available && !(provider && config.providerOutcomeUnknown && !this.control.busy && this.editable()))
-      return { error: msg('quick.unavailable') };
-    try {
-      if (provider && config.providerOutcomeUnknown) await this.control.fresh();
-      const result = await (provider ? config.inspectProviders() : config.inspect());
-      return result ?? { error: msg('quick.unavailable') };
-    } catch (reason) { return { error: errorText(reason) }; }
   }
 
   async change(desired: ConfigDesired, reasoningAccount?: ConfigAccount) {
@@ -47,7 +36,7 @@ export class RunnerQuickConfig {
     this.detail = ''; this.confirmations = []; this.changed();
     try {
       config.resetDraft();
-      const inspection = await config.inspect(desired.account);
+      const inspection = await config.inspect(desired.account, true);
       const catalog = inspection?.catalog;
       if (!catalog) { this.detail = inspection?.error ?? msg('quick.unavailable'); return; }
       const { current, effective } = catalog.inspection;
@@ -55,7 +44,7 @@ export class RunnerQuickConfig {
         || (effective.next_model ?? effective.model) !== desired.model?.id))
         throw new HubError(msg('config.stalePlan'));
       if (desired.account && !desired.model && !validDesired(desired, catalog.inspection.current, catalog))
-        return { catalog, account: desired.account };
+        return { account: desired.account };
       config.setDraft(desired);
       await config.createPlan();
       if (reasoningAccount && config.plan && config.plan.revision !== catalog.inspection.revision)
@@ -87,11 +76,8 @@ export class RunnerQuickConfig {
         });
       }
       if (!this.confirmations.length) {
-        const diagnostic = config.error;
-        if (config.latestApplication !== previous) await this.control.fresh();
-        await config.inspect();
         if (owner === this.selections()) owner?.refreshConfirmedCatalog(config);
-        if (diagnostic && !this.detail) this.detail = diagnostic;
+        if (config.error && !this.detail) this.detail = config.error;
       }
     } catch (reason) { this.detail = errorText(reason); }
     finally { this.control.assignmentLocked = false; this.changed(); }
