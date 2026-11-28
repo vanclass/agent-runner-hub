@@ -6,6 +6,7 @@ import { InstallationDialog } from './InstallationDialog';
 import { PreviewHelp } from './PreviewHelp';
 import { ShortcutSettings } from './ShortcutSettings';
 import { RetentionPopover } from './RetentionPopover';
+import { NotificationSoundSettings, type NotificationSoundSettingsProps } from './NotificationSoundSettings';
 import type { RunnerInstallation } from './runnerInstallation';
 import type { HubLanguage } from './preferences';
 import type { TerminalThemePreference } from './terminalTheme';
@@ -27,6 +28,7 @@ export type ApplicationPreferences = {
   onLanguage: (value: HubLanguage) => void;
   retentionDays: number; onRetentionDays: (value: number) => void;
   shortcuts: ShortcutMap; onShortcutsSave: (value: ShortcutMap) => HubText;
+  notificationSounds: NotificationSoundSettingsProps;
 };
 
 const groupLabels = { runner: 'menu.runner', view: 'menu.view', settings: 'menu.settings', help: 'menu.help' } as const;
@@ -34,7 +36,7 @@ type Group = keyof typeof groupLabels;
 const groups = Object.keys(groupLabels) as Group[];
 type Trigger = Group | 'compact';
 type Editor = 'installation' | 'shortcuts' | 'preview';
-type Submenu = 'allocation' | 'theme' | 'terminal-theme' | 'domain' | 'language' | 'retention';
+type Submenu = 'allocation' | 'theme' | 'terminal-theme' | 'domain' | 'language' | 'retention' | 'notification-sounds';
 type MenuPath = { trigger: Trigger; group?: Group; submenu?: Submenu; focusItem?: string };
 const themes: Choice<Theme> = [{ value: 'light', label: 'preferences.light' }, { value: 'black', label: 'preferences.black' }];
 const terminalThemes: Choice<TerminalThemePreference> = [
@@ -92,6 +94,7 @@ export function ApplicationMenu({ workspace, ...props }: ApplicationPreferences 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (editor || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
+    if (target.closest('dialog')) return;
     const trigger = target.dataset.menuTrigger as Trigger | undefined;
     const items = [...root.current!.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]')];
     const item = items.find(button => button === target);
@@ -174,11 +177,14 @@ export function ApplicationMenu({ workspace, ...props }: ApplicationPreferences 
         value={new Intl.NumberFormat(language).format(props.retentionDays)}
         onSelect={() => setPath({ ...path!, submenu: 'retention' })} />
       {editorItem('shortcuts', 'shortcuts.title', '⌨')}
+      <MenuItem id="notification-sounds" label={t('notificationSounds.title')} submenu
+        onSelect={() => setPath({ ...path!, submenu: 'notification-sounds' })} />
     </>,
     help: () => editorItem('preview', 'preview.help', '?'),
   };
 
   function renderPanel() {
+    if (submenu === 'notification-sounds') return <NotificationSoundSettings {...props.notificationSounds} onBack={goBack} />;
     if (submenu === 'retention') return <RetentionPopover value={props.retentionDays}
       onApply={value => { props.onRetentionDays(value); goBack(); }} onCancel={goBack} />;
     if (submenu === 'allocation') return choiceItem('allocation', 'work.allocationPolicy', '', allocationOptions,

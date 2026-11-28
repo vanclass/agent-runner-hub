@@ -6,6 +6,8 @@ mod hub_log;
 mod image_validation;
 #[cfg(all(feature = "desktop-terminal", any(target_os = "windows", target_os = "macos")))]
 mod local_preview;
+#[cfg(all(feature = "desktop-terminal", any(target_os = "windows", target_os = "macos")))]
+mod notification_sounds;
 
 #[cfg(all(feature = "native-webdriver", not(debug_assertions)))]
 compile_error!("native-webdriver is restricted to dedicated debug test builds");
@@ -36,7 +38,13 @@ pub fn run() {
     #[cfg(all(feature = "native-webdriver", debug_assertions, any(target_os = "windows", target_os = "macos")))]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init_with_port(probe_port));
     #[cfg(all(feature = "desktop-terminal", any(target_os = "windows", target_os = "macos")))]
-    let builder = desktop_terminal::configure(builder);
+    let builder = desktop_terminal::configure(builder).setup(|app| {
+        use tauri::Manager;
+        if let Ok(path) = app.path().app_local_data_dir() {
+            let _ = notification_sounds::initialize(&path);
+        }
+        Ok(())
+    });
     #[cfg(all(feature = "native-io", any(target_os = "windows", target_os = "macos")))]
     let builder = builder.plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init());

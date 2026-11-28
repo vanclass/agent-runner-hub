@@ -5,11 +5,14 @@ import { defaultRetentionDays, validRetentionDays } from './HubLog';
 import { msg, errorText, type HubText } from './i18n';
 import { projectShortcuts, restoreShortcuts, type ShortcutMap } from './shortcuts';
 import { terminalThemeChoices, type TerminalThemePreference } from './terminalTheme';
+import { restoreNotificationSounds, validNotificationSound, type NotificationCategory,
+  type NotificationSound, type NotificationSoundSelections } from './notificationSounds';
 
 export type HubLanguage = 'en' | 'ko';
 export type HubTheme = 'light' | 'black';
 export type HubPreferencesValue = { version: 1; language: HubLanguage; theme: HubTheme; terminalTheme?: TerminalThemePreference; singleEntry: EntryDefaults;
-  runnerSelections?: Record<string, EntryDefaults>; confirmRunnerRemoval: boolean; shortcuts?: ShortcutMap; domainDisplay?: DomainDisplay; hubLogRetentionDays?: number };
+  runnerSelections?: Record<string, EntryDefaults>; confirmRunnerRemoval: boolean; shortcuts?: ShortcutMap; domainDisplay?: DomainDisplay;
+  hubLogRetentionDays?: number; notificationSounds?: NotificationSoundSelections };
 export const hubPreferencesKey = 'agent-runner-hub.preferences.v1';
 export const defaultHubPreferences = (): HubPreferencesValue => ({ version: 1, language: 'en', theme: 'light', singleEntry: {}, confirmRunnerRemoval: true });
 const validTerminalTheme = (value: unknown): value is TerminalThemePreference =>
@@ -104,7 +107,7 @@ export class HubPreferences {
       this.committed = raw;
       if (raw === null) return;
       const value: unknown = JSON.parse(raw);
-      if (!object(value) || !keys(value, ['version', 'language', 'theme', 'terminalTheme', 'singleEntry', 'runnerSelections', 'confirmRunnerRemoval', 'shortcuts', 'domainDisplay', 'hubLogRetentionDays']) || value.version !== 1
+      if (!object(value) || !keys(value, ['version', 'language', 'theme', 'terminalTheme', 'singleEntry', 'runnerSelections', 'confirmRunnerRemoval', 'shortcuts', 'domainDisplay', 'hubLogRetentionDays', 'notificationSounds']) || value.version !== 1
         || (value.terminalTheme !== undefined && !validTerminalTheme(value.terminalTheme))
         || (value.hubLogRetentionDays !== undefined && !validRetentionDays(value.hubLogRetentionDays))
         || (value.domainDisplay !== undefined && !['unified', 'run-mode'].includes(String(value.domainDisplay)))
@@ -120,6 +123,7 @@ export class HubPreferences {
       this.value = { version: 1, language: value.language as HubLanguage, theme: value.theme as HubTheme, singleEntry,
         ...(value.terminalTheme !== undefined ? { terminalTheme: value.terminalTheme } : {}),
         ...(value.hubLogRetentionDays !== undefined ? { hubLogRetentionDays: value.hubLogRetentionDays as number } : {}),
+        ...(value.notificationSounds !== undefined ? { notificationSounds: restoreNotificationSounds(value.notificationSounds) } : {}),
         ...(value.domainDisplay ? { domainDisplay: value.domainDisplay as DomainDisplay } : {}),
         confirmRunnerRemoval: value.confirmRunnerRemoval !== false,
         ...(runnerSelections ? { runnerSelections } : {}), ...(shortcuts ? { shortcuts } : {}) };
@@ -140,7 +144,12 @@ export class HubPreferences {
   }
   get logRetentionDays() { return this.value.hubLogRetentionDays ?? defaultRetentionDays; }
   get terminalTheme() { return this.value.terminalTheme ?? 'follow'; }
-  update(change: Partial<Pick<HubPreferencesValue, 'language' | 'theme' | 'terminalTheme' | 'singleEntry' | 'runnerSelections' | 'confirmRunnerRemoval' | 'shortcuts' | 'domainDisplay' | 'hubLogRetentionDays'>>) {
+  get notificationSounds() { return this.value.notificationSounds ?? {}; }
+  saveNotificationSound(category: NotificationCategory, sound: NotificationSound) {
+    if (!validNotificationSound(sound)) return;
+    this.update({ notificationSounds: { ...this.notificationSounds, [category]: sound } });
+  }
+  update(change: Partial<Pick<HubPreferencesValue, 'language' | 'theme' | 'terminalTheme' | 'singleEntry' | 'runnerSelections' | 'confirmRunnerRemoval' | 'shortcuts' | 'domainDisplay' | 'hubLogRetentionDays' | 'notificationSounds'>>) {
     if ('terminalTheme' in change && !validTerminalTheme(change.terminalTheme)) return;
     if (change.hubLogRetentionDays !== undefined && !validRetentionDays(change.hubLogRetentionDays)) return;
     if (change.domainDisplay !== undefined && !['unified', 'run-mode'].includes(change.domainDisplay)) return;

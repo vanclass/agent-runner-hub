@@ -66,6 +66,20 @@
     "limitations": "Preview limitations",
     "limits": "GIFs animate in thumbnails and in the focused viewer. PNG and WebP previews are static. SVGs render as static images without scripts, linked or embedded images, fonts, filters, patterns, or masks. Unreadable, unsupported, invalid, or oversized previews are unavailable. Text previews show the original UTF-8 text."
   },
+  "notificationSounds": {
+    "title": "Notification Sounds",
+    "userRequest": "User Request",
+    "workCompleted": "Work Completed",
+    "workInterrupted": "Work Interrupted",
+    "selectorTitle": "{{category}} Sound",
+    "silent": "Silent",
+    "openFolder": "Open Sound Folder",
+    "select": "Select",
+    "loading": "Loading sounds…",
+    "listFailed": "Sound list unavailable",
+    "previewFailed": "Preview unavailable",
+    "folderFailed": "Could not open the sound folder"
+  },
   "menu": {
     "label": "Application menus",
     "compact": "Menu",

@@ -1,0 +1,40 @@
+
+.hub-dialog.notification-sound-selector {
+  width: 400px;
+  height: 360px;
+  max-width: none;
+  max-height: none;
+  padding: 16px;
+  overflow: hidden;
+}
+.notification-sound-selector h1 { margin: 0 0 8px; }
+.notification-sound-list {
+  box-sizing: border-box;
+  height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--inset);
+}
+.notification-sound-list [role='option'] {
+  box-sizing: border-box;
+  height: 36px;
+  line-height: 36px;
+  padding-inline: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.notification-sound-list [role='option']:hover { background: var(--hover); }
+.notification-sound-list [aria-selected='true'],
+.notification-sound-list [aria-selected='true']:hover,
+.notification-sound-actions .notification-sound-select:not(:disabled) {
+  background: var(--selected);
+  color: var(--selected-text);
+}
+.notification-sound-actions { align-items: center; margin-top: 12px; }
+.notification-sound-actions [role='status'] { flex: 1; color: var(--muted); font-size: 12px; }
+.notification-sound-menu-status { padding-inline: 8px; color: var(--muted); font-size: 12px; }

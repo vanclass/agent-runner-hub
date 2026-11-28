@@ -7,10 +7,14 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_refresh_observation, runner_command,
         runner_presentation, runner_feature, runner_reference, runner_images_list, runner_image_read, runner_stage_clipboard, pty_open, pty_write,
-        pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
+        pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log,
+        crate::notification_sounds::list_notification_sounds, crate::notification_sounds::read_notification_sound,
+        crate::notification_sounds::open_notification_sound_folder]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![runner_resolve, runner_observe, runner_command,
-        runner_presentation, runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log]);
+        runner_presentation, runner_feature, runner_reference, runner_stage_clipboard, pty_open, pty_write, pty_resize, pty_ack, pty_close, local_file_preview, crate::hub_log::hub_log,
+        crate::notification_sounds::list_notification_sounds, crate::notification_sounds::read_notification_sound,
+        crate::notification_sounds::open_notification_sound_folder]);
     builder.manage(Arc::new(crate::hub_log::Store::default())).manage(Arc::new(Sessions::default()))
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {

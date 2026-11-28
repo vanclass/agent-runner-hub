@@ -8,6 +8,7 @@ import { HubLog } from './HubLog';
 import { createHubLogCapture } from './HubLogCapture';
 import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
+import { NotificationSoundPlayer } from './notificationSoundPlayback';
 import { resolveTerminalTheme } from './terminalTheme';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { ApplicationMenu, type ApplicationPreferences } from './ApplicationMenu';
@@ -45,6 +46,8 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const installation = spare.installation;
   const [setupRequired, setSetupRequired] = useState(true);
   const [shortcuts, setShortcuts] = useState(preferences.value.shortcuts ?? defaultShortcuts);
+  const [soundSelections, setSoundSelections] = useState(preferences.notificationSounds);
+  const [soundPlayer] = useState(() => new NotificationSoundPlayer());
   const [launching, setLaunching] = useState(false);
   const launchPending = useRef(false);
   const [launchError, setLaunchError] = useState<HubText>('');
@@ -110,6 +113,10 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   }
   const appPreferences: ApplicationPreferences = {
     installation, theme, terminalTheme, confirmRemoval, domainDisplay, retentionDays, shortcuts,
+    notificationSounds: { selections: soundSelections, player: soundPlayer, onSave: (category, sound) => {
+      preferences.saveNotificationSound(category, sound);
+      setSoundSelections(preferences.notificationSounds);
+    } },
     allocationPolicy: sessions.entry.allocationPolicy, reuseEditable: sessions.entry.editable,
     onAllocationPolicy: value => sessions.entry.setDefault('allocationPolicy', value),
     onShortcutsSave: value => {
