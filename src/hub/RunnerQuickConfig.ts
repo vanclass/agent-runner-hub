@@ -1,6 +1,7 @@
 import { controlTiming, flattenCommands, type CommandAttempt, type RunnerControl } from './runnerControl';
 import { errorText, HubError, msg, type HubText } from './i18n';
-import { record, validDesired, type ConfigDesired, type InteractionAction } from './runnerConfigContract';
+import { record, same, validDesired, type ConfigAccount, type ConfigCatalog, type ConfigDesired,
+  type InteractionAction, type ProviderCatalog } from './runnerConfigContract';
 import type { HubSelections } from './HubSelections';
 
 type Choice = { choice_id: string; label: string; description: string; enabled: boolean; disabled_reason: string };
@@ -27,17 +28,18 @@ export class RunnerQuickConfig {
       && !this.control.snapshot.observation?.attention.foreground_interaction_active;
   }
 
-  async load(provider: boolean) {
+  async load(provider: boolean): Promise<{ catalog?: ConfigCatalog; providers?: ProviderCatalog; error?: HubText }> {
     const { config } = this.control;
-    if (!this.available && !(provider && config.providerOutcomeUnknown && !this.control.busy && this.editable())) return;
+    if (!this.available && !(provider && config.providerOutcomeUnknown && !this.control.busy && this.editable()))
+      return { error: msg('quick.unavailable') };
     try {
       if (provider && config.providerOutcomeUnknown) await this.control.fresh();
-      if (provider) await config.inspectProviders();
-      else await config.inspect();
-    } catch (reason) { this.detail = errorText(reason); this.changed(); }
+      const result = await (provider ? config.inspectProviders() : config.inspect());
+      return result ?? { error: msg('quick.unavailable') };
+    } catch (reason) { return { error: errorText(reason) }; }
   }
 
-  async change(desired: ConfigDesired) {
+  async change(desired: ConfigDesired, reasoningAccount?: ConfigAccount) {
     if (!this.available) return;
     const { config } = this.control;
     const owner = this.selections();
@@ -45,13 +47,19 @@ export class RunnerQuickConfig {
     this.detail = ''; this.confirmations = []; this.changed();
     try {
       config.resetDraft();
-      await config.inspect(desired.account);
-      const catalog = config.catalog;
-      if (!catalog) { this.detail = config.error; return; }
+      const inspection = await config.inspect(desired.account);
+      const catalog = inspection?.catalog;
+      if (!catalog) { this.detail = inspection?.error ?? msg('quick.unavailable'); return; }
+      const { current, effective } = catalog.inspection;
+      if (reasoningAccount && (!same(reasoningAccount, current.account) || current.model.id !== desired.model?.id
+        || (effective.next_model ?? effective.model) !== desired.model?.id))
+        throw new HubError(msg('config.stalePlan'));
       if (desired.account && !desired.model && !validDesired(desired, catalog.inspection.current, catalog))
         return { catalog, account: desired.account };
       config.setDraft(desired);
       await config.createPlan();
+      if (reasoningAccount && config.plan && config.plan.revision !== catalog.inspection.revision)
+        throw new HubError(msg('config.stalePlan'));
       this.confirmations = config.plan?.required_confirmations ?? [];
       if (!config.canApply) {
         if (config.plan?.errors.length) this.detail = msg('config.requestFailed', { code: config.plan.errors.join(', ') });

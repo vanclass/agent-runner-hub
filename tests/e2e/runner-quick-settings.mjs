@@ -54,6 +54,91 @@ export function registerQuickSettings({ test, expect, transport, configure, crea
     }
   });
 
+  test('Runner quick settings refresh reopened options and hide stale choices during a failed lookup', async ({ page }) => {
+    const bar = await setup(page);
+    const trigger = bar.getByRole('button', { name: 'Model · m0' });
+    const popup = bar.getByRole('dialog', { name: 'Model' });
+    await trigger.click();
+    await expect(popup.getByRole('button', { name: 'm1', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const inspect = config.inspection.bind(config);
+      config.inspection = (...args) => {
+        const reply = inspect(...args);
+        const candidate = reply.options.models.find(model => model.id === 'm1');
+        if (candidate) candidate.id = 'new-model';
+        return reply;
+      };
+    });
+    await trigger.click();
+    await expect(popup.getByRole('button', { name: 'new-model' })).toBeVisible();
+    await expect(popup.getByRole('button', { name: 'm1', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      config.holdOperation = 'session_config.inspect';
+      config.fault = 'missing';
+    });
+    await trigger.click();
+    await expect(popup.getByRole('status')).toHaveText('Reading actual settings and verifying all options…');
+    await expect(popup.getByRole('button')).toHaveCount(0);
+    await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      config.holdOperation = '';
+      config.complete();
+    });
+    await expect(popup.getByRole('status')).toContainText('CONFIG_STATE_CHANGED');
+    await expect(popup.getByRole('button')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.fault = ''; });
+    await trigger.click();
+    await expect(popup.getByRole('button', { name: 'new-model' })).toBeVisible();
+  });
+
+  test('Runner quick settings use the applicable model when changing reasoning', async ({ page }) => {
+    const bar = await setup(page);
+    const popup = bar.getByRole('dialog');
+    await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      const inspect = config.inspection.bind(config);
+      config.inspection = (...args) => {
+        const reply = inspect(...args);
+        const candidate = reply.options.models.find(model => model.id === 'm1');
+        if (candidate) candidate.reasoning_efforts = ['medium', 'low'];
+        return reply;
+      };
+    });
+    await bar.getByRole('button', { name: 'Model · m0' }).click();
+    await popup.getByRole('button', { name: 'm1', exact: true }).click();
+    await expect(bar.getByRole('button', { name: 'Model · m1' })).toBeVisible();
+    await bar.getByRole('button', { name: 'Reasoning effort · medium' }).click();
+    await expect(popup.getByRole('button', { name: 'low', exact: true })).toBeVisible();
+    await expect(popup.getByRole('button', { name: 'high', exact: true })).toHaveCount(0);
+    await popup.getByRole('button', { name: 'low', exact: true }).click();
+    await expect(bar.getByRole('button', { name: 'Reasoning effort · low' })).toBeVisible();
+    await expect(bar.getByRole('button', { name: 'Model · m1' })).toBeVisible();
+    await bar.getByRole('button', { name: 'Reasoning effort · low' }).click();
+    const medium = popup.getByRole('button', { name: 'medium', exact: true });
+    await expect(medium).toBeVisible();
+    await page.evaluate(() => {
+      window.__nativeFixture.sessions.get('pty-1').feature.config.holdOperation = 'session_config.inspect';
+    });
+    await medium.click();
+    await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      config.current.model = { id: 'm2', reasoning_effort: 'medium' };
+      config.revision = 'f'.repeat(64);
+      config.holdOperation = '';
+      config.complete();
+    });
+    await expect(bar.getByText(/Runner state changed or the plan is stale/)).toBeVisible();
+    expect(await page.evaluate(() => {
+      const config = window.__nativeFixture.sessions.get('pty-1').feature.config;
+      return { current: config.current.model, planned: config.requests.filter(r => r.operation === 'session_config.plan').at(-1).desired.model };
+    })).toEqual({ current: { id: 'm2', reasoning_effort: 'medium' }, planned: { id: 'm1', reasoning_effort: 'low' } });
+  });
+
   test('Runner quick settings continue an advertised confirmation and preserve cancellation', async ({ page }) => {
     const bar = await setup(page, true);
     await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').feature.config.providerRejection = 'CONFIG_CONFIRMATION_REQUIRED'; });

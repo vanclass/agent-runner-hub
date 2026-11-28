@@ -234,11 +234,17 @@ export class RunnerConfigService {
     try {
       const receipt = await this.request({ operation: 'session_config.providers', api_version: 1 });
       const reply = this.completion(receipt);
-      if (receipt.state !== 'accepted' || !isProviderCatalog(reply)
+      if (receipt.state !== 'accepted')
+        throw new HubError(msg('config.requestFailed', { code: receipt.code ?? 'CONFIG_PROVIDER_INSPECTION_FAILED' }));
+      if (!isProviderCatalog(reply)
         || reply.current_agent_id !== this.observedAgentId) throw new HubError(msg('config.identityChanged'));
       this.providers = copy(reply);
       this.providerOutcomeUnknown = false;
-    } catch (reason) { this.error = errorText(reason); }
+      return { providers: this.providers };
+    } catch (reason) {
+      this.error = errorText(reason);
+      return { error: this.error };
+    }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }
   private async page(identity: ConfigIdentity, account?: ConfigAccount, offset = 0, guard?: string) {
@@ -336,10 +342,12 @@ export class RunnerConfigService {
       }
       this.catalog = { identity: copy(identity), account: copy(selected), inspection: first, options };
       if (same(first.current.account, first.model_options_account)) this.currentCatalog = this.catalog;
+      return { catalog: this.catalog };
     } catch (reason) {
       this.catalog = undefined;
       if (!account || same(account, this.actual?.current.account)) this.currentCatalog = undefined;
       this.error = errorText(reason);
+      return { error: this.error };
     }
     finally { if (!this.closed) this.activity = 'idle'; this.changed(); }
   }

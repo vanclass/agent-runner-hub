@@ -16,6 +16,8 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   const observation = control.observationFresh ? control.snapshot.observation : undefined;
   const effective = observation?.selection, location = observation?.context_location;
   const [field, setField] = useState<Field>();
+  const [lookup, setLookup] = useState<Awaited<ReturnType<RunnerQuickConfig['load']>>>();
+  const opening = useRef(0);
   const [directory, setDirectory] = useState<{ mode?: string; value: string }>();
   const [destination, setDestination] = useState<{ account: ConfigAccount; catalog: ConfigCatalog }>();
   const account = destination?.account;
@@ -28,7 +30,6 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   const current = catalog?.inspection.current;
   const related = catalog && same(catalog.inspection.model_options_account, current?.account)
     && current?.account.agent_id === effective?.agent_id && current?.account.profile_name === effective?.account;
-  const configured = related ? catalog.options.models.find(m => m.id === current?.model.id) : undefined;
   const advertised = related ? catalog.options.models.find(m => m.id === effective?.model) : undefined;
   const nextTier = effective?.service_tier === 'fast' ? 'default' : 'fast';
   const fastSupported = !!advertised?.service_tiers.includes('fast');
@@ -54,6 +55,8 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   }, [quick, config, effective?.agent_id, quick.available, config.currentCatalog, config.providerRevision]);
 
   function close(restoreFocus = false) {
+    opening.current++;
+    setLookup(undefined);
     setField(undefined); setDestination(undefined); setDirectory(undefined); setModelDraft(undefined);
     if (restoreFocus) anchor.current?.focus();
   }
@@ -93,7 +96,10 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     close();
     anchor.current = button; setField(key);
     if (key === 'location' && activeContext) setDirectory({ value: root });
-    if (key === 'provider' || !related) void quick.load(key === 'provider');
+    const request = opening.current;
+    void quick.load(key === 'provider').then(result => {
+      if (request === opening.current) setLookup(result);
+    });
   }
 
   const label = (key: Field) => ({
@@ -107,15 +113,15 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     const name = t('quick.value', { field: label(key), value });
     const operation = key === 'provider' ? 'providers' : 'inspect';
     const reason = !config.supports(operation) ? t('config.unsupported') : '';
-    const disabled = !!reason || (key === 'provider' ? !canLoadProvider : !canEdit);
+    const disabled = field !== key && (!!reason || (key === 'provider' ? !canLoadProvider : !canEdit));
     return <button type="button" aria-haspopup="dialog" aria-expanded={field === key} aria-label={name}
       aria-disabled={disabled} title={reason ? name + ' · ' + reason : disabled && configReason ? name + ' · ' + configReason : name}
       onClick={event => { if (!disabled) selectField(key, event.currentTarget); }}>{value}</button>;
   }
 
-  function apply(desired: ConfigDesired) {
+  function apply(desired: ConfigDesired, reasoningAccount?: ConfigAccount) {
     close(true);
-    void quick.change(desired);
+    void quick.change(desired, reasoningAccount);
   }
 
   function option(key: string, text: string, selected: boolean, accept: () => void, reason = '') {
@@ -126,8 +132,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     </button>;
   }
 
-  function selectModel(model: ConfigModelOption, destination?: ConfigAccount) {
-    if (!current) return;
+  function selectModel(model: ConfigModelOption, current: ConfigCatalog['inspection']['current'], destination?: ConfigAccount) {
     const effort = model.reasoning_efforts.includes(current.model.reasoning_effort) ? current.model.reasoning_effort : '';
     const tier = model.service_tiers.includes(current.service_tier) ? current.service_tier : '';
     if (effort && tier) apply({ ...(destination && { account: destination }), model: { id: model.id, reasoning_effort: effort } });
@@ -135,12 +140,16 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   }
 
   function contents(): ReactNode {
-    if (field === 'provider') return config.providers?.providers.map(provider =>
+    if (!lookup || lookup.error || pending) return;
+    if (field === 'provider') return lookup.providers === config.providers && lookup.providers?.providers.map(provider =>
       option(provider.agent_id, provider.label, provider.selected, () => { close(true); void quick.selectProvider(provider.agent_id); },
         !provider.available ? provider.disabled_reason || t('quick.unavailable')
           : !config.supports('select_provider') ? t('config.unsupported') : ''));
-    const candidates = destination?.catalog ?? (related ? catalog : undefined);
-    if (!candidates || !current) return;
+    const candidates = destination ? (destination.catalog === config.catalog ? destination.catalog : undefined)
+      : related && lookup.catalog === catalog ? catalog : undefined;
+    if (!candidates) return;
+    const { current, availability } = candidates.inspection;
+    const supported = (key: string) => availability[key] !== false;
     const { options } = candidates;
     if (directory) return <form onSubmit={event => {
       event.preventDefault();
@@ -172,9 +181,9 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     </form>;
     if (field === 'account' && !account) return options.accounts.map(candidate => option(candidate.profile_name,
       candidate.profile_name, candidate.profile_name === effective?.account, () => {
-        const trigger = anchor.current;
+        const request = opening.current;
         void quick.change({ account: candidate }).then(result => {
-          if (!trigger?.isConnected || trigger.getAttribute('aria-expanded') !== 'true') return;
+          if (request !== opening.current) return;
           if (result) setDestination(result);
           else close(true);
         });
@@ -182,13 +191,19 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     if (field === 'model' || (field === 'account' && account)) {
       if (!same(candidates.inspection.model_options_account, account ?? current.account)) return;
       return options.models.map(model => option(model.id, model.id, !account && model.id === effective?.model,
-        () => selectModel(model, account), supported('model') && model.reasoning_efforts.length && model.service_tiers.length
+        () => selectModel(model, current, account), supported('model') && model.reasoning_efforts.length && model.service_tiers.length
           ? '' : t('quick.unavailable')));
     }
-    if (field === 'reasoning') return configured?.reasoning_efforts.map(effort => option(effort, effort, effort === effective?.reasoning_effort,
-      () => apply({ model: { id: configured.id, reasoning_effort: effort } }),
-      supported('model') && validDesired({ model: { id: configured.id, reasoning_effort: effort } }, current, candidates)
-        ? '' : t('quick.unavailable')));
+    if (field === 'reasoning') {
+      const inspected = candidates.inspection.effective;
+      const model = effective?.model === current.model.id && (inspected.next_model ?? inspected.model) === current.model.id
+        ? options.models.find(candidate => candidate.id === current.model.id) : undefined;
+      return model?.reasoning_efforts.map(effort => {
+        const desired = { model: { id: model.id, reasoning_effort: effort } };
+        return option(effort, effort, effort === effective?.reasoning_effort, () => apply(desired, current.account),
+          supported('model') && validDesired(desired, current, candidates) ? '' : t('quick.unavailable'));
+      });
+    }
     if (field === 'mode') return options.run_modes.map(mode => option(mode, runModeLabel(mode), mode === observation?.run_mode, () => {
       if (direct(mode) && mode !== observation?.run_mode) setDirectory({ mode, value: root });
       else apply({ run_mode: mode });
@@ -218,7 +233,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
       <div className="quick-heading">{label(field)}{account && field === 'account' ? ' · ' + account.profile_name : ''}</div>
       {options}
       {(!options || Array.isArray(options) && options.length === 0) &&
-        <p role="status">{pending ? t('config.inspecting') : tr(config.error) || t('quick.noOptions')}</p>}
+        <p role="status">{!lookup || pending ? t('config.inspecting') : tr(lookup.error) || t('quick.noOptions')}</p>}
     </div>}
     {!!quick.confirmations.length && <div className="quick-feedback" role="status">
       <span>{t('config.confirmation')}</span>

@@ -1,34 +1,30 @@
 import assert from 'node:assert/strict';
 import { defineNativeCase, BlockedPrerequisite, UnverifiedObservation } from '../../../tools/native-probe/case.mjs';
 import { startupMs, subagentCompletionMs } from '../../../tools/native-probe/limits.mjs';
-import { readyInstalledHub, stopWatching, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
+import { planRequest, readyInstalledHub, stopWatching, visibleConnection, visibleConfiguration } from './runner-flow.mjs';
 import { executionReleased, observeSession, workSubmissions, workObservations } from './runner-observations.mjs';
 import { HubActions } from './hub-actions.mjs';
 import { mountedRunner } from './mounted-runner.mjs';
 
-async function quickDirect(browser, hub, connection, root, initial) {
-  const ready = () => hub.wait(async () => (await mountedRunner(browser, 'quick-state'))?.quick,
-    'Runner quick settings did not settle');
-  const modeButton = '.quick-grid > button:nth-child(6)';
-  const rootButton = '.quick-grid > button:nth-child(7)';
-  await ready();
-  await hub.dom.click(initial.current.run_mode === 'pure-direct-run' ? rootButton : modeButton);
-  if (initial.current.run_mode !== 'pure-direct-run') {
-    const selected = await browser.execute(() => {
-      const option = [...document.querySelectorAll('.quick-popover .quick-option')]
-        .find(node => node.lastElementChild.textContent === 'Pure Direct Run' && node.getAttribute('aria-disabled') === 'false');
-      option?.click();
-      return !!option;
-    });
-    if (!selected) throw new BlockedPrerequisite('Pure Direct is unavailable in the authenticated quick Run Mode catalog');
+async function quickDirect(browser, hub, connection, root) {
+  const { admission, result } = await planRequest(browser, connection, { run_mode: 'pure-direct-run', root });
+  const plan = result.reply;
+  if (result.state !== 'accepted' || plan?.plan_status !== 'ready'
+    || plan.impact?.direct_root_preference !== 'unchanged' || plan.steps?.length !== 0) {
+    throw new BlockedPrerequisite('Quick settings work requires an already configured Pure Direct fixture context. '
+      + JSON.stringify({ requestId: admission.id, state: result.state, status: plan?.plan_status,
+        directRootPreference: plan?.impact?.direct_root_preference, errors: plan?.errors }));
   }
-  await hub.dom.changeValue('.quick-popover input', root);
-  await hub.dom.click('.quick-popover button[type="submit"]');
-  await ready();
-  const before = await visibleConfiguration(browser, connection);
-  assert.equal(before.current.run_mode, 'pure-direct-run');
-  assert.equal(before.current.root.replaceAll('\\', '/').toLowerCase(), root.replaceAll('\\', '/').toLowerCase());
-  return before;
+  const rootButton = '.quick-grid > button:nth-child(7)';
+  await hub.wait(async () => (await mountedRunner(browser, 'quick-state'))?.quick, 'Runner quick settings did not settle');
+  await hub.dom.click(rootButton);
+  await hub.wait(() => browser.execute(root => document.querySelector('.quick-popover input')?.value === root, root),
+    'Quick settings did not show the effective Direct Root');
+  await hub.dom.click(rootButton);
+  const current = await visibleConfiguration(browser, connection);
+  assert.equal(current.current.run_mode, 'pure-direct-run');
+  assert.equal(current.current.root, root);
+  return current;
 }
 
 async function cancelProviderRelease(browser, hub, connection, agent) {
@@ -77,7 +73,7 @@ async function semanticWork(browser, hub, connection, workRoot, route, presentat
   const quick = route === 'runner-quick';
   const surface = single ? 'single-entry' : 'runner';
   const canonicalConfig = await visibleConfiguration(browser, connection);
-  const quickSettings = quick ? await quickDirect(browser, hub, connection, workRoot, canonicalConfig) : undefined;
+  const quickSettings = quick ? await quickDirect(browser, hub, connection, workRoot) : undefined;
   if (!quick) {
     if (single) await hub.selectSingleEntry();
     await hub.selectProviderAccount(canonicalConfig.effective.agent_id, canonicalConfig.current.account);
