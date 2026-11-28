@@ -144,15 +144,15 @@ export class RunnerReferenceSelection {
     } finally { this.staging = false; this.changed(); }
   }
   private async settled(id: number) {
-    let deadline = performance.now() + controlTiming.completionMs;
-    for (;;) {
+    const resultWhen = (includeInteraction: boolean) => () => {
+      if (this.disposed || this.control.snapshot.state === 'disconnected') return false as const;
       const result = this.results.find(item => item.id === id);
-      if (result && !pending(result.state)) return result;
-      if (result?.state === 'pending-interaction') deadline = performance.now() + controlTiming.completionMs;
-      if (this.disposed || this.control.snapshot.state === 'disconnected' || performance.now() > deadline)
-        throw new HubError(msg('runtime.references.receiptUnknown'));
-      await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
-    }
+      if (result && (!pending(result.state) || includeInteraction && result.state === 'pending-interaction')) return result;
+    };
+    let result = await this.control.when(resultWhen(true), controlTiming.completionMs);
+    if (result && result.state === 'pending-interaction') result = await this.control.when(resultWhen(false));
+    if (!result) throw new HubError(msg('runtime.references.receiptUnknown'));
+    return result;
   }
   private async register(candidate: Candidate, lease?: symbol) {
     if (candidate.cancelRequested || this.state(candidate) !== 'staged') return;

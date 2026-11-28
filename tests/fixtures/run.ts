@@ -4,10 +4,14 @@ import type { RunRequest, RunObservation } from '../../src/hub/runnerRunContract
 /** Synthetic wire results for production Hub components, not authenticated-pipe evidence. */
 export class RunFixture {
   requests: RunRequest[] = [];
-  mode: string;
+  private outcome: string;
+  get mode() { return this.outcome; }
+  set mode(value: string) { this.outcome = value; this.publish(); }
   run?: RunObservation;
-  constructor(private features: FeatureSnapshot, mode = 'started') {
-    this.mode = mode;
+  private revision = 0;
+  constructor(private features: FeatureSnapshot, mode = 'started',
+    private push?: (run: RunObservation) => void) {
+    this.outcome = mode;
     if (mode !== 'unsupported') features.run = { version: 1, operations: mode === 'invoke-only'
       ? ['run.invoke'] : mode === 'status-only' ? ['run.status'] : ['run.invoke', 'run.status'] };
   }
@@ -18,7 +22,7 @@ export class RunFixture {
     const result: FeatureResult = { id, feature: 'run', operation: request.operation, admission: 'queued',
       state: 'accepted', phase: 'completed' };
     if (request.operation === 'run.invoke') {
-      this.run = { invocation_request_id: id, request_status: 'accepted', initiation_status: 'pending',
+      this.run = { revision: ++this.revision, invocation_request_id: id, request_status: 'accepted', initiation_status: 'pending',
         dispatch_status: 'dispatching', issue_run_id: '', authority_digest: '', state_revision: 0,
         lifecycle_status: '', lifecycle_terminal: false, terminal_reason: '', outcome: '', owner_status: '', outcome_unknown: false };
       result.reply = { receipt: 'request_accepted', run: structuredClone(this.run) };
@@ -26,8 +30,18 @@ export class RunFixture {
         result.state = this.mode as FeatureResult['state'];
         result.reply = { code: 'RUN_UNAVAILABLE', outcome_unknown: this.mode === 'outcome-unknown' };
       }
-    } else {
-      const run = structuredClone(this.run!);
+    } else result.reply = { run: this.project() };
+    this.features.results = this.features.results.filter(r => r.operation !== 'run.status');
+    this.features.results.push(result);
+    if (request.operation === 'run.invoke' && result.state === 'accepted') this.publish();
+    return { state: 'submitted' as const, id, generation: this.features.generation };
+  }
+  private publish() {
+    if (!this.run || !this.push) return;
+    this.push(this.project());
+  }
+  private project() {
+      const run = { ...this.run!, revision: ++this.revision };
       if (this.mode === 'started') Object.assign(run, { initiation_status: 'started', issue_run_id: 'issue-fixture',
         authority_digest: 'a'.repeat(64), state_revision: 1, lifecycle_status: 'running' });
       if (['human', 'paused', 'not-started'].includes(this.mode)) Object.assign(run, { initiation_status: 'not_started',
@@ -36,10 +50,6 @@ export class RunFixture {
       if (this.mode === 'returned') Object.assign(run, { initiation_status: 'unknown', dispatch_status: 'returned', outcome_unknown: true, owner_status: 'SUCCESS' });
       if (this.mode === 'crossed') run.invocation_request_id++;
       if (this.mode === 'malformed') Object.assign(run, { initiation_status: 'started' });
-      result.reply = { run };
-    }
-    this.features.results = this.features.results.filter(r => r.operation !== 'run.status');
-    this.features.results.push(result);
-    return { state: 'submitted' as const, id, generation: this.features.generation };
+      return run;
   }
 }

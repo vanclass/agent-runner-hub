@@ -4,6 +4,7 @@ export type RunCapability = { version: 1; operations: string[] };
 export type RunRequest = { operation: 'run.invoke'; api_version: 1; text?: string }
   | { operation: 'run.status'; api_version: 1; invocation_request_id: number };
 export type RunObservation = {
+  revision?: number;
   invocation_request_id: number; request_status: 'accepted';
   initiation_status: 'pending' | 'started' | 'not_started' | 'unknown';
   dispatch_status: 'dispatching' | 'returned' | 'unknown';
@@ -24,7 +25,8 @@ export function isRunObservation(v: unknown, original: number): v is RunObservat
     || typeof v.outcome_unknown !== 'boolean' || typeof v.lifecycle_terminal !== 'boolean'
     || !['issue_run_id', 'authority_digest', 'lifecycle_status', 'terminal_reason', 'outcome', 'owner_status'].every(k => typeof v[k] === 'string')
     || v.user_input_required !== undefined && typeof v.user_input_required !== 'boolean'
-    || v.code !== undefined && typeof v.code !== 'string') return false;
+    || v.code !== undefined && typeof v.code !== 'string'
+    || v.revision !== undefined && (!Number.isSafeInteger(v.revision) || Number(v.revision) < 1)) return false;
   if (v.initiation_status === 'started') return !!v.issue_run_id && String(v.issue_run_id).length <= 256
     && !/[\x00-\x1f\x7f]/.test(String(v.issue_run_id)) && isDigest(v.authority_digest)
     && Number.isSafeInteger(v.state_revision) && Number(v.state_revision) > 0 && !!v.lifecycle_status;

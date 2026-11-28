@@ -28,6 +28,7 @@ pub struct OpenRequest {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PtyEvent {
+    Control { id: String, update: control::Update },
     Output { id: String, sequence: u64, bytes: Vec<u8> },
     Exit { id: String, code: Option<u32>, error: Option<String>, settled: bool,
         #[serde(rename = "terminationError", skip_serializing_if = "Option::is_none")]
@@ -60,6 +61,12 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 }
 
 impl Session {
+    #[cfg(windows)]
+    pub fn refresh_observation(&self) -> Result<(), String> {
+        let client = self.control.lock().unwrap().clone().ok_or("Runner control unavailable")?;
+        if self.closing.load(Ordering::Acquire) { return Err("Runner is closing".into()); }
+        client.observe()
+    }
     pub fn presentation(&self, request: control::presentation::Request, generation: u64) -> Result<serde_json::Value, String> {
         #[cfg(windows)] {
             let client = self.control.lock().unwrap().clone().ok_or("Runner control unavailable")?;
@@ -347,10 +354,19 @@ impl Sessions {
             }
         };
         let mut startup_error = None;
+        #[cfg(not(windows))]
+        if contained {
+            let snapshot = control::Snapshot { state: "disconnected".into(),
+                detail: Some("Runner control is supported only on Windows".into()), ..Default::default() };
+            let _ = sink(PtyEvent::Control { id: id.clone(), update: control::Update::Snapshot { snapshot } });
+        }
         #[cfg(windows)]
         if let Some(launch) = control_launch {
             if let Some(pid) = child.process_id() {
-                *session.control.lock().unwrap() = Some(launch.bind(pid));
+                let control_sink = sink.clone();
+                let control_id = id.clone();
+                *session.control.lock().unwrap() = Some(launch.bind_with_updates(pid, cfg!(feature = "native-io"),
+                    move |update| { let _ = control_sink(PtyEvent::Control { id: control_id.clone(), update }); }));
             } else {
                 startup_error = Some("Runner process identity is unavailable".to_string());
             }

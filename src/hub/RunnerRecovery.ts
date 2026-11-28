@@ -50,7 +50,7 @@ export function recoveryRecord(v: unknown): RecoveryRecord | undefined {
 interface RecoveryTransport {
   submit(request: RecoveryRequest): Promise<FeatureAdmission>;
   completionMs: number;
-  observeMs?: number;
+  ready?(): Promise<boolean>;
   restoreMode?(mode: ConnectedRunMode): Promise<boolean>;
 }
 export class RunnerRecovery {
@@ -63,8 +63,8 @@ export class RunnerRecovery {
   private snapshot?: FeatureSnapshot;
   private capturing?: Promise<void>;
   private verifiedReference?: RecoveryReference;
-  private observedChange?: string;
-  private nextObservation = 0;
+  private revision = 0;
+  private dirty = true;
   private protectedEmptyMode?: string;
   private historicalModes: readonly string[] = [];
   code?: string;
@@ -79,7 +79,7 @@ export class RunnerRecovery {
   }
   get busy() { return this.pending || this.restoring; }
   get connectedReference() {
-    return same(this.verifiedReference, this.saved?.reference) ? this.verifiedReference : undefined;
+    return !this.dirty && same(this.verifiedReference, this.saved?.reference) ? this.verifiedReference : undefined;
   }
   restore(saved: RecoveryRecord | undefined, restore: boolean, historicalModes: readonly string[] = []) {
     this.close();
@@ -89,14 +89,13 @@ export class RunnerRecovery {
     this.pending = restore && !!saved;
     this.outcome = this.pending ? 'waiting' : undefined;
     this.code = this.history = this.protectedEmptyMode = undefined;
-    this.nextObservation = 0;
-    this.observedChange = undefined;
+    this.invalidate();
   }
+  invalidate() { this.revision++; this.dirty = true; }
   legacy() { this.outcome = 'unverified'; this.code = 'RECOVERY_MODE_UNVERIFIED'; }
   observe(snapshot: FeatureSnapshot | undefined, ready: boolean, available: boolean, liveMode?: string,
-    change?: string, interactionRequired = false) {
+    interactionRequired = false) {
     this.snapshot = snapshot;
-    if (this.observedChange !== change) { this.observedChange = change; this.nextObservation = 0; }
     this.settleRequest();
     if (this.closed || !ready || !snapshot || this.waiting || this.restoring) return;
     if (this.pending) {
@@ -122,7 +121,7 @@ export class RunnerRecovery {
       });
       return;
     }
-    if (available && this.supportsCurrent(snapshot) && performance.now() >= this.nextObservation)
+    if (available && this.supportsCurrent(snapshot) && this.dirty)
       void this.refreshConnected();
   }
   private supportsCurrent(snapshot: FeatureSnapshot, mode?: ConnectedRunMode) {
@@ -166,25 +165,31 @@ export class RunnerRecovery {
   refreshConnected(): Promise<void> {
     if (this.capturing) return this.capturing;
     const capture = this.captureConnected().finally(() => {
-      if (this.capturing === capture) this.capturing = undefined;
+      if (this.capturing === capture) {
+        this.capturing = undefined;
+        this.changed();
+      }
     });
     return this.capturing = capture;
   }
   async verifyReleased() {
     const snapshot = this.snapshot;
     if (!snapshot || !this.supportsCurrent(snapshot)) return true;
-    const { generation } = snapshot, epoch = this.epoch, change = this.observedChange;
+    if (this.capturing) await this.capturing;
+    const { generation } = snapshot, epoch = this.epoch, revision = this.revision;
     const { context } = await this.readConnected(generation);
     return this.epoch === epoch && this.snapshot?.generation === generation
-      && this.observedChange === change && !!context && !('reference' in context);
+      && this.revision === revision && !!context && !('reference' in context);
   }
   private async captureConnected() {
     const snapshot = this.snapshot;
     if (this.closed || this.busy || this.waiting || !snapshot || !this.supportsCurrent(snapshot)) return;
     const { generation } = snapshot, epoch = this.epoch;
-    this.nextObservation = performance.now() + (this.transport.observeMs ?? this.transport.completionMs);
+    const revision = this.revision;
+    this.dirty = false;
+    this.verifiedReference = undefined;
     const { context, reply } = await this.readConnected(generation);
-    if (!this.valid(epoch, generation)) return;
+    if (!this.valid(epoch, generation) || revision !== this.revision) return;
     const unresolvedReference = this.saved?.reference && (this.protectedEmptyMode !== undefined
       || !this.saved.runMode || this.saved.state === 'attempting' || this.saved.state === 'partial');
     this.verifiedReference = context && 'reference' in context ? context.reference : undefined;
@@ -280,6 +285,11 @@ export class RunnerRecovery {
       return;
     }
     this.history ??= 'unverified';
+    if (this.transport.ready && !await this.transport.ready()) {
+      if (this.valid(epoch, generation)) this.fail('partial', 'RECOVERY_CONNECTED_CONTEXT_UNVERIFIED');
+      return;
+    }
+    const revision = this.revision;
     const { context } = await this.readConnected(generation);
     if (!this.valid(epoch, generation)) return;
     if (context?.runMode !== runMode || !('reference' in context)) {
@@ -289,6 +299,7 @@ export class RunnerRecovery {
     if (this.commit(context)) {
       this.outcome = 'recovered';
       this.verifiedReference = context.reference;
+      if (revision === this.revision) this.dirty = false;
       this.protectedEmptyMode = undefined;
     }
   }

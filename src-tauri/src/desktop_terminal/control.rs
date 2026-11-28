@@ -28,6 +28,8 @@ pub mod run;
 pub mod interaction;
 #[path = "presentation.rs"]
 pub mod presentation;
+#[path = "events.rs"]
+pub mod events;
 #[cfg(windows)]
 #[path = "generated_images.rs"]
 pub mod generated_images;
@@ -125,6 +127,8 @@ fn startup_provider<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Opti
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub brief_staging: Option<BriefStaging>,
     #[serde(default, deserialize_with = "startup_provider", skip_serializing_if = "Option::is_none")]
     pub configured_startup_agent_id: Option<StartupProvider>,
     #[serde(default, deserialize_with = "user_action", skip_serializing_if = "Option::is_none")]
@@ -136,6 +140,8 @@ pub struct Observation {
     pub context_location: Option<ContextLocation>,
     pub execution: Execution, pub attention: Attention, pub commands: Vec<CommandView>,
 }
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BriefStaging { pub revision: u64, pub count: u64 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandResult {
@@ -153,6 +159,8 @@ pub struct ObservationFailure {
 pub struct Snapshot {
     pub state: String, pub observation: Option<Observation>,
     pub observation_serial: u64, pub observation_age_ms: Option<u64>,
+    pub observation_current: bool, pub coverage: Vec<String>, pub subscription: Option<u64>,
+    pub delivery_incomplete: bool,
     pub results: Vec<CommandResult>, pub detail: Option<String>,
     pub observation_failure: Option<ObservationFailure>,
     pub references: References,
@@ -166,14 +174,23 @@ impl Default for Snapshot {
     fn default() -> Self {
         Self { state: "connecting".into(), observation: None, observation_serial: 0,
             observation_age_ms: None, results: Vec::new(), detail: None, observation_failure: None,
+            observation_current: false, coverage: Vec::new(), subscription: None,
+            delivery_incomplete: false,
             references: References::default(),
             clipboard_staging: false, generated_images_supported: false, features: features::Features::default(),
             presentation_supported: false, presentation_generation: 0 }
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Update {
+    Snapshot { snapshot: Snapshot },
+    Notification { notification: events::Notification },
+}
+
 #[derive(Clone, Copy, PartialEq)]
-enum RequestKind { Observe, Command, Reference, Image, Feature, Presentation }
+enum RequestKind { Observe, Subscribe, Command, Reference, Image, Feature, Presentation }
 struct Pending {
     presentation: Option<presentation::Delivery>,
     kind: RequestKind, feature: Option<features::Request>, wire_start: u64,
@@ -185,6 +202,7 @@ struct Protocol {
     pid: u32, session: String, connection: Option<String>, next: u64,
     pending: BTreeMap<u64, Pending>, snapshot: Snapshot,
     observed_at: Option<Instant>,
+    events: events::Delivery,
     #[cfg(windows)] image_capability: Option<generated_images::Capability>,
 }
 impl Protocol {
@@ -194,7 +212,7 @@ impl Protocol {
         snapshot.features.generation = GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         snapshot.presentation_generation = snapshot.features.generation;
         Self { pid, session, connection: None, next: 0, pending: BTreeMap::new(),
-            snapshot, observed_at: None, queued_bytes: 0, written_bytes: 0,
+            snapshot, observed_at: None, events: events::Delivery::default(), queued_bytes: 0, written_bytes: 0,
             #[cfg(windows)] image_capability: None }
     }
     fn identity_matches(&self, packet: &Value) -> bool {
@@ -236,12 +254,18 @@ impl Protocol {
         self.snapshot.presentation_generation = verified.snapshot.presentation_generation;
         self.snapshot.presentation_supported = false;
         self.snapshot.state = "connecting".into();
+        self.snapshot.observation = None;
         self.observed_at = None;
+        self.retire_delivery();
+        self.events = events::Delivery::default();
         Ok(())
     }
     fn request(&mut self, command: Option<String>, key: &str) -> Result<Vec<u8>, &'static str> {
         if command.is_some() && self.snapshot.observation.is_none() { return Err("Observation unavailable"); }
-        self.request_inner(command, None, key)
+        let observe = command.is_none();
+        let bytes = self.request_inner(command, None, key)?;
+        if observe { self.start_observation(); }
+        Ok(bytes)
     }
     fn reference_request(&mut self, request: ReferenceRequest, key: &str) -> Result<Vec<u8>, &'static str> {
         request.validate()?;
@@ -340,6 +364,7 @@ impl Protocol {
         }
         let id = packet["request_id"].as_u64().ok_or("Malformed control response")?;
         let pending = self.pending.get(&id).ok_or("Unexpected control response")?;
+        let observing = pending.kind == RequestKind::Observe;
         let status = packet["status"].as_str().ok_or("Malformed control result")?;
         let phase = packet["phase"].as_str();
         let finished = phase == Some("completed") || (phase.is_none() && matches!(status, "failure" | "rejected"));
@@ -357,6 +382,11 @@ impl Protocol {
                 let mut delivery = self.pending.remove(&id).unwrap().presentation.unwrap();
                 delivery.settle(delivery.request.response(&packet));
             }
+            return Ok(());
+        }
+        if pending.kind == RequestKind::Subscribe && finished {
+            self.pending.remove(&id);
+            self.subscription_reply(id, &packet);
             return Ok(());
         }
         if pending.kind == RequestKind::Observe && finished {
@@ -398,6 +428,7 @@ impl Protocol {
             if packet["observation"]["observation_unavailable"] == true || packet["observation_unavailable"] == true {
                 self.snapshot.observation = None;
                 self.observed_at = None;
+                self.snapshot.observation_current = false;
             } else {
                 self.snapshot.observation = Some(serde_json::from_value(packet["observation"].clone())
                     .map_err(|_| "Malformed canonical observation")?);
@@ -415,7 +446,7 @@ impl Protocol {
         if finished && matches!(&pending.feature, Some(features::Request::Recovery(recovery::Request::Recover { .. }))) {
             // Successor hello is only identity evidence. Fresh observe reestablishes readiness
             // after the original request has delivered its verified final result.
-            self.snapshot.state = "ready".into();
+            if self.snapshot.state == "connecting" { self.schedule_observation(); }
         }
         if let Some(result) = self.snapshot.results.iter_mut().find(|r| r.id == id) {
             result.state = state.into();
@@ -441,6 +472,10 @@ impl Protocol {
             }
         }
         else if state == "pending-interaction" { self.pending.get_mut(&id).unwrap().awaiting_interaction = true; }
+        if observing && finished {
+            self.complete_observation();
+            self.discover_events(&packet["capabilities"]);
+        }
         Ok(())
     }
     #[cfg(test)]
@@ -457,6 +492,7 @@ impl Protocol {
     }
     fn disconnect(&mut self, detail: &str) {
         let unverified = self.snapshot.observation.is_none();
+        self.retire_delivery();
         self.snapshot.state = "disconnected".into();
         let detail = match &self.snapshot.observation_failure {
             Some(failure) => format!("{detail} (observe request {}, status {}, phase {}, code {})",

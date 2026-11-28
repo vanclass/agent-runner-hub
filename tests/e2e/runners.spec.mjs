@@ -54,6 +54,7 @@ async function transport(page, freshTarget, referenceOptions) {
   await page.addInitScript(({ freshTarget, referenceOptions }) => {
     const sessions = new Map();
     const observed = new Map();
+    const observationReads = [], snapshotReads = [];
     const callbacks = new Map(), listeners = new Map();
     const writes = [], resizes = [], acknowledgements = [], closed = [], commands = [], referenceRequests = [];
     const logRecords = [];
@@ -112,6 +113,16 @@ async function transport(page, freshTarget, referenceOptions) {
     };
     const exit = (id, code = 0, control, result = {}) =>
       sessions.get(id).channel.onmessage({ type: 'exit', id, code, error: null, settled: true, control, ...result });
+    const topics = ['runner.observation.changed', 'work.changed', 'recovery.changed', 'generated_images.changed',
+      'brief.changed', 'run.changed', 'provider.codex.notification'];
+    const notify = (id, topic, payload = {}) => sessions.get(id).channel.onmessage({ type: 'control', id,
+      update: { kind: 'notification', notification: { topic, payload: structuredClone(payload) } } });
+    const publish = async (id, refresh = false) => {
+      const session = sessions.get(id);
+      if (!session) return;
+      const snapshot = await fixtureInvoke('runner_observe', { id, refresh });
+      session.channel.onmessage({ type: 'control', id, update: { kind: 'snapshot', snapshot } });
+    };
     const nativeEvent = (event, payload, label = 'main') => {
       for (const [id, subscription] of listeners) {
         const receiver = subscription.target;
@@ -151,6 +162,8 @@ async function transport(page, freshTarget, referenceOptions) {
             fixture.mode = referenceOptions.workMode ?? 'started';
             sessions.get(id).feature = fixture;
             sessions.get(id).control.features = fixture.features;
+            fixture.changed = () => { void publish(id); };
+            fixture.push = (work, change) => notify(id, 'work.changed', { work, change });
             if (referenceOptions.quick) fixture.features.sessionConfig.operations.push('session_config.providers', 'session_config.select_provider');
             if (referenceOptions.quickConfirm) {
               fixture.features.interaction = { version: 1, operations: ['interaction.observe', 'interaction.respond'] };
@@ -167,7 +180,8 @@ async function transport(page, freshTarget, referenceOptions) {
             };
             if (referenceOptions.brief !== undefined) {
               const { RunFixture } = await import('/tests/fixtures/run.ts');
-              sessions.get(id).run = new RunFixture(fixture.features, referenceOptions.runResult);
+              sessions.get(id).run = new RunFixture(fixture.features, referenceOptions.runResult,
+                run => notify(id, 'run.changed', { run }));
             }
           }
           if (referenceOptions?.generatedImages) {
@@ -185,7 +199,7 @@ async function transport(page, freshTarget, referenceOptions) {
               image_details: ['auto', 'low', 'high', 'original'] },
               removalCapability: referenceOptions.legacyRemoval ? null : { version: 1 }, results: [] };
           }
-          setTimeout(() => emit(id, `\x1b[?9001h\x1b[?2004h\x1b[32m${id}: 안녕 🌍\x1b[0m\r\n`), 10);
+          setTimeout(() => { void publish(id); emit(id, `\x1b[?9001h\x1b[?2004h\x1b[32m${id}: 안녕 🌍\x1b[0m\r\n`); }, 10);
           return id;
         }
         if (command === 'pty_write') {
@@ -209,13 +223,20 @@ async function transport(page, freshTarget, referenceOptions) {
                 ? { kind: 'direct_root', path: current.root } : { kind: 'target', ...session.control.observation.target,
                   label: current.target === 'workspace' ? 'Workspace' : 'Exact · A long registered Target label for truncation at narrow widths' };
           }
-          if (sessions.get(args.id).control.age) window.__nativeFixture.observedStale = true;
           observed.set(args.id, JSON.stringify(sessions.get(args.id).control));
-          return structuredClone({ ...sessions.get(args.id).control, observationSerial: ++serial,
-            observationAgeMs: sessions.get(args.id).control.age ?? 0 });
+          return structuredClone({ ...session.control, observationSerial: ++serial,
+            observationCurrent: !!session.control.observation && !session.control.unverified && !session.incomplete,
+            subscription: session.subscription === undefined ? 1 : session.subscription,
+            coverage: session.subscription === null ? [] : topics, deliveryIncomplete: !!session.incomplete });
+        }
+        if (command === 'runner_refresh_observation') {
+          observationReads.push(args.id);
+          await publish(args.id, true);
+          return;
         }
         if (command === 'runner_images_list') {
           const session = sessions.get(args.id);
+          session.imageLists = (session.imageLists ?? 0) + 1;
           if (session.imageFailure) throw session.imageFailure;
           return structuredClone({ images: session.images, incomplete: session.imageWarning ?? null });
         }
@@ -370,8 +391,17 @@ async function transport(page, freshTarget, referenceOptions) {
         throw new Error(`Unexpected native fixture command: ${command}`);
       },
     };
-    window.__nativeFixture = { sessions, observed, writes, resizes, acknowledgements, closed, commands, emit, exit,
-      referenceRequests, finishReference,
+    const fixtureInvoke = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === 'runner_observe') snapshotReads.push(args.id);
+      try { return await fixtureInvoke(command, args); }
+      finally {
+        if (['runner_command', 'runner_feature', 'runner_reference'].includes(command)) void publish(args.id);
+      }
+    };
+    window.__nativeFixture = { sessions, observed, observationReads, snapshotReads, publish, notify,
+      writes, resizes, acknowledgements, closed, commands, emit, exit,
+      referenceRequests, finishReference: (...args) => { finishReference(...args); void publish(args[0]); },
       staged, clipboardReads, imageCloses, deliveredSets, revokedUrls,
       missingImage: value => { missingImage = value; }, stageFailure: value => { stageFailure = value; },
       pauseStage: () => { stageGate = new Promise(resolve => { releaseStage = resolve; }); },
@@ -395,7 +425,7 @@ registerBriefSubmission({ test, expect, transport, configure, create });
 registerRunnerTabs({ test, expect, transport, configure, create });
 registerRunnerTabRaces({ test, expect, transport, configure, create: createPrepared, records });
 registerRunnerPromotion({ test, expect, transport, configure, create: createPrepared, generatedFixture });
-registerRunnerDiscovery({ test, expect, transport, configure, create: createPrepared, records });
+registerRunnerDiscovery({ test, expect, transport, configure, create: createPrepared, records, generatedFixture });
 registerRunnerNavigation({ test, expect, transport, configure, create: createPrepared });
 registerRunnerAddDirectory({ test, expect, transport, configure, create });
 registerRunnerRestarts({ test, expect, transport, configure, create: createPrepared });
@@ -555,7 +585,11 @@ test('spare waits for authenticated observation and terminal protocol, drains qu
   await prepareSpare(page);
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.acknowledgements.length)).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('preparing');
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.state = 'ready'; });
+  await page.evaluate(async () => {
+    const f = window.__nativeFixture;
+    f.sessions.get('pty-1').control.state = 'ready';
+    await f.publish('pty-1');
+  });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('preparing');
   await page.evaluate(() => {
     const session = window.__nativeFixture.sessions.get('pty-1');
@@ -569,15 +603,20 @@ test('spare waits for authenticated observation and terminal protocol, drains qu
   });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
   await expect.poll(() => page.evaluate(() => window.__nativeFixture.writes.length)).toBeGreaterThan(0);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const f = window.__nativeFixture, control = f.sessions.get('pty-1').control;
-    control.age = 3000;
+    control.unverified = true;
+    await f.publish('pty-1');
   });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('unavailable');
   expect(await page.evaluate(() => {
     try { window.__spares.promoteSpare(); return false; } catch { return true; }
   })).toBe(true);
-  await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 0; });
+  await page.evaluate(async () => {
+    const f = window.__nativeFixture;
+    f.sessions.get('pty-1').control.unverified = false;
+    await f.publish('pty-1');
+  });
   await expect.poll(() => page.evaluate(() => window.__spares.spareSnapshot.state)).toBe('ready');
   expect(await page.evaluate(() => window.__spareEvents.map(e => e.operation))).toEqual(['spare-prepared']);
   const protocol = await page.evaluate(() => {
@@ -1242,10 +1281,10 @@ test('Single Entry creates when no eligible idle Runner exists', async ({ page }
   expect((await page.evaluate(() => window.__nativeFixture.commands)).map(w => w.id)).toEqual(['pty-2']);
 });
 
-for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'foreground', 'confirmation', 'incomplete-evidence', 'stale']) {
+for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'foreground', 'confirmation', 'incomplete-evidence', 'unverified']) {
   test(`Single Entry excludes ${exclusion} Runner`, async ({ page }) => {
     await transport(page); await configure(page); await create(page); await create(page);
-    await page.evaluate(kind => {
+    await page.evaluate(async kind => {
       const c = window.__nativeFixture.sessions.get('pty-1').control;
       if (kind === 'suspended') c.observation.attention.suspension_status = 'active';
       if (kind === 'disconnected') c.state = 'disconnected';
@@ -1254,16 +1293,16 @@ for (const exclusion of ['suspended', 'disconnected', 'retained', 'unknown', 'fo
       if (kind === 'foreground') c.observation.attention.foreground_interaction_active = true;
       if (kind === 'confirmation') c.observation.attention.restart_confirmation_required = true;
       if (kind === 'incomplete-evidence') delete c.observation.attention.termination_confirmation_active;
-      if (kind === 'stale') c.age = 10000;
+      if (kind === 'unverified') c.unverified = true;
+      await window.__nativeFixture.publish('pty-1');
     }, exclusion);
     await page.waitForFunction(() => {
       const f = window.__nativeFixture;
       return f.observed.get('pty-1') === JSON.stringify(f.sessions.get('pty-1').control);
     });
-    if (['disconnected', 'unknown', 'stale'].includes(exclusion)) {
+    if (['disconnected', 'unknown'].includes(exclusion)) {
       await page.locator('.runner-row').first().locator('.nav-row').click();
-      if (exclusion !== 'stale') await expect(page.locator('.task-panel .runner-controls')).toHaveCount(0);
-      else await expect.poll(() => page.evaluate(() => window.__nativeFixture.observedStale)).toBeTruthy();
+      await expect(page.locator('.task-panel .runner-controls')).toHaveCount(0);
     }
     await entry(page);
     await page.locator('textarea[data-instruction]').press('Enter');

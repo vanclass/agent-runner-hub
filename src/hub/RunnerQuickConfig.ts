@@ -8,7 +8,7 @@ type Choice = { choice_id: string; label: string; description: string; enabled: 
 type Interaction = { interaction_id: string; state: 'active'; prompt: string; context: string;
   actions: InteractionAction['action'][]; choices: Choice[]; consequences?: { text: string; role: string; details: string[] }[] };
 type Control = Pick<RunnerControl, 'snapshot' | 'config' | 'work' | 'assignmentLocked' | 'busy'
-  | 'observationFresh' | 'commandUnresolved' | 'fresh' | 'command' | 'interaction'>;
+  | 'observationFresh' | 'commandUnresolved' | 'fresh' | 'command' | 'interaction' | 'when'>;
 const applyOutcomes = { partial: 'quick.partial', rejected: 'quick.rejected', cancelled: 'quick.cancelled',
   failed: 'quick.failed', unknown: 'quick.unknown' } as const;
 
@@ -173,10 +173,10 @@ export class RunnerQuickConfig {
   private async readInteraction() {
     const continuation = this.continuation;
     if (!continuation) return;
-    const deadline = performance.now() + controlTiming.refreshMs;
-    while (continuation.attempt.state === 'pending' && performance.now() < deadline) {
-      if (this.control.snapshot.observation?.attention.foreground_interaction_active
-        || continuation.attempt.result?.state === 'pending-interaction') {
+    const ready = await this.control.when(() => continuation.attempt.state !== 'pending'
+      || this.control.snapshot.observation?.attention.foreground_interaction_active
+      || continuation.attempt.result?.state === 'pending-interaction' ? true : undefined, controlTiming.refreshMs);
+    if (ready && continuation.attempt.state === 'pending') {
         const receipt = await this.control.interaction({ operation: 'interaction.observe' });
         const view = record(receipt.reply) ? receipt.reply.interaction : undefined;
         if (record(view) && view.state === 'active') { this.interaction = view as Interaction; return; }
@@ -184,8 +184,6 @@ export class RunnerQuickConfig {
           this.detail = msg('quick.unsupportedInteraction');
           return;
         }
-      }
-      await new Promise(resolve => setTimeout(resolve, controlTiming.pollMs));
     }
     if (continuation.attempt.state === 'pending') {
       this.detail = msg('quick.interactionPending');

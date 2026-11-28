@@ -12,12 +12,15 @@ export function terminalWork(id: number, event: number, changes: Partial<WorkObs
 export class WorkFixture {
   readonly config: ConfigFixture;
   readonly requests: WorkRequest[] = [];
-  mode = 'started';
+  private outcome = 'started';
+  get mode() { return this.outcome; }
+  set mode(value: string) { this.outcome = value; if (this.push) this.advance(); }
   holdSubmit = false;
   fault = '';
   work?: WorkObservation;
   readonly observations = new Map<string, WorkObservation>();
   changed: () => void = () => {};
+  push?: (work: WorkObservation, change: 'created' | 'updated') => void;
   private held?: FeatureResult;
   constructor(session: string, generation = 1) {
     this.config = new ConfigFixture(session, generation);
@@ -41,7 +44,16 @@ export class WorkFixture {
       this.work.event_id = Math.max(0, ...[...this.observations.values()].map(w => w.event_id)) + 1;
       if (this.holdSubmit) this.held = result;
       else { result.state = 'accepted'; result.phase = 'completed'; result.reply = { receipt: 'dispatch_received', work: copy(this.work) }; }
+      if (this.push && !this.fault) this.advance();
     } else {
+      if (!this.push) this.advance();
+      if (this.fault === 'completion-unknown' && this.work) Object.assign(this.work, { state: 'unknown', outcome: 'unknown' });
+      if (this.work) this.observations.set(this.work.observation_id, copy(this.work));
+      this.respond(request, result);
+    }
+    return this.finish(request, result, id);
+  }
+  private advance() {
       if (this.work && !this.work.terminal && this.mode !== 'dispatch') {
         const previous = copy(this.work);
         const state = this.mode === 'started' ? 'active' : this.mode === 'admitted' ? 'instruction_admitted' : this.mode;
@@ -58,8 +70,13 @@ export class WorkFixture {
         this.work.event_id = same({ ...previous, event_id: 0 }, { ...this.work, event_id: 0 })
           ? previous.event_id : previous.event_id + 3;
       }
-      if (this.fault === 'completion-unknown' && this.work) Object.assign(this.work, { state: 'unknown', outcome: 'unknown' });
-      if (this.work) this.observations.set(this.work.observation_id, copy(this.work));
+      if (this.work) {
+        const previous = this.observations.get(this.work.observation_id);
+        this.observations.set(this.work.observation_id, copy(this.work));
+        if (!same(previous, this.work)) this.push?.(copy(this.work), previous ? 'updated' : 'created');
+      }
+  }
+  private respond(request: Exclude<WorkRequest, { operation: 'work.submit' }>, result: FeatureResult) {
       if (request.operation === 'work.status' || request.operation === 'work.observe'
         && request.observation_id === this.work?.observation_id) {
         const original = this.work?.submission_request_id;
@@ -79,7 +96,8 @@ export class WorkFixture {
             next_after_event_id: has_more ? works.at(-1)!.event_id : latest_event_id };
         }
       }
-    }
+  }
+  private finish(request: WorkRequest, result: FeatureResult, id: number) {
     if (this.fault === 'crossed' && request.operation === 'work.list') {
       const page = result.reply as { works: WorkObservation[] };
       page.works.forEach(work => { if (work.origin === 'api') work.submission_request_id!++; });

@@ -7,12 +7,12 @@ export type RestartOutcome = 'pending' | 'restarted' | 'removed' | RestorationSu
 export type RestartTarget = Readonly<{
   name: string;
   ready: () => boolean;
-  revalidation?: () => Readonly<{ key: string; observedAt: number }>;
+  revalidation?: () => string;
   restart: () => Promise<RestartOutcome>;
 }>;
 type RestartItem = { name: string; target?: RestartTarget;
   state: Exclude<RestartOutcome, object> | RestorationProblem | 'running' | 'failed'; detail?: HubText;
-  waiting?: { key: string; retryAfter: number }; wasReady?: boolean };
+  waiting?: { key?: string }; wasReady?: boolean };
 
 // One explicit, process-local capture. Session owners alone decide safe release and replacement.
 export class RunnerRestarts {
@@ -54,9 +54,7 @@ export class RunnerRestarts {
       const ready = target.ready(), observation = target.revalidation?.();
       const becameReady = !observation && item.wasReady === false && ready;
       item.wasReady = ready;
-      if (!ready || item.waiting && !becameReady && observation?.key === item.waiting.key
-        && observation.observedAt < item.waiting.retryAfter) continue;
-      if (item.waiting && !becameReady && !observation) continue;
+      if (!ready || item.waiting && !becameReady && observation === item.waiting.key) continue;
       --capacity;
       item.state = 'running';
       void this.run(item, target);
@@ -71,9 +69,8 @@ export class RunnerRestarts {
     }
     catch (reason) { item.state = 'failed'; item.detail = errorText(reason); }
     if (item.state === 'pending') {
-      // Ignore verification's own busy/receipt notifications. Existing authenticated observations
-      // can retry an unchanged transient failure at most once per five seconds, without a new timer.
-      item.waiting = { key: target.revalidation?.().key ?? '', retryAfter: performance.now() + 5000 };
+      // Verification's own receipts must not re-admit the same unchanged context.
+      item.waiting = { key: target.revalidation?.() };
       item.wasReady = target.ready();
     } else item.target = undefined;
     if (!this.disposed) this.changed();

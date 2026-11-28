@@ -8,6 +8,7 @@ export type PtyRequest = {
 export type PtyExit = { id: string; code: number | null; error: string | null;
   settled: boolean; terminationError?: string };
 type PtyEvent = ({ type: 'output'; id: string; sequence: number; bytes: number[] })
+  | { type: 'control'; id: string; update: unknown }
   | ({ type: 'exit' } & PtyExit);
 export type Pty = {
   id: string;
@@ -17,11 +18,13 @@ export type Pty = {
 };
 
 export async function openPty(request: PtyRequest, output: (bytes: Uint8Array, consumed: () => void) => void,
-  exit: (event: PtyExit) => void, error: (reason: unknown) => void): Promise<Pty> {
+  exit: (event: PtyExit) => void, error: (reason: unknown) => void,
+  control?: (id: string, update: unknown) => void): Promise<Pty> {
   let exited = false, settled = false;
   const channel = new Channel<PtyEvent>();
   channel.onmessage = event => {
     if (event.type === 'exit') { exited = true; settled ||= event.settled === true; exit(event); return; }
+    if (event.type === 'control') { if (!exited) control?.(event.id, event.update); return; }
     // Acknowledge after xterm consumes this batch; the Rust reader bounds queued output.
     try { output(new Uint8Array(event.bytes), () => {
       void invoke('pty_ack', { id: event.id, sequence: event.sequence }).catch(reason => { if (!exited) error(reason); });

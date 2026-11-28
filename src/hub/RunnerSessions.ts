@@ -110,9 +110,9 @@ export class RunnerSession {
       && !(inventory?.operation === 'work.list' && inventory.state === 'outcome-unknown') && this.safeIdle(true);
   }
   get restartObservation() {
-    const { snapshot, receivedAt } = this.control;
-    return { key: JSON.stringify([this.view.status, this.view.closing,
-      snapshot.state, snapshot.observation, this.control.work.activity, this.references.prepared]), observedAt: receivedAt };
+    const { snapshot } = this.control;
+    return JSON.stringify([this.view.status, this.view.closing, snapshot.state, snapshot.subscription,
+      snapshot.observation, this.control.work.activity, this.control.recovery.connectedReference, this.references.prepared]);
   }
   retireTab() {
     this.control.tabClosing = true;
@@ -132,11 +132,7 @@ export class RunnerSession {
     if (!this.safeIdle(preserveDraft)) return false;
     await this.control.fresh();
     if (!this.safeIdle(preserveDraft)) return false;
-    const discovery = this.control.work.discoverySupported;
     await this.control.work.refreshInventory();
-    const inventory = this.control.work.progress;
-    if (discovery && (inventory?.operation !== 'work.list' || inventory.state !== 'accepted'
-      || inventory.phase !== 'completed')) return false;
     if (!this.safeIdle(preserveDraft)) return false;
     const retainedWithoutFileAccess = preserveDraft && this.retainedWorkloadSettled
       && commandNamed(this.control.snapshot, '/files')?.enabled === false;
@@ -348,6 +344,7 @@ export class RunnerSession {
   private async launch(location: string) {
     this.nativeState = 'opening';
     try {
+      const earlyControl: { id: string; update: unknown }[] = [];
       const request = { runnerLocation: location, cols: this.terminal.cols, rows: this.terminal.rows };
       const pty = await openPty(request, (bytes, consumed) => {
         if (this.disposed) consumed(); else this.terminal.write(bytes, consumed);
@@ -372,13 +369,17 @@ export class RunnerSession {
           code: event.code ?? msg('lifecycle.exitUnknown'), diagnostic: event.error ?? '',
         });
         this.update({ status: 'exited', exitCode: event.code, detail });
-      }, reason => this.error(reason));
+      }, reason => this.error(reason), (id, update) => {
+        if (!this.pty) earlyControl.push({ id, update });
+        else if (this.pty.id === id) this.control.receive(update);
+      });
       this.pty = pty;
       if (this.exitObserved) return;
       this.nativeState = 'open';
       if (this.disposed || this.view.closing) { this.pending = []; return; }
       this.update({ status: 'running' });
       this.control.start(pty.id);
+      for (const { id, update } of earlyControl) if (id === pty.id) this.control.receive(update);
       for (const bytes of this.pending.splice(0)) await pty.write(bytes);
       await pty.resize(this.terminal.cols, this.terminal.rows);
     } catch (reason) {
@@ -804,8 +805,7 @@ export class RunnerSessions {
       || session.control.snapshot.state === 'disconnected';
     return { name: session.view.name || 'Runner',
       ready: () => !owns() || session.restartReady || unavailable(),
-      revalidation: () => ({ ...session.restartObservation,
-        key: JSON.stringify([owns(), session.restartObservation.key]) }),
+      revalidation: () => JSON.stringify([owns(), session.restartObservation]),
       restart: async () => {
         if (!owns()) return 'removed';
         if (unavailable()) throw new HubError(msg('restart.unavailable'));

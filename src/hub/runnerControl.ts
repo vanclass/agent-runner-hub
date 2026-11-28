@@ -1,4 +1,4 @@
-import { msg, errorText, HubError, type HubText } from './i18n';
+import { msg, HubError, type HubText } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
 import type { ReferenceAdmission, ReferenceRequest, ReferenceSnapshot } from './referenceSelection';
 import { RunnerImages } from './runnerImages';
@@ -9,6 +9,7 @@ import { RunnerTypedRun } from './RunnerTypedRun';
 import { supportsRun, type RunRequest } from './runnerRunContract';
 import { RunnerRecovery } from './RunnerRecovery';
 import type { FeatureSnapshot, FeatureAdmission, InteractionRequest } from './runnerConfigContract';
+import { controlUpdate, RunnerProviderEvents, type RunnerNotification } from './RunnerEvents';
 
 // Hub observation and delivery policy; native FIFO deadlines remain native-owned.
 // Python str.isspace(), including its extra information separators and excluding BOM.
@@ -26,8 +27,7 @@ export function typedRunArguments(text: string) {
   if (candidate.length > 4 && candidate.startsWith('/run') && runnerWhitespace.test(candidate[4])) return candidate.slice(5);
 }
 
-export const controlTiming = Object.freeze({ pollMs: 500, freshnessMs: 2500,
-  connectMs: 35000, refreshMs: 5000, completionMs: 65000, settleMs: 50 });
+export const controlTiming = Object.freeze({ connectMs: 35000, refreshMs: 5000, completionMs: 65000 });
 // Matches the native clipboard staging security ceiling, not image discovery capacity.
 export const clipboardMaxBytes = 64 * 1024 * 1024;
 
@@ -41,6 +41,7 @@ export type IssueRunUserAction = {
   requirements: { kind: 'clarification' | 'approval' | 'discussion' | 'dialogue' | 'human_request'; request_key: string; request_version: string }[];
 };
 export type RunnerObservation = {
+  brief_staging?: { revision: number; count: number };
   configured_startup_agent_id?: 'codex' | 'claude' | 'none' | null;
   issue_run_user_action?: IssueRunUserAction | null;
   issue_run_execution?: {
@@ -69,6 +70,8 @@ export type ControlSnapshot = { state: 'connecting' | 'ready' | 'disconnected';
   observation?: RunnerObservation; results: ControlResult[]; detail?: HubText;
   observationFailure?: { requestId: number; status: string; phase: string | null; code: string | null } | null;
   observationSerial?: number; observationAgeMs?: number | null; references?: ReferenceSnapshot; clipboardStaging?: boolean;
+  observationCurrent?: boolean; coverage?: string[]; subscription?: number | null;
+  deliveryIncomplete?: boolean;
   generatedImagesSupported?: boolean; presentationSupported?: boolean; presentationGeneration?: number; features?: FeatureSnapshot };
 
 export type CommandAttempt = { admission: FeatureAdmission; result?: ControlResult;
@@ -81,18 +84,29 @@ export class RunnerControl {
   readonly brief: RunnerBrief;
   readonly typedRun: RunnerTypedRun;
   readonly recovery: RunnerRecovery;
+  readonly providerEvents = new RunnerProviderEvents();
   snapshot: ControlSnapshot = { state: 'connecting', results: [] };
   sending = false;
-  assignmentLocked = false;
-  tabClosing = false;
-  receivedAt = 0;
+  private assignment = false;
+  private closing = false;
+  get assignmentLocked() { return this.assignment; }
+  set assignmentLocked(value: boolean) {
+    if (this.assignment !== value) { this.assignment = value; this.scheduleViews(); }
+  }
+  get tabClosing() { return this.closing; }
+  set tabClosing(value: boolean) {
+    if (this.closing !== value) { this.closing = value; this.scheduleViews(); }
+  }
   private commandAttempt?: CommandAttempt;
   get commandPending() { return this.commandAttempt?.state === 'pending'; }
   get commandUnresolved() { return !!this.commandAttempt && ['pending', 'unknown'].includes(this.commandAttempt.state); }
   hidden = new Set<string>();
   order: string[] = [];
   private id?: string;
-  private timer?: ReturnType<typeof setTimeout>;
+  private startup?: ReturnType<typeof setTimeout>;
+  private reading?: Promise<ControlSnapshot>;
+  private syncing = false;
+  private readonly listeners = new Set<() => void>();
   private stopped = false;
   private referenceAdmissions = 0;
   private attachmentLease?: symbol;
@@ -109,14 +123,16 @@ export class RunnerControl {
   releaseAttachments(lease: symbol) {
     if (this.attachmentLease === lease) { this.attachmentLease = undefined; this.changed(); }
   }
-  constructor(private readonly changed: () => boolean | void) {
+  constructor(private readonly emit: () => boolean | void) {
+    const changed = this.changed;
     const run = (id: string, request: RunRequest) =>
       invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'run', request } });
     this.typedRun = new RunnerTypedRun(() => ({ session: this.id, snapshot: this.snapshot }),
       run, controlTiming.completionMs, changed);
     this.recovery = new RunnerRecovery(undefined, false, {
       completionMs: controlTiming.completionMs,
-      observeMs: controlTiming.refreshMs,
+      ready: async () => !!await this.when(() => this.snapshot.state === 'ready' && this.snapshot.observationCurrent
+        && !this.snapshot.deliveryIncomplete ? true : undefined, controlTiming.connectMs),
       restoreMode: mode => this.observationFresh && this.snapshot.observation?.run_mode === mode
         ? Promise.resolve(true) : this.config.restoreMode(mode),
       submit: request => invoke<FeatureAdmission>('runner_feature', { id: this.id, request: { feature: 'recovery', request } }),
@@ -131,7 +147,9 @@ export class RunnerControl {
         request: { feature: 'brief', request: { operation: 'brief.stage', api_version: 1, body } } }),
       run,
       completionMs: controlTiming.completionMs,
-      pollMs: controlTiming.pollMs,
+      runCoverage: () => this.covers('run.changed') ? this.snapshot.subscription ?? undefined : undefined,
+      observation: id => this.typedRun.observation(id),
+      when: (read, timeout) => this.when(read, timeout),
     }, changed);
     this.images = new RunnerImages(changed);
     this.config = new RunnerConfigService({
@@ -160,60 +178,113 @@ export class RunnerControl {
       submit: (id, request) => invoke<FeatureAdmission>('runner_feature', { id, request: { feature: 'work', request } }),
     }, changed);
   }
-  start(id: string) { this.id = id; this.images.start(id); void this.refresh(); }
-  async fresh(reuseCurrent = false) {
+  start(id: string) {
+    this.id = id;
+    this.images.start(id);
+    this.startup = setTimeout(() => this.stop(msg('runtime.control.freshUnavailable')), controlTiming.connectMs);
+  }
+  covers(topic: string) { return !!this.snapshot.coverage?.includes(topic); }
+  fresh(reuseCurrent = false): Promise<ControlSnapshot> {
+    if (reuseCurrent && this.observationFresh && !this.work.busy && !this.config.busy) return Promise.resolve(this.snapshot);
+    return this.reading ??= this.readObservation(reuseCurrent).finally(() => { this.reading = undefined; });
+  }
+  private async readObservation(reuseCurrent: boolean) {
+    if (this.snapshot.state === 'connecting')
+      await this.when(() => this.snapshot.state !== 'connecting' ? true : undefined, controlTiming.connectMs);
+    const available = () => this.snapshot.state === 'ready' && !this.work.busy && !this.config.busy;
+    if (reuseCurrent && this.observationFresh && available()) return this.snapshot;
     const after = this.snapshot.observationSerial ?? 0;
-    const deadline = performance.now() + (this.snapshot.state === 'connecting' ? controlTiming.connectMs : controlTiming.refreshMs);
-    while (!this.stopped && performance.now() < deadline) {
-      if (this.snapshot.state === 'disconnected') break;
-      if (this.observationFresh && !this.work.busy && !this.config.busy
-        && (reuseCurrent || (this.snapshot.observationSerial ?? 0) > after)) return this.snapshot;
-      await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
+    if (this.snapshot.state === 'ready' && this.id) {
+      await invoke('runner_refresh_observation', { id: this.id });
+      const snapshot = await this.when(() => available() && this.snapshot.observationCurrent
+        && (this.snapshot.observationSerial ?? 0) > after ? this.snapshot : undefined, controlTiming.refreshMs);
+      if (snapshot) return snapshot;
     }
     throw new HubError(this.snapshot.detail || msg('runtime.control.freshUnavailable'));
   }
   get observationFresh() {
-    return this.snapshot.state === 'ready' && !!this.snapshot.observation && typeof this.snapshot.observationAgeMs === 'number'
-      && this.snapshot.observationAgeMs + performance.now() - this.receivedAt < controlTiming.freshnessMs;
+    return this.snapshot.state === 'ready' && this.snapshot.observationCurrent === true
+      && this.covers('runner.observation.changed');
   }
-  private async refresh() {
+  receive(message: unknown) {
     if (this.stopped || !this.id) return;
-    try {
-      const snapshot = await invoke<ControlSnapshot>('runner_observe', { id: this.id });
-      if (this.stopped) return;
-      if (snapshot.state === 'disconnected') {
-        this.stop(snapshot.detail, snapshot);
-        return;
-      }
-      this.snapshot = snapshot;
-      this.receivedAt = performance.now();
-      this.observeCommand();
-      this.typedRun.observe();
-      this.brief.observe(snapshot);
-      const observation = snapshot.observation;
-      this.config.observe(this.id, snapshot.state, snapshot.features, observation?.selection.agent_id,
-        observation?.selection.account, observation && JSON.stringify([observation.selection, observation.run_mode,
-          observation.target, observation.context_location, observation.attention.account_setup_required]),
-        observation?.attention.account_setup_required);
-      const recoveryChange = JSON.stringify([observation?.run_mode, observation?.execution, observation?.target,
-        snapshot.results.at(-1)?.id, this.config.latestApplication?.receipt.id,
-        this.work.current?.work?.event_id]);
-      this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
-        !this.assignmentLocked && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
-          && !snapshot.observation?.attention.foreground_interaction_active
-          && !this.config.busy && !this.work.busy && !this.brief.busy,
-        observation?.run_mode, recoveryChange,
-        observation?.attention.foreground_interaction_active || observation?.attention.account_setup_required);
-      this.work.observe(this.id, snapshot.state, snapshot.features, snapshot.observation?.run_mode);
-      this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready',
-        this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
-      this.receivedAt = performance.now();
-      this.changed();
-      this.config.prepareOptions();
-      const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing
-        || this.brief.busy || this.typedRun.pending;
-      this.timer = setTimeout(() => void this.refresh(), foreground ? controlTiming.settleMs : controlTiming.pollMs);
-    } catch (reason) { if (!this.stopped) this.stop(errorText(reason)); }
+    const update = controlUpdate(message);
+    if (!update) return;
+    if (update.kind === 'notification') {
+      this.receiveEvent(update.notification);
+      return;
+    }
+    const { snapshot } = update;
+    if (snapshot.state === 'disconnected') {
+      this.stop(snapshot.detail, snapshot);
+      return;
+    }
+    const previous = this.snapshot;
+    this.snapshot = snapshot;
+    this.providerEvents.coverage(this.covers('provider.codex.notification'));
+    if (snapshot.subscription !== previous.subscription && (snapshot.subscription || previous.subscription)) {
+      this.work.coverageChanged(this.covers('work.changed'));
+      this.recovery.invalidate();
+      this.images.invalidate();
+    }
+    if (snapshot.state === 'ready') clearTimeout(this.startup);
+    this.observeCommand();
+    this.typedRun.observe();
+    this.brief.observe(snapshot);
+    const observation = snapshot.observation;
+    this.config.observe(this.id, snapshot.state, snapshot.features, observation?.selection.agent_id,
+      observation?.selection.account, observation && JSON.stringify([observation.selection, observation.run_mode,
+        observation.target, observation.context_location, observation.attention.account_setup_required]),
+      observation?.attention.account_setup_required);
+    this.work.observe(this.id, snapshot.state, snapshot.features, observation?.run_mode);
+    this.changed();
+  }
+  private syncViews() {
+    const snapshot = this.snapshot, observation = snapshot.observation;
+    this.recovery.observe(snapshot.features, this.observationFresh && !this.tabClosing,
+      !this.assignmentLocked && !this.attachmentLocked && !this.otherControlBusyWithoutRecovery
+        && !observation?.attention.foreground_interaction_active && !this.config.busy && !this.work.busy && !this.brief.busy,
+      observation?.run_mode,
+      observation?.attention.foreground_interaction_active || observation?.attention.account_setup_required);
+    if (!snapshot.deliveryIncomplete) this.work.syncInventory();
+    this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready' && !snapshot.deliveryIncomplete,
+      this.busy || !!observation?.attention.foreground_interaction_active);
+    this.config.prepareOptions();
+  }
+  private receiveEvent({ topic, payload }: RunnerNotification) {
+    if (!this.covers(topic)) return;
+    switch (topic) {
+      case 'work.changed': this.work.receive(payload); break;
+      case 'recovery.changed': this.recovery.invalidate(); break;
+      case 'generated_images.changed': this.images.invalidate(); break;
+      case 'brief.changed': this.brief.receiveBrief(payload); break;
+      case 'run.changed': this.typedRun.receive(payload.run); this.brief.updateRun(); break;
+      case 'provider.codex.notification': this.providerEvents.receive(payload); return;
+    }
+    this.changed();
+  }
+  private changed = () => {
+    this.scheduleViews();
+    for (const listener of this.listeners) listener();
+    return this.emit();
+  };
+  private scheduleViews() {
+    if (!this.syncing && !this.stopped) {
+      this.syncing = true;
+      queueMicrotask(() => {
+        this.syncing = false;
+        if (!this.stopped) this.syncViews();
+      });
+    }
+  }
+  when<T>(read: () => T | undefined, timeout?: number): Promise<T | undefined> {
+    return new Promise(resolve => {
+      const finish = (value?: T) => { clearTimeout(timer); this.listeners.delete(wake); resolve(value); };
+      const wake = () => { const value = read(); if (this.stopped || value !== undefined) finish(value); };
+      const timer = timeout === undefined ? undefined : setTimeout(finish, timeout);
+      this.listeners.add(wake);
+      wake();
+    });
   }
   get pending() { return this.recovery.busy || this.controlBusy || this.config.busy || this.work.writing || this.brief.busy; }
   get busy() { return this.tabClosing || this.pending; }
@@ -299,16 +370,15 @@ export class RunnerControl {
       id, request: { feature: 'interaction', request: { ...request, api_version: 1 } },
     }).catch(() => unavailable);
     if (admission.state !== 'submitted') return { state: admission.state, code: admission.detail, reply: undefined };
-    const deadline = performance.now() + controlTiming.completionMs;
-    while (!this.stopped && this.id === id && admission.generation === generation
-      && this.snapshot.features?.generation === generation && this.snapshot.state === 'ready' && performance.now() < deadline) {
+    if (admission.generation !== generation) return { state: unavailable.state, code: unavailable.detail, reply: undefined };
+    const result = await this.when(() => {
+      if (this.id !== id || this.snapshot.features?.generation !== generation) return false as const;
       const receipt = this.snapshot.features.results.find(r => r.id === admission.id
         && r.feature === 'interaction' && r.operation === request.operation);
       if (receipt && (receipt.phase === 'completed' || ['rejected', 'failure', 'outcome-unknown', 'not-sent'].includes(receipt.state)))
         return receipt;
-      await new Promise(resolve => setTimeout(resolve, controlTiming.settleMs));
-    }
-    return { state: unavailable.state, code: unavailable.detail, reply: undefined };
+    }, controlTiming.completionMs);
+    return result || { state: unavailable.state, code: unavailable.detail, reply: undefined };
   }
   private observeCommand() {
     const attempt = this.commandAttempt;
@@ -360,7 +430,8 @@ export class RunnerControl {
     this.stopped = true;
     this.images.stop();
     this.sending = false;
-    clearTimeout(this.timer);
+    clearTimeout(this.startup);
+    this.providerEvents.close();
     const final = finalSnapshot ?? this.snapshot;
     const message = final.detail ?? (final.observation ? detail
       : msg('runtime.control.compatibility', { detail }));

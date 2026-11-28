@@ -114,7 +114,7 @@ impl Observation {
     fn valid(&self) -> bool {
         RUN_MODES.contains(&self.run_mode.as_str()) && self.valid_envelope()
     }
-    fn valid_envelope(&self) -> bool {
+    pub(super) fn valid_envelope(&self) -> bool {
         let identity = match (self.observation_id.as_str(), self.origin.as_str(), self.submission_request_id) {
             (observation, "api", Some(id)) => id > 0 && id <= MAX_EVENT && observation == format!("api:{id}"),
             (observation, "terminal", None) => observation.starts_with("terminal:") && observation_identity(observation),

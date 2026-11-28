@@ -153,7 +153,14 @@ export class RunnerWork {
   private identity?: ConfigIdentity;
   private runMode?: string;
   private closed = false;
-  private poll?: ReturnType<typeof setTimeout>;
+  private inventory?: Promise<void>;
+  private inventoryDirty = true;
+  private inventoryRevision = 0;
+  private inventoryUnverified = false;
+  private inventoryVerified = false;
+  private coverage = false;
+  private deferredWork: WorkObservation[] = [];
+  private wakeStart?: () => void;
   private discoveryPaused = false;
   private viewed = false;
   unread = false;
@@ -169,7 +176,14 @@ export class RunnerWork {
   private readonly seen = new Map<number, FeatureResult>();
   private readonly confirmedStarts = new WeakSet<WorkAttempt>();
   constructor(private readonly transport: WorkTransport, private readonly changed: () => void) {}
-  get current() { return this.attempts.at(-1); }
+  private latest(attempts: readonly WorkAttempt[]) {
+    let latest: WorkAttempt | undefined;
+    for (const attempt of attempts) {
+      if (!latest || !attempt.work || latest.work && attempt.work.event_id >= latest.work.event_id) latest = attempt;
+    }
+    return latest;
+  }
+  get current() { return this.latest(this.attempts); }
   hasConfirmedStart(attempt: WorkAttempt) {
     return !attempt.notSent && this.confirmedStarts.has(attempt);
   }
@@ -194,36 +208,67 @@ export class RunnerWork {
     return this.attempts.filter(a => !this.previousAttempts.has(a)
       && (!a.work || a.work.event_id > this.presentationAfter));
   }
-  get presentedCurrent() { return this.presentedAttempts.at(-1); }
+  get presentedCurrent() { return this.latest(this.presentedAttempts); }
   beginPresentation() {
     this.previousAttempts = new Set(this.attempts);
-    this.presentationAfter = this.afterEventId;
+    this.presentationAfter = this.attempts.reduce((latest, attempt) => Math.max(latest, attempt.work?.event_id ?? 0), this.afterEventId);
     this.unread = false;
     this.discoveryPaused = false;
-    this.scheduleStatus();
+    this.syncInventory();
   }
   suspendDiscovery() {
     this.discoveryPaused = true;
-    clearTimeout(this.poll); this.poll = undefined;
   }
-  async refreshInventory() {
-    if (!this.discoverySupported) return;
+  coverageChanged(covered: boolean) {
+    this.inventoryUnverified ||= this.coverage && !covered;
+    this.coverage = covered;
+    this.inventoryRevision++;
+    this.inventoryVerified = false;
+    this.inventoryDirty = covered;
+    this.wakeStart?.();
+  }
+  syncInventory() {
+    if (!this.inventoryDirty || this.discoveryPaused || this.busy || this.inventory
+      || !this.discoverySupported || !this.transport.available('work.list')) return;
+    void this.refreshInventory().catch(() => {});
+  }
+  refreshInventory() {
+    if (this.inventory) return this.inventory;
+    if (!this.supports('work.list')) return Promise.resolve();
+    if (!this.discoverySupported) return Promise.reject(new HubError(msg('work.unavailable')));
+    if (!this.inventoryDirty && this.coverage && this.inventoryVerified) return Promise.resolve();
+    this.inventoryDirty = false;
+    this.afterEventId = 0;
+    const revision = this.inventoryRevision;
+    this.inventory = this.readInventory(revision).finally(() => {
+      this.inventory = undefined;
+      this.wakeStart?.();
+      this.changed();
+    });
+    return this.inventory;
+  }
+  private async readInventory(revision: number) {
     do {
       await this.request({ operation: 'work.list', api_version: 1,
         after_event_id: this.afterEventId, limit: this.capability!.max_page_size! });
       if (this.discoveryFailed) throw new HubError(msg('work.unavailable'));
-    } while (this.more);
+    } while (this.more && revision === this.inventoryRevision);
+    if (revision !== this.inventoryRevision) throw new HubError(msg('work.unavailable'));
+    this.inventoryVerified = true;
+    this.inventoryUnverified = false;
+    this.wakeStart?.();
   }
   get busy() { return !!this.waiting; }
   get writing() { return this.waiting?.request.operation === 'work.submit'; }
   get activity(): WorkActivity {
-    const attempt = this.attempts.filter(a => !a.notSent && (a.uncertain || !a.work?.terminal)).at(-1) ?? this.current;
+    const attempt = this.latest(this.attempts.filter(a => !a.notSent && (a.uncertain || !a.work?.terminal))) ?? this.current;
     return this.activityFor(attempt);
   }
   get presentedActivity(): WorkActivity {
     return this.activityFor(this.presentedCurrent);
   }
   private activityFor(attempt?: WorkAttempt): WorkActivity {
+    if (this.inventoryUnverified) return 'unknown';
     const work = attempt?.work;
     if (!attempt || attempt.notSent) return 'idle';
     if (attempt.uncertain || !work || work.state === 'unknown') return 'unknown';
@@ -237,7 +282,7 @@ export class RunnerWork {
     if (viewed && this.unread) { this.unread = false; this.changed(); }
   }
   get blocked() {
-    return this.attempts.some(a => !a.notSent && (a.uncertain || !a.work?.terminal || a.work.outcome === 'unknown'));
+    return this.inventoryUnverified || this.attempts.some(a => !a.notSent && (a.uncertain || !a.work?.terminal || a.work.outcome === 'unknown'));
   }
   get supported() {
     return this.supports('work.submit');
@@ -257,7 +302,7 @@ export class RunnerWork {
   }
   observe(session: string, state: string, snapshot?: FeatureSnapshot, runMode?: string) {
     if (this.closed) return;
-    const identity = state === 'ready' && snapshot && positive(snapshot.generation)
+    const identity = state !== 'disconnected' && snapshot && positive(snapshot.generation)
       ? { session, generation: snapshot.generation } : undefined;
     if (this.identity && (session !== this.identity.session
       || snapshot && snapshot.generation !== this.identity.generation)) { this.close(); return; }
@@ -271,23 +316,18 @@ export class RunnerWork {
     const receipt = snapshot?.results.find(r => r.id === wait?.id && r.feature === 'work' && r.operation === wait?.request.operation);
     if (receipt) { this.progress = copy(receipt); if (settled(receipt)) wait?.finish(copy(receipt)); }
     if (state === 'disconnected') this.close();
-    else this.scheduleStatus();
+    this.wakeStart?.();
   }
-  private scheduleStatus() {
-    if (this.closed || this.discoveryPaused || this.poll || !this.discoverySupported
-      && !this.refreshSupported) return;
-    this.poll = setTimeout(() => {
-      this.poll = undefined;
-      // A retained attachment lease may pause discovery while the original submission still needs reconciliation.
-      const discovery = this.discoverySupported && this.transport.available('work.list');
-      const operation = discovery ? 'work.list' : this.refreshRequest(this.current)?.operation;
-      if (!this.busy && operation && this.transport.available(operation)) {
-        const read = discovery
-          ? this.request({ operation: 'work.list', api_version: 1, after_event_id: this.afterEventId, limit: this.capability!.max_page_size! })
-          : this.refreshStatus();
-        void read.catch(() => {}).finally(() => this.scheduleStatus());
-      } else this.scheduleStatus();
-    }, this.discoveryFailed || this.current?.uncertain ? 5000 : this.more ? 50 : 1500);
+  receive(payload: Record<string, unknown>) {
+    if (!this.identity || !['created', 'updated'].includes(String(payload.change)) || !isWork(payload.work)) return;
+    if (payload.work.origin === 'api' && this.writing && !this.waiting?.id) {
+      this.deferredWork.push(payload.work);
+      return;
+    }
+    this.upsert(payload.work);
+  }
+  private flushDeferred() {
+    for (const work of this.deferredWork.splice(0)) this.upsert(work);
   }
   private consume(result: FeatureResult) {
     if (result.feature !== 'work' || !settled(result)) return;
@@ -373,6 +413,7 @@ export class RunnerWork {
       attempt.notified = true;
       this.unread ||= !this.viewed && this.presentedAttempts.includes(attempt);
     }
+    this.wakeStart?.();
     this.changed();
   }
   private request(request: WorkRequest, attempt?: WorkAttempt, attachmentLease?: symbol): Promise<FeatureResult> {
@@ -390,8 +431,8 @@ export class RunnerWork {
         this.waiting = undefined;
         this.progress = result;
         this.consume(result);
+        this.flushDeferred();
         this.changed();
-        this.scheduleStatus();
         resolve(result);
       };
       this.waiting = { request, finish, timer: setTimeout(() => finish(unknown()), deliveryTimeoutMs) };
@@ -412,6 +453,7 @@ export class RunnerWork {
           finish(unknown(admission.id)); return;
         }
         if (request.operation !== 'work.submit') this.requests.set(admission.id, copy(request));
+        this.flushDeferred();
         // A snapshot can arrive before the native admission promise resolves.
         this.observe(identity.session, 'ready', this.snapshot);
       }, () => finish(unknown()));
@@ -431,17 +473,24 @@ export class RunnerWork {
       if (result.state === 'not-sent' || result.admission === 'rejected') { attempt.notSent = true; return attempt; }
       attempt.notSent = false;
       if (!attempt.submissionId || !attempt.work) { attempt.uncertain = true; return attempt; }
-      const deadline = performance.now() + deliveryTimeoutMs;
-      while (!this.closed && !attempt.uncertain && !attempt.work.started_event_id && !attempt.work.terminal
-        && !['suspended', 'incomplete', 'failed', 'unknown'].includes(attempt.work.state) && performance.now() < deadline) {
-        await this.refresh(attempt);
-        if (!attempt.work.started_event_id && !attempt.work.terminal) await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      await this.awaitStart(attempt);
       return attempt;
     } catch (reason) {
       if (attempt.submissionId || !attempt.notSent) attempt.uncertain = true;
       throw reason;
     }
+  }
+  private async awaitStart(attempt: WorkAttempt) {
+    const done = () => this.closed || attempt.uncertain || !attempt.work || attempt.work.started_event_id > 0
+      || attempt.work.terminal || ['suspended', 'incomplete', 'failed', 'unknown'].includes(attempt.work.state);
+    if (done()) return;
+    if (!this.coverage) { await this.refresh(attempt); return; }
+    await new Promise<void>(resolve => {
+      const finish = () => { clearTimeout(timer); this.wakeStart = undefined; resolve(); };
+      const timer = setTimeout(finish, deliveryTimeoutMs);
+      this.wakeStart = () => { if (done()) finish(); };
+    });
+    if (!done() && !this.coverage) await this.refresh(attempt);
   }
   async refreshStatus() {
     if (this.current) await this.refresh(this.current);
@@ -465,7 +514,7 @@ export class RunnerWork {
   close() {
     if (this.closed) return;
     this.closed = true;
-    clearTimeout(this.poll); this.poll = undefined;
+    this.wakeStart?.();
     this.capability = undefined;
     const wait = this.waiting;
     if (wait) wait.finish({ id: wait.id ?? 0, feature: 'work', operation: wait.request.operation,

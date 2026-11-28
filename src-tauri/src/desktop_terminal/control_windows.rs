@@ -1,4 +1,4 @@
-use super::{Protocol, Snapshot};
+use super::{Protocol, Snapshot, Update};
 use super::references::{ReferenceAdmission, ReferenceRequest};
 use super::generated_images::{self, Images};
 use portable_pty::CommandBuilder;
@@ -8,7 +8,7 @@ use windows_sys::Win32::{Foundation::*, Security::{SECURITY_ATTRIBUTES, Cryptogr
     Storage::FileSystem::{ReadFile, WriteFile}, System::Pipes::*};
 
 fn error() -> String { format!("Runner control I/O failed ({})", io::Error::last_os_error().raw_os_error().unwrap_or(0)) }
-enum Request { Command(String), Reference(ReferenceRequest), Image(generated_images::Request, super::ImageCompletion),
+enum Request { Observe, Command(String), Reference(ReferenceRequest), Image(generated_images::Request, super::ImageCompletion),
     Feature(super::features::Request),
     Presentation(super::presentation::Request, u64, super::presentation::Completion) }
 type Admission = mpsc::Sender<Result<u64, String>>;
@@ -59,7 +59,8 @@ impl Launch {
         let runner_root = command.get_cwd().map(|path| path.to_string_lossy().into_owned());
         Ok(Self { read, write, children: vec![input, output], session, key, runner_root })
     }
-    pub fn bind(mut self, pid: u32) -> Arc<Client> {
+    pub fn bind_with_updates(mut self, pid: u32, clipboard: bool,
+        notify: impl Fn(Update) + Send + 'static) -> Arc<Client> {
         // Release redundant child endpoints immediately after CreateProcessW, before any hello wait.
         self.children.clear();
         let state = Arc::new(Mutex::new((Snapshot::default(), None)));
@@ -70,9 +71,15 @@ impl Launch {
         let worker = thread::spawn(move || {
             let mut protocol = Protocol::new(pid, self.session);
             protocol.snapshot.features.runner_root = self.runner_root;
-            let result = serve(&self.read, &self.write, &mut protocol, &self.key, receive, &worker_stop, &worker_state);
+            let snapshot = |protocol: &Protocol| {
+                let mut snapshot = publish(&worker_state, protocol);
+                snapshot.clipboard_staging = clipboard && snapshot.state == "ready"
+                    && snapshot.references.capability.is_some();
+                notify(Update::Snapshot { snapshot });
+            };
+            let result = serve(&self.read, &self.write, &mut protocol, &self.key, receive, &worker_stop, &snapshot, &notify);
             protocol.disconnect(result.err().unwrap_or("Runner control closed"));
-            publish(&worker_state, &protocol);
+            snapshot(&protocol);
             // The key is retained only by this native worker for authenticated requests.
             unsafe { self.key.as_bytes_mut().fill(0); }
         });
@@ -86,6 +93,9 @@ pub struct Client {
     images: Images,
 }
 impl Client {
+    pub fn observe(&self) -> Result<(), String> {
+        self.submit(Request::Observe).map(|_| ()).map_err(|error| error.detail)
+    }
     fn runner_whitespace(c: char) -> bool { c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}') }
     fn available(commands: &[super::CommandView], candidate: &str) -> bool {
         fn matches<'a>(commands: &'a [super::CommandView], candidate: &str, best: &mut Option<(usize, &'a super::CommandView)>) {
@@ -194,18 +204,20 @@ impl Client {
 }
 impl Drop for Client { fn drop(&mut self) { self.close(); } }
 
-fn publish(state: &Mutex<Published>, protocol: &Protocol) {
+fn publish(state: &Mutex<Published>, protocol: &Protocol) -> Snapshot {
     let published = (protocol.snapshot.clone(), protocol.observed_at);
+    let snapshot = published.0.clone();
     *state.lock().unwrap() = published;
+    snapshot
 }
 
 fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: &str,
-    receive: mpsc::Receiver<(Request, Admission)>, stopped: &AtomicBool, state: &Mutex<Published>) -> Result<(), &'static str> {
+    receive: mpsc::Receiver<(Request, Admission)>, stopped: &AtomicBool,
+    snapshot: &impl Fn(&Protocol), notify: &impl Fn(Update)) -> Result<(), &'static str> {
     let mut incoming = Vec::<u8>::new();
     let mut outgoing = Vec::<u8>::new();
     let mut deferred = std::collections::VecDeque::new();
     let started = Instant::now();
-    let mut observed = Instant::now();
     while !stopped.load(Ordering::Acquire) {
         let mut available = 0;
         if unsafe { PeekNamedPipe(read.as_raw_handle(), std::ptr::null_mut(), 0,
@@ -219,19 +231,31 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 &mut count, std::ptr::null_mut()) } == 0 || count == 0 { return Err("Runner control read failed"); }
             incoming.extend_from_slice(&bytes[..count as usize]);
             while let Some(end) = incoming.iter().position(|b| *b == b'\n') {
-                if end > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
+                if end >= super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
                 let packet: serde_json::Value = serde_json::from_slice(&incoming[..end]).map_err(|_| "Malformed Runner control response")?;
                 incoming.drain(..=end);
                 if protocol.connection.is_none() {
                     protocol.hello(&packet)?;
                     outgoing.extend(protocol.request(None, key)?);
-                    observed = Instant::now();
                 } else if packet["event"] == "hello" {
                     protocol.successor_hello(&packet)?;
-                } else { protocol.response(packet)?; }
+                    snapshot(protocol);
+                } else if packet["event"] == "notification" {
+                    let current = protocol.snapshot.observation_current;
+                    let subscription = protocol.snapshot.subscription;
+                    let event = protocol.notification(packet)?;
+                    if protocol.snapshot.observation_current != current || protocol.snapshot.subscription != subscription {
+                        snapshot(protocol);
+                    }
+                    if let Some(notification) = event { notify(Update::Notification { notification }); }
+                } else {
+                    let quiet = packet["request_id"].as_u64().and_then(|id| protocol.pending.get(&id))
+                        .is_some_and(|p| matches!(p.kind, super::RequestKind::Image | super::RequestKind::Presentation));
+                    protocol.response(packet)?;
+                    if !quiet { snapshot(protocol); }
+                }
             }
             if incoming.len() > super::FRAME_BYTES { return Err("Runner control frame exceeded v1 limit"); }
-            publish(state, protocol);
         }
         if protocol.snapshot.state == "ready" && !protocol.recovering_direct() {
             deferred.extend(receive.try_iter());
@@ -239,7 +263,15 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 if matches!(request, Request::Feature(super::features::Request::Recovery(super::recovery::Request::Recover { .. })))
                     && protocol.has_unsettled_requests() { break; }
                 let (request, admitted) = deferred.pop_front().unwrap();
+                if matches!(request, Request::Observe) {
+                    if let Some((&id, _)) = protocol.pending.iter().find(|(_, p)| p.kind == super::RequestKind::Observe) {
+                        let _ = admitted.send(Ok(id));
+                        continue;
+                    }
+                }
+                let quiet = matches!(request, Request::Image(..) | Request::Presentation(..));
                 let result = match request {
+                    Request::Observe => protocol.request(None, key),
                     Request::Command(command) => protocol.request(Some(command), key),
                     Request::Reference(request) => protocol.reference_request(request, key),
                     Request::Image(request, completion) => protocol.image_request(request, completion, key),
@@ -249,18 +281,16 @@ fn serve(read: &OwnedHandle, write: &OwnedHandle, protocol: &mut Protocol, key: 
                 };
                 let receipt = result.map(|bytes| {
                     outgoing.extend(bytes);
-                    publish(state, protocol);
+                    if !quiet { snapshot(protocol); }
                     protocol.next
                 }).map_err(str::to_owned);
                 let _ = admitted.send(receipt);
                 if protocol.recovering_direct() { break; }
             }
-            if observed.elapsed() >= Duration::from_secs(1)
-                && deferred.is_empty() && !protocol.recovering_direct()
-                && !protocol.pending.values().any(|pending| matches!(pending.kind, super::RequestKind::Observe)) {
-                outgoing.extend(protocol.request(None, key)?);
-                observed = Instant::now();
-            }
+        }
+        if let Some(bytes) = protocol.follow_up(key)? {
+            outgoing.extend(bytes);
+            snapshot(protocol);
         }
         if !outgoing.is_empty() {
             let mut count = 0;

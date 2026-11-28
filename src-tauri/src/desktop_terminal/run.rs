@@ -54,6 +54,7 @@ impl Capability {
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Observation {
+    #[serde(default, skip_serializing_if = "Option::is_none")] pub revision: Option<u64>,
     pub invocation_request_id: u64, pub request_status: String, pub initiation_status: String,
     pub dispatch_status: String, pub issue_run_id: String, pub authority_digest: String, pub state_revision: u64,
     pub lifecycle_status: String, pub lifecycle_terminal: bool, pub terminal_reason: String,
@@ -62,12 +63,13 @@ pub struct Observation {
     #[serde(skip_serializing_if = "Option::is_none")] pub code: Option<String>,
 }
 impl Observation {
-    fn valid(&self) -> bool {
+    pub(super) fn valid(&self) -> bool {
         let authority = !self.issue_run_id.is_empty() && self.issue_run_id.len() <= 256
             && !self.issue_run_id.chars().any(char::is_control) && self.authority_digest.len() == 64
             && self.authority_digest.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
             && self.state_revision > 0 && self.state_revision <= MAX_SAFE && !self.lifecycle_status.is_empty();
-        self.invocation_request_id > 0 && self.invocation_request_id <= MAX_SAFE && self.request_status == "accepted"
+        self.revision.is_none_or(|revision| (1..=MAX_SAFE).contains(&revision))
+            && self.invocation_request_id > 0 && self.invocation_request_id <= MAX_SAFE && self.request_status == "accepted"
             && matches!(self.dispatch_status.as_str(), "dispatching" | "returned" | "unknown")
             && match self.initiation_status.as_str() {
                 "started" => authority,

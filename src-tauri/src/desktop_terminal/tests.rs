@@ -84,6 +84,12 @@ fn installed_runners_independent_and_owned_shutdown() {
     harness.pump_for(Duration::from_secs(3));
     let first_control = first_pty.control_snapshot().unwrap();
     assert_eq!(first_control.results.last().unwrap().state, "accepted");
+    assert!(connected.coverage.iter().any(|topic| topic == "runner.observation.changed"));
+    assert!(harness.updates[&first].iter().any(|update| matches!(update,
+        control::Update::Snapshot { snapshot } if snapshot.results.last().is_some_and(|r| r.state == "accepted"))));
+    let serial = first_control.observation_serial;
+    harness.pump_for(Duration::from_millis(1300));
+    assert_eq!(first_pty.control_snapshot().unwrap().observation_serial, serial, "idle Runner must not observe again");
     assert!(second_pty.control_snapshot().unwrap().results.is_empty());
     first_pty.control_command("/model".into()).unwrap();
     harness.pump_for(Duration::from_secs(2));
@@ -145,6 +151,7 @@ struct Harness {
     events: mpsc::Receiver<PtyEvent>,
     sink: Sink,
     output: HashMap<String, Vec<u8>>,
+    updates: HashMap<String, Vec<control::Update>>,
     exited: HashMap<String, Option<u32>>,
 }
 
@@ -153,7 +160,7 @@ impl Harness {
         let (sender, events) = mpsc::channel();
         Self { sessions: Arc::new(Sessions::default()), events,
             sink: Arc::new(move |event| sender.send(event).map_err(|e| e.to_string())),
-            output: HashMap::new(), exited: HashMap::new() }
+            output: HashMap::new(), updates: HashMap::new(), exited: HashMap::new() }
     }
     fn open(&self, mode: &str) -> String {
         let (id, session) = self.sessions.reserve("test-window".into()).unwrap();
@@ -189,6 +196,7 @@ impl Harness {
     }
     fn accept(&mut self, event: PtyEvent) {
         match event {
+            PtyEvent::Control { id, update } => self.updates.entry(id).or_default().push(update),
             PtyEvent::Output { id, sequence, bytes } => {
                 self.output.entry(id.clone()).or_default().extend(bytes);
                 self.sessions.owned(&id, "test-window").unwrap().acknowledge(sequence).unwrap();

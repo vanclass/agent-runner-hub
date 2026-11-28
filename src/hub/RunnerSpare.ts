@@ -169,8 +169,7 @@ export class RunnerSpare {
     const slot = this.slot, root = this.current.installation?.root;
     if (!slot || !root) return;
     return { name: 'Runner', ready: () => !this.owns(slot) || slot.session.restartReady && slot.session.reusableIdle,
-      revalidation: () => ({ ...slot.session.restartObservation,
-        key: JSON.stringify([this.owns(slot), slot.session.restartObservation.key]) }),
+      revalidation: () => JSON.stringify([this.owns(slot), slot.session.restartObservation]),
       restart: async () => {
         if (!this.owns(slot)) return 'removed';
         try { if (!await slot.session.verifyReusable() || !slot.session.reusableIdle) return 'pending'; }

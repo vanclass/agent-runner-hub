@@ -50,6 +50,39 @@ fn ready() -> Protocol {
     protocol
 }
 #[test]
+fn event_coverage_precedes_baseline_and_gap_restarts_delivery() {
+    let mut p = Protocol::new(42, "expected".into());
+    p.hello(&hello()).unwrap();
+    p.request(None, "private-key").unwrap();
+    let mut initial = packet(1, "accepted", "completed");
+    initial["observation"] = observation();
+    initial["capabilities"]["event_delivery"] = json!({"version":1,
+        "event_types":{"runner.observation.changed":{"kind":"runner","owner":"observation"}}});
+    p.response(initial.clone()).unwrap();
+    assert_eq!(p.snapshot.state, "connecting");
+    let subscribe: Value = serde_json::from_slice(&p.follow_up("private-key").unwrap().unwrap()).unwrap();
+    assert_eq!(subscribe["operation"], "events.subscribe");
+    let mut reply = packet(2, "accepted", "completed");
+    reply["api_version"] = json!(1);
+    reply["subscription_id"] = json!(2);
+    reply["event_types"] = subscribe["event_types"].clone();
+    p.response(reply).unwrap();
+    p.follow_up("private-key").unwrap().unwrap();
+    let mut event = hello();
+    event.as_object_mut().unwrap().extend(json!({"event":"notification","subscription_id":2,"sequence":1,
+        "source":{"kind":"runner","owner":"observation"},"event_type":"runner.observation.changed","payload":{}})
+        .as_object().unwrap().clone());
+    p.notification(event.clone()).unwrap();
+    initial["request_id"] = json!(3);
+    p.response(initial).unwrap();
+    assert!(!p.snapshot.observation_current);
+    p.follow_up("private-key").unwrap().unwrap();
+    event["sequence"] = json!(3);
+    assert_eq!(p.notification(event.clone()).unwrap().unwrap().topic, "events.incomplete");
+    assert!(p.snapshot.coverage.is_empty() && p.snapshot.delivery_incomplete);
+    assert!(p.notification(event).unwrap().is_none());
+}
+#[test]
 fn authenticated_observation_updates_providers_independently() {
     let mut protocol = ready();
     for (id, (input, expected)) in (2..).zip([(Some(json!("codex")), json!("codex")),

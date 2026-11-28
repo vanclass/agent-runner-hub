@@ -13,7 +13,9 @@ type BriefPort = {
   stage: (session: string, body: string) => Promise<FeatureAdmission>;
   run: (session: string, request: RunRequest) => Promise<FeatureAdmission>;
   completionMs: number;
-  pollMs: number;
+  runCoverage: () => number | undefined;
+  observation: (id: number) => RunObservation | undefined;
+  when: <T>(read: () => T | undefined, timeout: number) => Promise<T | undefined>;
 };
 
 /** Owns stage → invoke → initiation observation, never Runner execution or lifecycle. */
@@ -25,9 +27,33 @@ export class RunnerBrief {
   private snapshot?: ControlSnapshot;
   private wake?: () => void;
   private reconciling = false;
-  private nextStatusAt = 0;
+  private submissionCoverage?: number;
+  private statusRead = false;
+  private staging?: { revision: number; count: number };
+  private stagedRequest?: number;
+  get stagedCount() { return this.snapshot?.deliveryIncomplete ? undefined : this.staging?.count; }
   constructor(private readonly port: BriefPort, private readonly changed: () => void) {}
-  observe(snapshot: ControlSnapshot) { this.snapshot = snapshot; this.wake?.(); }
+  observe(snapshot: ControlSnapshot) {
+    if (this.snapshot?.presentationGeneration !== snapshot.presentationGeneration) {
+      this.staging = undefined;
+      this.stagedRequest = undefined;
+    }
+    this.snapshot = snapshot;
+    this.mergeStaging(snapshot.observation?.brief_staging);
+    this.wake?.();
+  }
+  receiveBrief(payload: Record<string, unknown>) {
+    if (!['staged', 'consumed', 'cleared'].includes(String(payload.action)) || !this.mergeStaging(payload)) return;
+    if (payload.action === 'staged' && Number(payload.count) > 0 && Number.isSafeInteger(payload.staging_request_id)
+      && Number(payload.staging_request_id) > 0) this.stagedRequest = Number(payload.staging_request_id);
+    this.wake?.();
+  }
+  private mergeStaging(payload: unknown) {
+    if (!record(payload) || !Number.isSafeInteger(payload.revision) || !Number.isSafeInteger(payload.count)
+      || Number(payload.count) < 0 || Number(payload.revision) <= (this.staging?.revision ?? -1)) return false;
+    this.staging = { revision: Number(payload.revision), count: Number(payload.count) };
+    return true;
+  }
   private async receipt(identity: ConfigIdentity, admission: FeatureAdmission, operation: 'brief.stage' | RunRequest['operation']) {
     if (admission.state !== 'submitted') return admission.state === 'not-sent' ? 'rejected' : 'unknown';
     if (admission.generation !== identity.generation) return 'unknown';
@@ -41,6 +67,7 @@ export class RunnerBrief {
         if (!this.current(identity)) { finish('unknown'); return; }
         const result = snapshot?.features?.results.find(r => r.id === admission.id
           && r.feature === (operation === 'brief.stage' ? 'brief' : 'run') && r.operation === operation);
+        if (operation === 'brief.stage' && this.stagedRequest === admission.id) { finish('completed'); return; }
         if (!result) return;
         if (result.state === 'outcome-unknown') { finish('unknown'); return; }
         if (result.state === 'not-sent' || result.state === 'rejected' || result.state === 'failure') {
@@ -66,6 +93,8 @@ export class RunnerBrief {
       || runRequest?.state !== 'submitted' || runRequest.generation !== identity.generation
       || initiation?.initiation_status !== 'started' || initiation.lifecycle_terminal
       || initiation.invocation_request_id !== runRequest.id || observation.run_mode !== 'issue-run') return false;
+    const latest = this.port.observation(runRequest.id);
+    if (latest && (latest.lifecycle_terminal || latest.issue_run_id !== initiation.issue_run_id)) return false;
 
     const live = observation.issue_run_execution;
     const native = live?.interpreter;
@@ -87,62 +116,76 @@ export class RunnerBrief {
     evidence.code = result?.code;
     const reply = result?.reply;
     if (!record(reply) || !isRunObservation(reply.run, original)) return;
-    evidence.initiation = reply.run;
-    return reply.run;
+    return this.port.observation(original) ?? reply.run;
   }
   async reconcile(attempt: BriefResult, lease?: symbol) {
     const { identity, runRequest } = attempt;
     if (this.result !== attempt || attempt.status !== 'unknown' || this.busy || this.reconciling
       || !identity || runRequest?.state !== 'submitted' || runRequest.generation !== identity.generation
       || !Number.isSafeInteger(runRequest.id) || runRequest.id < 1 || !this.current(identity)
-      || !supportsRun(this.snapshot?.features?.run, 'run.status') || !this.port.available(lease, true)
-      || performance.now() < this.nextStatusAt) return;
+      || !supportsRun(this.snapshot?.features?.run, 'run.status') || !this.port.available(lease, true)) return;
+    const pushed = this.port.observation(runRequest.id);
+    if (pushed && this.applyReconciliation(attempt, pushed, {})) return;
+    const scope = this.port.runCoverage();
+    if (this.statusRead || scope !== undefined && scope === this.submissionCoverage) return;
+    this.statusRead = true;
     this.reconciling = true;
     const evidence: Partial<BriefResult> = {};
     try {
       const run = await this.readInitiation(identity, runRequest.id, evidence);
       if (this.result !== attempt || !this.current(identity) || !run) return;
-      if (run.initiation_status === 'started') {
-        Object.assign(attempt, evidence, { status: 'completed', outcome: 'started' });
-        this.blocked = false;
-        this.detail = msg('brief.requested');
-        this.changed();
-      } else if (run.initiation_status === 'not_started') {
-        Object.assign(attempt, evidence, { status: 'rejected', outcome: 'not_started' });
-        this.blocked = attempt.staged;
-        this.detail = msg('brief.notStarted');
-        this.changed();
-      }
+      this.applyReconciliation(attempt, run, evidence);
     } catch {
       // A status read can fail without settling the original invocation.
     } finally {
-      this.nextStatusAt = performance.now() + this.port.pollMs;
       this.reconciling = false;
     }
   }
+  private applyReconciliation(attempt: BriefResult, run: RunObservation, evidence: Partial<BriefResult>) {
+    if (run.initiation_status !== 'started' && run.initiation_status !== 'not_started') return false;
+    const started = run.initiation_status === 'started';
+    Object.assign(attempt, evidence, { initiation: run, status: started ? 'completed' : 'rejected',
+      outcome: started ? 'started' : 'not_started' });
+    this.blocked = !started && attempt.staged;
+    this.detail = msg(started ? 'brief.requested' : 'brief.notStarted');
+    this.changed();
+    return true;
+  }
+  updateRun() {
+    const attempt = this.result, request = attempt?.runRequest;
+    if (attempt?.status !== 'unknown' || !attempt.identity || !this.current(attempt.identity)
+      || request?.state !== 'submitted') return;
+    const run = this.port.observation(request.id);
+    if (run) this.applyReconciliation(attempt, run, {});
+  }
   private async initiation(identity: ConfigIdentity, original: number, evidence: Partial<BriefResult>): Promise<BriefResult['status']> {
-    // This deadline bounds missing initiation evidence, never the IssueRun lifecycle.
-    const deadline = performance.now() + this.port.completionMs;
     evidence.outcome = 'pending'; this.detail = msg('brief.pending'); this.changed();
-    while (this.current(identity) && supportsRun(this.snapshot?.features?.run, 'run.status')
-      && performance.now() < deadline) {
-      const run = await this.readInitiation(identity, original, evidence);
-      if (!run) return 'unknown';
-      if (run.initiation_status === 'started') { evidence.outcome = 'started'; return 'completed'; }
-      if (run.initiation_status !== 'pending') {
-        evidence.outcome = run.user_input_required || ['SUSPENDED', 'PAUSED', 'WAITING_FOR_HUMAN'].includes(run.owner_status)
-          ? 'attention' : run.initiation_status === 'not_started' ? 'not_started'
-            : run.dispatch_status === 'returned' ? 'owner_returned' : 'unknown';
-        return run.initiation_status === 'not_started' ? 'rejected' : 'unknown';
-      }
-      await new Promise(resolve => setTimeout(resolve, this.port.pollMs));
+    const pushed = await this.port.when(() => {
+      if (!this.current(identity)) return false as const;
+      const run = this.port.observation(original);
+      if (run?.initiation_status !== 'pending') return run;
+      const scope = this.port.runCoverage();
+      if (this.submissionCoverage === undefined || scope !== undefined && scope !== this.submissionCoverage) return null;
+    }, this.port.completionMs);
+    const needsStatus = pushed === null || pushed === undefined && this.port.runCoverage() !== this.submissionCoverage;
+    let run = pushed || undefined;
+    if (needsStatus && this.current(identity)) {
+      this.statusRead = true;
+      run = await this.readInitiation(identity, original, evidence);
     }
-    return 'unknown';
+    if (!run || run.initiation_status === 'pending') return 'unknown';
+    evidence.initiation = run;
+    if (run.initiation_status === 'started') { evidence.outcome = 'started'; return 'completed'; }
+    evidence.outcome = run.user_input_required || ['SUSPENDED', 'PAUSED', 'WAITING_FOR_HUMAN'].includes(run.owner_status)
+      ? 'attention' : run.initiation_status === 'not_started' ? 'not_started'
+        : run.dispatch_status === 'returned' ? 'owner_returned' : 'unknown';
+    return run.initiation_status === 'not_started' ? 'rejected' : 'unknown';
   }
   async submit(body: string, lease?: symbol, text?: string): Promise<BriefResult> {
     const identity = this.port.identity(), snapshot = this.snapshot;
     if (this.busy || this.blocked) return { brief: true, staged: false, status: 'rejected' };
     this.result = undefined;
+    this.statusRead = false;
     if (!identity || !this.port.available(lease) || snapshot?.observation?.run_mode !== 'issue-run'
       || body.length > 0 && (snapshot.features?.brief?.version !== 1 || !snapshot.features.brief.operations.includes('brief.stage'))
       || !supportsRun(snapshot.features?.run, 'run.invoke') || !supportsRun(snapshot.features?.run, 'run.status')) {
@@ -166,6 +209,7 @@ export class RunnerBrief {
           || !supportsRun(this.snapshot?.features?.run, 'run.status')) status = 'rejected';
         else {
           this.detail = msg(staged ? 'brief.requesting' : 'brief.runRequesting'); this.changed();
+          this.submissionCoverage = this.port.runCoverage();
           runRequest = await this.port.run(identity.session,
             { operation: 'run.invoke', api_version: 1, ...(text !== undefined && text.length > 0 ? { text } : {}) });
           status = await this.receipt(identity, runRequest, 'run.invoke');

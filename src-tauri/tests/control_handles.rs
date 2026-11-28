@@ -2,6 +2,7 @@
 #[path = "../src/desktop_terminal/control.rs"] mod control;
 #[path = "../src/desktop_terminal/job.rs"] mod job;
 #[path = "../src/desktop_terminal/startup.rs"] mod startup;
+#[path = "../src/image_validation.rs"] mod image_validation;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::{io::{Read, Write}, os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
     thread, time::{Duration, Instant}};
@@ -51,8 +52,21 @@ staged=0
 buffer=b''
 previous=0
 seen_commands=[]
+topic='runner.observation.changed'
+source=dict(kind='runner',owner='observation')
+event_cap=dict(version=1,event_types={topic:source})
+subscription=None
+sequence=0
+def invalidate():
+    global sequence
+    if subscription is not None:
+        sequence+=1
+        send(event='notification',event_type=topic,source=source,subscription_id=subscription,sequence=sequence,payload={})
 while True:
-    buffer+=os.read(reader,4096)
+    if b'\n' not in buffer:
+        chunk=os.read(reader,4096)
+        if not chunk: break
+        buffer+=chunk
     if b'\n' not in buffer: continue
     line,_,buffer=buffer.partition(b'\n'); packet=json.loads(line)
     assert packet.pop('key')==key
@@ -60,6 +74,12 @@ while True:
     request_id=packet['request_id']
     assert request_id>previous
     previous=request_id
+    if packet['operation']=='events.subscribe':
+        assert packet['api_version']==1 and packet['event_types']==[topic]
+        subscription=request_id
+        sequence=0
+        send(request_id=request_id,status='accepted',phase='completed',api_version=1,subscription_id=subscription,event_types=[topic])
+        continue
     send(request_id=request_id,status='accepted',phase='queued')
     if packet['operation']=='recovery.observe':
         reference=packet['reference']
@@ -73,6 +93,7 @@ while True:
         reference=packet['reference']
         assert reference['family']=='direct-run' and reference['session_id']=='retained-pipe'
         identity.update(session_id=reference['session_id'],connection_id='b'*32)
+        subscription=None
         send(event='hello',operations=['observe','command'],interaction_owner='runner_terminal')
         time.sleep(.1)
         send(request_id=request_id,status='accepted',phase='completed',reference=reference,recovery_status='recovered',outcome_unknown=False)
@@ -104,6 +125,7 @@ while True:
         elif packet['body']=='unknown':
             send(request_id=request_id,status='failure',phase='completed',staging_status='unknown',outcome_unknown=True)
             brief_cap['operations']=[]
+            invalidate()
         else:
             assert packet['body']=='  한글 🌍\n    second\t \n\n'
             staged+=1
@@ -144,11 +166,13 @@ while True:
             initiating=request_id
             foreground=dict(state='active',interaction_id='exact-revision',kind='selection',prompt='Canonical target',context='Pipe fixture',actions=['select','cancel'],text_input=None,
                 choices=[dict(choice_id='visible-choice',label='Visible choice',description='Canonical description',enabled=True,disabled_reason='')])
+            invalidate()
             continue
         time.sleep(.2)
         assert seen_commands==json.loads(os.environ['HUB_SLASH_COMMANDS'])
         if os.environ.get('HUB_CONTROL_OBSERVATION_FAILURE')=='1':
             reject_observation=True
+            invalidate()
             continue
         break
     if reject_observation and packet['operation']=='observe':
@@ -158,7 +182,7 @@ while True:
         selection=dict(account='',model='fixture',reasoning_effort='medium',service_tier='default',source='configuration',next_model='fixture',next_reasoning_effort='medium',next_service_tier='default'),
         execution=dict(lifecycle_state='INTERACTIVE_READY',owned_execution_alive=False,workflow_kind=''),
         attention=dict(foreground_interaction_active=False,restart_confirmation_required=False,termination_confirmation_active=False,account_setup_required=False,awaiting_user_command_reason='',suspension_status='',suspension_reason=''),commands=[dict(id=c,text=c,aliases=['/d'] if c=='/disabled' else [],parent_id=None,visible=True,enabled=c!='/disabled',disabled_reason='',description='',children=[]) for c in ['/status','/brief','/target','/disabled']])
-    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(recovery=recovery_cap,generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap,session_config=config_cap))
+    send(request_id=request_id,status='accepted',phase='completed',observation=observation,capabilities=dict(recovery=recovery_cap,generated_images=image_cap,brief=brief_cap,run=run_cap,interaction=interaction_cap,session_config=config_cap,event_delivery=event_cap))
 "#;
 
 #[test]
@@ -220,7 +244,7 @@ fn authenticated_roundtrip(observation_failure: bool) {
     let second_session = second.get_argv().windows(2).find(|pair| pair[0] == "--session-id").unwrap()[1].to_string_lossy();
     assert_ne!(session, second_session);
     let mut child = pair.slave.spawn_command(command).unwrap();
-    let client: std::sync::Arc<control::Client> = launch.bind(child.process_id().unwrap());
+    let client: std::sync::Arc<control::Client> = launch.bind_with_updates(child.process_id().unwrap(), false, |_| {});
     drop(pair.slave);
     let deadline = Instant::now() + Duration::from_secs(10);
     while client.snapshot().state == "connecting" && Instant::now() < deadline { thread::sleep(Duration::from_millis(10)); }
@@ -234,6 +258,7 @@ fn authenticated_roundtrip(observation_failure: bool) {
     assert!(!public.contains(&private_key), "Private launch key reached public snapshot");
     for private in ["key", "process_id", "session_id", "connection_id"] { assert!(!public.contains(private)); }
     assert!(ready.generated_images_supported);
+    assert_eq!(ready.coverage, ["runner.observation.changed"]);
     let exact: control::recovery::Reference = serde_json::from_value(serde_json::json!({
         "version":1,"family":"direct-run","session_id":"retained-pipe","generation_id":"generation-1",
         "thread_id":"thread-1","resume_id":"","source_exec_run_id":"exec-1"})).unwrap();
@@ -248,6 +273,12 @@ fn authenticated_roundtrip(observation_failure: bool) {
         }
         assert!(Instant::now() < deadline, "{snapshot:?}"); thread::sleep(Duration::from_millis(10));
     }
+    while client.snapshot().state == "connecting" {
+        assert!(Instant::now() < deadline, "Successor subscription did not settle");
+        thread::sleep(Duration::from_millis(10));
+    }
+    let successor = client.snapshot();
+    assert_ne!(successor.subscription, ready.subscription);
     let observed = client.feature(control::features::Request::Recovery(control::recovery::Request::Observe {
         api_version:1, reference:exact.clone() }));
     let control::features::Admission::Submitted { id: observed_id, .. } = observed else { panic!("{observed:?}") };
@@ -271,7 +302,7 @@ fn authenticated_roundtrip(observation_failure: bool) {
             assert_eq!(result.state, "accepted");
             let Some(control::features::Response::SessionConfig(control::session_config::Response::TestSelection(selected))) = &result.reply else { panic!("{result:?}") };
             assert_eq!(selected.account.profile_name, "pipe-test"); assert_eq!(selected.authentication, "available");
-            assert_eq!(snapshot.observation_serial, ready.observation_serial); break;
+            assert_eq!(snapshot.observation_serial, successor.observation_serial); break;
         }
         assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
     }
@@ -293,15 +324,18 @@ fn authenticated_roundtrip(observation_failure: bool) {
             assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
         }
     }
+    let observed = client.snapshot().observation_serial;
     client.command("/target".into()).unwrap();
     while client.snapshot().results.last().unwrap().state != "pending-interaction" {
         assert!(Instant::now() < deadline); thread::sleep(Duration::from_millis(10));
     }
-    let observed = client.snapshot().observation_serial;
-    thread::sleep(Duration::from_secs(3));
+    while client.snapshot().observation_serial == observed {
+        assert!(Instant::now() < deadline, "Foreground invalidation did not refresh the observation");
+        thread::sleep(Duration::from_millis(10));
+    }
     let refreshed = client.snapshot();
     assert!(refreshed.observation_serial > observed, "foreground commands must not starve observation");
-    assert!(refreshed.observation_age_ms.unwrap() < 2500);
+    assert!(refreshed.observation_current);
     assert_eq!(refreshed.results.last().unwrap().state, "pending-interaction");
     for request in [control::interaction::Request::Observe { api_version:1 },
         control::interaction::Request::Respond { api_version:1, interaction_id:"exact-revision".into(),

@@ -36,7 +36,7 @@ export function registerRunnerTabRaces({ test, expect, transport, configure, cre
     await own(page).locator('.remove-action').click();
     await page.getByRole('dialog').getByRole('button', { name: 'Terminate and close tab', exact: true }).click();
   };
-  const reasons = ['execution', 'retained-task', 'suspension', 'foreground', 'native-unknown', 'stale',
+  const reasons = ['execution', 'retained-task', 'suspension', 'foreground', 'native-unknown', 'unverified',
     'reservation', 'draft', 'staged-attachment', 'restart-confirmation', 'termination-confirmation', 'account-setup', 'pending-prompt',
     'config-pending', 'config-draft', 'config-unknown', 'work-active', 'work-uncertain',
     'reference-unknown', 'reference-unverified', 'reference-inventory', 'input-unknown'];
@@ -187,7 +187,7 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
         if (reason === 'account-setup') o.attention.account_setup_required = true;
         if (reason === 'pending-prompt') o.attention.awaiting_user_command_reason = 'pending';
         if (reason === 'native-unknown') o.execution.lifecycle_state = 'UNRECOGNIZED';
-        if (reason === 'stale') native.control.age = 10000;
+        if (reason === 'unverified') native.control.unverified = true;
         if (reason === 'config-pending') session.control.config.activity = 'planning';
         if (reason === 'config-draft') session.control.config.setDraft({ root: 'unapplied' });
         if (reason === 'config-unknown') session.control.config.applications.push({ verification: 'unknown' });
@@ -202,6 +202,7 @@ test('runner removal retires tab before delayed close and isolates neighbor', as
           window.__nativeFixture.failWrite(); session.setDraft('/status');
           try { await session.submit(); } catch {}
         }
+        await window.__nativeFixture.publish(session.control.sessionId);
         const id = session.view.id;
         if (!owner.close(id) || owner.get(id) || owner.close(id)) throw new Error('visible retirement failed');
       }, reason);

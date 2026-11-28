@@ -152,7 +152,10 @@ export function registerAutoRecovery({ test, expect, transport }) {
         window.__nativeFixture.sessions.get('pty-1')?.feature.features.results.filter(result =>
           result.operation === 'recovery.current' && result.reply.reference_status === status).length ?? 0, status);
       for (const status of ['absent', 'unverified', 'identity_conflict']) {
-        await page.evaluate(status => { window.__nativeFixture.sessions.get('pty-1').currentStatus = status; }, status);
+        await page.evaluate(status => {
+          window.__nativeFixture.sessions.get('pty-1').currentStatus = status;
+          window.__nativeFixture.notify('pty-1', 'recovery.changed');
+        }, status);
         await expect.poll(() => reports(status), { timeout: 8_000 }).toBeGreaterThan(0);
         expect((await saved(page)).tabs[0].recovery).toEqual(unresolved);
       }
@@ -161,6 +164,7 @@ export function registerAutoRecovery({ test, expect, transport }) {
         const session = window.__nativeFixture.sessions.get('pty-1');
         session.currentStatus = undefined;
         session.connectedRecovery = verified;
+        window.__nativeFixture.notify('pty-1', 'recovery.changed');
       }, verified);
       const restored = { reference: verified.reference, runMode: verified.runMode, state: 'eligible' };
       await expect.poll(async () => (await saved(page)).tabs[0].recovery, { timeout: 8_000 }).toEqual(restored);

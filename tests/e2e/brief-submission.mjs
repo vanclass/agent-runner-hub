@@ -1,12 +1,13 @@
 import { drop } from './composer-attachments.mjs';
 
 async function publishIssueExecution(page, issueRunId = 'issue-fixture') {
-  await page.evaluate(issue_run_id => {
+  await page.evaluate(async issue_run_id => {
     const { control } = window.__nativeFixture.sessions.get('pty-1');
     control.observation.issue_run_execution = { schema_version: 'issue-run-execution-v1',
       status: 'running', issue_run_id, state_revision: 2,
       interpreter: { invocation_id: 'interpreter-1', launch_generation: 1,
         thread_id: 'thread-1', turn_id: 'turn-1', instance_id: 'instance-1' } };
+    await window.__nativeFixture.publish('pty-1');
   }, issueRunId);
 }
 
@@ -43,7 +44,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     await input(page).fill(body);
     await input(page).press('Control+Enter');
     await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
-      .filter(request => request.operation === 'run.status').length)).toBeGreaterThan(0);
+      .filter(request => request.operation === 'run.invoke').length)).toBe(1);
     await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
     await page.clock.fastForward(66000);
     await expect.poll(() => input(page).evaluate(element => {
@@ -100,8 +101,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
     expect(await readDelivery()).toEqual(delivered);
     expect(delivered.staged).toEqual([{ operation: 'brief.stage', api_version: 1, body }]);
     expect(delivered.requests.filter(request => request.operation === 'run.invoke')).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
-    expect(new Set(delivered.requests.filter(request => request.operation === 'run.status')
-      .map(request => request.invocation_request_id))).toEqual(new Set([8001]));
+    expect(delivered.requests.filter(request => request.operation === 'run.status')).toHaveLength(0);
     expect(delivered.ids).toEqual(ids);
     expect(delivered.active).toBe(true);
     await expect(input(page)).toHaveValue('Independent draft');
@@ -147,7 +147,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         const run = input(page);
         await input(page).fill(body); await run.press('Control+Enter');
         await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
-          .filter(r => r.operation === 'run.status').length), { timeout: 35000 }).toBeGreaterThan(0);
+          .filter(r => r.operation === 'run.invoke').length), { timeout: 35000 }).toBe(1);
         if (!tab) await page.keyboard.press('Control+Shift+Home');
         await expect(input(page)).toBeDisabled(); await expect(input(page)).toHaveValue(body);
         await expect(run).toHaveValue(body);
@@ -164,7 +164,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
         });
         expect(evidence.runs.filter(r => r.operation === 'run.invoke'))
           .toEqual([{ operation: 'run.invoke', api_version: 1 }]);
-        expect(evidence.runs.filter(r => r.operation === 'run.status').every(r => r.invocation_request_id === 8001)).toBe(true);
+        expect(evidence.runs.filter(r => r.operation === 'run.status')).toHaveLength(0);
         expect(evidence.staging).toEqual(body ? [{ operation: 'brief.stage', api_version: 1, body }] : []);
         expect(evidence.mode).toBe('issue-run');
         expect(evidence.work.filter(r => r.operation === 'work.submit')).toEqual([]);
@@ -217,7 +217,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       await page.keyboard.up('Enter'); await page.keyboard.up('Control');
       if (!tab) await page.keyboard.press('Control+Shift+Home');
       await expect.poll(() => page.evaluate(() => window.__nativeFixture.sessions.get('pty-1').run.requests
-        .filter(r => r.operation === 'run.status').length), { timeout: 35000 }).toBeGreaterThan(0);
+        .filter(r => r.operation === 'run.invoke').length), { timeout: 35000 }).toBe(1);
       await expect(input(page)).toBeDisabled();
       await expect(input(page)).toHaveValue(body);
       await feedback(page, tab, 'brief.pending');
@@ -228,7 +228,7 @@ export function registerBriefSubmission({ test, expect, transport, configure, cr
       expect(original.body).toEqual([{ operation: 'brief.stage', api_version: 1, body }]);
       expect(original.commands).toEqual([]);
       expect(original.run.filter(r => r.operation === 'run.invoke')).toEqual([{ operation: 'run.invoke', api_version: 1 }]);
-      expect(original.run.filter(r => r.operation === 'run.status').every(r => r.invocation_request_id === 8001)).toBe(true);
+      expect(original.run.filter(r => r.operation === 'run.status')).toHaveLength(0);
       expect(original.mode).toBe('issue-run');
       expect(original.work.filter(r => r.operation === 'work.submit')).toEqual([]); expect(original.writes).toEqual([]);
       await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').run.mode = 'started'; });

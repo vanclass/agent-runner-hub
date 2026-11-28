@@ -66,20 +66,21 @@ export function registerRunnerTabs({ test, expect, transport, configure, create 
       await expect(page.locator('.status-dot.completed')).toHaveCount(0);
     });
   }
-  for (const observation of ['fresh', 'unavailable', 'stale', 'rejected']) {
+  for (const observation of ['fresh', 'unavailable', 'unverified', 'rejected']) {
     test(`runner tabs completed TaskRun requires fresh authority for idle: ${observation}`, async ({ page }) => {
       await ready(page); await assign(page);
       const marker = row(page, 'Runner 1').locator('.status-dot');
       await expect(marker).toHaveClass('status-dot running');
       await expect(marker).toHaveCSS('color', 'rgb(59, 130, 246)');
-      await page.evaluate(observation => {
+      await page.evaluate(async observation => {
         const s = window.__nativeFixture.sessions.get('pty-1');
         s.feature.mode = 'succeeded';
         if (observation === 'unavailable') s.control.observation = null;
-        if (observation === 'stale') s.control.age = 999999;
+        if (observation === 'unverified') s.control.unverified = true;
         if (observation === 'rejected') Object.assign(s.control, { state: 'disconnected',
           observationFailure: { requestId: 901, status: 'failure', phase: 'completed', code: 'DISPATCH_FAILED' },
           detail: 'Runner observation was rejected (observe request 901, status failure, phase completed, code DISPATCH_FAILED)' });
+        await window.__nativeFixture.publish('pty-1');
       }, observation);
       await expect(marker).toHaveClass(`status-dot ${observation === 'fresh' ? 'idle' : 'unknown'}`);
       await expect(marker).toHaveAttribute('aria-label', observation === 'fresh' ? 'Verified idle' : 'Status unknown');

@@ -195,16 +195,21 @@ export function registerRunnerRestarts({ test, expect, transport, configure, cre
     });
   }
 
-  test('global restart stale authenticated observations await recovery without losing the batch', async ({ page }) => {
+  test('global restart waits for authenticated observation coverage to recover', async ({ page }) => {
     await owner(page);
     await page.evaluate(async () => {
-      const s = window.__originals[0], f = window.__nativeFixture.sessions.get('pty-1');
-      f.control.age = 3000; await s.control.fresh().catch(() => {});
+      const f = window.__nativeFixture;
+      f.sessions.get('pty-1').control.unverified = true;
+      await f.publish('pty-1');
       window.__restartOwner.restartAll();
     });
     expect((await snapshot(page)).pending).toBe(1);
     expect(await page.evaluate(() => window.__nativeFixture.closed)).toEqual([]);
-    await page.evaluate(() => { window.__nativeFixture.sessions.get('pty-1').control.age = 0; });
+    await page.evaluate(async () => {
+      const f = window.__nativeFixture;
+      f.sessions.get('pty-1').control.unverified = false;
+      await f.publish('pty-1');
+    });
     await expect.poll(async () => (await snapshot(page)).restarted).toBe(1);
     expect(await page.evaluate(() => window.__nativeFixture.count())).toBe(2);
     await cleanup(page);

@@ -53,6 +53,14 @@ fn public_work_identity_receipts_status_and_exact_owned_shutdown() {
     let receipt = observed(&submit);
     assert!(receipt.work.is_some(), "{submit:?}");
     if submit.state == "accepted" { assert_eq!(receipt.receipt.as_deref(), Some("dispatch_received")); }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if harness.updates[&first_id].iter().any(|update| matches!(update,
+            control::Update::Notification { notification } if notification.topic == "work.changed"
+                && notification.payload["work"]["submission_request_id"].as_u64() == Some(original))) { break; }
+        assert!(Instant::now() < deadline, "Missing correlated Work notification");
+        harness.pump_for(Duration::from_millis(20));
+    }
     let status = call(&mut harness, &first, work::Request::Status { api_version:1, submission_request_id:original });
     let work = observed(&status).work.as_ref().unwrap();
     assert_eq!(work.submission_request_id, Some(original));

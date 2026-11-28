@@ -1,7 +1,7 @@
 import { msg, type HubText } from './i18n';
 import type { ControlSnapshot } from './runnerControl';
 import { record, type ConfigIdentity, type FeatureAdmission } from './runnerConfigContract';
-import { isRunReceipt, type RunRequest } from './runnerRunContract';
+import { isRunObservation, isRunReceipt, type RunObservation, type RunRequest } from './runnerRunContract';
 
 // Match native slash-command admission when typed Run uses feature transport.
 export const slashCommandMaxBytes = 4096;
@@ -17,6 +17,17 @@ type Attempt = {
 };
 
 export class RunnerTypedRun {
+  private readonly observations = new Map<number, RunObservation>();
+  private connection?: number;
+  observation(id: number) { return this.observations.get(id); }
+  receive(value: unknown, pushed = true) {
+    if (!record(value) || !isRunObservation(value, Number(value.invocation_request_id))
+      || pushed && value.revision === undefined) return;
+    const id = value.invocation_request_id;
+    const previous = this.observations.get(id);
+    if (previous?.revision !== undefined && previous.revision >= (value.revision ?? 0)) return;
+    this.observations.set(id, value);
+  }
   private attempt?: Attempt;
   private delivered?: ConfigIdentity;
   private result?: Settlement;
@@ -67,9 +78,16 @@ export class RunnerTypedRun {
   }
 
   observe() {
+    const { session, snapshot } = this.current();
+    if (this.connection !== snapshot.presentationGeneration) {
+      this.connection = snapshot.presentationGeneration;
+      this.observations.clear();
+    }
+    for (const result of snapshot.features?.results ?? [])
+      if (result.feature === 'run' && result.state === 'accepted' && result.phase === 'completed' && record(result.reply)
+        && (result.operation === 'run.status' || isRunReceipt(result.reply, result.id))) this.receive(result.reply.run, false);
     const attempt = this.attempt;
     if (!attempt) return;
-    const { session, snapshot } = this.current();
     if (session !== attempt.identity.session || snapshot.features?.generation !== attempt.identity.generation) {
       this.unknown();
       return;
