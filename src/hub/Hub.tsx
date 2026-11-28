@@ -9,6 +9,7 @@ import { createHubLogCapture } from './HubLogCapture';
 import { TaskPanel } from './TaskPanel';
 import { HubPreferences } from './preferences';
 import { NotificationSoundPlayer } from './notificationSoundPlayback';
+import { HubWorkNotifications } from './HubWorkNotifications';
 import { resolveTerminalTheme } from './terminalTheme';
 import { errorText, initializeHubLanguage, useHubTranslation, type HubText } from './i18n';
 import { ApplicationMenu, type ApplicationPreferences } from './ApplicationMenu';
@@ -48,6 +49,9 @@ export function Hub({ initialRunners = [] }: { initialRunners?: readonly RunnerV
   const [shortcuts, setShortcuts] = useState(preferences.value.shortcuts ?? defaultShortcuts);
   const [soundSelections, setSoundSelections] = useState(preferences.notificationSounds);
   const [soundPlayer] = useState(() => new NotificationSoundPlayer());
+  const [workNotifications] = useState(() => new HubWorkNotifications(
+    () => preferences.notificationSounds, sound => soundPlayer.notify(sound)));
+  useEffect(() => workNotifications.subscribe(sessions), [sessions, workNotifications]);
   const [launching, setLaunching] = useState(false);
   const launchPending = useRef(false);
   const [launchError, setLaunchError] = useState<HubText>('');

@@ -167,6 +167,8 @@ export class RunnerWork {
   private viewed = false;
   unread = false;
   private afterEventId = 0;
+  private initialInventoryEnd?: number;
+  private readonly liveObservations = new WeakSet<WorkAttempt>();
   private presentationAfter = -1;
   private previousAttempts = new Set<WorkAttempt>();
   private more = false;
@@ -186,6 +188,9 @@ export class RunnerWork {
     return latest;
   }
   get current() { return this.latest(this.attempts); }
+  hasLiveObservation(attempt: WorkAttempt) {
+    return this.liveObservations.has(attempt);
+  }
   hasConfirmedStart(attempt: WorkAttempt) {
     return !attempt.notSent && this.confirmedStarts.has(attempt);
   }
@@ -371,7 +376,10 @@ export class RunnerWork {
       return;
     }
     if (request.after_event_id !== this.afterEventId) return;
-    for (const work of reply.works) if (isWork(work)) this.upsert(work);
+    // Use the first page watermark across later pages and subscription refreshes.
+    this.initialInventoryEnd ??= reply.latest_event_id;
+    for (const work of reply.works) if (isWork(work))
+      this.upsert(work, undefined, work.event_id > this.initialInventoryEnd);
     this.afterEventId = reply.next_after_event_id;
     this.more = reply.has_more; this.discoveryFailed = false;
   }
@@ -388,7 +396,7 @@ export class RunnerWork {
     }
     this.upsert(reply.work, attempt);
   }
-  private upsert(observation: WorkObservation, attempt?: WorkAttempt) {
+  private upsert(observation: WorkObservation, attempt?: WorkAttempt, live = true) {
     const key = observation.observation_id;
     const work = copy(observation);
     attempt ??= this.attempts.find(a => same(a.identity, this.identity) && (a.observationId === key
@@ -408,6 +416,10 @@ export class RunnerWork {
     }
     if (previous && same(work, previous) && !attempt.uncertain) return;
     attempt.observationId = key; attempt.work = work; attempt.notSent = false;
+    if (work.event_id !== previous?.event_id) {
+      if (live) this.liveObservations.add(attempt);
+      else this.liveObservations.delete(attempt);
+    }
     // A verified start remains evidence even when its completion outcome is unknown.
     if (work.started_event_id > 0) this.confirmedStarts.add(attempt);
     else this.confirmedStarts.delete(attempt);

@@ -7,7 +7,7 @@ import { configurationSelection, configurationPresentation } from '../../tests/n
 import { runnerReadOnly } from '../../tests/native/webdriver/runner-read-only.mjs';
 import { rendererProbe } from '../../tests/native/webdriver/probe.mjs';
 import { languageCase } from '../../tests/native/webdriver/language.mjs';
-import { notificationSoundsCase } from '../../tests/native/webdriver/notification-sounds.mjs';
+import { notificationSoundsCase, notificationSoundEventsCase } from '../../tests/native/webdriver/notification-sounds.mjs';
 import { hubLogCase } from '../../tests/native/webdriver/hub-log.mjs';
 import { subagentRun } from '../../tests/native/webdriver/subagent.mjs';
 import { terminalCommands } from '../../tests/native/webdriver/terminal-presentation.mjs';
@@ -40,7 +40,7 @@ export async function runProbe(args, { smoke = false } = {}) {
   const languagePresentation = languageCase(true);
   const cases = [...defaults, rendererProbe, languageCase(), languagePresentation,
     hubLogCase(runnerRoot), hubLogCase(runnerRoot, true), subagentRun(runnerRoot), terminalCommands(runnerRoot), terminalCommands(runnerRoot, true),
-    configurationPresentation(runnerRoot), domInteractions, notificationSoundsCase];
+    configurationPresentation(runnerRoot), domInteractions, notificationSoundsCase, notificationSoundEventsCase(runnerRoot)];
   for (const surface of ['runner', 'single-entry']) {
     cases.push(semanticWorkCase(runnerRoot, root, surface));
     cases.push(semanticWorkCase(runnerRoot, root, surface, true));

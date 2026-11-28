@@ -41,14 +41,22 @@ export class NotificationSoundPlayer {
 
   async play(sound: NotificationSound): Promise<boolean> {
     this.stop();
+    return this.playSound(sound, this.playback);
+  }
+
+  notify(sound: NotificationSound): Promise<boolean> {
+    return this.playSound(sound);
+  }
+
+  private async playSound(sound: NotificationSound, preview?: number): Promise<boolean> {
     if (sound === null) return true;
-    const playback = this.playback;
+    const cancelled = () => preview !== undefined && preview !== this.playback;
     try {
       const context = this.context ??= new AudioContext();
       const [, bytes] = await Promise.all([context.resume(), readSound(sound)]);
-      if (playback !== this.playback) return true;
+      if (cancelled()) return true;
       const buffer = await context.decodeAudioData(bytes);
-      if (playback !== this.playback) return true;
+      if (cancelled()) return true;
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.connect(context.destination);
@@ -58,10 +66,10 @@ export class NotificationSoundPlayer {
       };
       try { source.start(); }
       catch (error) { source.disconnect(); throw error; }
-      this.source = source;
+      if (preview !== undefined) this.source = source;
       return true;
     } catch {
-      return playback !== this.playback;
+      return cancelled();
     }
   }
 }

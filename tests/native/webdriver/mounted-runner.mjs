@@ -11,6 +11,19 @@ export function mountedRunner(browser, operation, argument) {
       const identity = { tab, session: session.control.sessionId };
       switch (operation) {
         case 'identity': return identity;
+        case 'notification-probe': {
+          const control = session.control;
+          if (identity.session !== argument.session || control.snapshot.features?.generation !== argument.generation
+            || !control.observationFresh || control.work.current) return false;
+          const work = { observation_id: 'terminal:1', origin: 'terminal', submission_request_id: null,
+            run_mode: 'direct-run', state: 'succeeded', admission: 'admitted', terminal: true, outcome: 'succeeded',
+            work_id: { kind: 'direct_turn', id: 'fixture-turn' }, execution_id: 'fixture-exec',
+            event_id: 2, started_event_id: 1, owner_revision: 0, owner: 'direct_settlement', code: '' };
+          control.receive({ kind: 'notification', notification: {
+            topic: 'work.changed', payload: { change: 'updated', work },
+          } });
+          return control.work.current?.work?.work_id?.id === 'fixture-turn';
+        }
         case 'configuration': return identity.session === argument ? session.control.config.actual : null;
         case 'quick-state': {
           const { control, quick } = session;
