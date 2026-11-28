@@ -205,12 +205,13 @@ export class SingleEntry {
       const attempt = await submission as WorkAttempt;
       const active = this.active;
       if (active?.token !== token || active.attempt !== attempt) return;
+      const started = attempt.work?.started_event_id;
       if (attempt.notSent || attempt.work?.admission === 'rejected' && !attempt.work.started_event_id) {
         attempted = false;
         this.phase = 'incomplete';
         this.detail = msg('work.rejected', { code: attempt.work?.code || attempt.submission?.code || '' });
-      } else if (attempt.work?.started_event_id) {
-        this.settleDelivered(active, msg('work.started', { name: session.view.name, event: attempt.work.started_event_id }));
+      } else if (started && session.control.work.hasConfirmedStart(attempt)) {
+        this.settleDelivered(active, msg('work.started', { name: session.view.name, event: started }));
       } else {
         this.phase = 'unknown';
         this.detail = msg('work.retained', { state: attempt.work?.state || 'unknown' });
@@ -312,7 +313,8 @@ export class SingleEntry {
       this.settleUnsent(active.token);
       return;
     }
-    if (!attempt.work?.started_event_id) return;
-    this.settleDelivered(active, msg('work.started', { name: view.name, event: attempt.work.started_event_id }));
+    const started = attempt.work?.started_event_id;
+    if (started && control.work.hasConfirmedStart(attempt))
+      this.settleDelivered(active, msg('work.started', { name: view.name, event: started }));
   }
 }

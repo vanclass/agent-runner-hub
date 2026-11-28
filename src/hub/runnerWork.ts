@@ -155,12 +155,14 @@ export class RunnerWork {
   private closed = false;
   private inventory?: Promise<void>;
   private inventoryDirty = true;
-  private inventoryRevision = 0;
+  private coverageRevision = 0;
   private inventoryUnverified = false;
   private inventoryVerified = false;
   private coverage = false;
   private deferredWork: WorkObservation[] = [];
   private wakeStart?: () => void;
+  private pendingStart?: { attempt: WorkAttempt; coverageInterrupted: boolean; checkedRevision?: number };
+  private refreshing?: { attempt: WorkAttempt; revision: number; result: Promise<FeatureResult> };
   private discoveryPaused = false;
   private viewed = false;
   unread = false;
@@ -221,8 +223,9 @@ export class RunnerWork {
   }
   coverageChanged(covered: boolean) {
     this.inventoryUnverified ||= this.coverage && !covered;
+    if (this.pendingStart && (this.coverage || covered)) this.pendingStart.coverageInterrupted = true;
     this.coverage = covered;
-    this.inventoryRevision++;
+    this.coverageRevision++;
     this.inventoryVerified = false;
     this.inventoryDirty = covered;
     this.wakeStart?.();
@@ -239,7 +242,7 @@ export class RunnerWork {
     if (!this.inventoryDirty && this.coverage && this.inventoryVerified) return Promise.resolve();
     this.inventoryDirty = false;
     this.afterEventId = 0;
-    const revision = this.inventoryRevision;
+    const revision = this.coverageRevision;
     this.inventory = this.readInventory(revision).finally(() => {
       this.inventory = undefined;
       this.wakeStart?.();
@@ -252,8 +255,8 @@ export class RunnerWork {
       await this.request({ operation: 'work.list', api_version: 1,
         after_event_id: this.afterEventId, limit: this.capability!.max_page_size! });
       if (this.discoveryFailed) throw new HubError(msg('work.unavailable'));
-    } while (this.more && revision === this.inventoryRevision);
-    if (revision !== this.inventoryRevision) throw new HubError(msg('work.unavailable'));
+    } while (this.more && revision === this.coverageRevision);
+    if (revision !== this.coverageRevision) throw new HubError(msg('work.unavailable'));
     this.inventoryVerified = true;
     this.inventoryUnverified = false;
     this.wakeStart?.();
@@ -466,34 +469,39 @@ export class RunnerWork {
     if (!identity || !this.supported) throw new HubError(msg('work.unavailable'));
     const attempt: WorkAttempt = { identity: copy(identity), instruction, uncertain: false, notSent: true };
     this.attempts.push(attempt);
+    this.pendingStart = { attempt, coverageInterrupted: false };
     onAttempt?.(attempt);
     try {
       const result = await this.request({ operation: 'work.submit', api_version: 1, instruction }, attempt, attachmentLease);
       attempt.submission = copy(result);
       if (result.state === 'not-sent' || result.admission === 'rejected') { attempt.notSent = true; return attempt; }
       attempt.notSent = false;
-      if (!attempt.submissionId || !attempt.work) { attempt.uncertain = true; return attempt; }
+      if (!attempt.submissionId || !attempt.work) attempt.uncertain = true;
       await this.awaitStart(attempt);
       return attempt;
     } catch (reason) {
       if (attempt.submissionId || !attempt.notSent) attempt.uncertain = true;
       throw reason;
+    } finally {
+      if (attempt.notSent && this.pendingStart?.attempt === attempt) this.pendingStart = undefined;
     }
   }
   private async awaitStart(attempt: WorkAttempt) {
     const done = () => this.closed || attempt.uncertain || !attempt.work || attempt.work.started_event_id > 0
       || attempt.work.terminal || ['suspended', 'incomplete', 'failed', 'unknown'].includes(attempt.work.state);
-    if (done()) return;
-    if (!this.coverage) { await this.refresh(attempt); return; }
-    await new Promise<void>(resolve => {
+    if (!done() && !this.coverage && this.pendingStart?.attempt === attempt)
+      this.pendingStart.coverageInterrupted = true;
+    const interrupted = () => this.pendingStart?.attempt === attempt && this.pendingStart.coverageInterrupted;
+    if (!done() && !interrupted()) await new Promise<void>(resolve => {
       const finish = () => { clearTimeout(timer); this.wakeStart = undefined; resolve(); };
       const timer = setTimeout(finish, deliveryTimeoutMs);
-      this.wakeStart = () => { if (done()) finish(); };
+      this.wakeStart = () => { if (done() || interrupted()) finish(); };
     });
-    if (!done() && !this.coverage) await this.refresh(attempt);
+    if (interrupted()) await this.syncSubmission();
   }
   async refreshStatus() {
-    if (this.current) await this.refresh(this.current);
+    const attempt = this.current;
+    if (attempt) await this.refresh(attempt, this.refreshRequest(attempt));
   }
   get refreshSupported() {
     return !!this.refreshRequest(this.current);
@@ -506,10 +514,40 @@ export class RunnerWork {
     if (this.supports('work.status') && attempt.submissionId)
       return { operation: 'work.status', api_version: 1, submission_request_id: attempt.submissionId };
   }
-  private async refresh(attempt: WorkAttempt) {
-    if (this.busy) return;
+  syncSubmission() {
+    const pending = this.pendingStart;
+    if (!pending) return;
+    const { attempt } = pending;
+    if (this.hasConfirmedStart(attempt) || attempt.work?.terminal
+      || !attempt.uncertain && attempt.work?.admission === 'rejected') {
+      this.pendingStart = undefined;
+      return;
+    }
+    if (!pending.coverageInterrupted) return;
     const request = this.refreshRequest(attempt);
-    if (request) await this.request(request);
+    if (!request) return;
+    if (this.refreshing) {
+      if (this.refreshing.attempt !== attempt) return;
+      if (this.refreshing.revision === this.coverageRevision) pending.checkedRevision = this.coverageRevision;
+      return this.refreshing.result;
+    }
+    // A read that leaves the start unresolved is bounded to this coverage revision.
+    if (pending.checkedRevision === this.coverageRevision || this.busy
+      || !this.transport.available(request.operation)) return;
+    pending.checkedRevision = this.coverageRevision;
+    return this.refresh(attempt, request);
+  }
+  private refresh(attempt: WorkAttempt, request?: WorkRequest) {
+    if (!request) return;
+    if (this.refreshing) return this.refreshing.attempt === attempt ? this.refreshing.result : undefined;
+    if (this.busy) return;
+    const revision = this.coverageRevision;
+    const result = this.request(request).finally(() => {
+      this.refreshing = undefined;
+      this.changed();
+    });
+    this.refreshing = { attempt, revision, result };
+    return result;
   }
   close() {
     if (this.closed) return;

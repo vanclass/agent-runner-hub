@@ -482,7 +482,7 @@ export class RunnerSession {
       if (reason) throw new HubError(msg('runtime.entry.unsent', { reason }));
     };
     ready();
-    const previous = this.control.work.current;
+    let attempt: WorkAttempt | undefined;
     this.control.assignmentLocked = true;
     try {
       const result = await submitConfiguredWork<WorkAttempt | BriefResult>(this.control.config, this.control.work, defaults, draft, async () => {
@@ -492,7 +492,8 @@ export class RunnerSession {
         await this.control.fresh(true); ready();
         this.references.assertReadyForDelivery();
         return this.references.deliveryLease;
-      }, briefRun ? lease => this.control.brief.submit(draft, lease) : undefined);
+      }, briefRun ? lease => this.control.brief.submit(draft, lease) : undefined,
+      submitted => { attempt = submitted; });
       if ('brief' in result) {
         if (result.status === 'completed') {
           if (this.view.draft === draft) {
@@ -506,8 +507,7 @@ export class RunnerSession {
       }
     } finally {
       this.control.assignmentLocked = false;
-      const attempt = this.control.work.current;
-      if (attempt && attempt !== previous) this.retainSubmission(attempt, draft);
+      if (attempt) this.retainSubmission(attempt, draft);
     }
   }
   async submit(briefRun = false) {

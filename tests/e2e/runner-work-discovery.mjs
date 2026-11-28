@@ -73,6 +73,111 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
   });
   const row = (page, name) => page.locator('.runner-row').filter({ has: page.getByText(name, { exact: true }) });
   const home = page => page.getByRole('button', { name: 'Single Entry', exact: true }).click();
+  for (const operation of ['work.observe', 'work.status']) {
+    const singleEntry = operation === 'work.status';
+    test(`Work start reconciles after a coverage gap with a retained attachment via ${operation}`, async ({ page }) => {
+      await transport(page, undefined, { auto: true, work: true, workMode: 'dispatch',
+        workOperations: ['work.list', 'work.submit', operation] });
+      await configure(page);
+      await expect(page.getByRole('combobox', { name: 'Requested Model', exact: true })
+        .getByRole('option', { name: 'm0', exact: true })).toBeAttached();
+      await page.getByRole('combobox', { name: 'Requested Run Mode', exact: true }).selectOption(JSON.stringify('task-run'));
+      if (!singleEntry) await create(page);
+      const draft = page.getByRole('textbox', { name: `${singleEntry ? 'Single Entry' : 'Runner'} instructions`, exact: true });
+      await draft.evaluate(element => {
+        let fiber = element[Object.keys(element).find(key => key.startsWith('__reactFiber$'))];
+        for (; fiber; fiber = fiber.return) {
+          const props = fiber.memoizedProps;
+          if (props?.session || props?.entry) {
+            window.__gapEntry = props.entry;
+            window.__gapSession = () => props.session ?? props.entry.active?.session;
+            break;
+          }
+        }
+      });
+      await drop(page, ['/fixture/image.png']);
+      await draft.fill('retain original submission');
+      await draft.press('Enter');
+      await expect.poll(() => page.evaluate(() => {
+        const session = window.__gapSession();
+        if (!session?.control.work.current?.work) return;
+        window.__gapControl = session.control;
+        return { locked: session.control.attachmentLocked, start: session.control.work.current.work.started_event_id };
+      })).toEqual({ locked: true, start: 0 });
+
+      await page.evaluate(async singleEntry => {
+        const fixture = window.__nativeFixture, id = window.__gapControl.sessionId;
+        const native = fixture.sessions.get(id);
+        Object.assign(native, { subscription: null, incomplete: true });
+        native.control.state = 'connecting';
+        await fixture.publish(id);
+        const work = native.feature.work;
+        const started = { ...work, state: 'active', admission: 'admitted', work_id: { kind: 'task', id: 'missed-start' },
+          event_id: work.event_id + 1, started_event_id: work.event_id + 1 };
+        native.feature.work = started;
+        native.feature.observations.set(started.observation_id, started);
+        fixture.notify(id, 'work.changed', { work: started, change: 'updated' });
+        if (singleEntry) native.feature.fault = 'crossed';
+        else {
+          const send = native.feature.submit.bind(native.feature);
+          const hold = new Promise(resolve => { window.__finishGapRead = resolve; });
+          native.feature.submit = async request => {
+            if (request.operation === 'work.observe') {
+              window.__gapRead = { request, locked: window.__gapControl.attachmentLocked };
+              await hold;
+            }
+            return send(request);
+          };
+        }
+        native.feature.requests.splice(0, native.feature.requests.findIndex(r => r.operation === 'work.submit'));
+        Object.assign(native, { subscription: 2, incomplete: false });
+        native.control.state = 'ready';
+        await fixture.publish(id);
+      }, singleEntry);
+      const reads = () => page.evaluate(() => {
+        const { feature } = window.__nativeFixture.sessions.get(window.__gapControl.sessionId);
+        return feature.requests.filter(r => ['work.status', 'work.observe'].includes(r.operation));
+      });
+      const original = await page.evaluate(() => window.__gapControl.work.current.submissionId);
+      const expectedRead = singleEntry ? { operation, api_version: 1, submission_request_id: original }
+        : { operation, api_version: 1, observation_id: `api:${original}` };
+      if (singleEntry) {
+        await home(page);
+        await expect.poll(reads).toEqual([expectedRead]);
+        await expect.poll(() => page.evaluate(() => window.__gapEntry.phase)).toBe('unknown');
+        await expect(draft).toHaveValue('retain original submission');
+        await expect(draft).toBeDisabled();
+        await page.evaluate(async () => {
+          const control = window.__gapControl, fixture = window.__nativeFixture;
+          if (!control.attachmentLocked || control.work.hasConfirmedStart(control.work.current))
+            throw Error('Unresolved receipt settled the original submission');
+          await window.__gapEntry.submit('/fixture/install');
+          const native = fixture.sessions.get(control.sessionId);
+          native.feature.fault = undefined;
+          native.subscription = 3;
+          await fixture.publish(control.sessionId);
+        });
+      } else {
+        await expect.poll(() => page.evaluate(() => window.__gapRead)).toEqual({ request: expectedRead, locked: true });
+        await expect(draft).toHaveValue('retain original submission');
+        await page.evaluate(async () => {
+          const { work } = window.__gapControl;
+          const shared = work.refreshStatus();
+          window.__finishGapRead();
+          await shared;
+        });
+      }
+      await expect(draft).toHaveValue('');
+      await expect(page.locator('.attachment-chip')).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => window.__gapControl.attachmentLocked)).toBe(false);
+      expect(await reads()).toEqual(singleEntry ? [expectedRead, expectedRead] : [expectedRead]);
+      expect(await page.evaluate(() => {
+        const { feature } = window.__nativeFixture.sessions.get(window.__gapControl.sessionId);
+        return { submissions: feature.requests.filter(r => r.operation === 'work.submit').length,
+          first: feature.requests.slice(0, 2).map(r => r.operation) };
+      })).toEqual({ submissions: 1, first: ['work.submit', operation] });
+    });
+  }
   async function publish(page, id, changes = {}) {
     await page.evaluate(async ({ id, changes }) => {
       const { terminalWork } = await import('/tests/fixtures/work.ts');
@@ -133,7 +238,7 @@ export function registerRunnerDiscovery({ test, expect, transport, configure, cr
           saved: localStorage.getItem('agent-runner-hub.workspace.v1') };
       });
       expect(evidence.requests.filter(r => r.operation === 'work.submit')).toHaveLength(route === 'composer' ? 2 : 0);
-      expect(evidence.requests.filter(r => r.operation === 'work.status')).toHaveLength(0);
+      expect(evidence.requests.filter(r => ['work.status', 'work.observe'].includes(r.operation))).toHaveLength(0);
       expect(evidence.requests.some(r => r.operation === 'work.list' && r.after_event_id === 0)).toBe(true);
       const input = records(evidence.writes, 'pty-1').filter(r => r.down);
       expect(input).toEqual([]);

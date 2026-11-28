@@ -222,8 +222,11 @@ export class RunnerControl {
     const previous = this.snapshot;
     this.snapshot = snapshot;
     this.providerEvents.coverage(this.covers('provider.codex.notification'));
-    if (snapshot.subscription !== previous.subscription && (snapshot.subscription || previous.subscription)) {
-      this.work.coverageChanged(this.covers('work.changed'));
+    const subscriptionChanged = (snapshot.subscription ?? null) !== (previous.subscription ?? null);
+    const workCovered = this.covers('work.changed');
+    if (subscriptionChanged || workCovered !== !!previous.coverage?.includes('work.changed'))
+      this.work.coverageChanged(workCovered);
+    if (subscriptionChanged) {
       this.recovery.invalidate();
       this.images.invalidate();
     }
@@ -246,6 +249,7 @@ export class RunnerControl {
         && !observation?.attention.foreground_interaction_active && !this.config.busy && !this.work.busy && !this.brief.busy,
       observation?.run_mode,
       observation?.attention.foreground_interaction_active || observation?.attention.account_setup_required);
+    void this.work.syncSubmission();
     if (!snapshot.deliveryIncomplete) this.work.syncInventory();
     this.images.observe(snapshot.generatedImagesSupported === true, snapshot.state === 'ready' && !snapshot.deliveryIncomplete,
       this.busy || !!observation?.attention.foreground_interaction_active);
