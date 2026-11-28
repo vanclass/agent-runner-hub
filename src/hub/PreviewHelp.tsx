@@ -13,7 +13,7 @@ export function PreviewHelp({ onClose }: { onClose: () => void }) {
     <section><h2>{t('preview.other')}</h2><p>{t('preview.otherLimits')}</p></section>
     <section><h2>{t('preview.limitations')}</h2>
       <p>{t('preview.limits')}</p><p>{t('preview.textModes')}</p>
-      <p>{t('preview.tableGuide')}</p>
+      <p>{t('preview.tableGuide')}</p><p>{t('preview.changesGuide')}</p>
       <p>{t('preview.pdfLimits')}</p><p>{t('preview.archiveLimits')}</p>
     </section>
   </HubDialog>;

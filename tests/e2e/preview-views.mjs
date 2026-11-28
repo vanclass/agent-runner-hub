@@ -21,6 +21,18 @@ const csv = '\uFEFF0007,"two,items","said ""hello""","line\r\nbreak",,9007199254
   + '=1+2,<b>literal</b>\n' + 'short\r'.repeat(98) + ','.repeat(26) + 'last,';
 const tsv = '0008\t"two\titems"\t"say ""hi"""\t"line\nbreak"\t\t  padded  \t\rnext\tvalue';
 const malformedCsv = 'first,row\r\n"unterminated,field';
+const diff = [
+  'diff --git a/file.txt b/file.txt', 'index 123..456 100644',
+  '--- a/file.txt', '+++ b/file.txt', '@@ -4,2 +7,2 @@ example',
+  ' context', '-\told  ', '+\t<script>literal</script>  ',
+  '@@ -10 +13 @@', '-last', '\\ No newline at end of file', '+' + 'long line '.repeat(40),
+  'diff --git a/new.txt b/new.txt', 'new file mode 100644',
+  '--- /dev/null', '+++ b/new.txt', '@@ -0,0 +1 @@', '+created',
+  'diff --git a/deleted.txt b/deleted.txt', 'deleted file mode 100644',
+  '--- a/deleted.txt', '+++ /dev/null', '@@ -1 +0,0 @@', '-deleted', '',
+].join('\r\n');
+const patch = '--- old.txt\t2026-01-01\n+++ new.txt\t2026-01-02\n@@ -1 +1 @@\n-old\n+new\n';
+const badPatch = patch.replace('@@ -1 +1 @@', '@@ -1 +1,2 @@');
 
 export async function imageGestures(page, expect, width = 640) {
   const viewport = page.locator('.focused-image-viewport'), image = viewport.locator('img');
@@ -54,10 +66,15 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
   }
   async function setup(page, entry = false) {
     await ready(page);
-    await page.evaluate(({ png, gif, original, source, pdf, json, records, markdown, tables }) => {
+    await page.evaluate(({ png, gif, original, source, pdf, json, records, markdown, tables, changes }) => {
       const native = window.__TAURI_INTERNALS__, invoke = native.invoke;
       native.invoke = async (command, args) => {
         if (command !== 'local_file_preview') return invoke(command, args);
+        const change = changes[args.path];
+        if (change !== undefined) {
+          window.changePreviewReads = (window.changePreviewReads ?? 0) + 1;
+          return { kind: 'text', path: args.path, text: change };
+        }
         const table = tables[args.path];
         if (table !== undefined) {
           window.tablePreviewReads = (window.tablePreviewReads ?? 0) + 1;
@@ -91,6 +108,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
         return { kind: 'unavailable', path: args.path, reason: 'unsupported' };
       };
     }, { png, gif: animatedFixture().bytes, original, source, pdf, json, records, markdown,
+      changes: { '/fixture/source.DIFF': diff, '/fixture/source.patch': patch, '/fixture/bad.patch': badPatch },
       tables: { '/fixture/data.CSV': csv, '/fixture/data.tsv': tsv, '/fixture/malformed.csv': malformedCsv } });
     if (entry) await page.getByRole('button', { name: 'Single Entry', exact: true }).click();
   }
@@ -697,6 +715,80 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(bad.locator('.focused-text')).toHaveJSProperty('textContent', malformedCsv);
   });
 
+  test('Changes View shows Git files, hunks, and aligned lines with original copy', async ({ page, context }, info) => {
+    await setup(page);
+    await drop(page, ['/fixture/source.DIFF']);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await captureClipboardInput(page);
+    const opener = page.getByRole('button', { name: 'Open attachment source.DIFF' });
+    await opener.click();
+    const viewer = page.getByRole('dialog', { name: 'source.DIFF' });
+    const raw = viewer.getByRole('button', { name: 'Raw View' });
+    const changes = viewer.getByRole('button', { name: 'Changes View' });
+    await expect(raw).toHaveAttribute('aria-pressed', 'true');
+    await expect(viewer.locator('.preview-diff')).toHaveCount(0);
+    await viewer.getByRole('searchbox').fill('context');
+    await viewer.getByRole('button', { name: 'Word wrap' }).click();
+    await changes.click();
+    const region = viewer.getByRole('region', { name: 'Changes View' });
+    await expect(region.locator('.preview-diff-file strong')).toHaveText(['a/file.txt → b/file.txt', 'b/new.txt', 'a/deleted.txt']);
+    await expect(region.locator('.preview-diff-file [data-change="+"]')).toHaveText(['+2 added', '+1 added', '+0 added']);
+    await expect(region.locator('.preview-diff-file [data-change="-"]')).toHaveText(['−2 removed', '−0 removed', '−1 removed']);
+    await expect(region.locator('.preview-diff-hunk')).toHaveText(['@@ -4,2 +7,2 @@ example', '@@ -10 +13 @@', '@@ -0,0 +1 @@', '@@ -1 +0,0 @@']);
+    const cells = await region.locator('.preview-diff-line td').allTextContents();
+    expect(cells).toEqual(['4', '7', ' ', 'context', '5', '', '-', '\told  ', '', '8', '+', '\t<script>literal</script>  ',
+      '10', '', '-', 'last', '', '', '\\', ' No newline at end of file', '', '13', '+', 'long line '.repeat(40),
+      '', '1', '+', 'created', '1', '', '-', 'deleted']);
+    await expect(region.locator('script')).toHaveCount(0);
+    expect(await region.evaluate(node => {
+      node.scrollLeft = node.scrollWidth;
+      const contained = node.scrollLeft > 0 && node.getBoundingClientRect().right
+        <= node.closest('dialog').getBoundingClientRect().right;
+      node.scrollLeft = 0;
+      return contained;
+    })).toBe(true);
+    await info.attach('changes-light', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await viewer.getByRole('button', { name: 'Copy text' }).click();
+    expect(await page.evaluate(() => window.previewClipboardInput)).toBe(diff);
+    await raw.click();
+    await expect(viewer.getByRole('searchbox')).toHaveValue('context');
+    await expect(viewer.getByRole('button', { name: 'Word wrap' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(viewer.locator('.focused-text')).toHaveJSProperty('textContent', diff);
+    await changes.click();
+    await expect(region).toBeVisible();
+    expect(await page.evaluate(() => window.changePreviewReads)).toBe(1);
+    await viewer.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(opener).toBeFocused();
+  });
+
+  test('Changes View shows unified PATCH and localized malformed feedback in Korean Black', async ({ page }, info) => {
+    await setup(page, true);
+    await drop(page, ['/fixture/source.patch', '/fixture/bad.patch']);
+    await chooseAppPreference(page, 'view', 'theme', 'black');
+    await page.keyboard.press('Escape');
+    await chooseAppPreference(page, 'settings', 'language', 'ko');
+    await page.keyboard.press('Escape');
+    const opener = page.getByRole('button', { name: '첨부 파일 source.patch 열기' });
+    await opener.click();
+    const viewer = page.getByRole('dialog', { name: 'source.patch' });
+    await expect(viewer.getByRole('button', { name: '원본 보기' })).toHaveAttribute('aria-pressed', 'true');
+    await viewer.getByRole('button', { name: '변경사항 보기' }).click();
+    await expect(viewer.locator('.preview-diff-file strong')).toHaveText('old.txt → new.txt');
+    await expect(viewer.locator('.preview-diff-file [data-change="+"]')).toHaveText('+1줄 추가');
+    await expect(viewer.getByRole('columnheader', { name: '새 번호' })).toHaveCSS('white-space', 'nowrap');
+    await expect(viewer).toHaveCSS('background-color', 'rgb(17, 18, 20)');
+    await info.attach('changes-korean-black', { body: await viewer.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+    await page.getByRole('button', { name: '첨부 파일 bad.patch 열기' }).click();
+    const bad = page.getByRole('dialog', { name: 'bad.patch' });
+    await bad.getByRole('button', { name: '변경사항 보기' }).click();
+    await expect(bad.getByRole('status')).toContainText('이 파일을 통합 변경사항으로 표시할 수 없습니다.');
+    await expect(bad.getByRole('table')).toHaveCount(0);
+    await bad.getByRole('button', { name: '원본 보기' }).click();
+    await expect(bad.locator('.focused-text')).toHaveJSProperty('textContent', badPatch);
+  });
+
   test('preview guide follows Settings and shares truthful catalog domains', async ({ page }, info) => {
     await ready(page);
     const settings = appTrigger(page, 'settings'), help = appTrigger(page, 'help');
@@ -721,6 +813,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(dialog).toContainText('JSON View');
     await expect(dialog).toContainText('Record View');
     await expect(dialog).toContainText('Choose Table View for read-only .csv and .tsv previews.');
+    await expect(dialog).toContainText('Open Changes View for read-only unified changes in .diff and .patch files.');
     await expect(dialog).toContainText('GIFs animate in thumbnails and in the focused viewer');
     await expect(dialog).toContainText('without scripts');
     await info.attach('catalog-help', { body: await page.screenshot(), contentType: 'image/png' });
@@ -738,6 +831,7 @@ export function registerPreviewViews({ test, expect, ready, drop }) {
     await expect(localized).toContainText('GIF는 썸네일과 확대 보기에서 재생됩니다.');
     await expect(localized).toContainText('레코드 보기');
     await expect(localized).toContainText('.csv 및 .tsv 파일은 테이블 보기에서 읽기 전용으로 확인할 수 있습니다.');
+    await expect(localized).toContainText('.diff 및 .patch 파일은 변경사항 보기에서 읽기 전용으로 확인할 수 있습니다.');
     await expect(localized).toContainText('MD 보기에서 읽기 전용으로 표시');
     await info.attach('catalog-korean-black', { body: await page.screenshot(), contentType: 'image/png' });
   });

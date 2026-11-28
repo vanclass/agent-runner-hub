@@ -4,10 +4,12 @@ import { RawTextPreview } from './RawTextPreview';
 import { JsonPreview, JsonlPreview } from './StructuredTextPreview';
 import { MarkdownPreview } from './MarkdownPreview';
 import { DelimitedTextPreview } from './DelimitedTextPreview';
+import { DiffPreview } from './DiffPreview';
 import type { StructuredTextMode } from './previewCatalog';
 import './textPreview.css';
 
 const structuredViews = {
+  changes: { label: 'preview.changesView', View: DiffPreview },
   json: { label: 'preview.jsonView', View: JsonPreview },
   records: { label: 'preview.recordView', View: JsonlPreview },
   markdown: { label: 'preview.markdownView', View: MarkdownPreview },

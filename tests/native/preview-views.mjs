@@ -40,9 +40,14 @@ const tableOriginals = new Map([
   ['original.csv', { text: '0007,"one,two",\r\n900719925474099312345', cells: ['0007', 'one,two', '', '900719925474099312345', '', ''] }],
   ['original.tsv', { text: '0008\t"one\ttwo"\t\r\n"line\nbreak"', cells: ['0008', 'one\ttwo', '', 'line\nbreak', '', ''] }],
 ]);
-const files = ['original.txt','original.md',...jsonOriginals.keys(),...tableOriginals.keys(),'original.ts','Dockerfile','.gitignore']
+const diffOriginals = new Map([
+  ['original.diff', 'diff --git a/notes.txt b/notes.txt\r\n--- a/notes.txt\r\n+++ b/notes.txt\r\n@@ -3 +4 @@\r\n- old  \r\n+ new  \r\n'],
+  ['original.patch', '--- /dev/null\n+++ new.txt\n@@ -0,0 +1 @@\n+created\n'],
+]);
+const files = ['original.txt','original.md',...jsonOriginals.keys(),...tableOriginals.keys(),...diffOriginals.keys(),'original.ts','Dockerfile','.gitignore']
   .map(name => path.join(directory, name));
-const textFixture = name => name === 'original.md' ? markdown : jsonOriginals.get(name) ?? tableOriginals.get(name)?.text ?? original;
+const textFixture = name => name === 'original.md' ? markdown
+  : jsonOriginals.get(name) ?? tableOriginals.get(name)?.text ?? diffOriginals.get(name) ?? original;
 for (const file of files) await fs.writeFile(file, textFixture(path.basename(file)), 'utf8');
 after(async () => {
   for (const file of [image, brokenPdf, brokenZip, ...imageFiles, ...files]) await fs.unlink(file);
@@ -179,10 +184,19 @@ const preview = defineNativeCase({
         await hub.dom.click(modes + ' button:first-child');
         assert.equal((await viewer.state()).text, expected);
         assert.equal(await fs.readFile(file, 'utf8'), expected);
+      } else if (diffOriginals.has(name)) {
+        await hub.dom.click(modes + ' button:last-child');
+        assert.deepEqual(await browser.execute(() =>
+          [...document.querySelectorAll('.focused-viewer[open] .preview-diff-line td')].map(cell => cell.textContent)),
+        name === 'original.diff' ? ['3', '', '-', ' old  ', '', '4', '+', ' new  '] : ['', '1', '+', 'created']);
+        await hub.dom.click(modes + ' button:first-child');
+        assert.equal((await viewer.state()).text, expected);
+        assert.equal(await fs.readFile(file, 'utf8'), expected);
       } else {
         assert.equal(await browser.execute(selector => Boolean(document.querySelector(selector)), modes), false);
       }
-      texts.push({ name, original: true, structured: name === 'original.md' || jsonOriginals.has(name) || tableOriginals.has(name) });
+      texts.push({ name, original: true,
+        structured: name === 'original.md' || jsonOriginals.has(name) || tableOriginals.has(name) || diffOriginals.has(name) });
       await viewer.close();
       await hub.wait(async () => !await viewer.state(), 'Local text preview did not close');
     }

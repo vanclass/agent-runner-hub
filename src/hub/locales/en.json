@@ -1,6 +1,13 @@
 {
   "preview": {
     "tableView": "Table View",
+    "changesView": "Changes View",
+    "changesInvalid": "This file could not be shown as a unified diff. Switch to Raw View to see the complete source.",
+    "changesOld": "Old",
+    "changesNew": "New",
+    "changesAdded": "+{{count}} added",
+    "changesRemoved": "−{{count}} removed",
+    "changesGuide": "Open Changes View for read-only unified changes in .diff and .patch files. It shows changes by file and hunk with old and new line numbers. Raw View shows the complete source.",
     "tableEmpty": "No rows to display.",
     "tableInvalid": "This file could not be shown as a table. Switch to Raw View to see the complete source.",
     "tablePreviousRows": "Previous rows",

@@ -23,6 +23,6 @@
   {"category":"text","extensions":["yaml","yml","toml","ini","cfg"],"syntax":"config"},
   {"category":"text","extensions":["sh","bat","cmd","ps1"],"syntax":"script"},
   {"category":"text","extensions":["css","scss"],"syntax":"style"},
-  {"category":"text","extensions":["diff","patch"],"syntax":"diff"},
+  {"category":"text","extensions":["diff","patch"],"syntax":"diff","structuredMode":"changes"},
   {"category":"text","filenames":["Dockerfile","Makefile",".gitignore"],"syntax":"config"}
 ]
