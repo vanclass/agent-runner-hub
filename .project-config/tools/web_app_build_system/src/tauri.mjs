@@ -8,8 +8,6 @@ import { inspectNative, prepareNative, targetTriple } from './native/environment
 import { command } from './native/process.mjs';
 import { stageBackend, ownedOverride, prepareCargo } from './native/staging.mjs';
 import { verifyProducts } from './native/products.mjs';
-import { copyNsis } from './native/nsis.mjs';
-import { copyMacProducts, verifyMacProducts } from './native/macos-products.mjs';
 import { resolveSigning, signingOverride, signProducts } from './signing/build.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -38,7 +36,7 @@ export const tauriAdapter = {
     const cargoOutput = path.join(workspace, 'cargo');
     if (macos) await fs.mkdir(workspace);
     try {
-      stage('Building native frontend', 'Running the existing TypeScript/Vite build into this execution’s staging directory; Ctrl+C cancels.');
+      stage('Building native frontend', 'Running the existing TypeScript/Vite build into this execution’s staging directory; Ctrl+C cancels.', 'frontend');
       const outDir = path.relative(root, frontend).split(path.sep).join('/');
       if (await npm(environment.web.cli, ['run', 'build', '--', '--outDir', outDir, '--emptyOutDir', '--base', './'], root, signal) !== 0) {
         throw new Error('The existing TypeScript/Vite frontend build failed. Earlier Web/native products remain intact.');
@@ -57,7 +55,7 @@ export const tauriAdapter = {
       if (metadata.truncated) throw new Error('Cargo metadata exceeded the supported staged crate boundary; preserve the custom workspace and resolve its staging integration.');
       const graph = JSON.parse(metadata.stdout);
       if (path.resolve(graph.target_directory) !== cargoOutput) throw new Error('Cargo output escaped the execution-specific target directory.');
-      if (!macos) await copyNsis(environment, graph.target_directory, root, signal);
+      if (!macos) await (await import('./native/nsis.mjs')).copyNsis(environment, graph.target_directory, root, signal);
       const pkg = graph.packages.find(item => path.resolve(item.manifest_path) === path.join(backend, 'Cargo.toml'));
       const tauriDependencies = pkg?.dependencies?.filter(item => item.name === 'tauri' && !item.kind) || [];
       if (!tauriDependencies.length || tauriDependencies.some(item => !/^[~^=]?\s*2(?:\.(?:\d+|\*)){0,2}$/.test(item.req))) {
@@ -68,7 +66,7 @@ export const tauriAdapter = {
       if (!binaryName || !binaries.some(item => item.name === binaryName) || /[/\\]/.test(binaryName)) {
         throw new Error('Native main binary identity is ambiguous. Set a compatible Cargo default-run/mainBinaryName before retrying.');
       }
-      stage('Packaging ' + (macos ? 'macOS' : 'Windows') + ' / Tauri 2', 'Compiling ' + triple + ' and native bundles in staging; Ctrl+C cancels.');
+      stage('Packaging ' + (macos ? 'macOS' : 'Windows') + ' / Tauri 2', 'Compiling ' + triple + ' and native bundles in staging; Ctrl+C cancels.', 'package');
       // A Windows drive path can deserialize as a URL. Relative paths select
       // Tauri's embedded directory assets instead of a runtime file location.
       const frontendDist = macos ? frontend : path.relative(backend, frontend).split(path.sep).join('/');
@@ -83,7 +81,8 @@ export const tauriAdapter = {
       if (priorLock && !priorLock.equals(nativeLock)) throw new Error('Tauri changed the staged copy of the existing Cargo.lock. Resolve its managed feature/dependency compatibility; the original lockfile is unchanged.');
       const release = path.join(cargoOutput, triple, 'release');
       let signingEvidence = { status: 'unsigned', publicCaTrust: 'not-applicable' };
-      if (macos) await copyMacProducts(release, output);
+      const macProducts = macos ? await import('./native/macos-products.mjs') : undefined;
+      if (macProducts) await macProducts.copyMacProducts(release, output);
       else {
         const nsis = path.join(release, 'bundle/nsis');
         const installers = (await fs.readdir(nsis)).filter(name => name.endsWith('-setup.exe'));
@@ -92,19 +91,20 @@ export const tauriAdapter = {
         await fs.copyFile(path.join(release, binaryName + '.exe'), path.join(output, binaryName + '.exe'), fs.constants.COPYFILE_EXCL);
         await fs.copyFile(path.join(nsis, installers[0]), path.join(output, installers[0]), fs.constants.COPYFILE_EXCL);
         if (signing) {
-          stage('Signing and verifying Windows products', 'Verifying EXE, NSIS installer and embedded application signatures and RFC 3161 timestamps; Ctrl+C cancels.');
+          stage('Signing and verifying Windows products', 'Verifying EXE, NSIS installer and embedded application signatures and RFC 3161 timestamps; Ctrl+C cancels.', 'verify');
           signingEvidence = await signProducts(output, signing, binaryName + '.exe', installers[0], signal, workspace);
         }
       }
       stage('Verifying native products', 'Checking architecture, identity, integrity and stable inputs. Windows signing: '
-        + (macos ? 'not applicable' : signingEvidence.status) + '. Installation and GUI execution are unverified.');
+        + (macos ? 'not applicable' : signingEvidence.status) + '. Installation and GUI execution are unverified.', 'verify');
       const identity = { target: macos ? 'macos-tauri' : 'windows-tauri', targetTriple: triple, identifier: nativeConfig.identifier,
         productName: nativeConfig.productName, version: nativeConfig.version, binary: binaryName,
         nativeLock: hash(nativeLock), versions: environment.versions,
         signatureStatus: macos ? 'not-verified' : signingEvidence.status,
         ...(!macos ? { signing: signingEvidence } : {}),
         guiVerificationStatus: 'not-verified', installerExecutionStatus: 'not-executed' };
-      const integrity = macos ? await verifyMacProducts(output, identity, signal) : await verifyProducts(output, identity);
+      const integrity = macProducts ? await macProducts.verifyMacProducts(output, identity, signal)
+        : await verifyProducts(output, identity);
       const currentEnvironment = await inspectNative(root, signal, { buildSystem: true, expectedPlatform: macos ? 'darwin' : 'win32' });
       if (!currentEnvironment.ready) {
         throw new Error('Native prerequisites became unavailable during packaging: ' + currentEnvironment.hints.join('; ')

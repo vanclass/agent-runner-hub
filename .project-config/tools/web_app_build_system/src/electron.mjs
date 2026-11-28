@@ -46,7 +46,7 @@ export const electronAdapter = {
     const frontend = path.join(application, 'frontend');
     try {
       await fs.mkdir(application, { recursive: true });
-      stage('Building Electron frontend', 'Running the existing TypeScript/Vite build in staging. Ctrl+C cancels; previous products remain intact.');
+      stage('Building Electron frontend', 'Running the existing TypeScript/Vite build in staging. Ctrl+C cancels; previous products remain intact.', 'frontend');
       const outDir = path.relative(root, frontend).split(path.sep).join('/');
       if (await npm(environment.runtime.web.cli, ['run', 'build', '--', '--outDir', outDir, '--emptyOutDir', '--base', './'], root, signal) !== 0) throw new Error('TypeScript/Vite compilation failed. Source and earlier Web/native products are preserved.');
       await verifyOutput(frontend, './');
@@ -71,7 +71,7 @@ export const electronAdapter = {
           exe: identity.name + '.exe', setupExe: identity.name + '-' + identity.version + '-Setup.exe', noMsi: true } }]
       };
       await fs.writeFile(path.join(application, 'forge.config.cjs'), 'module.exports = ' + JSON.stringify(forgeConfig, null, 2) + ';\n');
-      stage('Packaging Windows / Electron', 'Electron Forge packages Chromium and creates a Squirrel.Windows installer. Native modules may require Python/MSVC/SDK externally; no elevation is performed. Ctrl+C cancels.');
+      stage('Packaging Windows / Electron', 'Electron Forge packages Chromium and creates a Squirrel.Windows installer. Native modules may require Python/MSVC/SDK externally; no elevation is performed. Ctrl+C cancels.', 'package');
       const result = await command(process.execPath, [environment.forge.forge, 'make', '--platform', 'win32', '--arch', 'x64'], application, signal,
         { quiet: false, env: { ELECTRON_RUN_AS_NODE: undefined } });
       if (result.code !== 0) throw new Error('Electron Forge/Squirrel packaging failed. Check compiler/native-module ABI, network, antivirus and filesystem diagnostics. Install externally required Python/MSVC/SDK prerequisites yourself, then retry; source, locks and prior results are preserved.');
@@ -82,7 +82,7 @@ export const electronAdapter = {
       await fs.mkdir(output);
       await fs.cp(path.join(application, 'out', packaged[0].name), path.join(output, 'application'), { recursive: true, dereference: false });
       await fs.cp(installers, path.join(output, 'installer'), { recursive: true, dereference: false });
-      stage('Verifying Electron products', 'Checking executable/installer shape, staged package metadata, NuGet/RELEASES integrity and unchanged checkout inputs.');
+      stage('Verifying Electron products', 'Checking executable/installer shape, staged package metadata, NuGet/RELEASES integrity and unchanged checkout inputs.', 'verify');
       const integrity = await verifyElectronProducts(output, identity);
       const current = await inspectWindowsElectron(root, signal);
       const after = current.ready ? await buildInputs(root, config, current) : {};

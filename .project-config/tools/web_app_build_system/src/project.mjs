@@ -215,6 +215,8 @@ export async function inputs(root, output, excludeTestResults, choice = VITE) {
       || key === '.project-config/managed/web-app-launch/settings.json'
       || key === 'src-tauri/target' || key.startsWith('src-tauri/target/')
       || key === 'src-tauri/gen' || key.startsWith('src-tauri/gen/')
+      || key === '.project-config/tools/buildweave/output/activity'
+      || key.startsWith('.project-config/tools/buildweave/output/activity/')
       || key === '.project-config/tools/web_app_build_system' || key.startsWith('.project-config/tools/web_app_build_system/')
       || ['build.cmd', 'build.sh', 'build.command'].includes(key);
   });

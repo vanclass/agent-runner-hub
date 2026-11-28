@@ -80,9 +80,16 @@
               {
                 "path": [
                   "buildweave",
+                  "distribution_sha256"
+                ],
+                "value": "4912211b1766d8a6c5bedecd5e88a793c076bcafa911b8121e997ae6208b46d8"
+              },
+              {
+                "path": [
+                  "buildweave",
                   "executable_sha256"
                 ],
-                "value": "b192468800b751c255f826e77ab2d5d9b240a5b21813814449bd3f8bb8bf090e"
+                "value": "33d8c62dc7a66e79e48d7e916416c108101e8b34b6cd2afef98e1f884bf62bad"
               },
               {
                 "path": [
@@ -90,6 +97,13 @@
                   "explicit_resource"
                 ],
                 "value": ""
+              },
+              {
+                "path": [
+                  "buildweave",
+                  "language_mode"
+                ],
+                "value": "all"
               },
               {
                 "path": [
@@ -108,9 +122,16 @@
               {
                 "path": [
                   "buildweave",
+                  "review_sha256"
+                ],
+                "value": "230da1f88466b61d5cb1ff49f76fc6a5acfc2eb917417ca34700b1db5c095200"
+              },
+              {
+                "path": [
+                  "buildweave",
                   "revision"
                 ],
-                "value": "33b474b2d04ff114d019534fcbd934eda0f53d81"
+                "value": "d1aeb73c70af0842049642e59aba2f25c644d36b"
               },
               {
                 "path": [
@@ -131,7 +152,7 @@
                   "buildweave.files",
                   "0587fb6e7b4af3f9d0cc2d31324fefd01fbf4fb00eb065327dbb81bb5eea665d"
                 ],
-                "value": "adfacb8079b875e753a285a8faba119a7ae0f9a5024db76bc72960ba14aa6868"
+                "value": "4e7bd44ff77bbee0c815feba582ddf2a95cd5a1b3f235ef80209d21927768382"
               },
               {
                 "path": [
@@ -152,7 +173,7 @@
                   "buildweave.files",
                   "100de5ac724e2673f2aa3d8e3d02138c6bc5fc8500ce40972974dd8653d3cd09"
                 ],
-                "value": "3091a879b9df3c43e610dbda2f78871b19320f66b90d3406aa41f88b4124f3dc"
+                "value": "198512368e123adb29eb4a623a8d5e2a4616fbe94bf444e585bef3b4dc1c7d5f"
               },
               {
                 "path": [
@@ -208,14 +229,14 @@
                   "buildweave.files",
                   "2b5e83795c0c148d3fc5c8ce7ecb3eca6887a73139e9856795a9bbb324b67d92"
                 ],
-                "value": "7b998dd8febd609ba2e1e77a730ed96743d77bedd8fc2f0c686efce6d63140bc"
+                "value": "e43e3f5ad20405d7cb2da859b840b91cbd1d63f0d0d76cc1dce1b376a20445ed"
               },
               {
                 "path": [
                   "buildweave.files",
                   "2cdb7d3c202d01352d7f4ea4b667b3927eb97ebd87690201f3d7cf548c5ab885"
                 ],
-                "value": "abffe58879a98507a38ee11699a5a50d7da49aa1ee1d1f965b48f8157d135747"
+                "value": "fd7f250ef9dc5a80b225aec5cdf0edba33e410840d6c841d822a2fe082f7b934"
               },
               {
                 "path": [
@@ -299,7 +320,7 @@
                   "buildweave.files",
                   "5be447e105c50d15014dceaee6ff15b4ef2635c64c7ba93c22247a75e3426787"
                 ],
-                "value": "b192468800b751c255f826e77ab2d5d9b240a5b21813814449bd3f8bb8bf090e"
+                "value": "33d8c62dc7a66e79e48d7e916416c108101e8b34b6cd2afef98e1f884bf62bad"
               },
               {
                 "path": [
@@ -334,21 +355,21 @@
                   "buildweave.files",
                   "6adddbb7ce4553c3fbe904b4baba1e102d7111a69221fab665bcdc474f2e5cda"
                 ],
-                "value": "ddca1ca8a19d90116ff3de12eb890b850490c1393da9bfb40cad35e47f26ffc4"
+                "value": "0c621ebcbc36a8967ff43c45e4076e50d5364b6ca9a324d6b2cfba9456e3cd17"
               },
               {
                 "path": [
                   "buildweave.files",
                   "6b6145fb7d92e1d7dd5ce97ddb5e9a73af44e5490aa338923630fcd9fb7e6eb1"
                 ],
-                "value": "16b319a89014804aa74a787f761443d6850e3d08d93dece2ebba088dafc1618e"
+                "value": "51e704889748be3fe8bbbc1138f0a5ae7aee38e0b69626fa549e55f3c2c38ef2"
               },
               {
                 "path": [
                   "buildweave.files",
                   "6e3fade8faf116c7196d6754c3b6ec3134e4dc56a8ece2311398a28cae527a99"
                 ],
-                "value": "bc708d15967ae614a61f0df927a251e31e61fc2c999c273b449075fe7dec0572"
+                "value": "758892556a401fdc9d125c2bb2deb975e09ee019e901eca60960311941e9d0d2"
               },
               {
                 "path": [
@@ -356,6 +377,13 @@
                   "6fbcedd66f7e4ecb92fa04f8465bd67dcebf5bb953d6bcb566c52004e3188517"
                 ],
                 "value": "63b2a4db3f0183ae9efa39876341ee57505552808c96c95796eca4d50bd48549"
+              },
+              {
+                "path": [
+                  "buildweave.files",
+                  "723eb8026ad132c1f35e84a5e8749508d0dd82199b28d89e03e7e085bc805587"
+                ],
+                "value": "ebdefed5367378cdd74be833d7c7fdc10f1d73308286ce799414ced01a6dbb5d"
               },
               {
                 "path": [
@@ -376,28 +404,28 @@
                   "buildweave.files",
                   "9269ff3f95aab2435bf424cb5da30f96fef8994ab6b36aa3e7d768a4b955138f"
                 ],
-                "value": "65a94e72cc083bcd4f244c8b99986b0de9daf8223bad100c8e5189a5b593eea1"
+                "value": "f6d4283480cfc142053da6ba4d5f4ab54081ed2b740c79e5355cb4b04a5beb65"
               },
               {
                 "path": [
                   "buildweave.files",
                   "92a900af32370540e8819f1d839e2e248a3c1f335f02e9973924c4498df5495e"
                 ],
-                "value": "d08a3594c8601761df5999a42e55b01a316ad510502acc8d649bc328dd2830ca"
+                "value": "7233b331df19c624afa806732faed3422020de3efbf3d22c2cc9292ea260615f"
               },
               {
                 "path": [
                   "buildweave.files",
                   "93bfaff59ad1a1ba81a780147fb6b4d500589433fc485dc4dff52f9bdf3bcb54"
                 ],
-                "value": "b9c3469b3411bb61300aa7bf400233d258759eb055c48a169f6f64358b68503c"
+                "value": "124aac2e3627b365213f4693d74e60c3a9ed196db0ae492b98c0a47185fe1b83"
               },
               {
                 "path": [
                   "buildweave.files",
                   "9d2386682d3ce1dc0cb34b0076825a44c31555e0cfaf7014fda51c9ec2da4879"
                 ],
-                "value": "36cb33ae553e5e57ecd3dcf3b37a16a274865373c2ba5946e5cee6b3c2917f51"
+                "value": "94c69ee87cfc1c8758da238ba9c6cc1961fe0f71c491754c3cd4a6ab023ac9dd"
               },
               {
                 "path": [
@@ -444,13 +472,6 @@
               {
                 "path": [
                   "buildweave.files",
-                  "be0e97213d468964c9860d13a037e46065f21d7a782b849c510013ecdaa623fe"
-                ],
-                "value": "ff2680c3b9d08ad069fd486d3cd211f466e5d8d886ec7026c328994c71b79102"
-              },
-              {
-                "path": [
-                  "buildweave.files",
                   "c0aed08001030e4d0dea5e01532c8b5864947db4a1b6a524b822895277ae3007"
                 ],
                 "value": "ab6307983c8dc35dff63e41bafb38d86b2bc66866b624df587aafe233e97d5e2"
@@ -460,7 +481,7 @@
                   "buildweave.files",
                   "c36442291459e076296a29de63f1d1a20e19f89f782ad545c963656cbd85ad9f"
                 ],
-                "value": "fbceddb8e15f3a1437869b4e44f8af679eba655ff819216e675cea9ca9dabd79"
+                "value": "1409a3583ceedc4878fac64ac1bda22679d17f03a588a3f61a6acb1fc30c6625"
               },
               {
                 "path": [
@@ -475,13 +496,6 @@
                   "d209dbe5aee46fa7f99cfdc4af1b1fee929c25915ee768de0bbe0c03c2ee9ed0"
                 ],
                 "value": "5f56656e0669b8be4d9f750e401867504da4b4889c78dff3e924cd05b665c28e"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "d442fa6b76fc551dc7cb9b934ea484333d0b58fbeceb824b8abf33f67a4d709b"
-                ],
-                "value": "5a992421605aa4150a6eb6fc8ca9085496f70048630aba481e5097b4dfd27b61"
               },
               {
                 "path": [
@@ -531,6 +545,412 @@
                   "fe78819bb63ca3f4f881341461f3165af0a8816a5b9cdfdb719bd6cc1eea9dde"
                 ],
                 "value": "6089c1b205c34de15af30603db4767862287aa2b2b17daa66bed99bfaeaddc99"
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "02e369becf30c44e4ceb65e5f842545e66beb50a6c0ac486278a674475f1a8fa"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "0587fb6e7b4af3f9d0cc2d31324fefd01fbf4fb00eb065327dbb81bb5eea665d"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "06717eef4167220817c95b13063d1bd039d6dbd45940fe9006d03264a6f4d810"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "0792c20bd372a06816bbb96ac678dda1768a7c8ffa153e9827d4725ef039e378"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "100de5ac724e2673f2aa3d8e3d02138c6bc5fc8500ce40972974dd8653d3cd09"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "1152395487743deda40626e37ebe6a2710e556d4e1afdd8924046fc41e2b6ac1"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "11e1fba0f3c9b64428d37b19e8abe2725a1a917ea005e7b53f7d3d1a44475b22"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "13e53776681ca2e63c0496e70bb30779577806e6a96404ad29b090f236b4e4eb"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "199c3edbf4bf2115f494a4d985cea9577c1c6fa5e7b95cd8de2dbfea0746a3d3"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "19aa8a693322526f6363c49fd87c140476dc44e91cf327c771a107c3e217964f"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "1f33a725ce75e62991e8784384846dcac71b56930f4335da03cf9637aa2acf21"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "2564879f4e51ac4d2a51ef878fa11403f4a4452a1934d284cb96f9bab19cf4e1"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "2b5e83795c0c148d3fc5c8ce7ecb3eca6887a73139e9856795a9bbb324b67d92"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "2cdb7d3c202d01352d7f4ea4b667b3927eb97ebd87690201f3d7cf548c5ab885"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "2f42ae81c04154193b3b7d88a5005a2074ea0130519333b2c874e2bfe164c3ea"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "340fd4f21e26d9f6c6b2733c2f1d8674e1f8b2d429ea048b0b4ec2932dd215c1"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "3ce73abc2ac18b8ae764d8a6e8ef105bf1fe8e8632409ff553a0f2e07f415d07"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "43c049932bbed64490e234eaf249731ab13f1feae726b4e0be57a54575ba0db4"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "43de4faca350c9f50eb784b994dbe6f57d7b9d4e4a5bcd014523a729e65b6d44"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "45f9f79d1a72adeb2902f58567890326ee44222cb6dc86d49d59ab22ff1c957d"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "4748d6b784d7f5ceedfad918696cab61d1a78d4af0dd3af98c9c631287bec852"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "4bacea6080f0f73776b3b7a2a46eed707c71909fdb84cc92149f9357e066aebb"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "4e9f4b920f46c71dc9bc2c9a70c3b47f249f5f571f681c4538b904f0f6000a56"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "545a9884d1535cce50501c1584dca18ff1e4f0674c49059e7299fa0acf7dba29"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "57d96720a4ebb40dd105cbb33074a4272bb69e64f473a1265ef3af0cb393a565"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "5be447e105c50d15014dceaee6ff15b4ef2635c64c7ba93c22247a75e3426787"
+                ],
+                "value": 493
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "61f08b8f5a60778cb2d3e75daf2705d1da688034ae784ba507e5d63e03035bbd"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "6511e89e49afcc24cbe67627dcede2cf14a26758eaafab8975a074748986c145"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "679f3d96685f947fd0d76717516a742b9aacd2052e14cb17340486f6d0371d2b"
+                ],
+                "value": 493
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "68baa25104433f6c79a36079273aaaba31a8dde13e6bb74b0a7506fed092411d"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "6adddbb7ce4553c3fbe904b4baba1e102d7111a69221fab665bcdc474f2e5cda"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "6b6145fb7d92e1d7dd5ce97ddb5e9a73af44e5490aa338923630fcd9fb7e6eb1"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "6e3fade8faf116c7196d6754c3b6ec3134e4dc56a8ece2311398a28cae527a99"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "6fbcedd66f7e4ecb92fa04f8465bd67dcebf5bb953d6bcb566c52004e3188517"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "723eb8026ad132c1f35e84a5e8749508d0dd82199b28d89e03e7e085bc805587"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "75ed7702ea31796254b34bb23e4b4692bed1f00b4a00afac191e3d66205ef2d3"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "85cb7ba38b776fecc5938df84fc499d43308948150d11ecb4d60cf6bebb7b325"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "9269ff3f95aab2435bf424cb5da30f96fef8994ab6b36aa3e7d768a4b955138f"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "92a900af32370540e8819f1d839e2e248a3c1f335f02e9973924c4498df5495e"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "93bfaff59ad1a1ba81a780147fb6b4d500589433fc485dc4dff52f9bdf3bcb54"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "9d2386682d3ce1dc0cb34b0076825a44c31555e0cfaf7014fda51c9ec2da4879"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "9d4089eb9e751e806fcb202d3d82aea821112ccf881e01dfcde3b9c68fe5e252"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "9ebed781953738d52f0097ecfc6ac12c0734cde7e6acef9fda0d437392364b5d"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "a19d9edac412aa2b90f6c7abfda953659698d1308438f59951a585132a575c24"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "a9bb75326d9c9b22b301036b2c5ca476efff5dc135865912488e9b20257a7e31"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "b48f89f65771ddd507b432ab690d2c10af80a0447d3250e86ec45e11e23a8db3"
+                ],
+                "value": 493
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "b948b1f77d71f43a13b47e95e15b4d65c664dd35f4f4382ac4ea030867be9329"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "c0aed08001030e4d0dea5e01532c8b5864947db4a1b6a524b822895277ae3007"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "c36442291459e076296a29de63f1d1a20e19f89f782ad545c963656cbd85ad9f"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "c79edff0311cb85ebb92bae0525992286ffa74285e7ff31037f8742947e28910"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "d209dbe5aee46fa7f99cfdc4af1b1fee929c25915ee768de0bbe0c03c2ee9ed0"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "d443fb7538b2fd9819aef1efa2c90b64e72ac29c7a7e5308ae51092e4424803a"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "d7506f23a2eb79922bfe02cdf5fc257d1392519254153f7dc8ca029d68ce2c58"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "e218c2ad375dc5413e209ba404de6062aac17cb87ad87a6e62c8e9aa86e16834"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "e85f6beb5bd7df21461e45e7e2500742703adcf1b74bbc9ec16b048ace8c4a04"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "f5a8e283988c9bf71dfeda68dfcb3cabb05101482b19a7b07b22d8fcdd240c0d"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "fdac564b8d89d89235e71b1ef5ff471e7333135c4f28cdc47cecda80b47f6347"
+                ],
+                "value": 420
+              },
+              {
+                "path": [
+                  "buildweave.modes",
+                  "fe78819bb63ca3f4f881341461f3165af0a8816a5b9cdfdb719bd6cc1eea9dde"
+                ],
+                "value": 420
               }
             ],
             "group_id": "Distribution",
@@ -716,6 +1136,14 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/electron-host.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
                   "path": ".project-config/tools/web_app_build_system/src/electron.mjs",
                   "root": "project"
                 }
@@ -813,22 +1241,6 @@
                 "scope": "file",
                 "target": {
                   "path": ".project-config/tools/web_app_build_system/src/native/environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/web_app_build_system/src/native/macos-environment.mjs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/web_app_build_system/src/native/macos-products.mjs",
                   "root": "project"
                 }
               },
@@ -1011,7 +1423,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "515a644520c403169e6df26318edba185b5d84cb61a02689e139c8bd87dfe644",
+              "digest": "51a19725b6478905b7d4ed4d003b2f38c385f996dfbbdea9302a1521fd05f090",
               "identity": "BuildWeave.Package"
             }
           }
@@ -1743,7 +2155,7 @@
             "receipts": [],
             "requires": [],
             "resource": {
-              "digest": "88977ed9771cee8e8ec62bea1dac4952016bda5e11317e0f41f8dd97a77c8421",
+              "digest": "bc6115f45f7fa95a626af1666c394ad421f4ec9f88f5fb6dfa0a30d5394771f2",
               "identity": "BuildWeave.web-app"
             }
           }

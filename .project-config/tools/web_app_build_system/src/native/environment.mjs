@@ -5,8 +5,6 @@ import { inspectEnvironment, prepareEnvironment } from '../environment.mjs';
 import { npm } from '../project.mjs';
 import { executable, command } from './process.mjs';
 import { runtimeSelection } from './selection.mjs';
-import { inspectNsis, prepareNsis } from './nsis.mjs';
-import { macosTools } from './macos-environment.mjs';
 
 export const targetTriple = process.platform === 'darwin'
   ? (process.arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin')
@@ -103,7 +101,8 @@ export async function inspectNative(root, signal, { buildSystem = false, expecte
   const cargo = await executable('cargo');
   let rustToolchain;
   let rustArguments = [];
-  const tools = macos ? await macosTools(root, signal) : await windowsTools(root, signal);
+  const tools = macos ? await (await import('./macos-environment.mjs')).macosTools(root, signal)
+    : await windowsTools(root, signal);
   if (macos) {
     requireTool('xcode-clt', tools.ready, 'Install Xcode Command Line Tools with xcode-select --install, finish the Apple installer/license prompts, then retry Prepare.', 'external');
   } else {
@@ -168,7 +167,7 @@ export async function inspectNative(root, signal, { buildSystem = false, expecte
     }
   } catch { signal.throwIfAborted(); }
   requireTool('tauri-cli', cli, 'Prepare the project-local Tauri 2 CLI dependencies. Application package settings and lockfiles are preserved.', 'npm-cli');
-  const nsis = buildSystem && !macos ? await inspectNsis(root, signal) : undefined;
+  const nsis = buildSystem && !macos ? await (await import('./nsis.mjs')).inspectNsis(root, signal) : undefined;
   if (nsis) requireTool('nsis', nsis.ready, nsis.hint || 'Prepare verified NSIS tools.', 'nsis');
   return { enabled: true, ready: web.ready && requirements.length === 0,
     preparable: Boolean((!web.ready && web.preparable) || requirements.some(r => r.action !== 'external')),
@@ -234,7 +233,7 @@ export async function prepareNative(root, environment, signal, stage, allowed) {
       if (await npm(environment.web.cli, ['install', '--include=dev', '--include=optional', '--no-audit', '--no-fund'],
         environment.cliRoot, signal) !== 0) throw new Error('Tauri CLI installation failed; check network/permissions and retry Prepare.');
     } else if (requirement.action === 'nsis') {
-      await prepareNsis(root, signal, stage, allowed);
+      await (await import('./nsis.mjs')).prepareNsis(root, signal, stage, allowed);
     }
   }
   const current = await inspectNative(root, signal, { buildSystem: environment.packaging, expectedPlatform: environment.expectedPlatform });

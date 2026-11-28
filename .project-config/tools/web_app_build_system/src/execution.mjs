@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { withBuildOwnership } from './ownership.mjs';
-import { adapterFor } from './targets.mjs';
+import { adapterFor, preparationBlock } from './targets.mjs';
 import { beginResult, publishResult, discardResult } from './output.mjs';
 import { captureReleaseInputs } from './release-evidence.mjs';
 import { localSettings } from './local-settings.mjs';
+
+export class PreparationBlocked extends Error {}
 
 export async function settings(local) {
   const defaults = JSON.parse(await fs.readFile(new URL('../config.json', import.meta.url), 'utf8'));
@@ -14,23 +16,29 @@ export async function settings(local) {
   return value;
 }
 
-export async function executeTarget(root, local, target, signal, stage, { prepare = false, prepareOnly = false, resultFile } = {}) {
+export async function executeTarget(root, local, target, signal, stage, { prepare = false, prepareOnly = false, automatic = false, resultFile } = {}) {
   if (resultFile && (path.dirname(path.resolve(resultFile)) !== path.join(path.dirname(local), 'temp', 'invocations')
       || !/^[a-f0-9]{32}\.json$/.test(path.basename(resultFile)))) throw new Error('Invalid invocation result path.');
   const adapter = adapterFor(target);
-  const config = await settings(local);
   return withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal, stage, async () => {
-    stage('Checking environment', 'Validating Node/npm and exact project dependencies.');
+    const config = await settings(local);
+    stage('Checking environment', 'Validating Node/npm and exact project dependencies.', prepareOnly ? undefined : 'prepare');
     let environment = await adapter.inspect(root, signal);
+    if (environment.enabled === false) throw new Error(environment.hints.join('\n'));
     if (environment.verificationStatus === 'unavailable') {
       throw new Error('Implemented target; native verification unavailable. ' + environment.hints.join('; '));
     }
     if (!environment.ready) {
+      if (automatic) {
+        const blocker = preparationBlock(target, environment, config.allowDependencyInstall);
+        if (blocker) throw new PreparationBlocked(blocker.reason.replaceAll('\n', ' '));
+      }
       if (!prepare && !prepareOnly) throw new Error('Environment Preparation Required: ' + environment.hints.join('\n') + '\nChoose Prepare Environment.');
       environment = await adapter.prepare(root, environment, signal, stage, config.allowDependencyInstall);
     }
-    if (prepareOnly) return { verificationStatus: 'environment-ready' };
     signal.throwIfAborted();
+    if (automatic && !environment.ready) throw new Error(environment.hints.join('\n'));
+    if (prepareOnly) return { verificationStatus: 'environment-ready' };
     const attempt = await beginResult(local);
     try {
       const before = await captureReleaseInputs(root, target);
@@ -39,6 +47,9 @@ export async function executeTarget(root, local, target, signal, stage, { prepar
       if (verified.verificationStatus !== 'verified' || !/^[a-f0-9]{64}$/.test(verified.integrity)
           || !/^[a-f0-9]{64}$/.test(verified.inputs)) throw new Error('Adapter did not return verified product evidence.');
       const after = await captureReleaseInputs(root, target);
+      if (process.env.BUILDWEAVE_ACTIVITY === '1') {
+        stage('Publishing native output', 'Retaining verified products and release evidence.', 'publish');
+      }
       const published = await publishResult(attempt, target, verified.integrity, verified.inputs, { before, after });
       if (resultFile) {
         await fs.mkdir(path.dirname(resultFile), { recursive: true });

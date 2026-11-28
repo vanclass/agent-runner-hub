@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { runtimeEnabled } from '../runtime-selection.mjs';
+import { electronHostBlocker } from '../electron-host.mjs';
 import { npm, lockMatches } from '../project.mjs';
 import { command } from '../native/process.mjs';
 
@@ -36,10 +36,8 @@ async function forgeTools(folder, recipe, cli, signal, reportFailure = false) {
 }
 
 export async function inspectWindowsElectron(root, signal) {
-  if (!await runtimeEnabled(root, 'Electron', true)) return { enabled: false, ready: false, preparable: false,
-    hints: ['Select and Apply both Web App > Runtimes > Electron and Tools > Web App Build System.'] };
-  if (process.platform !== 'win32' || process.arch !== 'x64') return { enabled: true, ready: false, preparable: false,
-    verificationStatus: 'unavailable', hints: ['Windows x64 host required for Electron Forge / Squirrel.Windows packaging.'] };
+  const blocked = await electronHostBlocker(root);
+  if (blocked) return blocked;
   let owner, runtime;
   try { owner = await runtimeOwner(root); runtime = await owner.inspectElectron(root, signal, { buildSystem: true }); }
   catch (error) { return { enabled: true, ready: false, preparable: false, hints: ['Apply current Electron runtime files: ' + error.message] }; }

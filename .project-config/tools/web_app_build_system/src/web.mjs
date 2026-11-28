@@ -13,13 +13,13 @@ export const webAdapter = {
     const config = await configuration(root, choice);
     if (choice === ASTRO) return buildAstro({ root, output, environment, signal, stage, config, choice });
     const before = await inputs(root, config.output, config.excludeTestResults);
-    stage('Building Web / Vite', 'Running npm run build in this checkout; Ctrl+C cancels.');
+    stage('Building Web / Vite', 'Running npm run build in this checkout; Ctrl+C cancels.', 'frontend');
     const relativeOutput = output.slice(root.length + 1).split('\\').join('/');
     // Vite's final command receives a unique tool-owned outDir; existing dist stays intact.
     if (await npm(environment.cli, ['run', 'build', '--', '--outDir', relativeOutput, '--emptyOutDir'], root, signal) !== 0) {
       throw new Error('npm run build failed. Fix the TypeScript/Vite error and retry; earlier verified results are preserved.');
     }
-    stage('Verifying Web output', 'Checking HTML, referenced assets, integrity and stable current-checkout inputs.');
+    stage('Verifying Web output', 'Checking HTML, referenced assets, integrity and stable current-checkout inputs.', 'verify');
     const integrity = await verifyOutput(output, config.base);
     if (await inputs(root, config.output, config.excludeTestResults) !== before) {
       throw new Error('Project inputs/dependencies changed during the build. Retry with stable source.');
@@ -37,10 +37,10 @@ async function buildAstro({ root, output, environment, signal, stage, config, ch
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     await fs.mkdir(config.output, { recursive: true });
     owned = true;
-    stage('Building Web / Astro', 'Running canonical npm run build; Ctrl+C cancels.');
+    stage('Building Web / Astro', 'Running canonical npm run build; Ctrl+C cancels.', 'frontend');
     if (await npm(environment.cli, ['run', 'build'], root, signal) !== 0) throw new Error('npm run build failed. Earlier verified results are preserved.');
     signal.throwIfAborted();
-    stage('Verifying Astro static output', 'Checking complete HTML, local assets, integrity and stable inputs.');
+    stage('Verifying Astro static output', 'Checking complete HTML, local assets, integrity and stable inputs.', 'verify');
     const integrity = await verifyOutput(config.output, config.base, choice);
     if (await inputs(root, config.output, config.excludeTestResults, choice) !== before) throw new Error('Project inputs/dependencies changed during the build. Retry with stable source.');
     await fs.rename(config.output, output);

@@ -18,6 +18,7 @@
 "/web_app_build_system/src/astro-react.json" -text
 "/web_app_build_system/src/astro-tailwind.json" -text
 "/web_app_build_system/src/astro.mjs" -text
+"/web_app_build_system/src/electron-host.mjs" -text
 "/web_app_build_system/src/electron.mjs" -text
 "/web_app_build_system/src/electron/environment.mjs" -text
 "/web_app_build_system/src/electron/products.mjs" -text
@@ -31,8 +32,6 @@
 "/web_app_build_system/src/native/desktop.mjs" -text
 "/web_app_build_system/src/native/dev-server.mjs" -text
 "/web_app_build_system/src/native/environment.mjs" -text
-"/web_app_build_system/src/native/macos-environment.mjs" -text
-"/web_app_build_system/src/native/macos-products.mjs" -text
 "/web_app_build_system/src/native/nsis.mjs" -text
 "/web_app_build_system/src/native/process.mjs" -text
 "/web_app_build_system/src/native/products.mjs" -text

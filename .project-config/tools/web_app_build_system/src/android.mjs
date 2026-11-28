@@ -39,7 +39,7 @@ export const androidAdapter = {
     const frontend = path.join(workspace, 'frontend'), cargoOutput = path.join(workspace, 'cargo');
     await fs.mkdir(workspace);
     try {
-      stage('Building Android frontend', 'Building the current TypeScript/Vite frontend into private staging; Ctrl+C cancels.');
+      stage('Building Android frontend', 'Building the current TypeScript/Vite frontend into private staging; Ctrl+C cancels.', 'frontend');
       const outDir = path.relative(root, frontend).split(path.sep).join('/');
       if (await npm(environment.web.cli, ['run', 'build', '--', '--outDir', outDir, '--emptyOutDir', '--base', './'], root, signal) !== 0) {
         throw new Error('Android frontend build failed. Earlier Web/native products and original source remain intact.');
@@ -64,7 +64,7 @@ export const androidAdapter = {
         if (initialized.code !== 0) throw new Error('Tauri Android initialization failed; check selected JDK/SDK/NDK and generated resources. Original sources and locks are preserved.');
       }
       await configureGradle(generated, environment, buildConfig.allowDependencyInstall, env, signal);
-      stage('Packaging Android / Tauri 2', 'Compiling arm64 unsigned local/test APK and AAB through official Tauri Android build; no signing keys are created. Ctrl+C cancels.');
+      stage('Packaging Android / Tauri 2', 'Compiling arm64 unsigned local/test APK and AAB through official Tauri Android build; no signing keys are created. Ctrl+C cancels.', 'package');
       const built = await command(process.execPath, [environment.cli, 'android', 'build', '--ci', '--apk', '--aab',
         '--target', 'aarch64', '--config', override, '--', '--locked',
         ...(!buildConfig.allowDependencyInstall ? ['--offline'] : [])], backend, signal, { env, quiet: false });
@@ -76,7 +76,7 @@ export const androidAdapter = {
       const aab = await outputs(path.join(buildOutputs, 'bundle'), '.aab');
       await fs.mkdir(output);
       for (const file of [apk, aab]) await fs.copyFile(file, path.join(output, path.basename(file)), fs.constants.COPYFILE_EXCL);
-      stage('Verifying Android products', 'Checking full ZIP integrity, package/version, DEX, arm64 native library and bundletool validation; Ctrl+C cancels.');
+      stage('Verifying Android products', 'Checking full ZIP integrity, package/version, DEX, arm64 native library and bundletool validation; Ctrl+C cancels.', 'verify');
       const integrity = await verifyAndroidProducts(output, { identifier: nativeConfig.identifier.replaceAll('-', '_'),
         productName: nativeConfig.productName, version: nativeConfig.version, library, nativeLock: hash(nativeLock) }, environment, signal);
       const current = await inspectAndroid(root, signal);
