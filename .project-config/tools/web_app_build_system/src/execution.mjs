@@ -4,12 +4,11 @@ import { withBuildOwnership } from './ownership.mjs';
 import { adapterFor } from './targets.mjs';
 import { beginResult, publishResult, discardResult } from './output.mjs';
 import { captureReleaseInputs } from './release-evidence.mjs';
+import { localSettings } from './local-settings.mjs';
 
 export async function settings(local) {
   const defaults = JSON.parse(await fs.readFile(new URL('../config.json', import.meta.url), 'utf8'));
-  let overrides = {};
-  try { overrides = JSON.parse(await fs.readFile(path.join(local, 'settings.json'), 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw new Error('Invalid local/settings.json: ' + error.message); }
+  const overrides = await localSettings(local);
   const value = { ...defaults, ...overrides };
   if (value.schema !== 1 || typeof value.allowDependencyInstall !== 'boolean') throw new Error('Build configuration requires schema 1 and boolean allowDependencyInstall.');
   return value;

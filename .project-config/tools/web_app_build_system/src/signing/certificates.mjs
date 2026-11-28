@@ -1,9 +1,8 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { command } from '../native/process.mjs';
-import { withBuildOwnership } from '../ownership.mjs';
+import { localSettings, updateLocalSettings } from '../local-settings.mjs';
+export { localSettings };
 
 export function thumbprint(value) {
   const result = String(value || '').replace(/\s/g, '').toUpperCase();
@@ -43,14 +42,6 @@ export function requireCertificate(list, selected) {
   return certificate;
 }
 
-export async function localSettings(local) {
-  try {
-    const value = JSON.parse(await fs.readFile(path.join(local, 'settings.json'), 'utf8'));
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('local/settings.json must contain a settings object.');
-    return value;
-  }
-  catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
-}
 
 export async function certificateStatus(root, local, signal) {
   const selected = signingSelection((await localSettings(local)).windowsSigning);
@@ -65,22 +56,12 @@ export async function certificateStatus(root, local, signal) {
 }
 
 export async function selectCertificate(root, local, signal, value) {
-  return withBuildOwnership(root, path.join(root, '.project-config/managed/web-app-launch/cache'), signal,
-    () => {}, async () => {
-      const settings = await localSettings(local);
-      if (value === null) delete settings.windowsSigning;
-      else {
-        const selected = signingSelection(value);
-        const certificate = requireCertificate(await certificates(root, signal), selected);
-        settings.windowsSigning = { ...selected, subject: certificate.subject, notAfter: certificate.notAfter };
-      }
-      await fs.mkdir(local, { recursive: true });
-      const temporary = path.join(local, 'settings-' + randomUUID() + '.next');
-      try {
-        signal.throwIfAborted();
-        await fs.writeFile(temporary, JSON.stringify(settings, null, 2) + '\n', { flag: 'wx' });
-        signal.throwIfAborted();
-        await fs.rename(temporary, path.join(local, 'settings.json'));
-      } finally { await fs.rm(temporary, { force: true }); }
-    }, true);
+  return updateLocalSettings(root, local, signal, async settings => {
+    if (value === null) delete settings.windowsSigning;
+    else {
+      const selected = signingSelection(value);
+      const certificate = requireCertificate(await certificates(root, signal), selected);
+      settings.windowsSigning = { ...selected, subject: certificate.subject, notAfter: certificate.notAfter };
+    }
+  });
 }

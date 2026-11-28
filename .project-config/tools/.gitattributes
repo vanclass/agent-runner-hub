@@ -1,16 +1,4 @@
-"/buildweave/run.cmd" -text
-"/buildweave/run.pyz" -text
-"/buildweave/run.sh" -text
-"/buildweave/src/buildweave/__init__.py" -text
-"/buildweave/src/buildweave/adapters.py" -text
-"/buildweave/src/buildweave/catalog.py" -text
-"/buildweave/src/buildweave/execution.py" -text
-"/buildweave/src/buildweave/launcher.py" -text
-"/buildweave/src/buildweave/output.py" -text
-"/web_app_build_system/README.md" -text
-"/web_app_build_system/build.cmd" -text
-"/web_app_build_system/build.command" -text
-"/web_app_build_system/build.sh" -text
+"/buildweave/BuildWeave.exe" -text
 "/web_app_build_system/config.json" -text
 "/web_app_build_system/electron-package.json" -text
 "/web_app_build_system/package.json" -text
@@ -38,6 +26,7 @@
 "/web_app_build_system/src/execution.mjs" -text
 "/web_app_build_system/src/foundation.mjs" -text
 "/web_app_build_system/src/lease.mjs" -text
+"/web_app_build_system/src/local-settings.mjs" -text
 "/web_app_build_system/src/menu.mjs" -text
 "/web_app_build_system/src/native/desktop.mjs" -text
 "/web_app_build_system/src/native/dev-server.mjs" -text
@@ -62,5 +51,4 @@
 "/web_app_build_system/src/targets.mjs" -text
 "/web_app_build_system/src/tauri.mjs" -text
 "/web_app_build_system/src/web.mjs" -text
-"/web_app_build_system/src/windows-console.cs" -text
 "/web_app_build_system/targets.json" -text

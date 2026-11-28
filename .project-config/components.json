@@ -73,6 +73,20 @@
               {
                 "path": [
                   "buildweave",
+                  "delivery"
+                ],
+                "value": "executable"
+              },
+              {
+                "path": [
+                  "buildweave",
+                  "executable_sha256"
+                ],
+                "value": "b192468800b751c255f826e77ab2d5d9b240a5b21813814449bd3f8bb8bf090e"
+              },
+              {
+                "path": [
+                  "buildweave",
                   "explicit_resource"
                 ],
                 "value": ""
@@ -80,9 +94,23 @@
               {
                 "path": [
                   "buildweave",
+                  "platform"
+                ],
+                "value": "windows/x86_64"
+              },
+              {
+                "path": [
+                  "buildweave",
+                  "repository_sha256"
+                ],
+                "value": "063c5e990dee5bc7645bbba0e27c63631e4f612271ea7eaca265bc19991885e6"
+              },
+              {
+                "path": [
+                  "buildweave",
                   "revision"
                 ],
-                "value": "8b0fc87932e5377c518cb304eb996d1f6d26acba"
+                "value": "33b474b2d04ff114d019534fcbd934eda0f53d81"
               },
               {
                 "path": [
@@ -103,7 +131,7 @@
                   "buildweave.files",
                   "0587fb6e7b4af3f9d0cc2d31324fefd01fbf4fb00eb065327dbb81bb5eea665d"
                 ],
-                "value": "2889ef100c7df55641e76cbd61f80c25cc5ce1a897fe400e256e57c5d6cb13c1"
+                "value": "adfacb8079b875e753a285a8faba119a7ae0f9a5024db76bc72960ba14aa6868"
               },
               {
                 "path": [
@@ -118,13 +146,6 @@
                   "0792c20bd372a06816bbb96ac678dda1768a7c8ffa153e9827d4725ef039e378"
                 ],
                 "value": "93e52909cb4a7789c193781fe933515c3619e21096d189c1f9df387547946a60"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "0872152b86d8fc1ed908e10aab62372d4bade185377b1ff99b950e7d7cfcb6d9"
-                ],
-                "value": "568c36f46dab02f8450b0f17963cb826cb7e6a3748a7f3e908774a7518224633"
               },
               {
                 "path": [
@@ -166,14 +187,7 @@
                   "buildweave.files",
                   "19aa8a693322526f6363c49fd87c140476dc44e91cf327c771a107c3e217964f"
                 ],
-                "value": "e72a0b7d773a10a8ad3b20468cb17a74dd33e0aa89815008c7e6924e6b7eda44"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "1d77727130ec1911244257e1e8a87cb5b9c9c98e6e1821974f562c1ef99c0e12"
-                ],
-                "value": "d0fb5136cc3bcfc6b5b60bdcf2cfe3fd72ab3e19caaf6d8edf6d3d1e1d3db9fa"
+                "value": "11a5117e8959fa0ad120ebcabada7bb5d58835798c4a15780f94e0742c1fa166"
               },
               {
                 "path": [
@@ -208,7 +222,7 @@
                   "buildweave.files",
                   "2f42ae81c04154193b3b7d88a5005a2074ea0130519333b2c874e2bfe164c3ea"
                 ],
-                "value": "f6a56158889a88fbda87adbc93be0499b787d20e966d6a0716c54e80b54316e1"
+                "value": "1d39174a67a9697915790e449386aeb5d7405f7564fe87ae930760e387a3684e"
               },
               {
                 "path": [
@@ -220,23 +234,9 @@
               {
                 "path": [
                   "buildweave.files",
-                  "36b5fd36fcb5bbace82c8110f7e16d56f551ebf9019b14ce91156c0806f31863"
-                ],
-                "value": "55623924113bc1cff7ef5677114c8ecf8104c9366d4abbbb0483ac3c8f612d68"
-              },
-              {
-                "path": [
-                  "buildweave.files",
                   "3ce73abc2ac18b8ae764d8a6e8ef105bf1fe8e8632409ff553a0f2e07f415d07"
                 ],
                 "value": "edb17e5e8b3eb82e1d4b7dd270e3b268908b1c75e8f95e94a6360c3ab48e5a4b"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "40cda62e909a31dbb0d73b12a7c2b4f876f637786e0b293c2dde513181a245a9"
-                ],
-                "value": "947a5ffed848165d67fcd50486a0f940b33c4b3ba72cc53c44a9b612f3d751d4"
               },
               {
                 "path": [
@@ -283,13 +283,6 @@
               {
                 "path": [
                   "buildweave.files",
-                  "531c5e1ea08ff62d18da25d1502d2c42b928febf8da7b8737f9d5f70bd31d72a"
-                ],
-                "value": "900399b486a42b1ec4c08858c60af2b7095582041aed2d74e9c3103a7635edef"
-              },
-              {
-                "path": [
-                  "buildweave.files",
                   "545a9884d1535cce50501c1584dca18ff1e4f0674c49059e7299fa0acf7dba29"
                 ],
                 "value": "4c96ea08972bea296613db39559441621af7f5ce66cf93d43060276d510c2458"
@@ -304,9 +297,9 @@
               {
                 "path": [
                   "buildweave.files",
-                  "5dbdb228bc02210fb03dae314045c406a4eebd1fd42addce16436982ea11d88a"
+                  "5be447e105c50d15014dceaee6ff15b4ef2635c64c7ba93c22247a75e3426787"
                 ],
-                "value": "f6a56158889a88fbda87adbc93be0499b787d20e966d6a0716c54e80b54316e1"
+                "value": "b192468800b751c255f826e77ab2d5d9b240a5b21813814449bd3f8bb8bf090e"
               },
               {
                 "path": [
@@ -314,13 +307,6 @@
                   "61f08b8f5a60778cb2d3e75daf2705d1da688034ae784ba507e5d63e03035bbd"
                 ],
                 "value": "2bf4a66cb482303e1b0f9c08820da0c0c830651694494da69d418d95ea39870f"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "642ec3173cd336fe76c6ee031b79471a4a57efe6ce0ed2d6df07a4a42b69b290"
-                ],
-                "value": "f94434c34ac5391ed22612282e92cdebd07d2851cab574f691c5684fab29f8a2"
               },
               {
                 "path": [
@@ -355,7 +341,7 @@
                   "buildweave.files",
                   "6b6145fb7d92e1d7dd5ce97ddb5e9a73af44e5490aa338923630fcd9fb7e6eb1"
                 ],
-                "value": "abc97765d87deed4bb8c48d101fea515d10a0d587366899101e253f874f547e6"
+                "value": "16b319a89014804aa74a787f761443d6850e3d08d93dece2ebba088dafc1618e"
               },
               {
                 "path": [
@@ -374,9 +360,9 @@
               {
                 "path": [
                   "buildweave.files",
-                  "841d2d941aaee73426a3e52ec5d3a1848c15bcbbf071dcfef4839fcecc0ccda9"
+                  "75ed7702ea31796254b34bb23e4b4692bed1f00b4a00afac191e3d66205ef2d3"
                 ],
-                "value": "e81138a541656d35e84983b93504f283817707945f5d8cdeb6703f5c29c89add"
+                "value": "b159e4186a24aa11e6ffe5e6c8a7a0831072f733f83cbe2e086bb2e6d76e0d88"
               },
               {
                 "path": [
@@ -384,13 +370,6 @@
                   "85cb7ba38b776fecc5938df84fc499d43308948150d11ecb4d60cf6bebb7b325"
                 ],
                 "value": "c37ca8f6b48aed1e14b21926a752b07a8a3c2e762867e80f1f7db0895adc7662"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "8f966964ab4dba0f1a35228c35b4069c7601d6a553154628387d8de0b4d6017f"
-                ],
-                "value": "947a5ffed848165d67fcd50486a0f940b33c4b3ba72cc53c44a9b612f3d751d4"
               },
               {
                 "path": [
@@ -404,7 +383,7 @@
                   "buildweave.files",
                   "92a900af32370540e8819f1d839e2e248a3c1f335f02e9973924c4498df5495e"
                 ],
-                "value": "ca36e01c3e05d8c105af9e1e2504ef56ef0aeab19dde8228a3acc29cab167802"
+                "value": "d08a3594c8601761df5999a42e55b01a316ad510502acc8d649bc328dd2830ca"
               },
               {
                 "path": [
@@ -418,7 +397,7 @@
                   "buildweave.files",
                   "9d2386682d3ce1dc0cb34b0076825a44c31555e0cfaf7014fda51c9ec2da4879"
                 ],
-                "value": "b4756ca5d4e84ca1299e1bd2138e9b2764cba17ff3948b598cdf87b1768d5fd0"
+                "value": "36cb33ae553e5e57ecd3dcf3b37a16a274865373c2ba5946e5cee6b3c2917f51"
               },
               {
                 "path": [
@@ -444,13 +423,6 @@
               {
                 "path": [
                   "buildweave.files",
-                  "a3ae42e1b491c3135306473035ef211791592a1b59618f573780172014f3d28b"
-                ],
-                "value": "667ff49497f4005aad41c8644b461d4763463a4f14430790bbbcf86b1a988de2"
-              },
-              {
-                "path": [
-                  "buildweave.files",
                   "a9bb75326d9c9b22b301036b2c5ca476efff5dc135865912488e9b20257a7e31"
                 ],
                 "value": "0d9b49e7887f0bae5846517d8c6b0e2fe8ca1d9dc4f42b4e8496319d6ed958fa"
@@ -468,13 +440,6 @@
                   "b948b1f77d71f43a13b47e95e15b4d65c664dd35f4f4382ac4ea030867be9329"
                 ],
                 "value": "b2f7658a12a2d509876084a49da0027d2faa763d41fbc62d0c2a4014b31ba6bb"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "bc1b0691b4d2fe2cfe6779928beceac790c312ac1485afffad48df78a69b6597"
-                ],
-                "value": "eb4aa5b24325146a8fbbab6a0077328065135596f5b2ed9257ecd4ea53758400"
               },
               {
                 "path": [
@@ -528,13 +493,6 @@
               {
                 "path": [
                   "buildweave.files",
-                  "d70947a59c76b56fdb3b22c5eb873bf1c214b153c614bcec0ca3768cc0be6c3c"
-                ],
-                "value": "b36ebec63248613c06ec8067c9315eed1f4be64c5372c5a6e125cd3a2c34d8af"
-              },
-              {
-                "path": [
-                  "buildweave.files",
                   "d7506f23a2eb79922bfe02cdf5fc257d1392519254153f7dc8ca029d68ce2c58"
                 ],
                 "value": "c7a328b14e0b418e2bb91369fca75d2eb1fd876dfcf9cba2f61a7a4415268020"
@@ -552,20 +510,6 @@
                   "e85f6beb5bd7df21461e45e7e2500742703adcf1b74bbc9ec16b048ace8c4a04"
                 ],
                 "value": "7257b111423899cbbdfefe98541f5acaba74ddab1191f95c21549f2758256d71"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "eb97edab7665dafd81db5d7313c32b6de8cdc6e4dfa916caa21fcd19cb4ed4b1"
-                ],
-                "value": "e8ac41a9b3a718b3e91af73c1e4e764226521d7ee6b028009fdce2942749096c"
-              },
-              {
-                "path": [
-                  "buildweave.files",
-                  "eefdf4cef528aa4157c5f7281ce50a5c70d325d439077459ec71ad07a113b0d7"
-                ],
-                "value": "38e3b63db14553bb859033df59bafc7c1d27313b0d4bbb626bbce629e4e21160"
               },
               {
                 "path": [
@@ -604,111 +548,15 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
+                  "path": ".project-config/tools/buildweave/BuildWeave.exe",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
                   "path": ".project-config/tools/buildweave/manifest.json",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/run.cmd",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/run.pyz",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/run.sh",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/src/buildweave/__init__.py",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/src/buildweave/adapters.py",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/src/buildweave/catalog.py",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/src/buildweave/execution.py",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/src/buildweave/launcher.py",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/buildweave/src/buildweave/output.py",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/web_app_build_system/README.md",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/web_app_build_system/build.cmd",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/web_app_build_system/build.command",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
-                  "path": ".project-config/tools/web_app_build_system/build.sh",
                   "root": "project"
                 }
               },
@@ -932,6 +780,14 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
+                  "path": ".project-config/tools/web_app_build_system/src/local-settings.mjs",
+                  "root": "project"
+                }
+              },
+              {
+                "kind": "exclusive_path",
+                "scope": "file",
+                "target": {
                   "path": ".project-config/tools/web_app_build_system/src/menu.mjs",
                   "root": "project"
                 }
@@ -1124,14 +980,6 @@
                 "kind": "exclusive_path",
                 "scope": "file",
                 "target": {
-                  "path": ".project-config/tools/web_app_build_system/src/windows-console.cs",
-                  "root": "project"
-                }
-              },
-              {
-                "kind": "exclusive_path",
-                "scope": "file",
-                "target": {
                   "path": ".project-config/tools/web_app_build_system/targets.json",
                   "root": "project"
                 }
@@ -1163,7 +1011,7 @@
             ],
             "requires": [],
             "resource": {
-              "digest": "cbe9e9c4fab9e502a1b36c6f98a879c8a5bab73756d741a756e74d63fc22a24c",
+              "digest": "515a644520c403169e6df26318edba185b5d84cb61a02689e139c8bd87dfe644",
               "identity": "BuildWeave.Package"
             }
           }
@@ -1895,7 +1743,7 @@
             "receipts": [],
             "requires": [],
             "resource": {
-              "digest": "41e5d48e130b73e1196b31b042708b94f1737533d1491509cdb42747b7962beb",
+              "digest": "88977ed9771cee8e8ec62bea1dac4952016bda5e11317e0f41f8dd97a77c8421",
               "identity": "BuildWeave.web-app"
             }
           }
