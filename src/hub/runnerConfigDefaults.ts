@@ -2,7 +2,7 @@ import type { EntryDefaults } from './singleEntry';
 import type { RunnerObservation } from './runnerControl';
 import { same, type ConfigCatalog, type ConfigDesired, type ConfigSettings } from './runnerConfigContract';
 
-export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigCatalog) {
+export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigCatalog, currentMode = catalog.inspection.current.run_mode) {
   const desired: ConfigDesired = {}, unresolved: (keyof EntryDefaults)[] = [];
   const { options } = catalog;
   if (defaults.target) {
@@ -31,9 +31,9 @@ export function entryDefaultsToDesired(defaults: EntryDefaults, catalog: ConfigC
     else unresolved.push('runMode');
   }
   if (defaults.root !== undefined) {
-    if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? catalog.inspection.current.run_mode)) desired.root = defaults.root;
+    if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? currentMode)) desired.root = defaults.root;
   }
-  if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? catalog.inspection.current.run_mode)
+  if (['direct-run', 'pure-direct-run'].includes(desired.run_mode ?? currentMode)
     && !defaults.root) unresolved.push('root');
   return { desired, unresolved };
 }
@@ -43,8 +43,7 @@ export function currentProviderDefaults(settings: ConfigSettings, catalog: Confi
   if (!catalog.options.accounts.some(a => same(a, settings.account))
     || !observation || observation.selection.agent_id !== settings.account.agent_id
     || catalog.inspection.effective.agent_id !== settings.account.agent_id
-    || observation.selection.account !== settings.account.profile_name
-    || !same(settings.account, catalog.inspection.current.account)) return;
+    || observation.selection.account !== settings.account.profile_name) return;
   return { accountIdentity: { ...settings.account },
     model: model && same(settings.account, catalog.inspection.model_options_account)
       && model.reasoning_efforts.includes(settings.model.reasoning_effort) && model.service_tiers.includes(settings.service_tier)

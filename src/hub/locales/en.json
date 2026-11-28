@@ -476,7 +476,6 @@
     "apply": "Apply",
     "choose": "Choose",
     "noOptions": "No verified choices are available.",
-    "retainedOptions": "Showing last verified choices. Refresh failed: {{diagnostic}}",
     "outcome": "{{status}} {{code}}",
     "partial": "Some settings committed.",
     "rejected": "Runner rejected the change.",

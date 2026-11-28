@@ -59,14 +59,14 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
   if (!account) throw new HubError(msg('config.defaultsUnresolved', { fields: 'accountIdentity' }));
   const providerRevision = config.providerRevision;
   config.resetDraft();
-  const retained = defaults.runMode === undefined ? undefined : config.optionsFor(account);
-  await config.inspect(account, !!retained);
+  const retained = config.optionsFor(account);
+  await config.inspect(account, true);
   const resolve = () => {
     if (!config.catalog || !config.actual) throw new HubError(config.error || msg('config.incomplete'));
     const runMode = defaults.runMode ?? config.actual.current.run_mode;
     const taskRun = runMode === 'task-run';
     // TaskRun owns identity and tier resolution in its instruction, including session-pair fallback.
-    const mapped = entryDefaultsToDesired(taskRun ? { ...defaults, target: undefined, model: undefined } : defaults, config.catalog);
+    const mapped = entryDefaultsToDesired(taskRun ? { ...defaults, target: undefined, model: undefined } : defaults, config.catalog, runMode);
     if (mapped.unresolved.length) throw new HubError(msg('config.defaultsUnresolved', { fields: mapped.unresolved.join(', ') }));
     return { runMode, mapped, prepared: taskRun ? prepareTaskRunInstruction(instruction, defaults.target, config.catalog) : instruction };
   };
@@ -89,11 +89,7 @@ export async function submitConfiguredWork<T = WorkAttempt>(config: RunnerConfig
     if (config.uncertain || config.error || application?.result?.apply_status !== 'applied'
       || application.verification !== 'verified' || !application.inspection)
       throw new HubError(config.error || msg('config.partial'));
-  } else if (plan.revision !== config.actual?.revision) {
-    // Reinspect only when the canonical no-op plan observed a different configuration.
-    await config.inspect(account);
-    if (config.error || !config.catalog) throw new HubError(config.error || msg('config.incomplete'));
-  }
+  } else await config.verifyPlanSettings();
   const inspection = config.actual;
   if (!inspection || inspection.setup_required || inspection.current.run_mode !== runMode
     || inspection.effective.agent_id !== account.agent_id

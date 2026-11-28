@@ -78,7 +78,8 @@ export class HubSelections {
       this.detail = service.optionsError;
       return;
     }
-    const recovered = current && !this.catalog && configToEntryDefaults(current.inspection.current, current, this.observation(service));
+    const recovered = current && !this.catalog && service.actual
+      && configToEntryDefaults(service.actual.current, current, this.observation(service));
     if (current && this.attempted === service && this.attemptedCatalog === current && !recovered) return;
     void this.loadOptions();
   }
@@ -219,8 +220,7 @@ export class HubSelections {
     const needsDestination = account && current?.options.accounts.some(candidate => same(candidate, account))
       && !same(account, current.inspection.model_options_account);
     const lookup = !current ? service.lookupOptions()
-      : needsDestination && (!retained || this.attemptedCatalog && this.attemptedCatalog !== current)
-        ? service.lookupOptions(account) : undefined;
+      : needsDestination && !retained ? service.lookupOptions(account) : undefined;
     if ((!current || needsDestination && !retained) && !lookup) {
       this.catalog = current;
       return;
@@ -250,10 +250,11 @@ export class HubSelections {
         return;
       }
       if (!edits.has('accountIdentity')) this.catalog = catalog;
+      const actual = service.actual;
       if (this.refreshProvider) {
         const provider = service.observedAgentId;
         const picks = isSessionProvider(provider) ? this.defaults.providerPreferences?.[provider] : undefined;
-        const current = currentProviderDefaults(catalog.inspection.current, catalog, observation);
+        const current = actual && currentProviderDefaults(actual.current, catalog, observation);
         const accountIdentity = this.defaults.accountIdentity ?? (picks?.accountIdentity === undefined ? current?.accountIdentity : undefined);
         const model = this.defaults.model ?? (picks?.model === undefined && same(accountIdentity, current?.accountIdentity)
           ? current?.model : undefined);
@@ -261,12 +262,12 @@ export class HubSelections {
         this.refreshProvider = false;
       }
       if (initialize) {
-        if (!catalog.inspection.current.target) {
+        if (!actual?.current.target) {
           this.detail = msg('config.chooseTarget');
           return;
         }
-        const available = catalog.inspection.availability;
-        const current = configToEntryDefaults(catalog.inspection.current, catalog, observation);
+        const available = actual.availability;
+        const current = configToEntryDefaults(actual.current, catalog, observation);
         if (!current || !catalog.options.run_modes.includes('task-run')
           || !['target', 'account', 'run_mode', 'model', 'service_tier'].every(key => available[key] === true))
           throw new HubError(msg('config.incomplete'));

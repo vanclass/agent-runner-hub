@@ -193,7 +193,8 @@ export class RunnerControl {
       const observation = snapshot.observation;
       this.config.observe(this.id, snapshot.state, snapshot.features, observation?.selection.agent_id,
         observation?.selection.account, observation && JSON.stringify([observation.selection, observation.run_mode,
-          observation.target, observation.context_location, observation.attention.account_setup_required]));
+          observation.target, observation.context_location, observation.attention.account_setup_required]),
+        observation?.attention.account_setup_required);
       const recoveryChange = JSON.stringify([observation?.run_mode, observation?.execution, observation?.target,
         snapshot.results.at(-1)?.id, this.config.latestApplication?.receipt.id,
         this.work.current?.work?.event_id]);
@@ -208,7 +209,7 @@ export class RunnerControl {
         this.busy || !!snapshot.observation?.attention.foreground_interaction_active);
       this.receivedAt = performance.now();
       this.changed();
-      this.config.refreshOptions();
+      this.config.prepareOptions();
       const foreground = this.assignmentLocked || this.attachmentLocked || this.sending || this.work.writing
         || this.brief.busy || this.typedRun.pending;
       this.timer = setTimeout(() => void this.refresh(), foreground ? controlTiming.settleMs : controlTiming.pollMs);

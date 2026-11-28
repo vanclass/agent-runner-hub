@@ -38,26 +38,27 @@ export class RunnerQuickConfig {
       config.resetDraft();
       const inspection = await config.inspect(desired.account, true);
       const catalog = inspection?.catalog;
-      if (!catalog) { this.detail = inspection?.error ?? msg('quick.unavailable'); return; }
-      const { current, effective } = catalog.inspection;
-      if (reasoningAccount && (!same(reasoningAccount, current.account) || current.model.id !== desired.model?.id
-        || (effective.next_model ?? effective.model) !== desired.model?.id))
-        throw new HubError(msg('config.stalePlan'));
-      if (desired.account && !desired.model && !validDesired(desired, catalog.inspection.current, catalog))
+      const actual = config.actual;
+      if (!catalog || !actual) { this.detail = inspection?.error ?? msg('quick.unavailable'); return; }
+      const reasoningMatches = ({ current, effective }: typeof actual) => same(reasoningAccount, current.account)
+        && current.model.id === desired.model?.id && (effective.next_model ?? effective.model) === desired.model?.id;
+      if (reasoningAccount && !reasoningMatches(actual)) throw new HubError(msg('config.stalePlan'));
+      if (desired.account && !desired.model && !validDesired(desired, actual.current, catalog))
         return { account: desired.account };
       config.setDraft(desired);
       await config.createPlan();
       const plan = config.plan;
-      if (reasoningAccount && plan && plan.revision !== catalog.inspection.revision)
-        throw new HubError(msg('config.stalePlan'));
       this.confirmations = plan?.required_confirmations ?? [];
       if (!plan || !config.canApply) {
         if (plan?.errors.length) this.detail = msg('config.requestFailed', { code: plan.errors.join(', ') });
         else if (!this.confirmations.length) this.detail = config.error;
         return;
       }
-      if (!plan.steps.length && !Object.keys(plan.changes).length && plan.revision === catalog.inspection.revision) {
-        if (owner === this.selections()) owner?.synchronizeConfirmed(config, desired, current, catalog);
+      const noOp = !plan.steps.length && !Object.keys(plan.changes).length;
+      const verified = reasoningAccount || noOp ? await config.verifyPlanSettings() : undefined;
+      if (reasoningAccount && verified && !reasoningMatches(verified)) throw new HubError(msg('config.stalePlan'));
+      if (noOp && verified) {
+        if (owner === this.selections()) owner?.synchronizeConfirmed(config, desired, verified.current, catalog);
         config.resetDraft();
         return;
       }
@@ -201,7 +202,7 @@ export class RunnerQuickConfig {
     if (continuation.provider !== this.control.config.observedAgentId) await this.adoptProvider(this.selections());
     else if (this.control.config.observedAgentId !== 'none') {
       const { config } = this.control;
-      await config.inspect();
+      await config.inspect(undefined, true, true);
       if (continuation.command === '/clear' && config.actual?.current.target === '')
         this.selections()?.synchronizeConfirmed(config, { target: '' });
     }

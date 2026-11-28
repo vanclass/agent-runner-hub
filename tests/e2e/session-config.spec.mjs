@@ -50,16 +50,20 @@ test('a Provider change during attachment admission leaves the work unsent', asy
   expect(result).toEqual({ submitted: 0, admitted: true, key: 'config.stalePlan' });
 });
 
-test('unbound startup with an unavailable empty model catalog preserves explicit intent without retries', async ({ page }) => {
+test('unavailable startup model choices wait for observed account setup completion', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { service, fixture } = (await import('/tests/fixtures/sessionConfig.ts')).createConfigHarness();
     const { HubSelections } = await import('/src/hub/HubSelections.ts');
     fixture.current.target = '';
+    let setupRequired = true;
+    fixture.changed = () => service.observe(fixture.session, 'ready', structuredClone(fixture.features),
+      fixture.current.account.agent_id, fixture.current.account.profile_name, undefined, setupRequired);
     fixture.changed();
     const inspect = fixture.inspection.bind(fixture);
     fixture.inspection = (...args) => {
       const reply = inspect(...args);
+      if (!setupRequired) return reply;
       reply.model_catalog_status = 'unavailable'; reply.options.models = []; reply.options_page.totals.models = 0;
       reply.options_page.next_offset = reply.options_page.totals.accounts > reply.options_page.offset + 2
         ? reply.options_page.offset + 2 : null;
@@ -70,12 +74,17 @@ test('unbound startup with an unavailable empty model catalog preserves explicit
     await choices.inspectOptions();
     const requests = fixture.requests.length;
     for (let i = 0; i < 5; i++) choices.initialize();
-    return { defaults: choices.defaults, catalog: !!choices.catalog, detail: choices.detail,
+    const pending = { catalog: !!choices.catalog, detail: choices.detail,
       actual: service.currentCatalog.inspection.model_catalog_status, requests, after: fixture.requests.length };
+    setupRequired = false;
+    fixture.changed();
+    await choices.inspectOptions();
+    return { ...pending, defaults: choices.defaults, models: service.currentCatalog.options.models.map(model => model.id) };
   });
   expect(result.defaults).toEqual({ initialized: true, target: { binding_state: 'bound', owner: 'Project', project: 'Exact' } });
   expect(result).toMatchObject({ catalog: true, detail: '', actual: 'unavailable' });
   expect(result.after).toBe(result.requests);
+  expect(result.models).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
 });
 
 test('missing Provider evidence keeps only independent configuration choices', async ({ page }) => {
@@ -114,7 +123,7 @@ for (const changedRevision of [false, true]) test('configured no-op submission u
     return { requests: fixture.requests.map(r => r.operation), submissions };
   }, changedRevision);
   expect(result.requests).toEqual(['session_config.inspect', 'session_config.inspect', 'session_config.inspect', 'session_config.plan',
-    ...(changedRevision ? ['session_config.inspect', 'session_config.inspect', 'session_config.inspect'] : [])]);
+    ...(changedRevision ? ['session_config.inspect'] : [])]);
   expect(result.submissions).toEqual(['Target\nOwner: Project\nProject: Explicit\nGoal\none']);
 });
 
@@ -131,7 +140,7 @@ test('Provider discovery drops the obsolete wait for a retired catalog receipt',
     fixture.features.sessionConfig.operations.push('session_config.providers');
     fixture.changed();
     await Promise.race([retired, new Promise(resolve => setTimeout(resolve, 100))]);
-    service.refreshOptions();
+    service.prepareOptions();
     while (service.providersRefreshing) await new Promise(resolve => setTimeout(resolve, 5));
     return { stillWaiting: service.optionsRefreshing, agent: service.providers?.current_agent_id };
   })).toEqual({ stillWaiting: false, agent: 'none' });
@@ -145,14 +154,14 @@ test('Provider None discovers Providers and defers every inspection until activa
     fixture.features.sessionConfig.operations.push('session_config.providers', 'session_config.select_provider');
     fixture.current.account = { agent_id: 'none', profile_name: '' };
     fixture.changed();
-    service.refreshOptions();
+    service.prepareOptions();
     while (service.providersRefreshing) await new Promise(resolve => setTimeout(resolve, 5));
     await service.lookupOptions();
     await service.inspect();
     await service.selectTestAccount('codex');
     const inactive = fixture.requests.map(r => r.operation);
     const switched = await service.selectProvider('codex');
-    service.refreshOptions();
+    service.prepareOptions();
     await service.inspect();
     return { inactive, switched, active: service.currentCatalog?.inspection.effective.agent_id };
   });
@@ -170,7 +179,7 @@ test('configured submission joins equivalent background options and preserves ca
     const work = { supports: () => true, blocked: false, busy: false,
       submit: async text => { submitted.push(text); } };
     fixture.hold = true;
-    service.refreshOptions();
+    service.prepareOptions();
     const pending = submitConfiguredWork(service, work, { accountIdentity: fixture.current.account, runMode: 'task-run' },
       'Target\nOwner: Workspace\nProject: agent-workspace\nGoal\none', async () => undefined);
     const held = { requested: fixture.requests.length, loading: service.optionsRefreshing, foreground: service.busy };
@@ -208,7 +217,7 @@ test('warm configured submission reuses exact option pages before planning', asy
   expect(result.requests).toEqual(['session_config.plan']);
 });
 
-test('background options leave a reviewed plan for authoritative stale rejection', async ({ page }) => {
+test('a settings observation retains choices and leaves a reviewed plan for authoritative stale rejection', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
     const { createConfigHarness } = await import('/tests/fixtures/sessionConfig.ts');
@@ -220,15 +229,14 @@ test('background options leave a reviewed plan for authoritative stale rejection
     fixture.current.target = 'project:Exact';
     fixture.revision = 'd'.repeat(64);
     fixture.changed();
-    service.refreshOptions();
-    while (service.optionsRefreshing) await new Promise(resolve => setTimeout(resolve, 5));
+    service.prepareOptions();
     const retained = plan === service.plan && draft === service.draft && progress === service.progress;
-    const refreshed = service.currentCatalog?.inspection.revision === fixture.revision;
+    const inspections = fixture.requests.filter(r => r.operation === 'session_config.inspect').length;
     await service.apply();
-    return { retained, refreshed, error: service.error, outcome: service.latestApplication?.result?.apply_status,
+    return { retained, inspections, error: service.error, outcome: service.latestApplication?.result?.apply_status,
       uncertain: service.uncertain, last: fixture.requests.at(-1)?.operation };
   });
-  expect(result).toEqual({ retained: true, refreshed: true, error: { key: 'config.stalePlan' },
+  expect(result).toEqual({ retained: true, inspections: 3, error: { key: 'config.stalePlan' },
     outcome: 'rejected', uncertain: false, last: 'session_config.apply' });
 });
 

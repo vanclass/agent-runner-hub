@@ -24,16 +24,20 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
   const panel = useRef<HTMLDivElement>(null);
   const pending = config.busy || quick.interactionBusy;
   const catalog = config.currentCatalog;
-  const current = catalog?.inspection.current;
-  const related = catalog && same(catalog.inspection.model_options_account, current?.account)
-    && current?.account.agent_id === effective?.agent_id && current?.account.profile_name === effective?.account;
+  const related = catalog && effective && same(catalog.inspection.model_options_account,
+    { agent_id: effective.agent_id, profile_name: effective.account });
+  const actual = config.actual;
+  const current = related ? { ...(actual ?? catalog.inspection).current,
+    account: catalog.inspection.model_options_account, run_mode: observation.run_mode,
+    model: { id: effective.next_model ?? effective.model, reasoning_effort: effective.next_reasoning_effort ?? effective.reasoning_effort },
+    service_tier: effective.next_service_tier ?? effective.service_tier } : undefined;
   const advertised = related ? catalog.options.models.find(m => m.id === effective?.model) : undefined;
   const nextTier = effective?.service_tier === 'fast' ? 'default' : 'fast';
   const fastSupported = !!advertised?.service_tiers.includes('fast');
   const canEdit = !!effective?.agent_id && effective.agent_id !== 'none'
     && quick.available && config.supports('plan') && config.supports('apply');
   const configReason = canEdit ? '' : t(pending ? 'config.inspecting' : 'quick.unavailable');
-  const supported = (key: string) => catalog?.inspection.availability[key] !== false;
+  const supported = (key: string) => (actual ?? catalog?.inspection)?.availability[key] !== false;
   const providers = config.providerOutcomeUnknown ? undefined : config.providers;
   const providerLabel = providers?.providers.find(p => p.agent_id === effective?.agent_id)?.label
     ?? (effective?.agent_id === 'codex' ? 'Codex' : effective?.agent_id === 'claude' ? 'Claude'
@@ -132,9 +136,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
         !provider.available ? provider.disabled_reason || t('quick.unavailable')
           : !config.supports('select_provider') ? t('config.unsupported') : ''));
     const candidates = related ? account ? config.optionsFor(account) : catalog : undefined;
-    if (!candidates) return;
-    const { current, availability } = candidates.inspection;
-    const supported = (key: string) => availability[key] !== false;
+    if (!candidates || !current) return;
     const { options } = candidates;
     if (directory) return <form onSubmit={event => {
       event.preventDefault();
@@ -180,8 +182,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
           ? '' : t('quick.unavailable')));
     }
     if (field === 'reasoning') {
-      const inspected = candidates.inspection.effective;
-      const model = effective?.model === current.model.id && (inspected.next_model ?? inspected.model) === current.model.id
+      const model = effective?.model === current.model.id
         ? options.models.find(candidate => candidate.id === current.model.id) : undefined;
       return model?.reasoning_efforts.map(effort => {
         const desired = { model: { id: model.id, reasoning_effort: effort } };
@@ -220,7 +221,7 @@ export function RunnerQuickSettings({ session }: { session: RunnerSession }) {
     {field && <div className="quick-popover" role="dialog" aria-label={label(field)} tabIndex={-1} ref={panel}>
       <div className="quick-heading">{label(field)}{account && field === 'account' ? ' · ' + account.profile_name : ''}</div>
       {options}
-      {optionError && <p role="status">{loaded ? t('quick.retainedOptions', { diagnostic: tr(optionError) }) : tr(optionError)}</p>}
+      {optionError && <p role="status">{tr(optionError)}</p>}
       {!optionError && (!options || Array.isArray(options) && options.length === 0) &&
         <p role="status">{loading || !loaded && !account && !!effective?.agent_id ? t('config.inspecting')
           : loaded ? t('quick.noOptions') : t('quick.unavailable')}</p>}
